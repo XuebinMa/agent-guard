@@ -228,29 +228,51 @@ audit:
 
     #[test]
     fn deny_paths_blocks_etc() {
-        let d = engine().check(&Tool::ReadFile, "/etc/passwd", &TrustLevel::Trusted);
+        // A1: ReadFile payload must be JSON {"path": "..."}
+        let d = engine().check(&Tool::ReadFile, r#"{"path":"/etc/passwd"}"#, &TrustLevel::Trusted);
         assert!(matches!(d, GuardDecision::Deny { .. }));
     }
 
     #[test]
     fn deny_paths_blocks_ssh_key() {
-        let d = engine().check(&Tool::ReadFile, "/home/user/.ssh/id_rsa", &TrustLevel::Trusted);
+        let d = engine().check(&Tool::ReadFile, r#"{"path":"/home/user/.ssh/id_rsa"}"#, &TrustLevel::Trusted);
         assert!(matches!(d, GuardDecision::Deny { .. }));
     }
 
     #[test]
     fn deny_paths_allows_safe_path() {
-        let d = engine().check(&Tool::ReadFile, "/workspace/src/main.rs", &TrustLevel::Trusted);
+        let d = engine().check(&Tool::ReadFile, r#"{"path":"/workspace/src/main.rs"}"#, &TrustLevel::Trusted);
         assert_eq!(d, GuardDecision::Allow);
+    }
+
+    #[test]
+    fn read_file_invalid_json_denied() {
+        let d = engine().check(&Tool::ReadFile, "not-json", &TrustLevel::Trusted);
+        if let GuardDecision::Deny { reason } = d {
+            assert_eq!(reason.code, crate::decision::DecisionCode::InvalidPayload);
+        } else {
+            panic!("expected Deny(InvalidPayload)");
+        }
+    }
+
+    #[test]
+    fn read_file_missing_path_field_denied() {
+        let d = engine().check(&Tool::ReadFile, r#"{"file":"/etc/passwd"}"#, &TrustLevel::Trusted);
+        if let GuardDecision::Deny { reason } = d {
+            assert_eq!(reason.code, crate::decision::DecisionCode::MissingPayloadField);
+        } else {
+            panic!("expected Deny(MissingPayloadField)");
+        }
     }
 
     // ── http_request ─────────────────────────────────────────────────────────
 
     #[test]
     fn deny_metadata_endpoint() {
+        // A1: HttpRequest payload must be JSON {"url": "..."}
         let d = engine().check(
             &Tool::HttpRequest,
-            "http://169.254.169.254/latest/meta-data/",
+            r#"{"url":"http://169.254.169.254/latest/meta-data/"}"#,
             &TrustLevel::Trusted,
         );
         assert!(matches!(d, GuardDecision::Deny { .. }));
@@ -260,10 +282,20 @@ audit:
     fn allow_normal_http_request() {
         let d = engine().check(
             &Tool::HttpRequest,
-            "https://api.example.com/data",
+            r#"{"url":"https://api.example.com/data"}"#,
             &TrustLevel::Trusted,
         );
         assert_eq!(d, GuardDecision::Allow);
+    }
+
+    #[test]
+    fn http_request_invalid_json_denied() {
+        let d = engine().check(&Tool::HttpRequest, "https://example.com", &TrustLevel::Trusted);
+        if let GuardDecision::Deny { reason } = d {
+            assert_eq!(reason.code, crate::decision::DecisionCode::InvalidPayload);
+        } else {
+            panic!("expected Deny(InvalidPayload)");
+        }
     }
 
     // ── trust level override ─────────────────────────────────────────────────
@@ -326,17 +358,15 @@ mod audit_tests {
     use crate::decision::{DecisionCode, GuardDecision};
     use crate::types::Tool;
 
+    fn make_event(req: &str, payload: &str, decision: &GuardDecision, include_hash: bool) -> AuditEvent {
+        AuditEvent::from_decision(
+            req.to_string(), &Tool::Bash, payload, decision, None, None, None, include_hash,
+        )
+    }
+
     #[test]
     fn audit_event_allow_has_no_code() {
-        let event = AuditEvent::from_decision(
-            "req-1".to_string(),
-            &Tool::Bash,
-            "ls",
-            &GuardDecision::Allow,
-            None,
-            None,
-            None,
-        );
+        let event = make_event("req-1", "ls", &GuardDecision::Allow, true);
         assert!(event.code.is_none());
         assert!(event.message.is_none());
         assert!(event.matched_rule.is_none());
@@ -357,6 +387,7 @@ mod audit_tests {
             Some("s1".to_string()),
             Some("a1".to_string()),
             None,
+            true,
         );
         assert!(event.code.is_some());
         assert_eq!(event.matched_rule.as_deref(), Some("tools.bash.deny[0]"));
@@ -365,61 +396,49 @@ mod audit_tests {
     }
 
     #[test]
-    fn payload_hash_is_sha256_hex() {
-        let event = AuditEvent::from_decision(
-            "req-3".to_string(),
-            &Tool::Bash,
-            "ls",
-            &GuardDecision::Allow,
-            None,
-            None,
-            None,
-        );
-        // SHA-256 hex = 64 chars
-        assert_eq!(event.payload_hash.len(), 64);
-        assert!(event.payload_hash.chars().all(|c| c.is_ascii_hexdigit()));
+    fn payload_hash_present_when_enabled() {
+        let event = make_event("req-3", "ls", &GuardDecision::Allow, true);
+        let hash = event.payload_hash.expect("hash should be present");
+        assert_eq!(hash.len(), 64);
+        assert!(hash.chars().all(|c: char| c.is_ascii_hexdigit()));
+    }
+
+    #[test]
+    fn payload_hash_absent_when_disabled() {
+        let event = make_event("req-3b", "ls", &GuardDecision::Allow, false);
+        assert!(event.payload_hash.is_none());
     }
 
     #[test]
     fn payload_hash_is_deterministic() {
-        let make = || {
-            AuditEvent::from_decision(
-                "req-4".to_string(),
-                &Tool::Bash,
-                "ls -la",
-                &GuardDecision::Allow,
-                None,
-                None,
-                None,
-            )
-            .payload_hash
-        };
-        assert_eq!(make(), make());
+        let h1 = make_event("r", "ls -la", &GuardDecision::Allow, true).payload_hash;
+        let h2 = make_event("r", "ls -la", &GuardDecision::Allow, true).payload_hash;
+        assert_eq!(h1, h2);
     }
 
     #[test]
     fn different_payloads_give_different_hashes() {
-        let h1 = AuditEvent::from_decision("r".to_string(), &Tool::Bash, "ls", &GuardDecision::Allow, None, None, None).payload_hash;
-        let h2 = AuditEvent::from_decision("r".to_string(), &Tool::Bash, "cat /etc/passwd", &GuardDecision::Allow, None, None, None).payload_hash;
+        let h1 = make_event("r", "ls", &GuardDecision::Allow, true).payload_hash;
+        let h2 = make_event("r", "cat /etc/passwd", &GuardDecision::Allow, true).payload_hash;
         assert_ne!(h1, h2);
     }
 
     #[test]
     fn to_jsonl_is_valid_json() {
-        let event = AuditEvent::from_decision(
-            "req-5".to_string(),
-            &Tool::Bash,
-            "ls",
-            &GuardDecision::Allow,
-            None,
-            None,
-            None,
-        );
+        let event = make_event("req-5", "ls", &GuardDecision::Allow, true);
         let line = event.to_jsonl();
         let parsed: serde_json::Value = serde_json::from_str(&line).expect("invalid JSONL");
         assert!(parsed.get("timestamp").is_some());
         assert!(parsed.get("request_id").is_some());
         assert!(parsed.get("payload_hash").is_some());
         assert_eq!(parsed["decision"], "allow");
+    }
+
+    #[test]
+    fn to_jsonl_hash_null_when_disabled() {
+        let event = make_event("req-6", "ls", &GuardDecision::Allow, false);
+        let line = event.to_jsonl();
+        let parsed: serde_json::Value = serde_json::from_str(&line).unwrap();
+        assert!(parsed["payload_hash"].is_null());
     }
 }

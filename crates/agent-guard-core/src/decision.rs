@@ -113,6 +113,12 @@ pub enum DecisionCode {
     UntrustedPath,
     #[serde(rename = "INVALID_CUSTOM_TOOL_ID")]
     InvalidCustomToolId,
+    #[serde(rename = "INVALID_PAYLOAD")]
+    InvalidPayload,
+    #[serde(rename = "MISSING_PAYLOAD_FIELD")]
+    MissingPayloadField,
+    #[serde(rename = "NOT_IN_ALLOW_LIST")]
+    NotInAllowList,
     #[serde(rename = "POLICY_LOAD_ERROR")]
     PolicyLoadError,
     #[serde(rename = "INTERNAL_ERROR")]

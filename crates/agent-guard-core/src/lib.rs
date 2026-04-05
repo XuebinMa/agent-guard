@@ -1,5 +1,6 @@
 pub mod audit;
 pub mod decision;
+pub mod payload;
 pub mod policy;
 pub mod types;
 

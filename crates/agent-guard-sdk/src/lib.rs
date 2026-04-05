@@ -1,6 +1,6 @@
 pub mod guard;
 
-pub use guard::Guard;
+pub use guard::{Guard, GuardInitError};
 
 // Re-export core types so SDK users don't need to depend on agent-guard-core directly.
 pub use agent_guard_core::{

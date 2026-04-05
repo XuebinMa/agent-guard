@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 use crate::decision::{DecisionCode, GuardDecision};
+use crate::payload::{extract_path, extract_url, ExtractedPayload};
 use crate::types::{Tool, TrustLevel};
 
 // ── Policy schema ─────────────────────────────────────────────────────────────
@@ -138,7 +139,6 @@ impl PolicyEngine {
         // Untrusted override: if effective_mode is read_only but the resolved tool mode
         // (tool-level or default) is higher, block the call entirely.
         if effective_mode == PolicyMode::ReadOnly {
-            // Resolve the tool's own mode (tool-level override → default_mode).
             let tool_mode = tool_policy
                 .as_ref()
                 .and_then(|tp| tp.mode.clone())
@@ -157,10 +157,31 @@ impl PolicyEngine {
             }
         }
 
+        // A1: extract structured payload for tools that require it.
+        // For ReadFile/WriteFile we need the path; for HttpRequest we need the url.
+        // Extraction failure is a hard deny — we never fall back to matching raw JSON.
+        let extracted = match tool {
+            Tool::ReadFile | Tool::WriteFile => {
+                match extract_path(payload) {
+                    Ok(ep) => ep,
+                    Err(deny) => return deny,
+                }
+            }
+            Tool::HttpRequest => {
+                match extract_url(payload) {
+                    Ok(ep) => ep,
+                    Err(deny) => return deny,
+                }
+            }
+            // Bash and Custom tools: rules match against raw payload string.
+            _ => ExtractedPayload::Raw(payload),
+        };
+        let match_value = extracted.match_value();
+
         if let Some(tp) = tool_policy {
-            // deny rules are highest priority
+            // deny rules — highest priority, always evaluated first.
             for (i, rule) in tp.deny.iter().enumerate() {
-                if pattern_matches(rule, payload) {
+                if pattern_matches(rule, match_value) {
                     let rule_ref = format!("tools.{}.deny[{}]", tool_name, i);
                     return GuardDecision::deny_with_rule(
                         DecisionCode::DeniedByRule,
@@ -170,9 +191,21 @@ impl PolicyEngine {
                 }
             }
 
-            // ask rules
+            // deny_paths — evaluated before ask/allow so paths can't be bypassed.
+            for (i, glob_pattern) in tp.deny_paths.iter().enumerate() {
+                if path_glob_matches(glob_pattern, match_value) {
+                    let rule_ref = format!("tools.{}.deny_paths[{}]", tool_name, i);
+                    return GuardDecision::deny_with_rule(
+                        DecisionCode::PathOutsideWorkspace,
+                        format!("path matched deny_paths rule: {}", glob_pattern),
+                        rule_ref,
+                    );
+                }
+            }
+
+            // ask rules.
             for (i, rule) in tp.ask.iter().enumerate() {
-                if pattern_matches(rule, payload) {
+                if pattern_matches(rule, match_value) {
                     let rule_ref = format!("tools.{}.ask[{}]", tool_name, i);
                     return GuardDecision::ask_with_rule(
                         format!("Confirmation required: rule '{}' matched", pattern_display(rule)),
@@ -183,22 +216,25 @@ impl PolicyEngine {
                 }
             }
 
-            // explicit allow rules (pass through immediately)
-            for rule in tp.allow.iter() {
-                if pattern_matches(rule, payload) {
-                    return GuardDecision::Allow;
+            // A2: allow_paths as a positive allowlist.
+            // If allow_paths is non-empty and the path doesn't match any entry → deny.
+            if !tp.allow_paths.is_empty() {
+                let in_allowlist = tp.allow_paths.iter().any(|p| path_glob_matches(p, match_value));
+                if !in_allowlist {
+                    return GuardDecision::deny(
+                        DecisionCode::NotInAllowList,
+                        format!(
+                            "path '{}' is not in the configured allow_paths list",
+                            match_value
+                        ),
+                    );
                 }
             }
 
-            // deny_paths check
-            for (i, glob_pattern) in tp.deny_paths.iter().enumerate() {
-                if payload_matches_path_glob(glob_pattern, payload) {
-                    let rule_ref = format!("tools.{}.deny_paths[{}]", tool_name, i);
-                    return GuardDecision::deny_with_rule(
-                        DecisionCode::PathOutsideWorkspace,
-                        format!("path matched deny_paths rule: {}", glob_pattern),
-                        rule_ref,
-                    );
+            // Explicit allow rules — short-circuit to Allow.
+            for rule in tp.allow.iter() {
+                if pattern_matches(rule, match_value) {
+                    return GuardDecision::Allow;
                 }
             }
         }
@@ -236,19 +272,21 @@ impl PolicyEngine {
 
 // ── Pattern matching helpers ──────────────────────────────────────────────────
 
-fn pattern_matches(rule: &RulePattern, payload: &str) -> bool {
+fn pattern_matches(rule: &RulePattern, value: &str) -> bool {
     match rule {
-        RulePattern::Plain(s) => payload.contains(s.as_str()),
+        // Plain string: substring match (explicit, intentional — different from prefix:).
+        RulePattern::Plain(s) => value.contains(s.as_str()),
         RulePattern::Map(m) => {
             if let Some(ref prefix) = m.prefix {
-                let trimmed = payload.trim_start();
-                if trimmed.starts_with(prefix.as_str()) || payload.contains(prefix.as_str()) {
+                // A3: strict prefix match only — trimmed to handle leading whitespace.
+                // Use contains: in policy YAML if substring matching is desired.
+                if value.trim_start().starts_with(prefix.as_str()) {
                     return true;
                 }
             }
             if let Some(ref re_str) = m.regex {
                 if let Ok(re) = Regex::new(re_str) {
-                    if re.is_match(payload) {
+                    if re.is_match(value) {
                         return true;
                     }
                 }
@@ -258,9 +296,15 @@ fn pattern_matches(rule: &RulePattern, payload: &str) -> bool {
     }
 }
 
-fn payload_matches_path_glob(pattern: &str, payload: &str) -> bool {
+fn path_glob_matches(pattern: &str, value: &str) -> bool {
     if let Ok(matcher) = glob::Pattern::new(pattern) {
-        return matcher.matches(payload);
+        // Match both the exact string and with glob options for path separators.
+        return matcher.matches(value)
+            || matcher.matches_with(value, glob::MatchOptions {
+                case_sensitive: true,
+                require_literal_separator: false,
+                require_literal_leading_dot: false,
+            });
     }
     false
 }

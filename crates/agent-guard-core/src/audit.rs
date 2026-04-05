@@ -19,13 +19,16 @@ pub struct AuditEvent {
     pub agent_id: Option<String>,
     pub actor: Option<String>,
     pub tool: String,
-    /// SHA-256 hex digest of the raw payload string. Raw payload is never logged.
-    pub payload_hash: String,
+    /// SHA-256 hex digest of the raw payload string.
+    /// None when audit.include_payload_hash = false.
+    /// Raw payload is never logged.
+    pub payload_hash: Option<String>,
     pub decision: AuditDecision,
     pub code: Option<DecisionCode>,
     pub message: Option<String>,
     pub details: Option<serde_json::Value>,
     /// The policy rule path that triggered this decision, e.g. "tools.bash.deny[0]".
+    /// None for Allow decisions (explainability not recorded at this stage).
     pub matched_rule: Option<String>,
 }
 
@@ -46,11 +49,14 @@ impl AuditEvent {
         session_id: Option<String>,
         agent_id: Option<String>,
         actor: Option<String>,
+        include_hash: bool,
     ) -> Self {
-        let payload_hash = {
+        let payload_hash = if include_hash {
             let mut h = Sha256::new();
             h.update(payload.as_bytes());
-            hex::encode(h.finalize())
+            Some(hex::encode(h.finalize()))
+        } else {
+            None
         };
 
         let (audit_decision, code, message, details, matched_rule) = match decision {
