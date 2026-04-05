@@ -1,5 +1,7 @@
 use std::path::{Path, PathBuf};
 
+// Ported from trust_resolver.rs — minimal changes to use/import paths only.
+
 const TRUST_PROMPT_CUES: &[&str] = &[
     "do you trust the files in this folder",
     "trust the files in this folder",
@@ -92,9 +94,6 @@ impl TrustResolver {
 
     #[must_use]
     pub fn resolve(&self, cwd: &str) -> TrustDecision {
-        // Simple version for demo: always assumes a prompt might have happened 
-        // if called without screen_text. In actual claw-code it takes screen_text.
-        // Let's keep a version that works with the demo.
         self.resolve_with_text(cwd, "do you trust the files in this folder")
     }
 
@@ -104,15 +103,10 @@ impl TrustResolver {
             return TrustDecision::NotRequired;
         }
 
-        let mut events = vec![TrustEvent::TrustRequired {
-            cwd: cwd.to_owned(),
-        }];
+        let mut events = vec![TrustEvent::TrustRequired { cwd: cwd.to_owned() }];
 
-        if let Some(matched_root) = self
-            .config
-            .denied
-            .iter()
-            .find(|root| path_matches(cwd, root))
+        if let Some(matched_root) =
+            self.config.denied.iter().find(|root| path_matches(cwd, root))
         {
             let reason = format!("cwd matches denied trust root: {}", matched_root.display());
             events.push(TrustEvent::TrustDenied {
@@ -125,12 +119,7 @@ impl TrustResolver {
             };
         }
 
-        if self
-            .config
-            .allowlisted
-            .iter()
-            .any(|root| path_matches(cwd, root))
-        {
+        if self.config.allowlisted.iter().any(|root| path_matches(cwd, root)) {
             events.push(TrustEvent::TrustResolved {
                 cwd: cwd.to_owned(),
                 policy: TrustPolicy::AutoTrust,
@@ -149,25 +138,21 @@ impl TrustResolver {
 
     #[must_use]
     pub fn trusts(&self, cwd: &str) -> bool {
-        !self
-            .config
-            .denied
-            .iter()
-            .any(|root| path_matches(cwd, root))
-            && self
-                .config
-                .allowlisted
-                .iter()
-                .any(|root| path_matches(cwd, root))
+        !self.config.denied.iter().any(|root| path_matches(cwd, root))
+            && self.config.allowlisted.iter().any(|root| path_matches(cwd, root))
     }
+}
+
+/// Bridge: validate that a path is accessible given a trusted root and candidate path.
+#[must_use]
+pub fn validate_path_access(candidate: &str, trusted_root: &str) -> bool {
+    path_matches_trusted_root(candidate, trusted_root)
 }
 
 #[must_use]
 pub fn detect_trust_prompt(screen_text: &str) -> bool {
     let lowered = screen_text.to_ascii_lowercase();
-    TRUST_PROMPT_CUES
-        .iter()
-        .any(|needle| lowered.contains(needle))
+    TRUST_PROMPT_CUES.iter().any(|needle| lowered.contains(needle))
 }
 
 #[must_use]

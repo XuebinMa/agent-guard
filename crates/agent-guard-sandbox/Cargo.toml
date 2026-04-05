@@ -1,0 +1,12 @@
+[package]
+name = "agent-guard-sandbox"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Sandbox execution layer for agent-guard"
+
+[dependencies]
+agent-guard-core = { path = "../agent-guard-core" }
+thiserror.workspace = true
+serde.workspace = true
+serde_json.workspace = true

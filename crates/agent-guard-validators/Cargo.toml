@@ -1,0 +1,11 @@
+[package]
+name = "agent-guard-validators"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Bash and path validators for agent-guard"
+
+[dependencies]
+agent-guard-core = { path = "../agent-guard-core" }
+serde.workspace = true
+serde_json.workspace = true

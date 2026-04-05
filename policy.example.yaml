@@ -1,0 +1,74 @@
+# agent-guard policy v1 — example configuration
+# Copy to policy.yaml and adjust for your use case.
+version: 1
+
+# Default mode applied to all tools unless overridden per-tool.
+# Options: read_only | workspace_write | full_access
+default_mode: workspace_write
+
+tools:
+  bash:
+    mode: workspace_write
+    # Explicit deny rules are evaluated first (highest priority).
+    deny:
+      - prefix: "rm -rf"
+      - prefix: "sudo"
+      - regex: "\\|\\s*sh"          # piping into a shell
+      - regex: "curl.*\\|.*bash"    # curl-pipe-bash pattern
+    # Ask rules prompt the user for confirmation before executing.
+    ask:
+      - prefix: "git push"
+      - prefix: "git rebase"
+      - prefix: "docker run"
+    # Allow rules short-circuit further checks (useful for explicit safe patterns).
+    allow:
+      - prefix: "cargo"
+      - prefix: "make"
+
+  read_file:
+    mode: workspace_write
+    deny_paths:
+      - "/etc/**"
+      - "/root/**"
+      - "**/.ssh/**"
+      - "**/.env"
+
+  write_file:
+    mode: workspace_write
+    deny_paths:
+      - "/etc/**"
+      - "/usr/**"
+      - "/boot/**"
+
+  http_request:
+    mode: workspace_write
+    deny:
+      - regex: "^https?://169\\.254\\.169\\.254"  # AWS/GCP metadata endpoint
+      - regex: "^https?://localhost"
+
+  # Custom tool example: a SQL query tool registered by the host application.
+  custom:
+    acme.sql.query:
+      deny:
+        - regex: "(?i)drop\\s+table"
+        - regex: "(?i)delete\\s+from"
+        - regex: "(?i)truncate"
+      ask:
+        - regex: "(?i)update\\s+\\w+\\s+set"
+
+# Trust level overrides.
+trust:
+  untrusted:
+    # Untrusted actors are hard-limited to read_only mode.
+    # This is a safety floor that cannot be bypassed by tool-level mode settings.
+    override_mode: read_only
+
+# Audit configuration.
+audit:
+  enabled: true
+  # output: stdout | file
+  output: stdout
+  # Uncomment to write to a file instead:
+  # output: file
+  # file_path: /var/log/agent-guard/audit.jsonl
+  include_payload_hash: true
