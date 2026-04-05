@@ -135,22 +135,25 @@ impl PolicyEngine {
         let tool_policy = self.tool_policy(tool);
         let tool_name = tool.name();
 
-        // Untrusted override: force read_only — block tools configured for higher modes
+        // Untrusted override: if effective_mode is read_only but the resolved tool mode
+        // (tool-level or default) is higher, block the call entirely.
         if effective_mode == PolicyMode::ReadOnly {
-            if let Some(ref tp) = tool_policy {
-                if tp.mode == Some(PolicyMode::WorkspaceWrite)
-                    || tp.mode == Some(PolicyMode::FullAccess)
-                {
-                    return GuardDecision::deny(
-                        DecisionCode::InsufficientPermissionMode,
-                        format!(
-                            "trust level '{}' does not permit tool '{}' which requires '{:?}' mode",
-                            trust_level_str(trust_level),
-                            tool_name,
-                            tp.mode.as_ref().unwrap()
-                        ),
-                    );
-                }
+            // Resolve the tool's own mode (tool-level override → default_mode).
+            let tool_mode = tool_policy
+                .as_ref()
+                .and_then(|tp| tp.mode.clone())
+                .unwrap_or_else(|| self.policy.default_mode.clone());
+
+            if tool_mode == PolicyMode::WorkspaceWrite || tool_mode == PolicyMode::FullAccess {
+                return GuardDecision::deny(
+                    DecisionCode::InsufficientPermissionMode,
+                    format!(
+                        "trust level '{}' does not permit tool '{}' which requires '{:?}' mode",
+                        trust_level_str(trust_level),
+                        tool_name,
+                        tool_mode
+                    ),
+                );
             }
         }
 
