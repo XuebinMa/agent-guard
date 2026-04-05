@@ -4,6 +4,7 @@ use agent_guard_core::{
     AuditConfig, AuditEvent, Context, DecisionCode, GuardDecision, GuardInput, PolicyEngine,
     PolicyMode, Tool,
 };
+use agent_guard_sandbox::{NoopSandbox, Sandbox, SandboxContext, SandboxError, SandboxOutput};
 use agent_guard_validators::bash::{validate_bash_command, PermissionMode, ValidationResult};
 use thiserror::Error;
 use uuid::Uuid;
@@ -212,4 +213,112 @@ fn classify_block_reason(reason: &str) -> DecisionCode {
     } else {
         DecisionCode::DestructiveCommand
     }
+}
+
+// ── Execute API ───────────────────────────────────────────────────────────────
+
+/// The result of `Guard::execute()`.
+///
+/// # Failure semantics
+///
+/// | Scenario                          | Variant / Err                         |
+/// |-----------------------------------|---------------------------------------|
+/// | Policy denies the tool call       | `Ok(Denied { decision })`             |
+/// | Policy asks user (not auto-allow) | `Ok(AskRequired { decision })`        |
+/// | Policy allows; command runs OK    | `Ok(Executed { output })`             |
+/// | Policy allows; seccomp filter err | `Err(SandboxError::FilterSetup(…))`   |
+/// | Policy allows; process times out  | `Err(SandboxError::Timeout { ms })`   |
+/// | Process killed by seccomp filter  | `Err(SandboxError::KilledByFilter{…})`|
+/// | Command itself fails to fork/exec | `Err(SandboxError::ExecutionFailed(…))`|
+#[derive(Debug)]
+pub enum ExecuteOutcome {
+    /// The tool call was denied by policy before execution.
+    Denied { decision: GuardDecision },
+    /// The tool call requires user confirmation; not executed.
+    AskRequired { decision: GuardDecision },
+    /// The command was executed (policy allowed it).
+    Executed { output: SandboxOutput },
+}
+
+/// Result type returned by `Guard::execute()`.
+pub type ExecuteResult = Result<ExecuteOutcome, SandboxError>;
+
+impl Guard {
+    /// Check policy and, if allowed, execute the command in the sandbox.
+    ///
+    /// `sandbox` is caller-supplied so you can choose `NoopSandbox` (default,
+    /// no OS isolation) or `SeccompSandbox` (Linux, syscall filter).
+    ///
+    /// **Important:** The payload for `Tool::Bash` must be a JSON string
+    /// `{"command": "..."}` — the same format used by `check_tool()`.
+    ///
+    /// # Errors
+    ///
+    /// Returns `Err(SandboxError)` only when the policy allowed the call but
+    /// the sandbox itself failed (timeout, filter setup, exec failure). Policy
+    /// denials are encoded in `Ok(ExecuteOutcome::Denied { … })` so callers can
+    /// distinguish "refused to run" from "ran but failed".
+    pub fn execute(
+        &self,
+        input: &GuardInput,
+        sandbox: &dyn Sandbox,
+    ) -> ExecuteResult {
+        let decision = self.check(input);
+        match &decision {
+            GuardDecision::Allow { .. } => {}
+            GuardDecision::Deny { .. } => {
+                return Ok(ExecuteOutcome::Denied { decision });
+            }
+            GuardDecision::AskUser { .. } => {
+                return Ok(ExecuteOutcome::AskRequired { decision });
+            }
+        }
+
+        // Extract the command string from the JSON payload.
+        // Payload contract: {"command": "<shell command>"} for Tool::Bash.
+        // This mirrors the validator's extraction and must never fall back to
+        // bare-string matching — that would break the structured payload contract.
+        let command = extract_bash_command(&input.payload)?;
+
+        let mode = self.engine.effective_mode(&input.tool, &input.context.trust_level);
+        let working_directory = input
+            .context
+            .working_directory
+            .clone()
+            .unwrap_or_else(|| std::path::PathBuf::from("."));
+
+        let ctx = SandboxContext {
+            mode,
+            working_directory,
+            timeout_ms: None, // callers may wrap with a context that sets this
+        };
+
+        let output = sandbox.execute(&command, &ctx)?;
+        Ok(ExecuteOutcome::Executed { output })
+    }
+
+    /// Convenience: execute using `NoopSandbox` (no OS-level isolation).
+    ///
+    /// Suitable for development and platforms where `SeccompSandbox` is
+    /// not yet available (macOS, Windows).
+    pub fn execute_noop(&self, input: &GuardInput) -> ExecuteResult {
+        self.execute(input, &NoopSandbox)
+    }
+}
+
+/// Extract the `command` field from a JSON bash payload.
+///
+/// Payload must be `{"command": "..."}`. Returns `Err(SandboxError::ExecutionFailed)`
+/// for non-JSON or missing field, consistent with `INVALID_PAYLOAD` / `MISSING_PAYLOAD_FIELD`
+/// decision codes (which would have been caught by `check()` already, but we
+/// defend in depth here).
+fn extract_bash_command(payload: &str) -> Result<String, SandboxError> {
+    let v: serde_json::Value = serde_json::from_str(payload)
+        .map_err(|e| SandboxError::ExecutionFailed(format!("invalid payload JSON: {e}")))?;
+    v.get("command")
+        .and_then(|c| c.as_str())
+        .map(|s| s.to_owned())
+        .ok_or_else(|| SandboxError::ExecutionFailed(
+            "payload missing 'command' field".to_string(),
+        ))
 }

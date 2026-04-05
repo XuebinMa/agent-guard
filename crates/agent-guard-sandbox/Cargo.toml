@@ -8,10 +8,13 @@ description = "Sandbox execution layer for agent-guard"
 [features]
 # Enable Linux seccomp-bpf sandbox. Requires libseccomp C library.
 # Usage: cargo build --features agent-guard-sandbox/seccomp
-seccomp = []
+seccomp = ["dep:libseccomp"]
 
 [dependencies]
 agent-guard-core = { path = "../agent-guard-core" }
 thiserror.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+
+[target.'cfg(target_os = "linux")'.dependencies]
+libseccomp = { version = "0.3", optional = true }

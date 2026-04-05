@@ -80,4 +80,10 @@ pub enum SandboxError {
     Timeout { ms: u64 },
     #[error("seccomp filter setup failed: {0}")]
     FilterSetup(String),
+    /// Child process was killed by the seccomp filter (signal 31 / SIGSYS).
+    ///
+    /// This means the child attempted a syscall that was blocked by the installed
+    /// BPF filter. The exit code is captured for diagnosis.
+    #[error("process killed by seccomp filter (exit code: {exit_code})")]
+    KilledByFilter { exit_code: i32 },
 }
