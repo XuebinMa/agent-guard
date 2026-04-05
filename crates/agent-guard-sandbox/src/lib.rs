@@ -1,24 +1,74 @@
 pub mod noop;
 
+#[cfg(target_os = "linux")]
+pub mod linux;
+
 pub use noop::NoopSandbox;
+#[cfg(target_os = "linux")]
+pub use linux::SeccompSandbox;
+
+use std::path::PathBuf;
+
 use thiserror::Error;
 
-pub type SandboxResult = Result<String, SandboxError>;
+use agent_guard_core::PolicyMode;
+
+// ── SandboxContext ────────────────────────────────────────────────────────────
+
+/// Runtime constraints for a sandboxed execution.
+///
+/// `timeout_ms` is an execution-time constraint, not a policy field.
+/// Policy decides *whether* a command can run; context decides *how long* it may run.
+/// This separation ensures policy YAML stays free of scheduling parameters.
+#[derive(Debug, Clone)]
+pub struct SandboxContext {
+    /// Effective mode resolved by `PolicyEngine::effective_mode()`.
+    /// The sandbox uses this to select its syscall allowlist.
+    pub mode: PolicyMode,
+    /// Workspace root — writes must stay within this directory.
+    pub working_directory: PathBuf,
+    /// Optional execution timeout in milliseconds. `None` means no limit.
+    pub timeout_ms: Option<u64>,
+}
+
+// ── SandboxOutput ─────────────────────────────────────────────────────────────
+
+#[derive(Debug, Clone)]
+pub struct SandboxOutput {
+    pub stdout: String,
+    pub stderr: String,
+    pub exit_code: i32,
+}
+
+// ── SandboxResult ─────────────────────────────────────────────────────────────
+
+pub type SandboxResult = Result<SandboxOutput, SandboxError>;
+
+// ── Sandbox trait ─────────────────────────────────────────────────────────────
 
 /// Abstraction over execution environments.
 ///
-/// Platform support matrix (Phase 1):
-/// - Linux: hard isolation via seccomp + namespaces — **planned** (Phase 2)
-/// - macOS: `sandbox-exec` profiles — **experimental** (Phase 2)
-/// - Windows: job object restrictions — **not yet implemented**
+/// Platform support matrix:
+/// - Linux: seccomp-bpf syscall filter — **Phase 2** (`SeccompSandbox`)
+/// - macOS: `sandbox-exec` profiles — **Phase 3 experimental**
+/// - Windows: job object restrictions — **Phase 4**
 ///
-/// Current default is `NoopSandbox` (passthrough), which performs policy
-/// enforcement but no OS-level isolation.
+/// Current default is `NoopSandbox` (passthrough): enforces policy but
+/// provides no OS-level syscall or filesystem isolation.
 pub trait Sandbox: Send + Sync {
     fn name(&self) -> &'static str;
-    fn execute(&self, command: &str, env: &[(&str, &str)]) -> SandboxResult;
+
+    /// Execute `command` under this sandbox with the given context.
+    ///
+    /// Callers must run `Guard::check()` and receive `Allow` before calling
+    /// this method. The sandbox provides defense-in-depth, not primary enforcement.
+    fn execute(&self, command: &str, context: &SandboxContext) -> SandboxResult;
+
+    /// Returns `true` if this sandbox implementation is usable on the current platform.
     fn is_available(&self) -> bool;
 }
+
+// ── SandboxError ──────────────────────────────────────────────────────────────
 
 #[derive(Debug, Error)]
 pub enum SandboxError {
@@ -26,6 +76,8 @@ pub enum SandboxError {
     NotAvailable(String),
     #[error("execution failed: {0}")]
     ExecutionFailed(String),
-    #[error("timeout after {seconds}s")]
-    Timeout { seconds: u64 },
+    #[error("timeout after {ms}ms")]
+    Timeout { ms: u64 },
+    #[error("seccomp filter setup failed: {0}")]
+    FilterSetup(String),
 }

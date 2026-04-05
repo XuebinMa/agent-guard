@@ -43,7 +43,7 @@ name = "agent_guard"
 crate-type = ["cdylib"]
 
 [dependencies]
-pyo3 = { version = "0.21", features = ["extension-module"] }
+pyo3 = { version = "0.28", features = ["abi3-py310"] }
 agent-guard-sdk = { path = "../agent-guard-sdk" }
 ```
 
@@ -101,11 +101,12 @@ Panics inside Rust are caught by pyo3's `catch_unwind` and converted to `Runtime
 ```toml
 # pyproject.toml (workspace root)
 [build-system]
-requires = ["maturin>=1.4"]
+requires = ["maturin>=1.4,<2"]
 build-backend = "maturin"
 
 [tool.maturin]
-features = ["pyo3/extension-module"]
+module-name = "agent_guard"
+features = ["pyo3/abi3-py310"]
 manifest-path = "crates/agent-guard-python/Cargo.toml"
 ```
 
@@ -307,13 +308,15 @@ pub fn execute(&self, input: &GuardInput) -> ExecuteResult;
 | **M2.3** Seccomp sandbox | `crates/agent-guard-sandbox/src/linux.rs` | `cargo test --features seccomp` passes on Linux |
 | **M2.4** `execute()` integration | `Guard::execute()` in SDK | Integration test: allow → executes, deny → short-circuits |
 
-## Open questions for Phase 2 kickoff
+## Decisions (confirmed before Phase 2 kickoff)
 
-1. **pyo3 version**: Use 0.21 (latest stable) or 0.22 (if released)?  
-2. **LangChain version**: 0.1.x (stable) or 0.2.x (breaking changes in tool API)?  
-3. **Seccomp library**: `libseccomp` crate or raw `syscall` via `libc`? The crate is easier but adds a C dependency.  
-4. **`execute()` timeout**: Should it be a policy YAML field or a `GuardInput` field?  
-5. **Windows Phase 2 or Phase 4**: Current plan is Phase 4. Confirm no change.
+| # | Topic | Decision | Rationale |
+|---|---|---|---|
+| 1 | pyo3 version | **0.28.3** (latest stable) | 0.28 auto-handles `extension-module` details; abi3 wheel distribution is cleaner |
+| 2 | LangChain version | **0.3.x** (`langchain-core`) | Current stable line; breaking changes only at major; requires Python 3.10+ |
+| 3 | Seccomp library | **`libseccomp` crate** | High-level API, abstracts BPF details; switch to raw `libc` only if C dep becomes a problem |
+| 4 | `execute()` timeout | **`SandboxContext.timeout_ms`** | Timeout is a runtime execution constraint, not a security policy. Policy decides *whether*; context decides *how long* |
+| 5 | Windows | **Phase 4** | seccomp is Linux-only; Python adoption + Linux execute() must land first |
 
 ## Architecture constraints (carry forward from Phase 1)
 

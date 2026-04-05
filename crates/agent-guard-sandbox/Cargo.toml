@@ -5,6 +5,11 @@ edition.workspace = true
 license.workspace = true
 description = "Sandbox execution layer for agent-guard"
 
+[features]
+# Enable Linux seccomp-bpf sandbox. Requires libseccomp C library.
+# Usage: cargo build --features agent-guard-sandbox/seccomp
+seccomp = []
+
 [dependencies]
 agent-guard-core = { path = "../agent-guard-core" }
 thiserror.workspace = true

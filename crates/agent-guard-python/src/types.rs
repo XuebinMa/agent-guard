@@ -1,0 +1,228 @@
+use std::path::PathBuf;
+
+use pyo3::prelude::*;
+
+use agent_guard_sdk::{Context, Guard, GuardDecision, Tool, TrustLevel};
+
+use crate::error::GuardError;
+
+// ── PyDecision ────────────────────────────────────────────────────────────────
+
+/// Result of a `Guard.check()` call.
+///
+/// Attributes
+/// ----------
+/// outcome : str
+///     One of ``"allow"``, ``"deny"``, or ``"ask_user"``.
+/// message : str | None
+///     Human-readable explanation for ``deny`` and ``ask_user`` outcomes.
+/// code : str | None
+///     Machine-readable decision code, e.g. ``"DENIED_BY_RULE"``.
+/// matched_rule : str | None
+///     Which policy rule triggered the decision, e.g. ``"tools.bash.deny[0]"``.
+/// ask_prompt : str | None
+///     The question to surface to the user; only present for ``"ask_user"``.
+#[pyclass(module = "agent_guard", from_py_object)]
+#[derive(Clone)]
+pub struct Decision {
+    #[pyo3(get)]
+    pub outcome: String,
+    #[pyo3(get)]
+    pub message: Option<String>,
+    #[pyo3(get)]
+    pub code: Option<String>,
+    #[pyo3(get)]
+    pub matched_rule: Option<String>,
+    #[pyo3(get)]
+    pub ask_prompt: Option<String>,
+}
+
+#[pymethods]
+impl Decision {
+    fn is_allow(&self) -> bool {
+        self.outcome == "allow"
+    }
+
+    fn is_deny(&self) -> bool {
+        self.outcome == "deny"
+    }
+
+    fn is_ask(&self) -> bool {
+        self.outcome == "ask_user"
+    }
+
+    fn __repr__(&self) -> String {
+        format!(
+            "Decision(outcome={:?}, code={:?}, message={:?})",
+            self.outcome, self.code, self.message
+        )
+    }
+}
+
+pub fn decision_from_rust(d: GuardDecision) -> Decision {
+    match d {
+        GuardDecision::Allow => Decision {
+            outcome: "allow".to_string(),
+            message: None,
+            code: None,
+            matched_rule: None,
+            ask_prompt: None,
+        },
+        GuardDecision::Deny { reason } => Decision {
+            outcome: "deny".to_string(),
+            message: Some(reason.message),
+            code: Some(format!("{:?}", reason.code)),
+            matched_rule: reason.matched_rule,
+            ask_prompt: None,
+        },
+        GuardDecision::AskUser { message, reason } => Decision {
+            outcome: "ask_user".to_string(),
+            message: Some(reason.message),
+            code: Some(format!("{:?}", reason.code)),
+            matched_rule: reason.matched_rule,
+            ask_prompt: Some(message),
+        },
+    }
+}
+
+// ── Tool parsing ──────────────────────────────────────────────────────────────
+
+pub fn parse_tool(tool_str: &str) -> PyResult<Tool> {
+    use agent_guard_sdk::CustomToolId;
+    match tool_str {
+        "bash" => Ok(Tool::Bash),
+        "read_file" => Ok(Tool::ReadFile),
+        "write_file" => Ok(Tool::WriteFile),
+        "http_request" => Ok(Tool::HttpRequest),
+        other => {
+            let id = CustomToolId::new(other)
+                .map_err(|e| GuardError::new_err(format!("invalid tool id {other:?}: {e}")))?;
+            Ok(Tool::Custom(id))
+        }
+    }
+}
+
+// ── TrustLevel parsing ────────────────────────────────────────────────────────
+
+pub fn parse_trust(trust_str: &str) -> PyResult<TrustLevel> {
+    match trust_str {
+        "untrusted" => Ok(TrustLevel::Untrusted),
+        "trusted" => Ok(TrustLevel::Trusted),
+        "admin" => Ok(TrustLevel::Admin),
+        other => Err(GuardError::new_err(format!(
+            "unknown trust_level {other:?}; expected \"untrusted\", \"trusted\", or \"admin\""
+        ))),
+    }
+}
+
+// ── PyGuard ───────────────────────────────────────────────────────────────────
+
+/// Policy-enforcing guard for AI agent tool calls.
+///
+/// Construction
+/// ------------
+/// Use :meth:`from_yaml` or :meth:`from_yaml_file` — do not call ``__init__`` directly.
+///
+/// Example
+/// -------
+/// .. code-block:: python
+///
+///     import agent_guard
+///     guard = agent_guard.Guard.from_yaml(\"version: 1\\ndefault_mode: workspace_write\\n\")
+///     d = guard.check(\"bash\", \"ls -la\", trust_level=\"trusted\")
+///     assert d.is_allow()
+#[pyclass(module = "agent_guard")]
+pub struct PyGuard {
+    inner: Guard,
+}
+
+#[pymethods]
+impl PyGuard {
+    /// Construct a Guard from a YAML string.
+    ///
+    /// Raises :exc:`GuardError` on parse or initialisation failure.
+    #[staticmethod]
+    fn from_yaml(yaml: &str) -> PyResult<Self> {
+        let inner = Guard::from_yaml(yaml)
+            .map_err(|e| GuardError::new_err(format!("{e}")))?;
+        Ok(Self { inner })
+    }
+
+    /// Construct a Guard from a YAML file path.
+    ///
+    /// Raises :exc:`GuardError` on I/O, parse, or initialisation failure.
+    #[staticmethod]
+    fn from_yaml_file(path: &str) -> PyResult<Self> {
+        let inner = Guard::from_yaml_file(path)
+            .map_err(|e| GuardError::new_err(format!("{e}")))?;
+        Ok(Self { inner })
+    }
+
+    /// Check whether a tool call is allowed by policy.
+    ///
+    /// Parameters
+    /// ----------
+    /// tool : str
+    ///     Tool name: ``"bash"``, ``"read_file"``, ``"write_file"``,
+    ///     ``"http_request"``, or a custom tool id.
+    /// payload : str
+    ///     Raw JSON string. For ``read_file``/``write_file`` use
+    ///     ``{"path": "..."}``; for ``http_request`` use ``{"url": "..."}``.
+    /// trust_level : str
+    ///     One of ``"untrusted"`` (default), ``"trusted"``, or ``"admin"``.
+    /// agent_id : str | None
+    ///     Optional identifier for the agent making the call.
+    /// session_id : str | None
+    ///     Optional session identifier for audit correlation.
+    /// actor : str | None
+    ///     Optional human actor identifier.
+    /// working_directory : str | None
+    ///     Workspace root path. Used by the bash validator for
+    ///     workspace-write boundary enforcement.
+    ///
+    /// Returns
+    /// -------
+    /// Decision
+    ///     The enforcement decision.
+    ///
+    /// Raises
+    /// ------
+    /// GuardError
+    ///     On invalid ``tool`` or ``trust_level`` values.
+    #[pyo3(signature = (
+        tool,
+        payload,
+        *,
+        trust_level = "untrusted",
+        agent_id = None,
+        session_id = None,
+        actor = None,
+        working_directory = None,
+    ))]
+    fn check(
+        &self,
+        tool: &str,
+        payload: &str,
+        trust_level: &str,
+        agent_id: Option<String>,
+        session_id: Option<String>,
+        actor: Option<String>,
+        working_directory: Option<String>,
+    ) -> PyResult<Decision> {
+        let tool = parse_tool(tool)?;
+        let trust_level = parse_trust(trust_level)?;
+        let ctx = Context {
+            trust_level,
+            agent_id,
+            session_id,
+            actor,
+            working_directory: working_directory.map(PathBuf::from),
+        };
+        let decision = self.inner.check_tool(tool, payload, ctx);
+        Ok(decision_from_rust(decision))
+    }
+
+    fn __repr__(&self) -> &'static str {
+        "Guard(<policy loaded>)"
+    }
+}
