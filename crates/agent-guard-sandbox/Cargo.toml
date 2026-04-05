@@ -18,3 +18,4 @@ serde_json.workspace = true
 
 [target.'cfg(target_os = "linux")'.dependencies]
 libseccomp = { version = "0.3", optional = true }
+libc = "0.2"

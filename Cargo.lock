@@ -31,6 +31,7 @@ name = "agent-guard-sandbox"
 version = "0.1.0"
 dependencies = [
  "agent-guard-core",
+ "libc",
  "libseccomp",
  "serde",
  "serde_json",
