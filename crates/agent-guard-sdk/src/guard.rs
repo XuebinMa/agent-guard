@@ -2,7 +2,7 @@ use std::path::Path;
 
 use agent_guard_core::{
     AuditConfig, AuditEvent, Context, DecisionCode, GuardDecision, GuardInput, PolicyEngine,
-    Tool,
+    PolicyMode, Tool,
 };
 use agent_guard_validators::bash::{validate_bash_command, PermissionMode, ValidationResult};
 use thiserror::Error;
@@ -95,7 +95,12 @@ impl Guard {
     fn evaluate(&self, input: &GuardInput) -> GuardDecision {
         // A5: Run bash validator before policy engine for Bash tool calls.
         if let Tool::Bash = &input.tool {
-            let mode = trust_to_permission_mode(&input.context);
+            // Use the policy engine as the single source of truth for mode resolution.
+            // This ensures tool-level `mode:` overrides in policy YAML are respected,
+            // rather than deriving mode from trust_level alone.
+            let mode = policy_mode_to_permission_mode(
+                &self.engine.effective_mode(&input.tool, &input.context.trust_level),
+            );
             let workspace_path: &Path = input
                 .context
                 .working_directory
@@ -172,12 +177,17 @@ impl Guard {
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
-fn trust_to_permission_mode(ctx: &Context) -> PermissionMode {
-    use agent_guard_core::TrustLevel;
-    match ctx.trust_level {
-        TrustLevel::Untrusted => PermissionMode::ReadOnly,
-        TrustLevel::Trusted => PermissionMode::WorkspaceWrite,
-        TrustLevel::Admin => PermissionMode::DangerFullAccess,
+/// Map a `PolicyMode` (from the policy engine, which is the authoritative source)
+/// to the validator's `PermissionMode`.
+///
+/// This is the only place that bridges the two type systems. The policy engine's
+/// `effective_mode()` must always be called first — never derive mode from trust_level
+/// alone, because tool-level `mode:` overrides in policy YAML would be silently ignored.
+fn policy_mode_to_permission_mode(mode: &PolicyMode) -> PermissionMode {
+    match mode {
+        PolicyMode::ReadOnly => PermissionMode::ReadOnly,
+        PolicyMode::WorkspaceWrite => PermissionMode::WorkspaceWrite,
+        PolicyMode::FullAccess => PermissionMode::DangerFullAccess,
     }
 }
 

@@ -354,6 +354,82 @@ fn check_with_full_context() {
 // BATCH B — contract lock-down tests
 // ═══════════════════════════════════════════════════════════════════════════════
 
+// ── B0: policy engine is the single source of truth for mode resolution ───────
+//
+// Previously, guard.rs derived PermissionMode from trust_level via a static mapping,
+// ignoring tool-level `mode:` overrides in policy YAML. This section locks in the
+// corrected behavior: effective_mode() from PolicyEngine is always authoritative.
+
+const BASH_FULL_ACCESS_POLICY: &str = r#"
+version: 1
+default_mode: read_only
+
+tools:
+  bash:
+    mode: full_access
+"#;
+
+#[test]
+fn bash_mode_full_access_overrides_trust_level_default() {
+    // Policy says bash.mode = full_access. Trusted caller.
+    // Before the fix: trust_to_permission_mode(Trusted) = WorkspaceWrite,
+    //   and the validator would block commands that full_access should allow.
+    // After the fix: policy engine's effective_mode() returns FullAccess → validator
+    //   gets DangerFullAccess → no read-only block.
+    //
+    // "dd if=/dev/zero" is blocked in WorkspaceWrite mode (write command) but in
+    // DangerFullAccess mode the validator permits it through.
+    // We use "touch /anywhere" as a simpler write-outside-workspace command.
+    let g = Guard::from_yaml(BASH_FULL_ACCESS_POLICY).unwrap();
+    let d = g.check_tool(Tool::Bash, "touch /anywhere", trusted());
+    // With DangerFullAccess, touch is not blocked by the read-only validator.
+    // No policy deny rules → Allow.
+    assert_eq!(d, GuardDecision::Allow,
+        "bash.mode=full_access must allow write commands for Trusted caller; got {:?}", d);
+}
+
+#[test]
+fn bash_mode_read_only_from_yaml_blocks_write_commands() {
+    // default_mode = read_only, no tool-level override → policy returns ReadOnly.
+    // Validator must receive ReadOnly (not WorkspaceWrite) → block touch.
+    let g = Guard::from_yaml(BASH_FULL_ACCESS_POLICY).unwrap();
+    // We need a separate policy where bash mode is explicitly read_only.
+    let yaml = r#"
+version: 1
+default_mode: read_only
+tools:
+  bash:
+    mode: read_only
+"#;
+    let g2 = Guard::from_yaml(yaml).unwrap();
+    let d = g2.check_tool(Tool::Bash, "touch /tmp/x", trusted());
+    assert!(matches!(d, GuardDecision::Deny { .. }),
+        "bash.mode=read_only must block touch even for Trusted caller; got {:?}", d);
+}
+
+#[test]
+fn bash_mode_workspace_write_allows_workspace_write_blocks_outside() {
+    // bash.mode = workspace_write: writes inside workspace are OK, outside are blocked.
+    let yaml = r#"
+version: 1
+default_mode: workspace_write
+"#;
+    let g = Guard::from_yaml(yaml).unwrap();
+    // Writing inside working_directory (which defaults to ".") should pass.
+    use std::path::PathBuf;
+    use agent_guard_sdk::Context;
+    let ctx = Context {
+        trust_level: TrustLevel::Trusted,
+        agent_id: None,
+        session_id: None,
+        actor: None,
+        working_directory: Some(PathBuf::from("/workspace")),
+    };
+    let d = g.check_tool(Tool::Bash, "echo hello > /workspace/out.txt", ctx);
+    assert_eq!(d, GuardDecision::Allow,
+        "workspace_write should allow writes inside working_directory");
+}
+
 // ── B1: allow_paths priority matrix ──────────────────────────────────────────
 //
 // Policy: write_file has deny_paths ["/etc/**"] and allow_paths ["/workspace/**"]

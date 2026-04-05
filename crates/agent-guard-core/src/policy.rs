@@ -242,7 +242,12 @@ impl PolicyEngine {
         GuardDecision::Allow
     }
 
-    fn effective_mode(&self, tool: &Tool, trust_level: &TrustLevel) -> PolicyMode {
+    /// Returns the effective `PolicyMode` for a given tool and trust level.
+    ///
+    /// This is the single source of truth for mode resolution — callers (e.g. the bash
+    /// validator in the SDK layer) must use this instead of deriving mode from trust_level
+    /// alone, so that tool-level `mode:` overrides in policy YAML are respected.
+    pub fn effective_mode(&self, tool: &Tool, trust_level: &TrustLevel) -> PolicyMode {
         match trust_level {
             TrustLevel::Untrusted => self
                 .policy

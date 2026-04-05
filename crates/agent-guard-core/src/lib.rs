@@ -9,5 +9,5 @@ mod tests;
 
 pub use audit::{AuditDecision, AuditEvent};
 pub use decision::{DecisionCode, DecisionReason, GuardDecision};
-pub use policy::{AuditConfig, PolicyEngine, PolicyError};
+pub use policy::{AuditConfig, PolicyEngine, PolicyError, PolicyMode};
 pub use types::{Context, CustomToolId, CustomToolIdError, GuardInput, Tool, TrustLevel};
