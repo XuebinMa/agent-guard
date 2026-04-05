@@ -142,6 +142,30 @@ audit:
 
 See [`policy.example.yaml`](policy.example.yaml) for the full annotated reference.
 
+### Rule matching semantics
+
+> **Important:** `prefix:` and bare-string rules have different match semantics.
+
+| Rule syntax | Match semantics | Example |
+|---|---|---|
+| `- prefix: "rm -rf"` | `starts_with` — command must **start** with the token (leading whitespace ignored) | `rm -rf /` → match; `echo rm -rf` → **no match** |
+| `- "DANGER"` | `contains` — token can appear **anywhere** in the payload | `echo DANGER here` → match |
+| `- regex: "..."` | Standard regex, matched against full payload string | |
+
+Use `prefix:` to guard specific commands. Use a bare string only when you need anywhere-in-payload substring matching.
+
+### Payload format for structured tools
+
+`read_file`, `write_file`, and `http_request` require a **JSON object payload** — a raw path or URL string is rejected:
+
+| Tool | Required JSON shape | Rejected |
+|---|---|---|
+| `read_file` | `{"path": "/some/file"}` | `"/some/file"` |
+| `write_file` | `{"path": "/out.txt", "content": "..."}` | `"/out.txt"` |
+| `http_request` | `{"url": "https://..."}` | `"https://..."` |
+
+Malformed JSON → `INVALID_PAYLOAD`. Missing required field → `MISSING_PAYLOAD_FIELD`. Both result in `Deny`.
+
 ## Audit Event Format (JSONL)
 
 Each tool call emits one JSON line when `audit.enabled: true`:
@@ -154,7 +178,7 @@ Each tool call emits one JSON line when `audit.enabled: true`:
 | `agent_id` | string? | From `Context.agent_id` |
 | `actor` | string? | From `Context.actor` |
 | `tool` | string | `bash`, `read_file`, `write_file`, `http_request`, or custom id |
-| `payload_hash` | hex string | SHA-256 of raw payload (raw payload is never logged) |
+| `payload_hash` | hex string \| null | SHA-256 of raw payload when `include_payload_hash: true`; `null` otherwise. Raw payload is never logged. |
 | `decision` | `allow` \| `deny` \| `ask_user` | Outcome |
 | `code` | string? | Decision code, e.g. `DENIED_BY_RULE`, `ASK_REQUIRED` |
 | `message` | string? | Human-readable reason |
@@ -188,9 +212,12 @@ cargo run -p agent-guard-sdk --example audit_demo
 | `ASK_REQUIRED` | Matched an `ask` rule — user confirmation needed |
 | `INSUFFICIENT_PERMISSION_MODE` | Trust level's mode floor blocks this tool |
 | `PATH_OUTSIDE_WORKSPACE` | Path matched a `deny_paths` rule |
+| `NOT_IN_ALLOW_LIST` | `allow_paths` is configured but path is not in the list |
 | `PATH_TRAVERSAL` | `../` detected outside declared workspace |
 | `WRITE_IN_READ_ONLY_MODE` | Write operation in `read_only` mode |
-| `DESTRUCTIVE_COMMAND` | Destructive pattern detected |
+| `DESTRUCTIVE_COMMAND` | Destructive pattern detected by bash validator |
+| `INVALID_PAYLOAD` | Tool payload is not valid JSON |
+| `MISSING_PAYLOAD_FIELD` | JSON payload is missing a required field (`path` or `url`) |
 | `UNTRUSTED_PATH` | Path outside trusted root |
 | `POLICY_LOAD_ERROR` | Policy file failed to load/parse |
 | `INTERNAL_ERROR` | Unexpected internal error |

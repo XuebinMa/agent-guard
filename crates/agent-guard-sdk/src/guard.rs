@@ -26,7 +26,17 @@ pub enum GuardInitError {
 pub struct Guard {
     engine: PolicyEngine,
     audit_cfg: AuditConfig,
+    // Mutex wrapping is not Debug-able automatically; we implement Debug manually.
     audit_file: Option<std::sync::Mutex<std::fs::File>>,
+}
+
+impl std::fmt::Debug for Guard {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Guard")
+            .field("audit_enabled", &self.audit_cfg.enabled)
+            .field("audit_output", &self.audit_cfg.output)
+            .finish_non_exhaustive()
+    }
 }
 
 impl Guard {
