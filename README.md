@@ -144,7 +144,7 @@ See [`policy.example.yaml`](policy.example.yaml) for the full annotated referenc
 
 ### Rule matching semantics
 
-> **Important:** `prefix:` and bare-string rules have different match semantics.
+> **Important:** `prefix:` and bare-string rules have **different** match semantics. This is a common source of misconfiguration.
 
 | Rule syntax | Match semantics | Example |
 |---|---|---|
@@ -152,7 +152,11 @@ See [`policy.example.yaml`](policy.example.yaml) for the full annotated referenc
 | `- "DANGER"` | `contains` — token can appear **anywhere** in the payload | `echo DANGER here` → match |
 | `- regex: "..."` | Standard regex, matched against full payload string | |
 
-Use `prefix:` to guard specific commands. Use a bare string only when you need anywhere-in-payload substring matching.
+> **Warning — bare strings match anywhere:**
+> A bare string rule like `- "secret"` will match `echo secret`, `cat /etc/secret-key`, and `export MY_SECRET=x`.
+> This is **much broader** than most users expect. Unless you specifically need substring matching across the full payload, use `prefix:` instead.
+
+**Rule of thumb:** Use `prefix:` when you want to block a specific command. Use a bare string only when you intentionally need substring matching across the entire payload string.
 
 ### Payload format for structured tools
 

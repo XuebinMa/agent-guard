@@ -146,9 +146,21 @@ impl Guard {
 
         if self.audit_cfg.output == "file" {
             if let Some(ref mutex) = self.audit_file {
-                if let Ok(mut file) = mutex.lock() {
-                    use std::io::Write;
-                    let _ = writeln!(file, "{}", line);
+                match mutex.lock() {
+                    Ok(mut file) => {
+                        use std::io::Write;
+                        if let Err(e) = writeln!(file, "{}", line) {
+                            // Writing to the audit file failed. This must not be silent —
+                            // a security library that silently drops audit records gives
+                            // false assurance. Log to stderr so operators can notice.
+                            eprintln!("[agent-guard] AUDIT WRITE ERROR: {e} (record: {line})");
+                        }
+                    }
+                    Err(e) => {
+                        // Mutex is poisoned (a previous writer panicked). Do not abort
+                        // the caller's operation, but do not drop silently either.
+                        eprintln!("[agent-guard] AUDIT MUTEX POISONED: {e}");
+                    }
                 }
             }
         } else {

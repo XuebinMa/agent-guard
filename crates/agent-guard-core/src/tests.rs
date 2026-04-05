@@ -442,3 +442,162 @@ mod audit_tests {
         assert!(parsed["payload_hash"].is_null());
     }
 }
+
+// ── effective_mode() contract tests ───────────────────────────────────────────
+//
+// These tests lock down the mode resolution logic in PolicyEngine::effective_mode().
+// If any future feature accidentally changes this behavior, these tests will catch it.
+//
+// Resolution rules (never derive from trust_level alone):
+//   Untrusted  → trust.untrusted.override_mode  → default_mode  (tool-level IGNORED — can't escalate)
+//   Trusted    → tool-level mode                 → default_mode
+//   Admin      → tool-level mode                 → default_mode
+//   Custom tool → same as builtin (lookup in tools.custom map)
+#[cfg(test)]
+mod effective_mode_tests {
+    use crate::policy::{PolicyEngine, PolicyMode};
+    use crate::types::{Tool, TrustLevel, CustomToolId};
+
+    fn engine(yaml: &str) -> PolicyEngine {
+        PolicyEngine::from_yaml_str(yaml).expect("policy parse failed")
+    }
+
+    // ── 1. Default mode fallback ───────────────────────────────────────────────
+
+    #[test]
+    fn default_mode_workspace_write_applies_when_no_tool_override() {
+        let e = engine("version: 1\ndefault_mode: workspace_write\n");
+        assert_eq!(e.effective_mode(&Tool::Bash, &TrustLevel::Trusted), PolicyMode::WorkspaceWrite);
+        assert_eq!(e.effective_mode(&Tool::ReadFile, &TrustLevel::Trusted), PolicyMode::WorkspaceWrite);
+        assert_eq!(e.effective_mode(&Tool::HttpRequest, &TrustLevel::Trusted), PolicyMode::WorkspaceWrite);
+    }
+
+    #[test]
+    fn default_mode_read_only_applies_to_all_tools() {
+        let e = engine("version: 1\ndefault_mode: read_only\n");
+        assert_eq!(e.effective_mode(&Tool::Bash, &TrustLevel::Trusted), PolicyMode::ReadOnly);
+        assert_eq!(e.effective_mode(&Tool::WriteFile, &TrustLevel::Trusted), PolicyMode::ReadOnly);
+    }
+
+    #[test]
+    fn default_mode_full_access_applies_to_all_tools() {
+        let e = engine("version: 1\ndefault_mode: full_access\n");
+        assert_eq!(e.effective_mode(&Tool::Bash, &TrustLevel::Trusted), PolicyMode::FullAccess);
+    }
+
+    // ── 2. Tool-level mode override ────────────────────────────────────────────
+
+    #[test]
+    fn tool_override_full_access_beats_default_read_only_for_trusted() {
+        let e = engine("version: 1\ndefault_mode: read_only\ntools:\n  bash:\n    mode: full_access\n");
+        assert_eq!(e.effective_mode(&Tool::Bash, &TrustLevel::Trusted), PolicyMode::FullAccess);
+        // Other tools still get the default.
+        assert_eq!(e.effective_mode(&Tool::ReadFile, &TrustLevel::Trusted), PolicyMode::ReadOnly);
+    }
+
+    #[test]
+    fn tool_override_read_only_beats_default_full_access_for_trusted() {
+        let e = engine("version: 1\ndefault_mode: full_access\ntools:\n  bash:\n    mode: read_only\n");
+        assert_eq!(e.effective_mode(&Tool::Bash, &TrustLevel::Trusted), PolicyMode::ReadOnly);
+        assert_eq!(e.effective_mode(&Tool::WriteFile, &TrustLevel::Trusted), PolicyMode::FullAccess);
+    }
+
+    // ── 3. Untrusted cannot use tool-level override to escalate ───────────────
+    //
+    // Even if bash.mode = full_access, an Untrusted caller must get the untrusted
+    // floor (override_mode or default_mode), not the tool-level mode. This prevents
+    // a crafted trust_level from bypassing restrictions.
+
+    #[test]
+    fn untrusted_ignores_tool_level_full_access_override() {
+        let yaml = "version: 1\ndefault_mode: workspace_write\ntools:\n  bash:\n    mode: full_access\n";
+        let e = engine(yaml);
+        // No trust.untrusted.override_mode configured → fallback to default_mode (workspace_write).
+        // The tool-level full_access is NOT applied to Untrusted.
+        assert_eq!(e.effective_mode(&Tool::Bash, &TrustLevel::Untrusted), PolicyMode::WorkspaceWrite);
+    }
+
+    #[test]
+    fn untrusted_override_mode_takes_precedence_over_default() {
+        let yaml = "version: 1\ndefault_mode: workspace_write\ntrust:\n  untrusted:\n    override_mode: read_only\n";
+        let e = engine(yaml);
+        assert_eq!(e.effective_mode(&Tool::Bash, &TrustLevel::Untrusted), PolicyMode::ReadOnly);
+        // Trusted is unaffected by the untrusted override.
+        assert_eq!(e.effective_mode(&Tool::Bash, &TrustLevel::Trusted), PolicyMode::WorkspaceWrite);
+    }
+
+    #[test]
+    fn untrusted_with_no_trust_config_falls_back_to_default_mode() {
+        let e = engine("version: 1\ndefault_mode: full_access\n");
+        // No trust section → untrusted gets default_mode (full_access in this case).
+        // This means the policy author must explicitly configure a floor for untrusted.
+        assert_eq!(e.effective_mode(&Tool::Bash, &TrustLevel::Untrusted), PolicyMode::FullAccess);
+    }
+
+    // ── 4. Admin trust level ──────────────────────────────────────────────────
+
+    #[test]
+    fn admin_gets_tool_level_override_same_as_trusted() {
+        let yaml = "version: 1\ndefault_mode: read_only\ntools:\n  bash:\n    mode: full_access\n";
+        let e = engine(yaml);
+        assert_eq!(e.effective_mode(&Tool::Bash, &TrustLevel::Admin), PolicyMode::FullAccess);
+    }
+
+    #[test]
+    fn admin_falls_back_to_default_when_no_tool_override() {
+        let e = engine("version: 1\ndefault_mode: workspace_write\n");
+        assert_eq!(e.effective_mode(&Tool::Bash, &TrustLevel::Admin), PolicyMode::WorkspaceWrite);
+    }
+
+    // ── 5. Custom tool mode resolution ────────────────────────────────────────
+
+    #[test]
+    fn custom_tool_with_explicit_mode_uses_it() {
+        let yaml = "version: 1\ndefault_mode: read_only\ntools:\n  custom:\n    acme.sql:\n      mode: workspace_write\n";
+        let e = engine(yaml);
+        let id = CustomToolId::new("acme.sql").unwrap();
+        assert_eq!(
+            e.effective_mode(&Tool::Custom(id), &TrustLevel::Trusted),
+            PolicyMode::WorkspaceWrite
+        );
+    }
+
+    #[test]
+    fn custom_tool_without_mode_falls_back_to_default() {
+        let yaml = "version: 1\ndefault_mode: workspace_write\ntools:\n  custom:\n    acme.sql:\n      deny:\n        - prefix: \"DROP\"\n";
+        let e = engine(yaml);
+        let id = CustomToolId::new("acme.sql").unwrap();
+        assert_eq!(
+            e.effective_mode(&Tool::Custom(id), &TrustLevel::Trusted),
+            PolicyMode::WorkspaceWrite
+        );
+    }
+
+    #[test]
+    fn unknown_custom_tool_falls_back_to_default() {
+        let e = engine("version: 1\ndefault_mode: read_only\n");
+        let id = CustomToolId::new("unknown.tool").unwrap();
+        assert_eq!(
+            e.effective_mode(&Tool::Custom(id), &TrustLevel::Trusted),
+            PolicyMode::ReadOnly
+        );
+    }
+
+    #[test]
+    fn custom_tool_untrusted_ignores_tool_level_mode() {
+        let yaml = "version: 1\ndefault_mode: workspace_write\ntrust:\n  untrusted:\n    override_mode: read_only\ntools:\n  custom:\n    acme.sql:\n      mode: full_access\n";
+        let e = engine(yaml);
+        let id = CustomToolId::new("acme.sql").unwrap();
+        // Untrusted: override_mode=read_only wins; tool-level full_access is ignored.
+        assert_eq!(
+            e.effective_mode(&Tool::Custom(id), &TrustLevel::Untrusted),
+            PolicyMode::ReadOnly
+        );
+        // Trusted: tool-level full_access applies.
+        let id2 = CustomToolId::new("acme.sql").unwrap();
+        assert_eq!(
+            e.effective_mode(&Tool::Custom(id2), &TrustLevel::Trusted),
+            PolicyMode::FullAccess
+        );
+    }
+}
