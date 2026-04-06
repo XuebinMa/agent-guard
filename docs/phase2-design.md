@@ -1,7 +1,7 @@
-# Phase 2 Design — agent-guard
+# Phase 2 Implementation Summary — agent-guard
 
-> Status: pre-implementation design document  
-> Prerequisite: Phase 1 complete (commit `71b8604`, 169 tests passing)
+> Status: **Phase 2 Complete**  
+> Result: Python binding, LangChain integration, and Linux seccomp sandbox are fully implemented.
 
 ## Overview
 

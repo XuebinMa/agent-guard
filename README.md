@@ -8,9 +8,9 @@
 
 | Platform | Status |
 |---|---|
-| Linux | Supported (policy enforcement). OS-level sandbox (seccomp/namespaces) planned for Phase 2. |
-| macOS | Experimental. Policy enforcement works; OS-level sandbox not yet implemented. |
-| Windows | Not yet implemented. |
+| Linux | **Full Support**. Policy enforcement + OS-level sandbox (seccomp-bpf). |
+| macOS | **Experimental**. Policy enforcement works; `execute()` uses `NoopSandbox` (no syscall isolation). |
+| Windows | **Planned** (Phase 4). |
 
 ## Workspace Structure
 
@@ -19,8 +19,12 @@ agent-guard/
 ├── crates/
 │   ├── agent-guard-core/       # Core types, policy engine, audit events
 │   ├── agent-guard-validators/ # Bash and path validators (ported from claw-code)
-│   ├── agent-guard-sandbox/    # Sandbox trait + NoopSandbox stub
-│   └── agent-guard-sdk/        # High-level Guard API + examples
+│   ├── agent-guard-sandbox/    # Sandbox trait + Seccomp (Linux) / Noop implementations
+│   ├── agent-guard-sdk/        # High-level Guard API (check + execute)
+│   └── agent-guard-python/     # PyO3 bindings (Python 3.10+, abi3)
+├── demos/
+│   └── python/                 # LangChain and generic Python integration examples
+├── docs/                       # Design and implementation documentation
 ├── policy.example.yaml
 └── Cargo.toml                  # Workspace root
 ```
@@ -28,7 +32,7 @@ agent-guard/
 Dependency direction (no cycles):
 
 ```
-sdk → core + validators + sandbox
+python → sdk → core + validators + sandbox
 validators → core
 sandbox → core
 ```
@@ -91,12 +95,39 @@ let ctx = Context {
     ..Default::default()
 };
 
-match guard.check_tool(Tool::Bash, "rm -rf /tmp", ctx) {
+match guard.check_tool(Tool::Bash, r#"{"command":"rm -rf /tmp"}"#, ctx) {
     GuardDecision::Allow => println!("allowed"),
     GuardDecision::Deny { reason } => println!("denied: {}", reason.message),
     GuardDecision::AskUser { message, .. } => println!("ask: {}", message),
 }
 ```
+
+## Execute API (Phase 2)
+
+`Guard::execute()` provides a one-call solution that checks policy and then runs the command in a sandbox.
+
+```rust
+use agent_guard_sdk::{Guard, Tool, GuardInput, ExecuteOutcome};
+use agent_guard_sandbox::SeccompSandbox; // Linux
+
+let input = GuardInput::new(Tool::Bash, r#"{"command":"ls -la"}"#);
+let sandbox = SeccompSandbox::new();
+
+match guard.execute(&input, &sandbox) {
+    Ok(ExecuteOutcome::Executed { output }) => {
+        println!("stdout: {}", output.stdout);
+    }
+    Ok(ExecuteOutcome::Denied { decision }) => {
+        println!("denied by policy");
+    }
+    Err(e) => {
+        eprintln!("sandbox error: {}", e);
+    }
+    _ => {}
+}
+```
+
+See [Sandbox Documentation](docs/sandbox-linux.md) for platform-specific details.
 
 ## Policy YAML (v1)
 
@@ -160,10 +191,11 @@ See [`policy.example.yaml`](policy.example.yaml) for the full annotated referenc
 
 ### Payload format for structured tools
 
-`read_file`, `write_file`, and `http_request` require a **JSON object payload** — a raw path or URL string is rejected:
+`bash`, `read_file`, `write_file`, and `http_request` require a **JSON object payload** — a raw string is rejected:
 
 | Tool | Required JSON shape | Rejected |
 |---|---|---|
+| `bash` | `{"command": "ls -la"}` | `"ls -la"` |
 | `read_file` | `{"path": "/some/file"}` | `"/some/file"` |
 | `write_file` | `{"path": "/out.txt", "content": "..."}` | `"/out.txt"` |
 | `http_request` | `{"url": "https://..."}` | `"https://..."` |
@@ -225,6 +257,44 @@ cargo run -p agent-guard-sdk --example audit_demo
 | `UNTRUSTED_PATH` | Path outside trusted root |
 | `POLICY_LOAD_ERROR` | Policy file failed to load/parse |
 | `INTERNAL_ERROR` | Unexpected internal error |
+
+## Python & LangChain Integration (Phase 2)
+
+`agent-guard` provides high-performance Python bindings and a ready-to-use LangChain tool wrapper.
+
+### Installation
+
+```bash
+# Build and install the python package via maturin
+maturin develop --manifest-path crates/agent-guard-python/Cargo.toml
+```
+
+### Python usage
+
+```python
+import agent_guard
+import json
+
+guard = agent_guard.Guard.from_yaml_file("policy.yaml")
+ctx = {"trust_level": "trusted", "agent_id": "my-bot"}
+payload = json.dumps({"command": "ls -la"})
+
+decision = guard.check("bash", payload, **ctx)
+if decision.is_allow():
+    print("Policy allows execution")
+```
+
+### LangChain usage
+
+```python
+from demos.python.langchain_demo import GuardedBashTool
+
+# Use GuardedBashTool exactly like a regular LangChain tool
+tools = [GuardedBashTool()]
+# ...
+```
+
+See `demos/python/` for full examples.
 
 ## Relationship to claw-code
 
