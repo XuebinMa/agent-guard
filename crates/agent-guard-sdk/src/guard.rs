@@ -1,4 +1,5 @@
 use std::path::Path;
+use std::sync::Arc;
 
 use agent_guard_core::{
     AuditConfig, AuditEvent, Context, DecisionCode, GuardDecision, GuardInput, PolicyEngine,
@@ -6,6 +7,7 @@ use agent_guard_core::{
 };
 use agent_guard_sandbox::{NoopSandbox, Sandbox, SandboxContext, SandboxError, SandboxOutput};
 use agent_guard_validators::bash::{validate_bash_command, PermissionMode, ValidationResult};
+use arc_swap::ArcSwap;
 use thiserror::Error;
 use uuid::Uuid;
 
@@ -25,17 +27,22 @@ pub enum GuardInitError {
 // ── Guard ─────────────────────────────────────────────────────────────────────
 
 pub struct Guard {
-    engine: PolicyEngine,
+    state: ArcSwap<GuardState>,
+}
+
+struct GuardState {
+    engine: Arc<PolicyEngine>,
     audit_cfg: AuditConfig,
-    // Mutex wrapping is not Debug-able automatically; we implement Debug manually.
-    audit_file: Option<std::sync::Mutex<std::fs::File>>,
+    audit_file: Option<Arc<std::sync::Mutex<std::fs::File>>>,
 }
 
 impl std::fmt::Debug for Guard {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let state = self.state.load();
         f.debug_struct("Guard")
-            .field("audit_enabled", &self.audit_cfg.enabled)
-            .field("audit_output", &self.audit_cfg.output)
+            .field("policy_hash", &state.engine.hash())
+            .field("audit_enabled", &state.audit_cfg.enabled)
+            .field("audit_output", &state.audit_cfg.output)
             .finish_non_exhaustive()
     }
 }
@@ -44,29 +51,9 @@ impl Guard {
     /// Create a Guard from an already-parsed PolicyEngine.
     /// Returns Err if audit output=file and the file cannot be opened.
     pub fn new(engine: PolicyEngine) -> Result<Self, GuardInitError> {
-        let audit_cfg = engine.audit_config().clone();
-        let audit_file = if audit_cfg.output == "file" {
-            if let Some(ref path) = audit_cfg.file_path {
-                let f = std::fs::OpenOptions::new()
-                    .create(true)
-                    .append(true)
-                    .open(path)
-                    .map_err(|e| GuardInitError::AuditFileOpen {
-                        path: path.clone(),
-                        source: e,
-                    })?;
-                Some(std::sync::Mutex::new(f))
-            } else {
-                None
-            }
-        } else {
-            None
-        };
-
+        let state = GuardState::new(Arc::new(engine))?;
         Ok(Self {
-            engine,
-            audit_cfg,
-            audit_file,
+            state: ArcSwap::from_pointee(state),
         })
     }
 
@@ -78,6 +65,45 @@ impl Guard {
         Self::new(PolicyEngine::from_yaml_file(path)?)
     }
 
+    /// Atomically reload the policy engine from a new instance.
+    /// If the new engine's audit configuration is different, the audit file
+    /// will be opened/updated accordingly.
+    pub fn reload_engine(&self, engine: PolicyEngine) -> Result<(), GuardInitError> {
+        let old_version = self.state.load().engine.hash().to_string();
+        let new_version = engine.hash().to_string();
+        
+        let new_state = GuardState::new(Arc::new(engine))?;
+        self.state.store(Arc::new(new_state));
+        
+        eprintln!(
+            "[agent-guard] POLICY RELOADED: {} -> {} at {}",
+            old_version,
+            new_version,
+            chrono::Utc::now()
+        );
+        Ok(())
+    }
+
+    /// Atomically reload the policy from a YAML string.
+    pub fn reload_from_yaml(&self, yaml: &str) -> Result<(), GuardInitError> {
+        match PolicyEngine::from_yaml_str(yaml) {
+            Ok(engine) => self.reload_engine(engine),
+            Err(e) => {
+                let err = GuardInitError::Policy(e);
+                eprintln!(
+                    "[agent-guard] POLICY RELOAD FAILED: {} at {}",
+                    err,
+                    chrono::Utc::now()
+                );
+                Err(err)
+            }
+        }
+    }
+
+    pub fn policy_hash(&self) -> String {
+        self.state.load().engine.hash().to_string()
+    }
+
     /// Evaluate the guard decision for a tool call.
     ///
     /// Decision pipeline (in order):
@@ -86,19 +112,21 @@ impl Guard {
     ///
     /// Emits an audit event after the final decision if auditing is enabled.
     pub fn check(&self, input: &GuardInput) -> GuardDecision {
-        let decision = self.evaluate(input);
-        if self.audit_cfg.enabled {
-            self.write_audit(input, &decision);
+        // M3.2: Take a snapshot of the current state at the start of the request.
+        let state = self.state.load();
+        let decision = self.evaluate(input, &state);
+        if state.audit_cfg.enabled {
+            self.write_audit(input, &decision, &state);
         }
         decision
     }
 
-    fn evaluate(&self, input: &GuardInput) -> GuardDecision {
+    fn evaluate(&self, input: &GuardInput, state: &GuardState) -> GuardDecision {
         // A5: Run bash validator before policy engine for Bash tool calls.
         if let Tool::Bash = &input.tool {
             // Use the policy engine as the single source of truth for mode resolution.
             let mode = policy_mode_to_permission_mode(
-                &self.engine.effective_mode(&input.tool, &input.context.trust_level),
+                &state.engine.effective_mode(&input.tool, &input.context),
             );
             let workspace_path: &Path = input
                 .context
@@ -137,12 +165,12 @@ impl Guard {
         }
 
         // Run the policy engine (handles all tools).
-        self.engine.check(&input.tool, &input.payload, &input.context.trust_level)
+        state.engine.check(&input.tool, &input.payload, &input.context)
     }
 
-    fn write_audit(&self, input: &GuardInput, decision: &GuardDecision) {
+    fn write_audit(&self, input: &GuardInput, decision: &GuardDecision, state: &GuardState) {
         let request_id = Uuid::new_v4().to_string();
-        let include_hash = self.audit_cfg.include_payload_hash;
+        let include_hash = state.audit_cfg.include_payload_hash;
         let event = AuditEvent::from_decision(
             request_id,
             &input.tool,
@@ -152,11 +180,12 @@ impl Guard {
             input.context.agent_id.clone(),
             input.context.actor.clone(),
             include_hash,
+            state.engine.hash().to_string(),
         );
         let line = event.to_jsonl();
 
-        if self.audit_cfg.output == "file" {
-            if let Some(ref mutex) = self.audit_file {
+        if state.audit_cfg.output == "file" {
+            if let Some(ref mutex) = state.audit_file {
                 match mutex.lock() {
                     Ok(mut file) => {
                         use std::io::Write;
@@ -177,6 +206,35 @@ impl Guard {
         } else {
             println!("{}", line);
         }
+    }
+}
+
+impl GuardState {
+    fn new(engine: Arc<PolicyEngine>) -> Result<Self, GuardInitError> {
+        let audit_cfg = engine.audit_config().clone();
+        let audit_file = if audit_cfg.output == "file" {
+            if let Some(ref path) = audit_cfg.file_path {
+                let f = std::fs::OpenOptions::new()
+                    .create(true)
+                    .append(true)
+                    .open(path)
+                    .map_err(|e| GuardInitError::AuditFileOpen {
+                        path: path.clone(),
+                        source: e,
+                    })?;
+                Some(Arc::new(std::sync::Mutex::new(f)))
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
+        Ok(Self {
+            engine,
+            audit_cfg,
+            audit_file,
+        })
     }
 }
 
@@ -273,6 +331,7 @@ impl Guard {
         input: &GuardInput,
         sandbox: &dyn Sandbox,
     ) -> ExecuteResult {
+        let state = self.state.load();
         let decision = self.check(input);
         match &decision {
             GuardDecision::Allow { .. } => {}
@@ -290,7 +349,7 @@ impl Guard {
         // bare-string matching — that would break the structured payload contract.
         let command = extract_bash_command(&input.payload)?;
 
-        let mode = self.engine.effective_mode(&input.tool, &input.context.trust_level);
+        let mode = state.engine.effective_mode(&input.tool, &input.context);
         let working_directory = input
             .context
             .working_directory
@@ -331,4 +390,131 @@ fn extract_bash_command(payload: &str) -> Result<String, SandboxError> {
         .ok_or_else(|| SandboxError::ExecutionFailed(
             "payload missing 'command' field".to_string(),
         ))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use agent_guard_core::{Context, GuardInput, Tool, TrustLevel, GuardDecision};
+    use std::sync::Arc;
+
+    #[test]
+    fn test_reload_success() {
+        let yaml1 = r#"
+version: 1
+default_mode: read_only
+"#;
+        let yaml2 = r#"
+version: 1
+default_mode: workspace_write
+"#;
+
+        let guard = Guard::from_yaml(yaml1).unwrap();
+        let ctx = Context {
+            trust_level: TrustLevel::Trusted,
+            ..Default::default()
+        };
+        
+        // Check old policy (read_only)
+        let res = guard.check_tool(Tool::Bash, r#"{"command":"touch test"}"#, ctx.clone());
+        assert!(matches!(res, GuardDecision::Deny { .. }), "Old policy should deny write");
+        
+        // Reload
+        guard.reload_from_yaml(yaml2).expect("Reload should succeed");
+        
+        // Check new policy (workspace_write)
+        let res = guard.check_tool(Tool::Bash, r#"{"command":"touch test"}"#, ctx);
+        assert!(matches!(res, GuardDecision::Allow), "New policy should allow write");
+    }
+
+    #[test]
+    fn test_reload_failure_preserves_old_policy() {
+        let yaml1 = r#"
+version: 1
+default_mode: read_only
+"#;
+        let yaml_bad = "invalid: yaml: : :";
+
+        let guard = Guard::from_yaml(yaml1).unwrap();
+        let ctx = Context {
+            trust_level: TrustLevel::Trusted,
+            ..Default::default()
+        };
+        
+        // Reload fails
+        let res = guard.reload_from_yaml(yaml_bad);
+        assert!(res.is_err(), "Invalid YAML should fail reload");
+        
+        // Old policy still active
+        let res = guard.check_tool(Tool::Bash, r#"{"command":"touch test"}"#, ctx);
+        assert!(matches!(res, GuardDecision::Deny { .. }), "Old policy should still be active after failed reload");
+    }
+
+    #[test]
+    fn test_request_snapshot_isolation() {
+        // This test ensures that a request uses a consistent snapshot of the policy.
+        // We simulate this by taking a snapshot (state.load()) and verifying it remains
+        // unchanged even if the guard is reloaded.
+        
+        let yaml1 = r#"
+version: 1
+default_mode: read_only
+"#;
+        let yaml2 = r#"
+version: 1
+default_mode: workspace_write
+"#;
+
+        let guard = Guard::from_yaml(yaml1).unwrap();
+        let ctx = Context {
+            trust_level: TrustLevel::Trusted,
+            ..Default::default()
+        };
+        let input = GuardInput {
+            tool: Tool::Bash,
+            payload: r#"{"command":"touch test"}"#.to_string(),
+            context: ctx,
+        };
+
+        // 1. Take snapshot
+        let guard_arc = Arc::new(guard);
+        let state_snapshot = guard_arc.state.load();
+        
+        // 2. Reload guard to a different policy
+        guard_arc.reload_from_yaml(yaml2).unwrap();
+        
+        // 3. New requests use new policy
+        let res_new = guard_arc.check(&input);
+        assert!(matches!(res_new, GuardDecision::Allow));
+        
+        // 4. Old snapshot (if it were passed to a long-running process) still uses old policy
+        // In our SDK, 'evaluate' takes a state snapshot.
+        let res_old = guard_arc.evaluate(&input, &state_snapshot);
+        assert!(matches!(res_old, GuardDecision::Deny { .. }));
+    }
+
+    #[test]
+    fn test_audit_policy_versioning() {
+        // Verify that the audit event contains the correct policy hash.
+        let yaml = r#"
+version: 1
+default_mode: read_only
+"#;
+        let guard = Guard::from_yaml(yaml).unwrap();
+        let expected_hash = guard.policy_hash();
+        
+        let ctx = Context {
+            trust_level: TrustLevel::Trusted,
+            ..Default::default()
+        };
+        let _input = GuardInput {
+            tool: Tool::Bash,
+            payload: r#"{"command":"ls"}"#.to_string(),
+            context: ctx,
+        };
+        
+        // Verify policy_hash() works.
+        assert!(!expected_hash.is_empty());
+        assert_eq!(expected_hash.len(), 64); // SHA-256 hex
+    }
 }

@@ -16,3 +16,4 @@ hex.workspace = true
 uuid.workspace = true
 regex.workspace = true
 glob.workspace = true
+evalexpr.workspace = true

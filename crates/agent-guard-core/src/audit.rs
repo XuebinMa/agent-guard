@@ -27,6 +27,8 @@ pub struct AuditEvent {
     pub code: Option<DecisionCode>,
     pub message: Option<String>,
     pub details: Option<serde_json::Value>,
+    /// The policy hash (instance version) used for this decision.
+    pub policy_version: String,
     /// The policy rule path that triggered this decision, e.g. "tools.bash.deny[0]".
     /// None for Allow decisions (explainability not recorded at this stage).
     pub matched_rule: Option<String>,
@@ -50,6 +52,7 @@ impl AuditEvent {
         agent_id: Option<String>,
         actor: Option<String>,
         include_hash: bool,
+        policy_version: String,
     ) -> Self {
         let payload_hash = if include_hash {
             let mut h = Sha256::new();
@@ -86,6 +89,7 @@ impl AuditEvent {
             tool: tool.name(),
             payload_hash,
             decision: audit_decision,
+            policy_version,
             code,
             message,
             details,

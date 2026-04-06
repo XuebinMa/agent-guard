@@ -1,17 +1,83 @@
 use std::collections::HashMap;
 use std::path::Path;
 
+use evalexpr::{context_map, Node};
 use regex::Regex;
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use thiserror::Error;
 
-use crate::decision::{DecisionCode, GuardDecision};
+use crate::decision::{DecisionCode, GuardDecision, DecisionReason};
 use crate::payload::{extract_bash_command, extract_path, extract_url, ExtractedPayload};
-use crate::types::{Tool, TrustLevel};
+use crate::types::{Context, Tool, TrustLevel};
+
+// ── M3.1: Context-aware Condition ─────────────────────────────────────────────
+
+const CONDITION_WHITELIST: &[&str] = &[
+    "actor",
+    "agent_id",
+    "session_id",
+    "trust_level",
+    "tool",
+    "working_directory",
+];
+
+#[derive(Debug, Clone)]
+pub struct Condition {
+    pub raw: String,
+    pub node: Node,
+}
+
+impl<'de> serde::Deserialize<'de> for Condition {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let s = String::deserialize(deserializer)?;
+        let node = evalexpr::build_operator_tree(&s).map_err(serde::de::Error::custom)?;
+
+        // Validate whitelist and no functions (AOT validation)
+        for func in node.iter_function_identifiers() {
+            return Err(serde::de::Error::custom(format!(
+                "Function calls are not allowed in conditions: {}",
+                func
+            )));
+        }
+        for var in node.iter_variable_identifiers() {
+            if !CONDITION_WHITELIST.contains(&var.as_ref()) {
+                return Err(serde::de::Error::custom(format!(
+                    "Unknown variable in condition: {}",
+                    var
+                )));
+            }
+        }
+
+        Ok(Condition { raw: s, node })
+    }
+}
+
+impl Condition {
+    pub fn evaluate(&self, tool: &Tool, context: &Context) -> bool {
+        let eval_ctx = context_map! {
+            "actor" => context.actor.as_deref().unwrap_or(""),
+            "agent_id" => context.agent_id.as_deref().unwrap_or(""),
+            "session_id" => context.session_id.as_deref().unwrap_or(""),
+            "trust_level" => trust_level_str(&context.trust_level),
+            "tool" => tool.name(),
+            "working_directory" => context.working_directory.as_ref().and_then(|p| p.to_str()).unwrap_or(""),
+        };
+
+        if let Ok(ctx) = eval_ctx {
+            self.node.eval_boolean_with_context(&ctx).unwrap_or(false)
+        } else {
+            false
+        }
+    }
+}
 
 // ── Policy schema ─────────────────────────────────────────────────────────────
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 pub struct PolicyFile {
     pub version: u32,
     #[serde(default = "default_mode")]
@@ -28,7 +94,7 @@ fn default_mode() -> PolicyMode {
     PolicyMode::ReadOnly
 }
 
-#[derive(Debug, Deserialize, Default)]
+#[derive(Debug, Deserialize, Default, Clone)]
 pub struct ToolsConfig {
     pub bash: Option<ToolPolicy>,
     pub read_file: Option<ToolPolicy>,
@@ -55,17 +121,38 @@ pub struct ToolPolicy {
     pub deny_paths: Vec<String>,
 }
 
-#[derive(Debug, Deserialize, Clone)]
-#[serde(untagged)]
+#[derive(Debug, Clone)]
 pub enum RulePattern {
     Map(RulePatternMap),
     Plain(String),
+}
+
+impl<'de> serde::Deserialize<'de> for RulePattern {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        use serde::de::Error;
+        let value = serde_yaml::Value::deserialize(deserializer)?;
+        if let Some(s) = value.as_str() {
+            Ok(RulePattern::Plain(s.to_string()))
+        } else if value.is_mapping() {
+            RulePatternMap::deserialize(value)
+                .map(RulePattern::Map)
+                .map_err(|e| D::Error::custom(e.to_string()))
+        } else {
+            Err(D::Error::custom("expected string or map for RulePattern"))
+        }
+    }
 }
 
 #[derive(Debug, Deserialize, Clone)]
 pub struct RulePatternMap {
     pub prefix: Option<String>,
     pub regex: Option<String>,
+    pub plain: Option<String>,
+    #[serde(rename = "if")]
+    pub condition: Option<Condition>,
 }
 
 #[derive(Debug, Deserialize, Clone, PartialEq, Eq, Default)]
@@ -77,15 +164,16 @@ pub enum PolicyMode {
     FullAccess,
 }
 
-#[derive(Debug, Deserialize, Default)]
+#[derive(Debug, Deserialize, Default, Clone)]
 pub struct TrustConfig {
     pub untrusted: Option<TrustOverride>,
     pub trusted: Option<TrustOverride>,
     // admin: bypass_deny_rules is intentionally NOT supported in Phase 1.
     // See roadmap: Phase 2/3 will introduce hard-deny vs soft-deny distinction.
+    pub admin: Option<TrustOverride>,
 }
 
-#[derive(Debug, Deserialize, Default)]
+#[derive(Debug, Deserialize, Default, Clone)]
 pub struct TrustOverride {
     pub override_mode: Option<PolicyMode>,
 }
@@ -107,8 +195,10 @@ fn audit_hash_default() -> bool { true }
 
 // ── PolicyEngine ──────────────────────────────────────────────────────────────
 
+#[derive(Debug, Clone)]
 pub struct PolicyEngine {
     policy: PolicyFile,
+    hash: String,
 }
 
 impl PolicyEngine {
@@ -118,7 +208,12 @@ impl PolicyEngine {
         if policy.version != 1 {
             return Err(PolicyError::UnsupportedVersion(policy.version));
         }
-        Ok(Self { policy })
+
+        let mut hasher = Sha256::new();
+        hasher.update(yaml.as_bytes());
+        let hash = hex::encode(hasher.finalize());
+
+        Ok(Self { policy, hash })
     }
 
     pub fn from_yaml_file(path: impl AsRef<Path>) -> Result<Self, PolicyError> {
@@ -127,12 +222,17 @@ impl PolicyEngine {
         Self::from_yaml_str(&content)
     }
 
+    pub fn hash(&self) -> &str {
+        &self.hash
+    }
+
     pub fn audit_config(&self) -> &AuditConfig {
         &self.policy.audit
     }
 
-    pub fn check(&self, tool: &Tool, payload: &str, trust_level: &TrustLevel) -> GuardDecision {
-        let effective_mode = self.effective_mode(tool, trust_level);
+    pub fn check(&self, tool: &Tool, payload: &str, context: &Context) -> GuardDecision {
+        let trust_level = &context.trust_level;
+        let effective_mode = self.effective_mode(tool, context);
         let tool_policy = self.tool_policy(tool);
         let tool_name = tool.name();
 
@@ -187,13 +287,19 @@ impl PolicyEngine {
         if let Some(tp) = tool_policy {
             // deny rules — highest priority, always evaluated first.
             for (i, rule) in tp.deny.iter().enumerate() {
-                if pattern_matches(rule, match_value) {
+                let res = pattern_matches(rule, match_value, tool, context);
+                if res.matched {
                     let rule_ref = format!("tools.{}.deny[{}]", tool_name, i);
-                    return GuardDecision::deny_with_rule(
+                    let mut reason = DecisionReason::new(
                         DecisionCode::DeniedByRule,
                         format!("payload matched deny rule: {}", pattern_display(rule)),
-                        rule_ref,
-                    );
+                    )
+                    .matched_rule(rule_ref);
+
+                    if let Some(cond) = res.condition {
+                        reason = reason.with_condition(cond);
+                    }
+                    return GuardDecision::Deny { reason };
                 }
             }
 
@@ -201,45 +307,60 @@ impl PolicyEngine {
             for (i, glob_pattern) in tp.deny_paths.iter().enumerate() {
                 if path_glob_matches(glob_pattern, match_value) {
                     let rule_ref = format!("tools.{}.deny_paths[{}]", tool_name, i);
-                    return GuardDecision::deny_with_rule(
+                    let reason = DecisionReason::new(
                         DecisionCode::PathOutsideWorkspace,
                         format!("path matched deny_paths rule: {}", glob_pattern),
-                        rule_ref,
-                    );
+                    )
+                    .matched_rule(rule_ref);
+                    return GuardDecision::Deny { reason };
                 }
             }
 
             // ask rules.
             for (i, rule) in tp.ask.iter().enumerate() {
-                if pattern_matches(rule, match_value) {
+                let res = pattern_matches(rule, match_value, tool, context);
+                if res.matched {
                     let rule_ref = format!("tools.{}.ask[{}]", tool_name, i);
-                    return GuardDecision::ask_with_rule(
-                        format!("Confirmation required: rule '{}' matched", pattern_display(rule)),
+                    let mut reason = DecisionReason::new(
                         DecisionCode::AskRequired,
                         format!("ask rule matched: {}", pattern_display(rule)),
-                        rule_ref,
-                    );
+                    )
+                    .matched_rule(rule_ref);
+
+                    if let Some(cond) = res.condition {
+                        reason = reason.with_condition(cond);
+                    }
+                    return GuardDecision::AskUser {
+                        message: format!(
+                            "Confirmation required: rule '{}' matched",
+                            pattern_display(rule)
+                        ),
+                        reason,
+                    };
                 }
             }
 
             // A2: allow_paths as a positive allowlist.
             // If allow_paths is non-empty and the path doesn't match any entry → deny.
             if !tp.allow_paths.is_empty() {
-                let in_allowlist = tp.allow_paths.iter().any(|p| path_glob_matches(p, match_value));
+                let in_allowlist = tp.allow_paths
+                    .iter()
+                    .any(|p| path_glob_matches(p, match_value));
                 if !in_allowlist {
-                    return GuardDecision::deny(
+                    let reason = DecisionReason::new(
                         DecisionCode::NotInAllowList,
                         format!(
                             "path '{}' is not in the configured allow_paths list",
                             match_value
                         ),
                     );
+                    return GuardDecision::Deny { reason };
                 }
             }
 
             // Explicit allow rules — short-circuit to Allow.
             for rule in tp.allow.iter() {
-                if pattern_matches(rule, match_value) {
+                if pattern_matches(rule, match_value, tool, context).matched {
                     return GuardDecision::Allow;
                 }
             }
@@ -253,8 +374,8 @@ impl PolicyEngine {
     /// This is the single source of truth for mode resolution — callers (e.g. the bash
     /// validator in the SDK layer) must use this instead of deriving mode from trust_level
     /// alone, so that tool-level `mode:` overrides in policy YAML are respected.
-    pub fn effective_mode(&self, tool: &Tool, trust_level: &TrustLevel) -> PolicyMode {
-        match trust_level {
+    pub fn effective_mode(&self, tool: &Tool, context: &Context) -> PolicyMode {
+        match context.trust_level {
             TrustLevel::Untrusted => self
                 .policy
                 .trust
@@ -283,26 +404,63 @@ impl PolicyEngine {
 
 // ── Pattern matching helpers ──────────────────────────────────────────────────
 
-fn pattern_matches(rule: &RulePattern, value: &str) -> bool {
+#[derive(Debug, Default)]
+struct MatchResult {
+    matched: bool,
+    condition: Option<String>,
+}
+
+fn pattern_matches(rule: &RulePattern, value: &str, tool: &Tool, context: &Context) -> MatchResult {
     match rule {
         // Plain string: substring match (explicit, intentional — different from prefix:).
-        RulePattern::Plain(s) => value.contains(s.as_str()),
+        RulePattern::Plain(s) => MatchResult {
+            matched: value.contains(s.as_str()),
+            condition: None,
+        },
         RulePattern::Map(m) => {
+            let mut result = MatchResult {
+                matched: false,
+                condition: m.condition.as_ref().map(|c| c.raw.clone()),
+            };
+
+            // First check condition if present.
+            if let Some(ref condition) = m.condition {
+                if !condition.evaluate(tool, context) {
+                    return MatchResult {
+                        matched: false,
+                        condition: None,
+                    };
+                }
+            }
+
+            // If condition passed (or was absent), check the pattern.
             if let Some(ref prefix) = m.prefix {
-                // A3: strict prefix match only — trimmed to handle leading whitespace.
-                // Use contains: in policy YAML if substring matching is desired.
                 if value.trim_start().starts_with(prefix.as_str()) {
-                    return true;
+                    result.matched = true;
+                    return result;
                 }
             }
             if let Some(ref re_str) = m.regex {
                 if let Ok(re) = Regex::new(re_str) {
                     if re.is_match(value) {
-                        return true;
+                        result.matched = true;
+                        return result;
                     }
                 }
             }
-            false
+            if let Some(ref plain) = m.plain {
+                if value.contains(plain.as_str()) {
+                    result.matched = true;
+                    return result;
+                }
+            }
+
+            // If no pattern fields are present but there's a condition,
+            // then the condition itself is the rule.
+            if m.prefix.is_none() && m.regex.is_none() && m.plain.is_none() {
+                result.matched = true;
+            }
+            result
         }
     }
 }
@@ -324,12 +482,23 @@ fn pattern_display(rule: &RulePattern) -> String {
     match rule {
         RulePattern::Plain(s) => s.clone(),
         RulePattern::Map(m) => {
+            let mut parts = Vec::new();
             if let Some(ref p) = m.prefix {
-                format!("prefix:{}", p)
-            } else if let Some(ref r) = m.regex {
-                format!("regex:{}", r)
-            } else {
+                parts.push(format!("prefix:{}", p));
+            }
+            if let Some(ref r) = m.regex {
+                parts.push(format!("regex:{}", r));
+            }
+            if let Some(ref p) = m.plain {
+                parts.push(format!("plain:{}", p));
+            }
+            if let Some(ref c) = m.condition {
+                parts.push(format!("if:{}", c.raw));
+            }
+            if parts.is_empty() {
                 "(empty rule)".to_string()
+            } else {
+                parts.join(", ")
             }
         }
     }

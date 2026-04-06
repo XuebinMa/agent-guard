@@ -88,6 +88,36 @@ pub struct DecisionReason {
     pub matched_rule: Option<String>,
 }
 
+impl DecisionReason {
+    pub fn new(code: DecisionCode, message: impl Into<String>) -> Self {
+        Self {
+            code,
+            message: message.into(),
+            details: None,
+            matched_rule: None,
+        }
+    }
+
+    pub fn matched_rule(mut self, rule: impl Into<String>) -> Self {
+        self.matched_rule = Some(rule.into());
+        self
+    }
+
+    pub fn with_condition(mut self, condition: impl Into<String>) -> Self {
+        let mut obj = match self.details.take() {
+            Some(serde_json::Value::Object(m)) => m,
+            _ => serde_json::Map::new(),
+        };
+        obj.insert(
+            "condition".to_string(),
+            serde_json::Value::String(condition.into()),
+        );
+        obj.insert("condition_met".to_string(), serde_json::Value::Bool(true));
+        self.details = Some(serde_json::Value::Object(obj));
+        self
+    }
+}
+
 // ── DecisionCode ──────────────────────────────────────────────────────────────
 //
 // Codes are part of the public contract — they appear in audit logs and

@@ -557,6 +557,7 @@ fn audit_event_has_hash_when_enabled() {
         &decision,
         None, None, None,
         true, // include_hash
+        "test-version".to_string(),
     );
     assert!(event.payload_hash.is_some(), "hash should be present when include_hash=true");
     let hash = event.payload_hash.unwrap();
@@ -577,6 +578,7 @@ fn audit_event_no_hash_when_disabled() {
         &GuardDecision::Allow,
         None, None, None,
         false, // include_hash
+        "test-version".to_string(),
     );
     assert!(event.payload_hash.is_none(), "hash must be None when include_hash=false");
 }
@@ -602,6 +604,7 @@ fn audit_event_jsonl_is_valid_json() {
         Some("agent".to_string()),
         Some("user".to_string()),
         true,
+        "test-version".to_string(),
     );
     let jsonl = event.to_jsonl();
     let parsed: serde_json::Value = serde_json::from_str(&jsonl)
@@ -625,6 +628,7 @@ fn audit_allow_decision_has_no_code_or_matched_rule() {
         &GuardDecision::Allow,
         None, None, None,
         false,
+        "test-version".to_string(),
     );
     let jsonl = event.to_jsonl();
     let parsed: serde_json::Value = serde_json::from_str(&jsonl).unwrap();
