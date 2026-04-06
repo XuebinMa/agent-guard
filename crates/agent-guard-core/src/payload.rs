@@ -15,12 +15,14 @@ use crate::decision::{DecisionCode, GuardDecision};
 /// Extracted, structured payload values used by the policy engine.
 #[derive(Debug, Clone)]
 pub enum ExtractedPayload<'a> {
-    /// Raw string — used for Bash and Custom tools; rules match against this directly.
+    /// Raw string — used for Custom tools; rules match against this directly.
     Raw(&'a str),
     /// File path extracted from `{"path": "..."}`.
     Path(String),
     /// URL extracted from `{"url": "..."}`.
     Url(String),
+    /// Command extracted from `{"command": "..."}` (used by Tool::Bash).
+    Command(String),
 }
 
 impl<'a> ExtractedPayload<'a> {
@@ -28,7 +30,7 @@ impl<'a> ExtractedPayload<'a> {
     pub fn match_value(&self) -> &str {
         match self {
             Self::Raw(s) => s,
-            Self::Path(s) | Self::Url(s) => s.as_str(),
+            Self::Path(s) | Self::Url(s) | Self::Command(s) => s.as_str(),
         }
     }
 }
@@ -43,6 +45,12 @@ pub fn extract_path(payload: &str) -> Result<ExtractedPayload<'_>, GuardDecision
 pub fn extract_url(payload: &str) -> Result<ExtractedPayload<'_>, GuardDecision> {
     extract_string_field(payload, "url")
         .map(ExtractedPayload::Url)
+}
+
+/// Extract command from `{"command": "..."}` (used by Tool::Bash).
+pub fn extract_bash_command(payload: &str) -> Result<ExtractedPayload<'_>, GuardDecision> {
+    extract_string_field(payload, "command")
+        .map(ExtractedPayload::Command)
 }
 
 fn extract_string_field(payload: &str, field: &str) -> Result<String, GuardDecision> {

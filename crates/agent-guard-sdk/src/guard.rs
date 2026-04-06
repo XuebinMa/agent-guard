@@ -97,8 +97,6 @@ impl Guard {
         // A5: Run bash validator before policy engine for Bash tool calls.
         if let Tool::Bash = &input.tool {
             // Use the policy engine as the single source of truth for mode resolution.
-            // This ensures tool-level `mode:` overrides in policy YAML are respected,
-            // rather than deriving mode from trust_level alone.
             let mode = policy_mode_to_permission_mode(
                 &self.engine.effective_mode(&input.tool, &input.context.trust_level),
             );
@@ -107,7 +105,19 @@ impl Guard {
                 .working_directory
                 .as_deref()
                 .unwrap_or_else(|| Path::new("."));
-            let result = validate_bash_command(&input.payload, mode, workspace_path);
+
+            // Extract the actual command from the JSON payload before validating.
+            // This ensures the validator doesn't see raw JSON.
+            let v: serde_json::Value = match serde_json::from_str(&input.payload) {
+                Ok(v) => v,
+                Err(_) => return GuardDecision::deny(DecisionCode::InvalidPayload, "invalid payload JSON"),
+            };
+            let command = match v.get("command").and_then(|c| c.as_str()) {
+                Some(s) => s,
+                None => return GuardDecision::deny(DecisionCode::MissingPayloadField, "payload missing 'command' field"),
+            };
+
+            let result = validate_bash_command(command, mode, workspace_path);
             match result {
                 ValidationResult::Block { reason } => {
                     // Map validator block reason to the appropriate DecisionCode.

@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 use crate::decision::{DecisionCode, GuardDecision};
-use crate::payload::{extract_path, extract_url, ExtractedPayload};
+use crate::payload::{extract_bash_command, extract_path, extract_url, ExtractedPayload};
 use crate::types::{Tool, TrustLevel};
 
 // ── Policy schema ─────────────────────────────────────────────────────────────
@@ -173,7 +173,13 @@ impl PolicyEngine {
                     Err(deny) => return deny,
                 }
             }
-            // Bash and Custom tools: rules match against raw payload string.
+            Tool::Bash => {
+                match extract_bash_command(payload) {
+                    Ok(ep) => ep,
+                    Err(deny) => return deny,
+                }
+            }
+            // Custom tools: rules match against raw payload string.
             _ => ExtractedPayload::Raw(payload),
         };
         let match_value = extracted.match_value();

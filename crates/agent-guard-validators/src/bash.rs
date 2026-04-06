@@ -77,34 +77,51 @@ pub fn validate_read_only(command: &str, mode: PermissionMode) -> ValidationResu
         return ValidationResult::Allow;
     }
 
-    let first_command = extract_first_command(command);
-
-    for &write_cmd in WRITE_COMMANDS {
-        if first_command == write_cmd {
-            return ValidationResult::Block {
-                reason: format!(
-                    "Command '{write_cmd}' modifies the filesystem and is not allowed in read-only mode"
-                ),
-            };
+    // Split by shell command separators: |, ;, &&, ||
+    // Note: This is a simplified split that doesn't handle nested quotes perfectly,
+    // but it's much better than only checking the very first word.
+    for part in command.split(|c| c == '|' || c == ';' || c == '&') {
+        let part = part.trim();
+        if part.is_empty() {
+            continue;
         }
-    }
 
-    for &state_cmd in STATE_MODIFYING_COMMANDS {
-        if first_command == state_cmd {
-            return ValidationResult::Block {
-                reason: format!(
-                    "Command '{state_cmd}' modifies system state and is not allowed in read-only mode"
-                ),
-            };
+        let first_command = extract_first_command(part);
+
+        for &write_cmd in WRITE_COMMANDS {
+            if first_command == write_cmd {
+                return ValidationResult::Block {
+                    reason: format!(
+                        "Command '{write_cmd}' modifies the filesystem and is not allowed in read-only mode"
+                    ),
+                };
+            }
         }
-    }
 
-    if first_command == "sudo" {
-        let inner = extract_sudo_inner(command);
-        if !inner.is_empty() {
-            let inner_result = validate_read_only(inner, mode);
-            if inner_result != ValidationResult::Allow {
-                return inner_result;
+        for &state_cmd in STATE_MODIFYING_COMMANDS {
+            if first_command == state_cmd {
+                return ValidationResult::Block {
+                    reason: format!(
+                        "Command '{state_cmd}' modifies system state and is not allowed in read-only mode"
+                    ),
+                };
+            }
+        }
+
+        if first_command == "sudo" {
+            let inner = extract_sudo_inner(part);
+            if !inner.is_empty() {
+                let inner_result = validate_read_only(inner, mode);
+                if inner_result != ValidationResult::Allow {
+                    return inner_result;
+                }
+            }
+        }
+
+        if first_command == "git" {
+            let res = validate_git_read_only(part);
+            if res != ValidationResult::Allow {
+                return res;
             }
         }
     }
@@ -117,10 +134,6 @@ pub fn validate_read_only(command: &str, mode: PermissionMode) -> ValidationResu
                 ),
             };
         }
-    }
-
-    if first_command == "git" {
-        return validate_git_read_only(command);
     }
 
     ValidationResult::Allow
