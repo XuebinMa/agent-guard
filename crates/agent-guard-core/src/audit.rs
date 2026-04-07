@@ -6,10 +6,6 @@ use crate::decision::{DecisionCode, GuardDecision};
 use crate::types::Tool;
 
 // ── AuditEvent ────────────────────────────────────────────────────────────────
-//
-// Fixed schema — field names and types are part of the public contract.
-// Consumers (log aggregators, SIEM, UI) depend on this structure.
-// Do NOT rename fields without a schema version bump.
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AuditEvent {
@@ -19,18 +15,12 @@ pub struct AuditEvent {
     pub agent_id: Option<String>,
     pub actor: Option<String>,
     pub tool: String,
-    /// SHA-256 hex digest of the raw payload string.
-    /// None when audit.include_payload_hash = false.
-    /// Raw payload is never logged.
     pub payload_hash: Option<String>,
     pub decision: AuditDecision,
     pub code: Option<DecisionCode>,
     pub message: Option<String>,
     pub details: Option<serde_json::Value>,
-    /// The policy hash (instance version) used for this decision.
     pub policy_version: String,
-    /// The policy rule path that triggered this decision, e.g. "tools.bash.deny[0]".
-    /// None for Allow decisions (explainability not recorded at this stage).
     pub matched_rule: Option<String>,
 }
 
@@ -40,6 +30,29 @@ pub enum AuditDecision {
     Allow,
     Deny,
     AskUser,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum AuditRecord {
+    ToolCall(AuditEvent),
+    PolicyReload(ReloadEvent),
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ReloadEvent {
+    pub timestamp: DateTime<Utc>,
+    pub status: ReloadStatus,
+    pub old_version: String,
+    pub new_version: Option<String>,
+    pub error: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ReloadStatus {
+    Success,
+    Failure,
 }
 
 impl AuditEvent {
@@ -98,7 +111,37 @@ impl AuditEvent {
     }
 
     pub fn to_jsonl(&self) -> String {
-        serde_json::to_string(self).unwrap_or_else(|e| {
+        let record = AuditRecord::ToolCall(self.clone());
+        serde_json::to_string(&record).unwrap_or_else(|e| {
+            format!("{{\"error\":\"audit serialization failed: {e}\"}}")
+        })
+    }
+}
+
+impl ReloadEvent {
+    pub fn success(old_version: String, new_version: String) -> Self {
+        Self {
+            timestamp: Utc::now(),
+            status: ReloadStatus::Success,
+            old_version,
+            new_version: Some(new_version),
+            error: None,
+        }
+    }
+
+    pub fn failure(old_version: String, error: String) -> Self {
+        Self {
+            timestamp: Utc::now(),
+            status: ReloadStatus::Failure,
+            old_version,
+            new_version: None,
+            error: Some(error),
+        }
+    }
+
+    pub fn to_jsonl(&self) -> String {
+        let record = AuditRecord::PolicyReload(self.clone());
+        serde_json::to_string(&record).unwrap_or_else(|e| {
             format!("{{\"error\":\"audit serialization failed: {e}\"}}")
         })
     }

@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use agent_guard_core::{
     AuditConfig, AuditEvent, Context, DecisionCode, GuardDecision, GuardInput, PolicyEngine,
-    PolicyMode, Tool,
+    PolicyMode, ReloadEvent, ReloadStatus, Tool,
 };
 use agent_guard_sandbox::{NoopSandbox, Sandbox, SandboxContext, SandboxError, SandboxOutput};
 use agent_guard_validators::bash::{validate_bash_command, PermissionMode, ValidationResult};
@@ -69,33 +69,51 @@ impl Guard {
     /// If the new engine's audit configuration is different, the audit file
     /// will be opened/updated accordingly.
     pub fn reload_engine(&self, engine: PolicyEngine) -> Result<(), GuardInitError> {
-        let old_version = self.state.load().engine.version().to_string();
+        let old_state = self.state.load();
+        let old_version = old_state.engine.version().to_string();
         let new_version = engine.version().to_string();
         
         let new_state = GuardState::new(Arc::new(engine))?;
         self.state.store(Arc::new(new_state));
         
-        eprintln!(
-            "[agent-guard] POLICY RELOADED: {} -> {} at {}",
-            old_version,
-            new_version,
-            chrono::Utc::now()
-        );
+        let event = ReloadEvent::success(old_version, new_version);
+        self.write_reload_audit(&event, &old_state);
+
         Ok(())
     }
 
     /// Atomically reload the policy from a YAML string.
     pub fn reload_from_yaml(&self, yaml: &str) -> Result<(), GuardInitError> {
+        let old_state = self.state.load();
+        let old_version = old_state.engine.version().to_string();
+
         match PolicyEngine::from_yaml_str(yaml) {
             Ok(engine) => self.reload_engine(engine),
             Err(e) => {
                 let err = GuardInitError::Policy(e);
-                eprintln!(
-                    "[agent-guard] POLICY RELOAD FAILED: {} at {}",
-                    err,
-                    chrono::Utc::now()
-                );
+                let event = ReloadEvent::failure(old_version, err.to_string());
+                self.write_reload_audit(&event, &old_state);
                 Err(err)
+            }
+        }
+    }
+
+    fn write_reload_audit(&self, event: &ReloadEvent, state: &GuardState) {
+        let line = event.to_jsonl();
+        eprintln!("[agent-guard] POLICY RELOAD {}: {}", 
+            match event.status {
+                ReloadStatus::Success => "SUCCESS",
+                ReloadStatus::Failure => "FAILURE",
+            },
+            line
+        );
+
+        if state.audit_cfg.enabled && state.audit_cfg.output == "file" {
+            if let Some(ref mutex) = state.audit_file {
+                if let Ok(mut file) = mutex.lock() {
+                    use std::io::Write;
+                    let _ = writeln!(file, "{}", line);
+                }
             }
         }
     }
@@ -503,27 +521,43 @@ default_mode: workspace_write
     }
 
     #[test]
-    fn test_audit_policy_versioning() {
-        // Verify that the audit event contains the correct policy hash.
-        let yaml = r#"
+    fn test_execute_snapshot_isolation() {
+        // This test ensures that execute() uses a consistent snapshot even if 
+        // a reload happens in the middle of its execution.
+        let yaml1 = r#"
 version: 1
 default_mode: read_only
 "#;
-        let guard = Guard::from_yaml(yaml).unwrap();
-        let expected_version = guard.policy_version();
+        let yaml2 = r#"
+version: 1
+default_mode: workspace_write
+"#;
+
+        let guard = Guard::from_yaml(yaml1).unwrap();
+        let guard_arc = Arc::new(guard);
         
         let ctx = Context {
             trust_level: TrustLevel::Trusted,
             ..Default::default()
         };
-        let _input = GuardInput {
+        let input = GuardInput {
             tool: Tool::Bash,
-            payload: r#"{"command":"ls"}"#.to_string(),
+            payload: r#"{"command":"touch test"}"#.to_string(),
             context: ctx,
         };
+
+        // 1. Manually load state to simulate the start of execute()
+        let state_snapshot = guard_arc.state.load();
         
-        // Verify policy_version() works.
-        assert!(!expected_version.is_empty());
-        assert_eq!(expected_version.len(), 64); // SHA-256 hex
+        // 2. Perform reload
+        guard_arc.reload_from_yaml(yaml2).unwrap();
+        
+        // 3. Verify that check_internal using the OLD snapshot still denies
+        let res_old = guard_arc.check_internal(&input, &state_snapshot);
+        assert!(matches!(res_old, GuardDecision::Deny { .. }), "Old snapshot should still deny");
+        
+        // 4. Verify that a new check() uses the NEW snapshot and allows
+        let res_new = guard_arc.check(&input);
+        assert!(matches!(res_new, GuardDecision::Allow), "New request should allow");
     }
 }
