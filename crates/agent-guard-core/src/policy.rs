@@ -88,6 +88,53 @@ pub struct PolicyFile {
     pub trust: TrustConfig,
     #[serde(default)]
     pub audit: AuditConfig,
+    #[serde(default)]
+    pub anomaly: AnomalyConfig,
+}
+
+#[derive(Debug, Deserialize, Clone)]
+pub struct AnomalyConfig {
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+    #[serde(default)]
+    pub rate_limit: RateLimitConfig,
+}
+
+fn default_true() -> bool {
+    true
+}
+
+#[derive(Debug, Deserialize, Clone)]
+pub struct RateLimitConfig {
+    #[serde(default = "default_window")]
+    pub window_seconds: u64,
+    #[serde(default = "default_max_calls")]
+    pub max_calls: usize,
+}
+
+fn default_window() -> u64 {
+    60
+}
+fn default_max_calls() -> usize {
+    30
+}
+
+impl Default for AnomalyConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            rate_limit: RateLimitConfig::default(),
+        }
+    }
+}
+
+impl Default for RateLimitConfig {
+    fn default() -> Self {
+        Self {
+            window_seconds: 60,
+            max_calls: 30,
+        }
+    }
 }
 
 fn default_mode() -> PolicyMode {
@@ -232,6 +279,10 @@ impl PolicyEngine {
 
     pub fn audit_config(&self) -> &AuditConfig {
         &self.policy.audit
+    }
+
+    pub fn anomaly_config(&self) -> &AnomalyConfig {
+        &self.policy.anomaly
     }
 
     pub fn check(&self, tool: &Tool, payload: &str, context: &Context) -> GuardDecision {

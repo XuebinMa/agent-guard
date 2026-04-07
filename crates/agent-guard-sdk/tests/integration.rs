@@ -813,3 +813,53 @@ fn plain_string_rule_matches_when_at_start_too() {
     let d = g.check_tool(Tool::Bash, r#"{"command":"DANGER --exec"}"#, trusted());
     assert!(matches!(d, GuardDecision::Deny { .. }), "bare string rule must also match at start");
 }
+
+// ── Anomaly Detection (P1) ───────────────────────────────────────────────────
+
+#[test]
+fn anomaly_detection_uses_policy_config() {
+    use agent_guard_sdk::{DecisionCode, GuardInput};
+    let policy = r#"
+version: 1
+default_mode: workspace_write
+anomaly:
+  enabled: true
+  rate_limit:
+    window_seconds: 1
+    max_calls: 2
+"#;
+    let g = Guard::from_yaml(policy).unwrap();
+    let ctx = Context { actor: Some("test-actor".to_string()), ..Default::default() };
+    let input = GuardInput::new(Tool::Bash, r#"{"command":"ls"}"#).with_context(ctx.clone());
+
+    // Call 1: Allow
+    assert_eq!(g.check(&input), GuardDecision::Allow);
+    // Call 2: Allow (limit is 2)
+    assert_eq!(g.check(&input), GuardDecision::Allow);
+    // Call 3: Deny
+    let d = g.check(&input);
+    if let GuardDecision::Deny { reason } = d {
+        assert_eq!(reason.code, DecisionCode::AnomalyDetected);
+        assert!(reason.message.contains("2 calls / 1s"));
+    } else {
+        panic!("Expected anomaly deny, got {:?}", d);
+    }
+}
+
+#[test]
+fn anomaly_detection_can_be_disabled() {
+    use agent_guard_sdk::GuardInput;
+    let policy = r#"
+version: 1
+default_mode: workspace_write
+anomaly:
+  enabled: false
+"#;
+    let g = Guard::from_yaml(policy).unwrap();
+    let ctx = Context { actor: Some("fast-actor".to_string()), ..Default::default() };
+    let input = GuardInput::new(Tool::Bash, r#"{"command":"ls"}"#).with_context(ctx.clone());
+
+    for _ in 0..50 {
+        assert_eq!(g.check(&input), GuardDecision::Allow);
+    }
+}

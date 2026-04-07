@@ -11,7 +11,7 @@ fn main() {
         .expect("Failed to init guard");
 
     // Use default sandbox (will be JobObject on Windows, Noop on others)
-    let sandbox = guard.default_sandbox();
+    let sandbox = Guard::default_sandbox();
     
     println!("Sandbox Name:     {}", sandbox.name());
     println!("Sandbox Type:     {}", sandbox.sandbox_type());

@@ -5,7 +5,10 @@ pub mod anomaly;
 pub use guard::{ExecuteOutcome, ExecuteResult, Guard, GuardInitError};
 
 // Re-export core types so SDK users don't need to depend on agent-guard-core
-pub use agent_guard_core::{Context, CustomToolId, GuardDecision, GuardInput, Tool, TrustLevel};
+pub use agent_guard_core::{
+    Context, CustomToolId, DecisionCode, DecisionReason, GuardDecision, GuardInput, Tool,
+    TrustLevel,
+};
 
 // Re-export sandbox traits and common implementations
 pub use agent_guard_sandbox::{

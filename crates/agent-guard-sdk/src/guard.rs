@@ -136,13 +136,36 @@ impl Guard {
     /// Internal core logic that MUST use a captured state snapshot.
     /// This ensures decision, auditing, and execution use the same policy version.
     fn check_internal(&self, input: &GuardInput, state: &GuardState) -> GuardDecision {
+        let metrics = crate::metrics::get_metrics();
+        
+        // P1-1: Record initiation
+        metrics.policy_checks_total.get_or_create(&crate::metrics::ToolLabels {
+            tool: input.tool.name().to_string(),
+        }).inc();
+
         // M4.3: Anomaly detection
         let actor = input.context.actor.as_deref().unwrap_or("unknown");
-        if crate::anomaly::get_detector().check(actor) {
+        let anomaly_cfg = state.engine.anomaly_config();
+
+        if crate::anomaly::get_detector().check(actor, anomaly_cfg) {
             let decision = GuardDecision::deny(
                 DecisionCode::AnomalyDetected,
-                "anomaly detected: high tool call frequency",
+                format!(
+                    "anomaly detected: tool call frequency exceeded limit ({} calls / {}s)",
+                    anomaly_cfg.rate_limit.max_calls, anomaly_cfg.rate_limit.window_seconds
+                ),
             );
+
+            // P1-1: Record anomaly metric
+            metrics.anomaly_triggered_total.get_or_create(&crate::metrics::ToolLabels {
+                tool: input.tool.name().to_string(),
+            }).inc();
+            
+            metrics.decision_total.get_or_create(&crate::metrics::DecisionLabels {
+                tool: input.tool.name().to_string(),
+                decision: "deny".to_string(),
+            }).inc();
+
             if state.audit_cfg.enabled {
                 self.write_audit(input, &decision, state);
             }
@@ -150,16 +173,16 @@ impl Guard {
         }
 
         let decision = self.evaluate(input, state);
-        
+
         // M4.2: Record metrics
         let outcome = match &decision {
             GuardDecision::Allow => "allow",
             GuardDecision::Deny { .. } => "deny",
             GuardDecision::AskUser { .. } => "ask",
         };
-        crate::metrics::get_metrics().policy_checks.get_or_create(&crate::metrics::DecisionLabels {
+        metrics.decision_total.get_or_create(&crate::metrics::DecisionLabels {
             tool: input.tool.name().to_string(),
-            outcome: outcome.to_string(),
+            decision: outcome.to_string(),
         }).inc();
 
         if state.audit_cfg.enabled {
@@ -170,11 +193,7 @@ impl Guard {
 
     /// High-level execution method that enforces policy and runs the tool in a sandbox.
     /// Implements single-snapshot isolation (M3.2).
-    pub fn execute(
-        &self,
-        input: &GuardInput,
-        sandbox: &dyn Sandbox,
-    ) -> ExecuteResult {
+    pub fn execute(&self, input: &GuardInput, sandbox: &dyn Sandbox) -> ExecuteResult {
         // M3.2: Capture state snapshot EXACTLY ONCE at the entry point.
         let state = self.state.load();
 
@@ -209,10 +228,13 @@ impl Guard {
         let duration = start.elapsed().as_secs_f64();
 
         // M4.2: Record execution duration
-        crate::metrics::get_metrics().execution_duration.get_or_create(&crate::metrics::ExecutionLabels {
-            tool: input.tool.name().to_string(),
-            sandbox: sandbox.name().to_string(),
-        }).observe(duration);
+        crate::metrics::get_metrics()
+            .execution_duration_seconds
+            .get_or_create(&crate::metrics::ExecutionLabels {
+                tool: input.tool.name().to_string(),
+                sandbox_type: sandbox.sandbox_type().to_string(),
+            })
+            .observe(duration);
 
         Ok(ExecuteOutcome::Executed { output })
     }
