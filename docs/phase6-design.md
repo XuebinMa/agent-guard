@@ -1,7 +1,7 @@
 # Phase 6: Enterprise Security & Remote Attestation — Design Document
 
 > Status: **Draft (Phase 6)**  
-> Version: **0.1.0 (v0.2.0 Roadmap)**  
+> Version: **0.1.1 (v0.2.0 Roadmap)**  
 > This document outlines the architectural shift from "Strengthened Prototypes" to an Enterprise-grade security layer for `agent-guard`, focusing on unified capability modeling, verifiable execution receipts, and SIEM integration.
 
 ---
@@ -27,7 +27,7 @@
 | **Windows Sandbox** | Low-IL (Default) | AppContainer (Opt-in) | AppContainer (Default) |
 | **Provenance** | Ed25519 Signed Receipts | - | TPM Attestation |
 | **SIEM** | JSONL, OTLP (Basic) | Webhooks | Advanced Filter & Routing |
-| **Capabilities** | FS (R/W), Child Process | Network, Registry | Clipboard, Internet Client |
+| **Capabilities** | FS (R/W), Child Process | Network, Registry | Clipboard |
 
 ---
 
@@ -37,12 +37,15 @@ To prevent implementation-specific drift, we define high-level security capabili
 
 | Capability | Description | Default Enforcer |
 | :--- | :--- | :--- |
-| `filesystem_write_workspace` | Write access restricted to the designated workspace. | Seccomp (L), Seatbelt (M), Low-IL (W) |
-| `filesystem_read_global` | Global read access to host filesystem (usually denied by default). | Seccomp (L), Seatbelt (M), Low-IL (W) |
-| `network_outbound` | Outbound network connection capability. | Seccomp (L), Seatbelt (M), N/A (W) |
-| `child_process_spawn` | Ability to fork and execute child processes. | Seccomp (L), Job Objects (W) |
-| `registry_write` | Ability to modify Windows Registry keys. | Low-IL (W) |
-| `internet_client` | Access to external internet (vs. local network). | Seccomp (L), AppContainer (W) |
+| **`filesystem_read_workspace`** | Read access to the designated workspace. | Enabled by default |
+| **`filesystem_read_global`** | Read access to host filesystem outside workspace. | Deny by default |
+| **`filesystem_write_workspace`** | Write access restricted to the designated workspace. | Seccomp (L), Seatbelt (M), Low-IL (W) |
+| **`filesystem_write_global`** | Write access to host filesystem (e.g., system dirs). | Deny by default |
+| **`network_outbound_any`** | Any outbound network connection. | Seccomp (L), Seatbelt (M), N/A (W) |
+| **`network_outbound_internet`**| Access to external internet. | Seccomp (L), Seatbelt (M), AppContainer (W) |
+| **`network_outbound_local`**   | Access to local network (Intranet). | Seccomp (L), Seatbelt (M), AppContainer (W) |
+| **`child_process_spawn`**      | Ability to fork and execute child processes. | Seccomp (L), Job Objects (W) |
+| **`registry_write`**           | Ability to modify Windows Registry keys. | Low-IL (W) |
 
 ---
 
@@ -52,7 +55,7 @@ To prevent implementation-specific drift, we define high-level security capabili
 | :--- | :--- | :--- | :--- |
 | **FS Isolation** | `landlock` / `mount` namespaces | `(deny file-write*)` | SID-based ACEs |
 | **Process Control** | `cgroups` / `prctl` | N/A | `JOBOBJECT_EXTENDED_LIMIT` |
-| **Network** | `socket(AF_INET, ...)` block | `(deny network*)` | `inetClient` SID |
+| **Network** | `socket(AF_INET, ...)` block | `(deny network*)` | `inetClient` / `privateNetworkClient` SIDs |
 
 ---
 
@@ -63,6 +66,9 @@ Each `ExecuteResult` will optionally include a **Signed Receipt** to prove the s
 ### Receipt Schema (Compact JSON)
 ```json
 {
+  "receipt_version": "1.0",
+  "agent_id": "agent-123",
+  "tool": "bash",
   "policy_version": "sha256:abcd...",
   "sandbox_type": "windows-appcontainer",
   "decision": "allow",
@@ -81,17 +87,13 @@ Unified event types across all exporters:
 
 | Event Type | Trigger | SIEM Severity |
 | :--- | :--- | :--- |
-| `policy_decision` | Every tool call evaluation. | INFO |
-| `execution_started` | Sandbox process spawn. | DEBUG |
-| `execution_finished` | Sandbox process exit. | DEBUG |
-| `anomaly_triggered` | Rate limit or behavioral threshold hit. | WARN |
-| `agent_locked` | Deny Fuse activated. | ERROR |
-| `policy_reloaded` | Dynamic policy update via ArcSwap. | INFO |
-
-### SIEM Export Strategy
-1. **JSONL (File)**: Local-first, immutable forensic log.
-2. **OTLP (gRPC/HTTP)**: Standard OpenTelemetry protocol for log management systems (e.g., Grafana Loki, Elastic).
-3. **Webhook (HTTP POST)**: Custom integration for real-time alerting systems (e.g., Slack, PagerDuty).
+| **`policy_decision`** | Every tool call evaluation. | INFO |
+| **`execution_started`** | Sandbox process spawn. | DEBUG |
+| **`execution_finished`** | Sandbox process exit. | DEBUG |
+| **`sandbox_initialization_failed`** | Fail-closed error during sandbox setup. | ERROR |
+| **`anomaly_triggered`** | Rate limit or behavioral threshold hit. | WARN |
+| **`agent_locked`** | Deny Fuse activated. | ERROR |
+| **`policy_reloaded`** | Dynamic policy update via ArcSwap. | INFO |
 
 ---
 
@@ -101,5 +103,6 @@ As part of M6.2, the following questions must be answered:
 1. **Is AppContainer the default?** No, it requires profile registration. Low-IL remains default for CLI-simplicity.
 2. **Feature Flag?** Yes, `windows-appcontainer` feature in `Cargo.toml`.
 3. **Coexistence?** AppContainer handles its own token; Job Objects should still be applied for process tree cleanup.
-4. **Initial Capabilities?** `filesystem_write_workspace` and `internet_client`.
+4. **Initial Capabilities?** `filesystem_write_workspace` and `network_outbound_internet`.
 5. **CLI Feasibility?** Must research if transient AppContainer profiles can be created without Admin privileges or if pre-registration is required.
+6. **Profile Lifecycle?** How are transient profiles cleaned up and named to avoid collisions or privilege residue?
