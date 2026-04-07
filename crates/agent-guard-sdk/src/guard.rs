@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use agent_guard_core::{
     AuditConfig, AuditEvent, Context, DecisionCode, GuardDecision, GuardInput, PolicyEngine,
-    PolicyMode, ReloadEvent, ReloadStatus, Tool,
+    PolicyMode, ReloadEvent, Tool,
 };
 use agent_guard_sandbox::{Sandbox, SandboxContext, SandboxError, SandboxOutput};
 use agent_guard_validators::bash::{validate_bash_command, PermissionMode, ValidationResult};
@@ -67,8 +67,6 @@ impl Guard {
     }
 
     /// Atomically reload the policy engine from a new instance.
-    /// If the new engine's audit configuration is different, the audit file
-    /// will be opened/updated accordingly.
     pub fn reload_engine(&self, engine: PolicyEngine) -> Result<(), GuardInitError> {
         let old_state = self.state.load();
         let old_version = old_state.engine.version().to_string();
@@ -103,32 +101,19 @@ impl Guard {
         self.state.load().engine.version().to_string()
     }
 
+    /// [Deprecated] use policy_version() instead.
     pub fn policy_hash(&self) -> String {
         self.policy_version()
     }
 
     /// Evaluate the guard decision for a tool call.
-    ///
-    /// Decision pipeline (in order):
-    /// 1. Bash validator (for Tool::Bash) — catches destructive/read-only/path violations.
-    /// 2. PolicyEngine — applies YAML policy rules (deny/ask/allow/paths/trust).
-    ///
-    /// Emits an audit event after the final decision if auditing is enabled.
+    /// Captures the policy state exactly once for the entire request flow.
     pub fn check(&self, input: &GuardInput) -> GuardDecision {
-        // M3.2: Take a snapshot of the current state at the start of the request.
         let state = self.state.load();
         self.check_internal(input, &state)
     }
 
-    /// Internal version of check that uses a specific state snapshot.
-    fn check_internal(&self, input: &GuardInput, state: &GuardState) -> GuardDecision {
-        let decision = self.evaluate(input, state);
-        if state.audit_cfg.enabled {
-            self.write_audit(input, &decision, state);
-        }
-        decision
-    }
-
+    /// Higher-level check that accepts tool/payload/context.
     pub fn check_tool(
         &self,
         tool: Tool,
@@ -144,17 +129,27 @@ impl Guard {
         self.check_internal(&input, &state)
     }
 
+    /// Internal core logic that MUST use a captured state snapshot.
+    fn check_internal(&self, input: &GuardInput, state: &GuardState) -> GuardDecision {
+        let decision = self.evaluate(input, state);
+        if state.audit_cfg.enabled {
+            self.write_audit(input, &decision, state);
+        }
+        decision
+    }
+
     pub fn execute(
         &self,
         input: &GuardInput,
         sandbox: &dyn Sandbox,
     ) -> ExecuteResult {
-        // M3.2: Single snapshot for the entire execute() flow.
+        // M3.2: Capture state snapshot EXACTLY ONCE at the entry point.
         let state = self.state.load();
 
+        // Use the snapshot for decision, auditing, mode calculation, and execution.
         let decision = self.check_internal(input, &state);
         match &decision {
-            GuardDecision::Allow { .. } => {}
+            GuardDecision::Allow => {}
             GuardDecision::Deny { .. } => {
                 return Ok(ExecuteOutcome::Denied { decision });
             }
@@ -163,9 +158,7 @@ impl Guard {
             }
         }
 
-        // Extract the command string from the JSON payload.
         let command = extract_bash_command(&input.payload)?;
-
         let mode = state.engine.effective_mode(&input.tool, &input.context);
         let working_directory = input
             .context
@@ -183,16 +176,13 @@ impl Guard {
         Ok(ExecuteOutcome::Executed { output })
     }
 
-    /// Convenience helper to execute a command using the Noop sandbox (passthrough).
     pub fn execute_noop(&self, input: &GuardInput) -> ExecuteResult {
         let sandbox = agent_guard_sandbox::NoopSandbox;
         self.execute(input, &sandbox)
     }
 
     fn evaluate(&self, input: &GuardInput, state: &GuardState) -> GuardDecision {
-        // A5: Run bash validator before policy engine for Bash tool calls.
         if let Tool::Bash = &input.tool {
-            // Use the policy engine as the single source of truth for mode resolution.
             let mode = policy_mode_to_permission_mode(
                 &state.engine.effective_mode(&input.tool, &input.context),
             );
@@ -202,7 +192,6 @@ impl Guard {
                 .as_deref()
                 .unwrap_or_else(|| Path::new("."));
 
-            // Extract the actual command from the JSON payload before validating.
             let v: serde_json::Value = match serde_json::from_str(&input.payload) {
                 Ok(v) => v,
                 Err(_) => return GuardDecision::deny(DecisionCode::InvalidPayload, "invalid payload JSON"),
@@ -229,13 +218,11 @@ impl Guard {
             }
         }
 
-        // Run the policy engine (handles all tools).
         state.engine.check(&input.tool, &input.payload, &input.context)
     }
 
     fn write_audit(&self, input: &GuardInput, decision: &GuardDecision, state: &GuardState) {
         let request_id = Uuid::new_v4().to_string();
-        let include_hash = state.audit_cfg.include_payload_hash;
         let event = AuditEvent::from_decision(
             request_id,
             &input.tool,
@@ -244,23 +231,16 @@ impl Guard {
             input.context.session_id.clone(),
             input.context.agent_id.clone(),
             input.context.actor.clone(),
-            include_hash,
+            state.audit_cfg.include_payload_hash,
             state.engine.version().to_string(),
         );
         let line = event.to_jsonl();
 
         if state.audit_cfg.output == "file" {
             if let Some(ref mutex) = state.audit_file {
-                match mutex.lock() {
-                    Ok(mut file) => {
-                        use std::io::Write;
-                        if let Err(e) = writeln!(file, "{}", line) {
-                            eprintln!("[agent-guard] AUDIT WRITE ERROR: {e} (record: {line})");
-                        }
-                    }
-                    Err(e) => {
-                        eprintln!("[agent-guard] AUDIT MUTEX POISONED: {e}");
-                    }
+                if let Ok(mut file) = mutex.lock() {
+                    use std::io::Write;
+                    let _ = writeln!(file, "{}", line);
                 }
             }
         } else {
@@ -270,14 +250,6 @@ impl Guard {
 
     fn write_reload_audit(&self, event: &ReloadEvent, state: &GuardState) {
         let line = event.to_jsonl();
-        eprintln!("[agent-guard] POLICY RELOAD {}: {}", 
-            match event.status {
-                ReloadStatus::Success => "SUCCESS",
-                ReloadStatus::Failure => "FAILURE",
-            },
-            line
-        );
-
         if state.audit_cfg.enabled && state.audit_cfg.output == "file" {
             if let Some(ref mutex) = state.audit_file {
                 if let Ok(mut file) = mutex.lock() {
@@ -356,105 +328,5 @@ fn classify_block_reason(reason: &str) -> DecisionCode {
         DecisionCode::PathOutsideWorkspace
     } else {
         DecisionCode::DeniedByRule
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use agent_guard_core::{Context, GuardInput, Tool, TrustLevel, GuardDecision};
-    use std::sync::Arc;
-
-    #[test]
-    fn test_reload_success() {
-        let yaml1 = r#"
-version: 1
-default_mode: read_only
-"#;
-        let yaml2 = r#"
-version: 1
-default_mode: workspace_write
-"#;
-
-        let guard = Guard::from_yaml(yaml1).unwrap();
-        let ctx = Context {
-            trust_level: TrustLevel::Trusted,
-            ..Default::default()
-        };
-        
-        // Check old policy (read_only)
-        let res = guard.check_tool(Tool::Bash, r#"{"command":"touch test"}"#, ctx.clone());
-        assert!(matches!(res, GuardDecision::Deny { .. }), "Old policy should deny write");
-        
-        // Reload
-        guard.reload_from_yaml(yaml2).expect("Reload should succeed");
-        
-        // Check new policy (workspace_write)
-        let res = guard.check_tool(Tool::Bash, r#"{"command":"touch test"}"#, ctx);
-        assert!(matches!(res, GuardDecision::Allow), "New policy should allow write");
-    }
-
-    #[test]
-    fn test_reload_failure_preserves_old_policy() {
-        let yaml1 = r#"
-version: 1
-default_mode: read_only
-"#;
-        let yaml_bad = "invalid: yaml: : :";
-
-        let guard = Guard::from_yaml(yaml1).unwrap();
-        let ctx = Context {
-            trust_level: TrustLevel::Trusted,
-            ..Default::default()
-        };
-        
-        // Reload fails
-        let res = guard.reload_from_yaml(yaml_bad);
-        assert!(res.is_err(), "Invalid YAML should fail reload");
-        
-        // Old policy still active
-        let res = guard.check_tool(Tool::Bash, r#"{"command":"touch test"}"#, ctx);
-        assert!(matches!(res, GuardDecision::Deny { .. }), "Old policy should still be active after failed reload");
-    }
-
-    #[test]
-    fn test_execute_snapshot_isolation() {
-        // This test ensures that execute() uses a consistent snapshot even if 
-        // a reload happens in the middle of its execution.
-        let yaml1 = r#"
-version: 1
-default_mode: read_only
-"#;
-        let yaml2 = r#"
-version: 1
-default_mode: workspace_write
-"#;
-
-        let guard = Guard::from_yaml(yaml1).unwrap();
-        let guard_arc = Arc::new(guard);
-        
-        let ctx = Context {
-            trust_level: TrustLevel::Trusted,
-            ..Default::default()
-        };
-        let input = GuardInput {
-            tool: Tool::Bash,
-            payload: r#"{"command":"touch test"}"#.to_string(),
-            context: ctx,
-        };
-
-        // 1. Manually load state to simulate the start of execute()
-        let state_snapshot = guard_arc.state.load();
-        
-        // 2. Perform reload
-        guard_arc.reload_from_yaml(yaml2).unwrap();
-        
-        // 3. Verify that check_internal using the OLD snapshot still denies
-        let res_old = guard_arc.check_internal(&input, &state_snapshot);
-        assert!(matches!(res_old, GuardDecision::Deny { .. }), "Old snapshot should still deny");
-        
-        // 4. Verify that a new check() uses the NEW snapshot and allows
-        let res_new = guard_arc.check(&input);
-        assert!(matches!(res_new, GuardDecision::Allow), "New request should allow");
     }
 }

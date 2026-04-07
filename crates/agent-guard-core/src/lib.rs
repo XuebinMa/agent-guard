@@ -7,7 +7,7 @@ pub mod types;
 #[cfg(test)]
 mod tests;
 
-pub use audit::{AuditDecision, AuditEvent, ReloadEvent, ReloadStatus};
+pub use audit::{AuditDecision, AuditEvent, AuditRecord, ReloadEvent, ReloadStatus};
 pub use decision::{DecisionCode, DecisionReason, GuardDecision};
 pub use policy::{AuditConfig, PolicyEngine, PolicyError, PolicyMode};
 pub use types::{Context, CustomToolId, CustomToolIdError, GuardInput, Tool, TrustLevel};

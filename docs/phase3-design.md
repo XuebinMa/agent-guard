@@ -19,6 +19,7 @@ Enables rules that trigger based on the caller's identity or environment.
 - **Constraints**:
   - **No Functions**: `regex_match()` or `to_lower()` are strictly prohibited.
   - **No Arrays**: `val in ['a', 'b']` is not supported (use `||` expansion).
+  - **No Comparison Operators**: `>`, `<`, `>=`, `<=` are not allowed.
   - **No Side-effects**: Assignment or mutable state is impossible by design.
 - **Fail-fast**: Expressions are compiled and validated during policy load. Invalid expressions prevent the engine from starting.
 
@@ -38,6 +39,7 @@ Enables updating security rules without restarting long-running agent processes.
     - `Guard::reload_from_yaml(str)`
     - `Guard::reload_engine(PolicyEngine)`
 - **Methods (SDK Convenience Layer)**:
+    - `Guard::from_yaml_file(path)`
     - `Guard::reload_from_file(path)` - *Optional helper*
 - **Audit & Versioning**:
     - Every `AuditEvent` includes `policy_version` (SHA-256 hash of the YAML).

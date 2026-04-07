@@ -237,7 +237,12 @@ impl PyGuard {
         self.inner.policy_version()
     }
 
+    /// Alias for policy_version(). [Deprecated: use policy_version instead]
+    fn policy_hash(&self) -> String {
+        self.inner.policy_version()
+    }
+
     fn __repr__(&self) -> String {
-        format!("Guard(version={:?})", self.inner.policy_version())
+        format!("Guard(policy_version={:?})", self.inner.policy_version())
     }
 }
