@@ -39,6 +39,14 @@ When Large Language Models (LLMs) are granted **Tool Use** or **Function Calling
 
 ---
 
+### 🏥 Adoption & Migration
+
+- **Capability Doctor**: Use the `CapabilityDoctor` to detect and report on the host's security features.
+  - `cargo run --example doctor`
+- **Migration Guide**: Read the [Migration Guide](docs/migration-guide.md) to transition from development to production-ready sandboxes.
+
+---
+
 ### 🚀 Quick Start
 
 #### Node.js / TypeScript

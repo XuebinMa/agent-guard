@@ -1,8 +1,8 @@
 pub mod guard;
 pub mod metrics;
-pub use metrics::{get_metrics, Metrics};
 pub mod anomaly;
 
+pub use metrics::{get_metrics, Metrics};
 pub use prometheus_client;
 pub use guard::{ExecuteOutcome, ExecuteResult, Guard, GuardInitError};
 
@@ -13,4 +13,7 @@ pub use agent_guard_core::{
 };
 
 // Re-export sandbox types for direct usage
-pub use agent_guard_sandbox::{Sandbox, SandboxContext, SandboxError, SandboxOutput};
+pub use agent_guard_sandbox::{
+    CapabilityDoctor, HealthStatus, Sandbox, SandboxCapabilities, SandboxContext, SandboxError,
+    SandboxOutput, SandboxReport,
+};

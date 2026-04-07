@@ -98,3 +98,66 @@ pub enum SandboxError {
     #[error("process killed by seccomp filter (exit code: {exit_code})")]
     KilledByFilter { exit_code: i32 },
 }
+
+#[derive(Debug, Clone, Serialize)]
+pub struct SandboxReport {
+    pub name: &'static str,
+    pub sandbox_type: &'static str,
+    pub is_available: bool,
+    pub capabilities: SandboxCapabilities,
+    pub health: HealthStatus,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(tag = "status", rename_all = "snake_case")]
+pub enum HealthStatus {
+    Pass,
+    Fail { error: String },
+    Skipped,
+}
+
+/// Utility for detecting and reporting on the security posture of the current host.
+pub struct CapabilityDoctor;
+
+impl CapabilityDoctor {
+    /// Returns a list of all sandboxes and their status on the current system.
+    pub fn report() -> Vec<SandboxReport> {
+        let sandboxes: Vec<Box<dyn Sandbox>> = vec![
+            Box::new(NoopSandbox),
+            #[cfg(target_os = "linux")]
+            Box::new(linux::SeccompSandbox),
+            #[cfg(feature = "macos-sandbox")]
+            Box::new(macos::SeatbeltSandbox),
+            #[cfg(feature = "windows-sandbox")]
+            Box::new(JobObjectSandbox),
+        ];
+
+        let mut reports = Vec::new();
+        for sb in sandboxes {
+            let available = sb.is_available();
+            let health = if available {
+                let ctx = SandboxContext {
+                    mode: PolicyMode::ReadOnly,
+                    working_directory: std::env::current_dir().unwrap_or_else(|_| ".".into()),
+                    timeout_ms: Some(2000),
+                };
+                match sb.execute("echo 1", &ctx) {
+                    Ok(_) => HealthStatus::Pass,
+                    Err(e) => HealthStatus::Fail { error: e.to_string() },
+                }
+            } else {
+                HealthStatus::Skipped
+            };
+
+            reports.push(SandboxReport {
+                name: sb.name(),
+                sandbox_type: sb.sandbox_type(),
+                is_available: available,
+                capabilities: sb.capabilities(),
+                health,
+            });
+        }
+
+        reports
+    }
+}
