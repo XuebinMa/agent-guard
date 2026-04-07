@@ -83,8 +83,8 @@ match guard.execute_default(&input) {
 | :--- | :---: | :---: | :---: |
 | **Policy Enforcement** | ✅ Full | ✅ Full | ✅ Full |
 | **Syscall Filtering** | ✅ BPF | ❌ N/A | ❌ N/A |
-| **Filesystem Isolation** | ✅ Strict | 🟡 Experimental | ❌ Planned |
-| **Resource Limits** | ✅ Native | ❌ N/A | ✅ Experimental |
+| **Filesystem Isolation** | ✅ Strict | 🟡 Experimental | ✅ **Low-IL** |
+| **Resource Limits** | ✅ Native | ❌ N/A | ✅ **Verifiable** |
 | **Anomaly Detection** | ✅ Full | ✅ Full | ✅ Full |
 | **Telemetry (Prometheus)** | ✅ Full | ✅ Full | ✅ Full |
 

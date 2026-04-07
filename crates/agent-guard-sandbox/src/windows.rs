@@ -1,11 +1,10 @@
-use std::process::Command;
 use crate::{Sandbox, SandboxContext, SandboxError, SandboxOutput, SandboxResult};
 
 /// Windows sandbox implementation using Job Objects and Restricted Tokens.
 ///
-/// **Strengthened Prototype (Phase 5)**: Focuses on resource management and
-/// process tree isolation. Filesystem isolation via Low-IL is currently 
-/// in development. Fail-closed: if the environment setup fails, execution is blocked.
+/// **Strengthened Prototype (Phase 5)**: Enforces process tree isolation via
+/// Job Objects and filesystem write protection via Low Integrity Level (Low-IL)
+/// tokens. Fail-closed: if the environment setup fails, execution is blocked.
 pub struct JobObjectSandbox;
 
 impl Sandbox for JobObjectSandbox {
@@ -20,7 +19,7 @@ impl Sandbox for JobObjectSandbox {
     fn capabilities(&self) -> crate::SandboxCapabilities {
         crate::SandboxCapabilities {
             syscall_filtering: false,
-            filesystem_isolation: false,
+            filesystem_isolation: true, // Low-IL provides write isolation
             network_blocking: false,
             resource_limits: true,
             process_tree_cleanup: true,
@@ -34,11 +33,8 @@ impl Sandbox for JobObjectSandbox {
 
     #[cfg(windows)]
     fn execute(&self, command: &str, context: &SandboxContext) -> SandboxResult {
-        use std::os::windows::io::AsRawHandle;
-        use std::os::windows::process::CommandExt;
         use windows_sys::Win32::Foundation::{CloseHandle, HANDLE};
         use windows_sys::Win32::System::JobObjects::*;
-        use windows_sys::Win32::System::Threading::CREATE_BREAKAWAY_FROM_JOB;
 
         // 1. Create Job Object
         // Safety: Creating a private job object for the command.
@@ -54,7 +50,7 @@ impl Sandbox for JobObjectSandbox {
                 unsafe { CloseHandle(self.0) };
             }
         }
-        let job_handle = JobHandle(job);
+        let _job_guard = JobHandle(job);
 
         // 2. Configure Limits: Kill all processes in job on handle close
         unsafe {
@@ -123,7 +119,7 @@ struct WaitOutput {
 fn create_low_integrity_token() -> Result<windows_sys::Win32::Foundation::HANDLE, SandboxError> {
     use windows_sys::Win32::Security::*;
     use windows_sys::Win32::System::Threading::*;
-    use windows_sys::Win32::Foundation::{CloseHandle, HANDLE, INVALID_HANDLE_VALUE};
+    use windows_sys::Win32::Foundation::{CloseHandle, HANDLE};
 
     unsafe {
         let mut process_token: HANDLE = 0;
