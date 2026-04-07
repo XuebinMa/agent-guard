@@ -25,7 +25,7 @@ impl AnomalyDetector {
         let window = Duration::from_secs(config.rate_limit.window_seconds);
         let cutoff = now - window;
 
-        let calls = history.entry(actor.to_string()).or_insert_with(|| Vec::new());
+        let calls = history.entry(actor.to_string()).or_insert_with(Vec::new);
         
         // Cleanup old calls
         calls.retain(|&t| t > cutoff);

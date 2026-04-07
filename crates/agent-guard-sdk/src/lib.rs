@@ -10,16 +10,5 @@ pub use agent_guard_core::{
     TrustLevel,
 };
 
-// Re-export sandbox traits and common implementations
-pub use agent_guard_sandbox::{
-    NoopSandbox, Sandbox, SandboxContext, SandboxError, SandboxOutput, SandboxResult,
-};
-
-#[cfg(target_os = "linux")]
-pub use agent_guard_sandbox::SeccompSandbox;
-
-#[cfg(feature = "macos-sandbox")]
-pub use agent_guard_sandbox::SeatbeltSandbox;
-
-#[cfg(feature = "windows-sandbox")]
-pub use agent_guard_sandbox::JobObjectSandbox;
+// Re-export sandbox types for direct usage
+pub use agent_guard_sandbox::{Sandbox, SandboxContext, SandboxError, SandboxOutput};

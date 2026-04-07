@@ -105,11 +105,6 @@ impl Guard {
         self.state.load().engine.version().to_string()
     }
 
-    /// [Deprecated] alias for policy_version().
-    pub fn policy_hash(&self) -> String {
-        self.policy_version()
-    }
-
     /// Evaluate the guard decision for a tool call.
     /// Captures the policy state exactly once for the entire request flow.
     pub fn check(&self, input: &GuardInput) -> GuardDecision {
@@ -163,7 +158,7 @@ impl Guard {
             
             metrics.decision_total.get_or_create(&crate::metrics::DecisionLabels {
                 tool: input.tool.name().to_string(),
-                decision: "deny".to_string(),
+                outcome: "deny".to_string(),
             }).inc();
 
             if state.audit_cfg.enabled {
@@ -182,7 +177,7 @@ impl Guard {
         };
         metrics.decision_total.get_or_create(&crate::metrics::DecisionLabels {
             tool: input.tool.name().to_string(),
-            decision: outcome.to_string(),
+            outcome: outcome.to_string(),
         }).inc();
 
         if state.audit_cfg.enabled {
@@ -243,12 +238,6 @@ impl Guard {
     pub fn execute_default(&self, input: &GuardInput) -> ExecuteResult {
         let sandbox = Self::default_sandbox();
         self.execute(input, sandbox.as_ref())
-    }
-
-    /// Convenience helper to execute a command using the Noop sandbox.
-    pub fn execute_noop(&self, input: &GuardInput) -> ExecuteResult {
-        let sandbox = agent_guard_sandbox::NoopSandbox;
-        self.execute(input, &sandbox)
     }
 
     /// Returns the best available sandbox for the current platform.

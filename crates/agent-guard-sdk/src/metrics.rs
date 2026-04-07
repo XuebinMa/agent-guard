@@ -8,7 +8,7 @@ use std::sync::{Arc, OnceLock};
 #[derive(Clone, Debug, Hash, PartialEq, Eq, EncodeLabelSet)]
 pub struct DecisionLabels {
     pub tool: String,
-    pub decision: String, // allow, deny, ask
+    pub outcome: String, // allow, deny, ask
 }
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq, EncodeLabelSet)]
@@ -49,6 +49,7 @@ impl Metrics {
         );
 
         let execution_duration_seconds = Family::<ExecutionLabels, Histogram>::new_with_constructor(|| {
+            // Buckets from 1ms to ~1s
             Histogram::new(exponential_buckets(0.001, 2.0, 10))
         });
         registry.register(

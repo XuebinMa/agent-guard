@@ -5,8 +5,15 @@
 
 use agent_guard_sdk::{
     guard::{ExecuteOutcome, Guard},
-    Context, GuardInput, Tool, TrustLevel,
+    Context, GuardInput, Tool, TrustLevel, Sandbox,
 };
+
+// ── Helper ─────────────────────────────────────────────────────────────────
+
+fn execute_noop(guard: &Guard, inp: &GuardInput) -> agent_guard_sdk::ExecuteResult {
+    let sandbox = agent_guard_sandbox::NoopSandbox;
+    guard.execute(inp, &sandbox)
+}
 
 // ── Policy fixtures ────────────────────────────────────────────────────────
 
@@ -63,7 +70,7 @@ fn input(payload: &str) -> GuardInput {
 fn e1_allowed_command_executes() {
     let guard = Guard::from_yaml(POLICY_READ_ONLY).expect("guard init");
     let inp = input(r#"{"command": "echo hello"}"#);
-    match guard.execute_noop(&inp).expect("no sandbox error") {
+    match execute_noop(&guard, &inp).expect("no sandbox error") {
         ExecuteOutcome::Executed { output } => {
             assert_eq!(output.exit_code, 0);
             assert_eq!(output.stdout.trim(), "hello");
@@ -80,7 +87,7 @@ fn e2_denied_command_not_executed() {
     // `rm -rf` matches the deny rule "rm -rf" — denied by policy.
     // The bash validator may also fire first (Warn → AskUser), so accept both.
     let inp = input(r#"{"command": "rm -rf /tmp/safe_to_delete_notexist"}"#);
-    match guard.execute_noop(&inp).expect("no sandbox error") {
+    match execute_noop(&guard, &inp).expect("no sandbox error") {
         ExecuteOutcome::Denied { .. } | ExecuteOutcome::AskRequired { .. } => {
             // Either a hard deny (policy rule matched) or an ask (validator Warn).
             // Either way: not executed. This is the key invariant.
@@ -104,7 +111,7 @@ fn e3_read_only_blocks_write_command() {
     let guard = Guard::from_yaml(POLICY_READ_ONLY).expect("guard init");
     // `dd` with of= is a raw write command the validator should block in read_only mode.
     let inp = input(r#"{"command": "dd if=/dev/zero of=/tmp/agent_guard_dd_test.bin bs=1 count=1"}"#);
-    match guard.execute_noop(&inp).expect("no sandbox error") {
+    match execute_noop(&guard, &inp).expect("no sandbox error") {
         ExecuteOutcome::Denied { .. } | ExecuteOutcome::AskRequired { .. } => {
             // Expected: validator blocked the write via `dd`.
         }
@@ -130,7 +137,7 @@ fn e4_workspace_write_allows_write() {
     let target = std::env::temp_dir().join("agent_guard_execute_test_e4.txt");
     let cmd = format!(r#"{{"command": "echo e4 > {}"}}"#, target.display());
     let inp = input(&cmd);
-    match guard.execute_noop(&inp).expect("no sandbox error") {
+    match execute_noop(&guard, &inp).expect("no sandbox error") {
         ExecuteOutcome::Executed { output } => {
             assert_eq!(output.exit_code, 0, "write should succeed in workspace_write mode");
         }
@@ -145,7 +152,7 @@ fn e4_workspace_write_allows_write() {
 fn e5_full_access_executes() {
     let guard = Guard::from_yaml(POLICY_FULL_ACCESS).expect("guard init");
     let inp = input(r#"{"command": "ls /tmp"}"#);
-    match guard.execute_noop(&inp).expect("no sandbox error") {
+    match execute_noop(&guard, &inp).expect("no sandbox error") {
         ExecuteOutcome::Executed { output } => {
             assert_eq!(output.exit_code, 0);
         }
@@ -167,7 +174,7 @@ fn e6_missing_command_field_in_payload() {
     // 1. check() returns Deny(MissingPayloadField) → Ok(Denied)
     // 2. check() allows (full_access, payload is valid JSON) → execute() fails to extract
     //    "command" → Err(SandboxError::ExecutionFailed)
-    match guard.execute_noop(&inp) {
+    match execute_noop(&guard, &inp) {
         Ok(ExecuteOutcome::Denied { .. }) => {
             // Policy denied due to MISSING_PAYLOAD_FIELD.
         }
@@ -203,7 +210,7 @@ fn e7_untrusted_context_downgrades_mode() {
         },
     };
     // Untrusted cannot access a full_access tool → Denied(InsufficientPermissionMode).
-    match guard.execute_noop(&inp).expect("no sandbox error") {
+    match execute_noop(&guard, &inp).expect("no sandbox error") {
         ExecuteOutcome::Denied { decision } => {
             assert!(matches!(decision, agent_guard_sdk::GuardDecision::Deny { .. }));
         }
@@ -218,7 +225,7 @@ fn e8_destructive_command_asks_user() {
     let guard = Guard::from_yaml(POLICY_FULL_ACCESS).expect("guard init");
     // `rm -rf` on a path that exists should trigger AskUser from the bash validator.
     let inp = input(r#"{"command": "rm -rf /tmp/agent_guard_test_dir_notexist"}"#);
-    match guard.execute_noop(&inp).expect("no sandbox error") {
+    match execute_noop(&guard, &inp).expect("no sandbox error") {
         ExecuteOutcome::AskRequired { .. } | ExecuteOutcome::Denied { .. } => {
             // Either is acceptable depending on whether validator Warn or policy Deny fires.
         }
@@ -250,7 +257,7 @@ fn e9_non_bash_tool_denied_or_allowed_by_policy() {
     // Non-bash tool: check() runs, result is some form of decision.
     // execute() will try to extract "command" from the payload, which is missing →
     // SandboxError::ExecutionFailed (only reached if policy Allow).
-    let result = guard.execute_noop(&inp);
+    let result = execute_noop(&guard, &inp);
     // We don't assert a specific outcome here — this is a contract sanity check.
     // The important invariant: no panic, no undefined behaviour.
     match result {

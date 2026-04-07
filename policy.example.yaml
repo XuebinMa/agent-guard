@@ -63,6 +63,13 @@ trust:
     # This is a safety floor that cannot be bypassed by tool-level mode settings.
     override_mode: read_only
 
+# Anomaly detection (Phase 4).
+anomaly:
+  enabled: true
+  rate_limit:
+    window_seconds: 60
+    max_calls: 30
+
 # Audit configuration.
 audit:
   enabled: true
