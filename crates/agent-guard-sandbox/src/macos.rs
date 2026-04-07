@@ -14,6 +14,20 @@ impl Sandbox for SeatbeltSandbox {
         "seatbelt"
     }
 
+    fn sandbox_type(&self) -> &'static str {
+        "macos-seatbelt"
+    }
+
+    fn capabilities(&self) -> crate::SandboxCapabilities {
+        crate::SandboxCapabilities {
+            syscall_filtering: false,
+            filesystem_isolation: true,
+            network_blocking: true,
+            resource_limits: false,
+            process_tree_cleanup: false,
+        }
+    }
+
     fn is_available(&self) -> bool {
         #[cfg(target_os = "macos")]
         {

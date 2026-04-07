@@ -51,6 +51,18 @@ pub struct SandboxOutput {
     pub exit_code: i32,
 }
 
+// ── SandboxCapabilities ────────────────────────────────────────────────────────
+
+/// Descriptive metadata about a sandbox's security features.
+#[derive(Debug, Clone, Serialize)]
+pub struct SandboxCapabilities {
+    pub syscall_filtering: bool,
+    pub filesystem_isolation: bool,
+    pub network_blocking: bool,
+    pub resource_limits: bool,
+    pub process_tree_cleanup: bool,
+}
+
 // ── SandboxResult ─────────────────────────────────────────────────────────────
 
 pub type SandboxResult = Result<SandboxOutput, SandboxError>;
@@ -67,7 +79,14 @@ pub type SandboxResult = Result<SandboxOutput, SandboxError>;
 /// Current default is `NoopSandbox` (passthrough): enforces policy but
 /// provides no OS-level syscall or filesystem isolation.
 pub trait Sandbox: Send + Sync {
+    /// Friendly display name for the sandbox instance.
     fn name(&self) -> &'static str;
+
+    /// Machine-readable identifier for the sandbox technology (e.g. "linux-seccomp").
+    fn sandbox_type(&self) -> &'static str;
+
+    /// Return detailed security capabilities for this sandbox.
+    fn capabilities(&self) -> SandboxCapabilities;
 
     /// Execute `command` under this sandbox with the given context.
     ///

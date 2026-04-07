@@ -12,6 +12,20 @@ impl Sandbox for NoopSandbox {
         "noop"
     }
 
+    fn sandbox_type(&self) -> &'static str {
+        "none"
+    }
+
+    fn capabilities(&self) -> super::SandboxCapabilities {
+        super::SandboxCapabilities {
+            syscall_filtering: false,
+            filesystem_isolation: false,
+            network_blocking: false,
+            resource_limits: false,
+            process_tree_cleanup: false,
+        }
+    }
+
     fn execute(&self, command: &str, context: &SandboxContext) -> SandboxResult {
         use std::process::Command;
         use std::time::{Duration, Instant};

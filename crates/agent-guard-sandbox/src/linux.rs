@@ -110,6 +110,20 @@ impl Sandbox for SeccompSandbox {
         "seccomp"
     }
 
+    fn sandbox_type(&self) -> &'static str {
+        "linux-seccomp"
+    }
+
+    fn capabilities(&self) -> crate::SandboxCapabilities {
+        crate::SandboxCapabilities {
+            syscall_filtering: true,
+            filesystem_isolation: false,
+            network_blocking: false,
+            resource_limits: false,
+            process_tree_cleanup: false,
+        }
+    }
+
     fn execute(&self, command: &str, context: &SandboxContext) -> SandboxResult {
         execute_with_seccomp(command, context, self.strict)
     }
