@@ -9,6 +9,7 @@ pub use linux::SeccompSandbox;
 
 use std::path::PathBuf;
 
+use serde::Serialize;
 use thiserror::Error;
 
 use agent_guard_core::PolicyMode;
@@ -33,7 +34,7 @@ pub struct SandboxContext {
 
 // ── SandboxOutput ─────────────────────────────────────────────────────────────
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct SandboxOutput {
     pub stdout: String,
     pub stderr: String,
@@ -70,7 +71,8 @@ pub trait Sandbox: Send + Sync {
 
 // ── SandboxError ──────────────────────────────────────────────────────────────
 
-#[derive(Debug, Error)]
+#[derive(Debug, Error, Serialize)]
+#[serde(tag = "error", rename_all = "snake_case")]
 pub enum SandboxError {
     #[error("sandbox not available on this platform: {0}")]
     NotAvailable(String),

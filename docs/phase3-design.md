@@ -4,43 +4,23 @@
 > Prerequisite: Phase 2 complete (Commit `320f025`)
 
 ## Overview
+Phase 3 expands the guard's intelligence with context-aware policy rules, enables zero-downtime policy updates via atomic reloading, and extends the SDK to the Node.js ecosystem.
 
-Phase 3 transitions `agent-guard` into a production-grade security middleware with fine-grained context awareness and hot-reloading capabilities.
+## M3.1: Context-aware Rules (DSL)
 
-### Refined Priorities (Post-PM Review)
-1. **M3.1: Context-aware Policy** (High)
-2. **M3.2: Atomic Policy Reloading** (High) - *Moved up*
-3. **M3.3: Node.js Binding** (Medium)
-4. **M3.4: macOS Experimental Sandbox** (Low) - *Reduced scope*
+Enables rules that trigger based on the caller's identity or environment.
 
----
-
-## M3.1: Context-aware Policy (Restricted DSL)
-
-Enable rules that reference the caller's context. Per PM feedback, we will use a **restricted DSL** rather than a full scripting language to maintain auditability and performance.
-
-### Implementation Strategy
-- **Engine**: Use `evalexpr` for lightweight boolean expression evaluation.
-- **Constraints (Hard)**:
-    - **Context-Only**: Conditions evaluate only against `Context` fields. **No access to tool payload.**
-    - **No functions**, loops, or side-effects.
-    - **AOT Compilation**: Expressions are compiled and validated once at policy load time.
-    - **Fail-fast**: Invalid expressions or unknown variables cause policy load failure.
-
-### Supported Variable Whitelist
-| Variable | Description |
-|---|---|
-| `actor` | Name of the user/process initiating the call. |
-| `agent_id` | Identifier of the specific agent. |
-| `session_id` | Unique ID for the current session. |
-| `trust_level` | `untrusted`, `trusted`, or `admin`. |
-| `tool` | Tool identifier (e.g., `bash`, `custom:my_tool`). |
-| `working_directory` | Effective working directory. |
-
-### Supported Operators
-- Comparison: `==`, `!=`
-- Logic: `&&`, `||`, `!`
-- **Note**: Membership operator `in`, array literals, and comparison operators like `>`, `<`, `>=`, `<=` are **NOT** supported in the initial release to keep the DSL minimal and strictly string/boolean-based.
+### Implementation
+- **Engine**: Use the `evalexpr` crate for restricted expression evaluation.
+- **Whitelist Variables**: `actor`, `agent_id`, `session_id`, `trust_level`, `tool`, `working_directory`.
+- **Supported Operators**:
+  - Comparison: `==`, `!=`
+  - Logic: `&&`, `||`, `!`
+- **Constraints**:
+  - **No Functions**: `regex_match()` or `to_lower()` are strictly prohibited.
+  - **No Arrays**: `val in ['a', 'b']` is not supported (use `||` expansion).
+  - **No Side-effects**: Assignment or mutable state is impossible by design.
+- **Fail-fast**: Expressions are compiled and validated during policy load. Invalid expressions prevent the engine from starting.
 
 ---
 
@@ -62,35 +42,35 @@ Enables updating security rules without restarting long-running agent processes.
 - **Audit & Versioning**:
     - Every `AuditEvent` includes `policy_version` (SHA-256 hash of the YAML).
     - `Guard::policy_version()` returns the current version.
-- **Logging**: Reload success/failure events are logged to `stderr` with timestamps.
+- **Structured Auditing**: 
+    - Reload events are recorded as `PolicyReload` records in the audit log.
+    - Includes `status` (success/failure), `old_version`, `new_version`, and `error` (if failed).
 
 ---
 
-## M3.3: Node.js Binding (Minimal API)
+## M3.3: Node.js Support (napi-rs)
 
-Expand the ecosystem to JavaScript/TypeScript using `napi-rs`.
+Expose the `agent-guard` SDK to the JavaScript/TypeScript ecosystem.
 
-### Minimal API Surface
-- `check(tool, payload, context)`: Returns a `Decision` object.
-- `execute(input, sandbox)`: **Async** wrapper for command execution.
-- `reload(yaml)`: Hot-reload the policy.
-- TypeScript definitions included.
+### Deliverables
+- `agent-guard-node` crate using `napi-rs`.
+- TypeScript definitions (`.d.ts`).
+- Local `npm install` support for testing.
 
 ---
 
-## M3.4: macOS Experimental Sandbox (Best-effort)
+## M3.4: macOS Sandbox (Experimental)
 
-**Conservative Positioning**: This is an experimental adapter, not a guarantee of total isolation.
+Introduction of a best-effort sandbox for macOS using the native `sandbox-exec` (Seatbelt) facility.
 
 ### Constraints
-- **Feature Flag**: `macos-sandbox` (default off).
-- **Tooling**: Uses `sandbox-exec` (Seatbelt).
-- **Known Limitations**: Deprecated by Apple; requires SIP compatibility; no guarantees of future-proofing.
-- **Audit**: Execution metadata will explicitly mark the sandbox backend used (`seccomp`, `sandbox-exec`, or `noop`).
+- Lacks the fine-grained syscall filtering of Linux Seccomp.
+- Focused on filesystem isolation (limiting `bash` to the workspace).
+- Opt-in via feature flag: `macos-sandbox`.
 
 ---
 
-## Roadmap (Updated)
+## Roadmap
 
 | Milestone | Deliverable | Priority | Status |
 |---|---|---|---|

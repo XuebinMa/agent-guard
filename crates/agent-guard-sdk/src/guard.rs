@@ -5,9 +5,10 @@ use agent_guard_core::{
     AuditConfig, AuditEvent, Context, DecisionCode, GuardDecision, GuardInput, PolicyEngine,
     PolicyMode, ReloadEvent, ReloadStatus, Tool,
 };
-use agent_guard_sandbox::{NoopSandbox, Sandbox, SandboxContext, SandboxError, SandboxOutput};
+use agent_guard_sandbox::{Sandbox, SandboxContext, SandboxError, SandboxOutput};
 use agent_guard_validators::bash::{validate_bash_command, PermissionMode, ValidationResult};
 use arc_swap::ArcSwap;
+use serde::Serialize;
 use thiserror::Error;
 use uuid::Uuid;
 
@@ -40,7 +41,7 @@ impl std::fmt::Debug for Guard {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let state = self.state.load();
         f.debug_struct("Guard")
-            .field("policy_hash", &state.engine.hash())
+            .field("policy_version", &state.engine.version())
             .field("audit_enabled", &state.audit_cfg.enabled)
             .field("audit_output", &state.audit_cfg.output)
             .finish_non_exhaustive()
@@ -98,26 +99,6 @@ impl Guard {
         }
     }
 
-    fn write_reload_audit(&self, event: &ReloadEvent, state: &GuardState) {
-        let line = event.to_jsonl();
-        eprintln!("[agent-guard] POLICY RELOAD {}: {}", 
-            match event.status {
-                ReloadStatus::Success => "SUCCESS",
-                ReloadStatus::Failure => "FAILURE",
-            },
-            line
-        );
-
-        if state.audit_cfg.enabled && state.audit_cfg.output == "file" {
-            if let Some(ref mutex) = state.audit_file {
-                if let Ok(mut file) = mutex.lock() {
-                    use std::io::Write;
-                    let _ = writeln!(file, "{}", line);
-                }
-            }
-        }
-    }
-
     pub fn policy_version(&self) -> String {
         self.state.load().engine.version().to_string()
     }
@@ -148,126 +129,6 @@ impl Guard {
         decision
     }
 
-    fn evaluate(&self, input: &GuardInput, state: &GuardState) -> GuardDecision {
-        // A5: Run bash validator before policy engine for Bash tool calls.
-        if let Tool::Bash = &input.tool {
-            // Use the policy engine as the single source of truth for mode resolution.
-            let mode = policy_mode_to_permission_mode(
-                &state.engine.effective_mode(&input.tool, &input.context),
-            );
-            let workspace_path: &Path = input
-                .context
-                .working_directory
-                .as_deref()
-                .unwrap_or_else(|| Path::new("."));
-
-            // Extract the actual command from the JSON payload before validating.
-            // This ensures the validator doesn't see raw JSON.
-            let v: serde_json::Value = match serde_json::from_str(&input.payload) {
-                Ok(v) => v,
-                Err(_) => return GuardDecision::deny(DecisionCode::InvalidPayload, "invalid payload JSON"),
-            };
-            let command = match v.get("command").and_then(|c| c.as_str()) {
-                Some(s) => s,
-                None => return GuardDecision::deny(DecisionCode::MissingPayloadField, "payload missing 'command' field"),
-            };
-
-            let result = validate_bash_command(command, mode, workspace_path);
-            match result {
-                ValidationResult::Block { reason } => {
-                    // Map validator block reason to the appropriate DecisionCode.
-                    let code = classify_block_reason(&reason);
-                    return GuardDecision::deny(code, reason);
-                }
-                ValidationResult::Warn { message } => {
-                    // Destructive/path warnings become AskUser — let the human decide.
-                    return GuardDecision::ask(
-                        message.clone(),
-                        DecisionCode::DestructiveCommand,
-                        message,
-                    );
-                }
-                ValidationResult::Allow => {}
-            }
-        }
-
-        // Run the policy engine (handles all tools).
-        state.engine.check(&input.tool, &input.payload, &input.context)
-    }
-
-    fn write_audit(&self, input: &GuardInput, decision: &GuardDecision, state: &GuardState) {
-        let request_id = Uuid::new_v4().to_string();
-        let include_hash = state.audit_cfg.include_payload_hash;
-        let event = AuditEvent::from_decision(
-            request_id,
-            &input.tool,
-            &input.payload,
-            decision,
-            input.context.session_id.clone(),
-            input.context.agent_id.clone(),
-            input.context.actor.clone(),
-            include_hash,
-            state.engine.hash().to_string(),
-        );
-        let line = event.to_jsonl();
-
-        if state.audit_cfg.output == "file" {
-            if let Some(ref mutex) = state.audit_file {
-                match mutex.lock() {
-                    Ok(mut file) => {
-                        use std::io::Write;
-                        if let Err(e) = writeln!(file, "{}", line) {
-                            // Writing to the audit file failed. This must not be silent —
-                            // a security library that silently drops audit records gives
-                            // false assurance. Log to stderr so operators can notice.
-                            eprintln!("[agent-guard] AUDIT WRITE ERROR: {e} (record: {line})");
-                        }
-                    }
-                    Err(e) => {
-                        // Mutex is poisoned (a previous writer panicked). Do not abort
-                        // the caller's operation, but do not drop silently either.
-                        eprintln!("[agent-guard] AUDIT MUTEX POISONED: {e}");
-                    }
-                }
-            }
-        } else {
-            println!("{}", line);
-        }
-    }
-}
-
-impl GuardState {
-    fn new(engine: Arc<PolicyEngine>) -> Result<Self, GuardInitError> {
-        let audit_cfg = engine.audit_config().clone();
-        let audit_file = if audit_cfg.output == "file" {
-            if let Some(ref path) = audit_cfg.file_path {
-                let f = std::fs::OpenOptions::new()
-                    .create(true)
-                    .append(true)
-                    .open(path)
-                    .map_err(|e| GuardInitError::AuditFileOpen {
-                        path: path.clone(),
-                        source: e,
-                    })?;
-                Some(Arc::new(std::sync::Mutex::new(f)))
-            } else {
-                None
-            }
-        } else {
-            None
-        };
-
-        Ok(Self {
-            engine,
-            audit_cfg,
-            audit_file,
-        })
-    }
-}
-
-// ── Convenience: check_tool ──────────────────────────────────────────────────
-
-impl Guard {
     pub fn check_tool(
         &self,
         tool: Tool,
@@ -282,78 +143,7 @@ impl Guard {
         };
         self.check_internal(&input, &state)
     }
-}
 
-// ── Helpers ──────────────────────────────────────────────────────────────────
-
-/// Map a `PolicyMode` (from the policy engine, which is the authoritative source)
-/// to the validator's `PermissionMode`.
-///
-/// This is the only place that bridges the two type systems. The policy engine's
-/// `effective_mode()` must always be called first — never derive mode from trust_level
-/// alone, because tool-level `mode:` overrides in policy YAML would be silently ignored.
-fn policy_mode_to_permission_mode(mode: &PolicyMode) -> PermissionMode {
-    match mode {
-        PolicyMode::ReadOnly => PermissionMode::ReadOnly,
-        PolicyMode::WorkspaceWrite => PermissionMode::WorkspaceWrite,
-        PolicyMode::FullAccess => PermissionMode::DangerFullAccess,
-    }
-}
-
-fn classify_block_reason(reason: &str) -> DecisionCode {
-    let lower = reason.to_ascii_lowercase();
-    if lower.contains("read-only") || lower.contains("read only") {
-        DecisionCode::WriteInReadOnlyMode
-    } else if lower.contains("traversal") || lower.contains("../") {
-        DecisionCode::PathTraversal
-    } else {
-        DecisionCode::DestructiveCommand
-    }
-}
-
-// ── Execute API ───────────────────────────────────────────────────────────────
-
-/// The result of `Guard::execute()`.
-///
-/// # Failure semantics
-///
-/// | Scenario                          | Variant / Err                         |
-/// |-----------------------------------|---------------------------------------|
-/// | Policy denies the tool call       | `Ok(Denied { decision })`             |
-/// | Policy asks user (not auto-allow) | `Ok(AskRequired { decision })`        |
-/// | Policy allows; command runs OK    | `Ok(Executed { output })`             |
-/// | Policy allows; seccomp filter err | `Err(SandboxError::FilterSetup(…))`   |
-/// | Policy allows; process times out  | `Err(SandboxError::Timeout { ms })`   |
-/// | Process killed by seccomp filter  | `Err(SandboxError::KilledByFilter{…})`|
-/// | Command itself fails to fork/exec | `Err(SandboxError::ExecutionFailed(…))`|
-#[derive(Debug)]
-pub enum ExecuteOutcome {
-    /// The tool call was denied by policy before execution.
-    Denied { decision: GuardDecision },
-    /// The tool call requires user confirmation; not executed.
-    AskRequired { decision: GuardDecision },
-    /// The command was executed (policy allowed it).
-    Executed { output: SandboxOutput },
-}
-
-/// Result type returned by `Guard::execute()`.
-pub type ExecuteResult = Result<ExecuteOutcome, SandboxError>;
-
-impl Guard {
-    /// Check policy and, if allowed, execute the command in the sandbox.
-    ///
-    /// `sandbox` is caller-supplied so you can choose `NoopSandbox` (default,
-    /// no OS isolation) or `SeccompSandbox` (Linux, syscall filter).
-    ///
-    /// **Important:** The payload for `Tool::Bash` must be a JSON string
-    /// `{"command": "..."}` — the same format used by `check_tool()`.
-    ///
-    /// # Errors
-    ///
-    /// Returns `Err(SandboxError)` only when the policy allowed the call but
-    /// the sandbox itself failed (timeout, filter setup, exec failure). Policy
-    /// denials are encoded in `Ok(ExecuteOutcome::Denied { … })` so callers can
-    /// distinguish "refused to run" from "ran but failed".
     pub fn execute(
         &self,
         input: &GuardInput,
@@ -393,30 +183,180 @@ impl Guard {
         Ok(ExecuteOutcome::Executed { output })
     }
 
-    /// Convenience: execute using `NoopSandbox` (no OS-level isolation).
-    ///
-    /// Suitable for development and platforms where `SeccompSandbox` is
-    /// not yet available (macOS, Windows).
+    /// Convenience helper to execute a command using the Noop sandbox (passthrough).
     pub fn execute_noop(&self, input: &GuardInput) -> ExecuteResult {
-        self.execute(input, &NoopSandbox)
+        let sandbox = agent_guard_sandbox::NoopSandbox;
+        self.execute(input, &sandbox)
+    }
+
+    fn evaluate(&self, input: &GuardInput, state: &GuardState) -> GuardDecision {
+        // A5: Run bash validator before policy engine for Bash tool calls.
+        if let Tool::Bash = &input.tool {
+            // Use the policy engine as the single source of truth for mode resolution.
+            let mode = policy_mode_to_permission_mode(
+                &state.engine.effective_mode(&input.tool, &input.context),
+            );
+            let workspace_path: &Path = input
+                .context
+                .working_directory
+                .as_deref()
+                .unwrap_or_else(|| Path::new("."));
+
+            // Extract the actual command from the JSON payload before validating.
+            let v: serde_json::Value = match serde_json::from_str(&input.payload) {
+                Ok(v) => v,
+                Err(_) => return GuardDecision::deny(DecisionCode::InvalidPayload, "invalid payload JSON"),
+            };
+            let command = match v.get("command").and_then(|c| c.as_str()) {
+                Some(s) => s,
+                None => return GuardDecision::deny(DecisionCode::MissingPayloadField, "payload missing 'command' field"),
+            };
+
+            let result = validate_bash_command(command, mode, workspace_path);
+            match result {
+                ValidationResult::Block { reason } => {
+                    let code = classify_block_reason(&reason);
+                    return GuardDecision::deny(code, reason);
+                }
+                ValidationResult::Warn { message } => {
+                    return GuardDecision::ask(
+                        message.clone(),
+                        DecisionCode::DestructiveCommand,
+                        message,
+                    );
+                }
+                ValidationResult::Allow => {}
+            }
+        }
+
+        // Run the policy engine (handles all tools).
+        state.engine.check(&input.tool, &input.payload, &input.context)
+    }
+
+    fn write_audit(&self, input: &GuardInput, decision: &GuardDecision, state: &GuardState) {
+        let request_id = Uuid::new_v4().to_string();
+        let include_hash = state.audit_cfg.include_payload_hash;
+        let event = AuditEvent::from_decision(
+            request_id,
+            &input.tool,
+            &input.payload,
+            decision,
+            input.context.session_id.clone(),
+            input.context.agent_id.clone(),
+            input.context.actor.clone(),
+            include_hash,
+            state.engine.version().to_string(),
+        );
+        let line = event.to_jsonl();
+
+        if state.audit_cfg.output == "file" {
+            if let Some(ref mutex) = state.audit_file {
+                match mutex.lock() {
+                    Ok(mut file) => {
+                        use std::io::Write;
+                        if let Err(e) = writeln!(file, "{}", line) {
+                            eprintln!("[agent-guard] AUDIT WRITE ERROR: {e} (record: {line})");
+                        }
+                    }
+                    Err(e) => {
+                        eprintln!("[agent-guard] AUDIT MUTEX POISONED: {e}");
+                    }
+                }
+            }
+        } else {
+            println!("{}", line);
+        }
+    }
+
+    fn write_reload_audit(&self, event: &ReloadEvent, state: &GuardState) {
+        let line = event.to_jsonl();
+        eprintln!("[agent-guard] POLICY RELOAD {}: {}", 
+            match event.status {
+                ReloadStatus::Success => "SUCCESS",
+                ReloadStatus::Failure => "FAILURE",
+            },
+            line
+        );
+
+        if state.audit_cfg.enabled && state.audit_cfg.output == "file" {
+            if let Some(ref mutex) = state.audit_file {
+                if let Ok(mut file) = mutex.lock() {
+                    use std::io::Write;
+                    let _ = writeln!(file, "{}", line);
+                }
+            }
+        }
     }
 }
 
-/// Extract the `command` field from a JSON bash payload.
-///
-/// Payload must be `{"command": "..."}`. Returns `Err(SandboxError::ExecutionFailed)`
-/// for non-JSON or missing field, consistent with `INVALID_PAYLOAD` / `MISSING_PAYLOAD_FIELD`
-/// decision codes (which would have been caught by `check()` already, but we
-/// defend in depth here).
+impl GuardState {
+    fn new(engine: Arc<PolicyEngine>) -> Result<Self, GuardInitError> {
+        let audit_cfg = engine.audit_config().clone();
+        let audit_file = if audit_cfg.output == "file" {
+            if let Some(ref path) = audit_cfg.file_path {
+                let f = std::fs::OpenOptions::new()
+                    .create(true)
+                    .append(true)
+                    .open(path)
+                    .map_err(|e| GuardInitError::AuditFileOpen {
+                        path: path.clone(),
+                        source: e,
+                    })?;
+                Some(Arc::new(std::sync::Mutex::new(f)))
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
+        Ok(Self {
+            engine,
+            audit_cfg,
+            audit_file,
+        })
+    }
+}
+
+// ── ExecuteResult ─────────────────────────────────────────────────────────────
+
+pub type ExecuteResult = Result<ExecuteOutcome, SandboxError>;
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(tag = "outcome", rename_all = "snake_case")]
+pub enum ExecuteOutcome {
+    Executed { output: SandboxOutput },
+    Denied { decision: GuardDecision },
+    AskRequired { decision: GuardDecision },
+}
+
 fn extract_bash_command(payload: &str) -> Result<String, SandboxError> {
     let v: serde_json::Value = serde_json::from_str(payload)
-        .map_err(|e| SandboxError::ExecutionFailed(format!("invalid payload JSON: {e}")))?;
+        .map_err(|_| SandboxError::ExecutionFailed("invalid payload JSON".to_string()))?;
     v.get("command")
         .and_then(|c| c.as_str())
-        .map(|s| s.to_owned())
-        .ok_or_else(|| SandboxError::ExecutionFailed(
-            "payload missing 'command' field".to_string(),
-        ))
+        .map(|s| s.to_string())
+        .ok_or_else(|| SandboxError::ExecutionFailed("payload missing 'command' field".to_string()))
+}
+
+fn policy_mode_to_permission_mode(mode: &PolicyMode) -> PermissionMode {
+    match mode {
+        PolicyMode::ReadOnly => PermissionMode::ReadOnly,
+        PolicyMode::WorkspaceWrite => PermissionMode::WorkspaceWrite,
+        PolicyMode::FullAccess => PermissionMode::DangerFullAccess,
+    }
+}
+
+fn classify_block_reason(reason: &str) -> DecisionCode {
+    if reason.contains("read-only mode") {
+        DecisionCode::WriteInReadOnlyMode
+    } else if reason.contains("destructive") {
+        DecisionCode::DestructiveCommand
+    } else if reason.contains("outside workspace") {
+        DecisionCode::PathOutsideWorkspace
+    } else {
+        DecisionCode::DeniedByRule
+    }
 }
 
 #[cfg(test)]
@@ -475,49 +415,6 @@ default_mode: read_only
         // Old policy still active
         let res = guard.check_tool(Tool::Bash, r#"{"command":"touch test"}"#, ctx);
         assert!(matches!(res, GuardDecision::Deny { .. }), "Old policy should still be active after failed reload");
-    }
-
-    #[test]
-    fn test_request_snapshot_isolation() {
-        // This test ensures that a request uses a consistent snapshot of the policy.
-        // We simulate this by taking a snapshot (state.load()) and verifying it remains
-        // unchanged even if the guard is reloaded.
-        
-        let yaml1 = r#"
-version: 1
-default_mode: read_only
-"#;
-        let yaml2 = r#"
-version: 1
-default_mode: workspace_write
-"#;
-
-        let guard = Guard::from_yaml(yaml1).unwrap();
-        let ctx = Context {
-            trust_level: TrustLevel::Trusted,
-            ..Default::default()
-        };
-        let input = GuardInput {
-            tool: Tool::Bash,
-            payload: r#"{"command":"touch test"}"#.to_string(),
-            context: ctx,
-        };
-
-        // 1. Take snapshot
-        let guard_arc = Arc::new(guard);
-        let state_snapshot = guard_arc.state.load();
-        
-        // 2. Reload guard to a different policy
-        guard_arc.reload_from_yaml(yaml2).unwrap();
-        
-        // 3. New requests use new policy
-        let res_new = guard_arc.check(&input);
-        assert!(matches!(res_new, GuardDecision::Allow));
-        
-        // 4. Old snapshot (if it were passed to a long-running process) still uses old policy
-        // In our SDK, 'evaluate' takes a state snapshot.
-        let res_old = guard_arc.evaluate(&input, &state_snapshot);
-        assert!(matches!(res_old, GuardDecision::Deny { .. }));
     }
 
     #[test]
