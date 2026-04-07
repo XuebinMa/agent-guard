@@ -43,6 +43,27 @@ The Windows sandbox is **disabled by default** and requires a feature flag.
 - **Feature Flag**: You must enable the `windows-sandbox` feature in `agent-guard-sandbox` or `agent-guard-sdk`.
 - **Default Fallback**: If the feature is not enabled, or if running on a non-Linux/macOS/Windows platform, the `Guard::execute_default()` API will fall back to `NoopSandbox`.
 
+## Setup & Configuration
+
+To use the Windows sandbox in your project:
+
+1.  **Enable the feature** in your `Cargo.toml`:
+    ```toml
+    [dependencies]
+    agent-guard-sdk = { version = "0.1", features = ["windows-sandbox"] }
+    ```
+2.  **Initialize the Guard**:
+    ```rust
+    let guard = Guard::from_yaml("version: 1")?;
+    // On Windows, this will now automatically use JobObjectSandbox
+    let outcome = guard.execute_default(&input)?;
+    ```
+
+## Known Win32 API Limitations
+
+- **`JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE`**: Used to ensure that if the agent or orchestrator crashes, all sandboxed tool processes are immediately terminated by the Windows kernel.
+- **Job Object Nesting**: On older Windows versions (pre-Windows 8), Job Objects cannot be nested. This implementation assumes a modern Windows environment where nesting is supported.
+
 ## Security Recommendation
 
 For Windows deployments, we recommend:

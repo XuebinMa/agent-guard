@@ -10,7 +10,7 @@ The SDK exports real-time metrics via the `prometheus-client` registry.
 ### Metrics List
 | Metric Name | Type | Labels | Description |
 | :--- | :--- | :--- | :--- |
-| `agent_guard_policy_checks_total` | Counter | `tool`, `decision` | Total number of tool calls evaluated. Decisions: `allow`, `deny`, `ask`. |
+| `agent_guard_decision_total` | Counter | `tool`, `outcome` | Total number of tool calls evaluated. Outcomes: `allow`, `deny`, `ask`. |
 | `agent_guard_execution_duration_seconds` | Histogram | `tool`, `sandbox_type` | Time taken to execute a tool in a sandbox. |
 | `agent_guard_anomaly_triggered_total` | Counter | `tool` | Number of calls blocked by the frequency-based anomaly detector. |
 
