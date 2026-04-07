@@ -1,6 +1,8 @@
 # macOS Experimental Sandbox: Seatbelt (`sandbox-exec`)
 
-The macOS sandbox implementation in `agent-guard` is an **experimental best-effort adapter** based on Apple's Seatbelt framework (via the `/usr/bin/sandbox-exec` CLI).
+The macOS sandbox implementation in `agent-guard` is an **experimental best-effort adapter** based on Apple's Seatbelt framework (via the `/usr/bin/sandbox-exec` CLI). 
+
+**Important**: This is not equivalent to the Linux seccomp sandbox and should not be treated as the same security boundary.
 
 ## ⚠️ Threat Model & Limitations
 
@@ -12,6 +14,18 @@ While the Linux implementation uses `seccomp-bpf` for fine-grained syscall filte
 4.  **No Syscall Filtering**: Seatbelt profiles in this implementation do not restrict specific syscalls. It relies entirely on path-based filesystem rules.
 5.  **Signal/Process Exposure**: The sandbox allows `(allow process*)` and `(allow signal)`, meaning it does not prevent the sandboxed process from seeing or signaling other processes owned by the same user.
 
+## Use Cases
+
+### Suitable for:
+- Local development and testing.
+- Best-effort workspace write isolation.
+- Demos and experimentation.
+
+### NOT suitable for:
+- Handling highly sensitive secrets (e.g., SSH keys, credentials).
+- Hostile multi-tenant execution.
+- Strong exfiltration resistance.
+
 ## Comparison: Linux vs. macOS
 
 | Feature | Linux (Seccomp) | macOS (Seatbelt) |
@@ -21,6 +35,21 @@ While the Linux implementation uses `seccomp-bpf` for fine-grained syscall filte
 | **Read Access** | Restricted by policy | **Global** (user-level) |
 | **Write Access** | Restricted to Workspace | Restricted to Workspace |
 | **Security Level** | Production-ready | **Experimental / Prototype** |
+
+## Usage & Default Behavior
+
+The macOS sandbox is **disabled by default** to avoid dependency on legacy system tools unless explicitly requested.
+
+- **Feature Flag**: You must enable the `macos-sandbox` feature in `agent-guard-sandbox` or `agent-guard-sdk`.
+- **Default Fallback**: If the feature is not enabled, or if running on a non-Linux/macOS platform, the `Guard::execute_default()` API will fall back to `NoopSandbox` (no OS-level isolation).
+- **Manual Execution**: You can always manually instantiate `SeatbeltSandbox` if the feature is enabled.
+
+## Security Recommendation
+
+For macOS deployments, we recommend:
+1. Using the sandbox in conjunction with **strict policy allowlists** and **comprehensive audit logging**.
+2. Never treating the `SeatbeltSandbox` as a sufficient standalone security boundary.
+3. Complementing it with user-level permissions (running the agent under a dedicated, restricted system user).
 
 ## Implementation Details
 
