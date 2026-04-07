@@ -54,6 +54,10 @@ tools:
     deny:
       - prefix: "http://169.254.169.254"
 
+trust:
+  untrusted:
+    override_mode: read_only
+
 audit:
   enabled: true
   output: stdout

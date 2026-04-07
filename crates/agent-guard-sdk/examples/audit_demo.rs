@@ -25,9 +25,9 @@ fn main() {
     let guard = Guard::from_yaml(POLICY).expect("policy parse failed");
 
     let inputs: &[(&str, TrustLevel)] = &[
-        ("ls -la", TrustLevel::Trusted),
-        ("rm -rf /tmp/cache", TrustLevel::Trusted),
-        ("git push origin main", TrustLevel::Trusted),
+        (r#"{"command":"ls -la"}"#, TrustLevel::Trusted),
+        (r#"{"command":"rm -rf /tmp/cache"}"#, TrustLevel::Trusted),
+        (r#"{"command":"git push origin main"}"#, TrustLevel::Trusted),
     ];
 
     for (cmd, trust) in inputs {

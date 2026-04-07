@@ -1,5 +1,8 @@
 # Global Threat Model — agent-guard
 
+> Status: **Phase 4 v1 Complete**  
+> This document is a foundation for ongoing security auditing and represents the first comprehensive threat model for the agent-guard project.
+
 `agent-guard` is designed to provide security and oversight for AI agents executing tools. This document describes the security boundaries, assumed trust, and known limitations across supported platforms.
 
 ## 🛡️ Security Goals
@@ -8,6 +11,9 @@
 2.  **Audit Trail**: Provide a non-repudiable log of all tool call decisions and outcomes.
 3.  **Process Isolation**: Execute potentially dangerous tools (e.g., `bash`) in a secure, restricted environment.
 4.  **Resource Limiting**: Prevent agents from exhausting system resources (CPU, memory, file handles).
+
+### 4. Anomaly Detection (Phase 4)
+`agent-guard` includes frequency-based anomaly detection to prevent an agent from rapidly executing tool calls (e.g., in a loop). By default, it limits a single actor to 30 calls per minute. This protects against some forms of resource exhaustion and accidental destructive loops.
 
 ## 🛡️ Trust Boundaries
 

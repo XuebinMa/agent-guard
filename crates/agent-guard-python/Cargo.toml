@@ -11,4 +11,5 @@ crate-type = ["cdylib"]
 
 [dependencies]
 agent-guard-sdk = { path = "../agent-guard-sdk" }
+tracing-subscriber = { workspace = true }
 pyo3 = { version = "0.28", features = ["abi3-py310"] }

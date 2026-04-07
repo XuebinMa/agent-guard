@@ -34,7 +34,7 @@ impl AnomalyDetector {
         let now = Instant::now();
         let minute_ago = now - Duration::from_secs(60);
 
-        let calls = history.entry(actor.to_string()).or_insert_with(Vec::new());
+        let calls = history.entry(actor.to_string()).or_insert_with(|| Vec::new());
         
         // Cleanup old calls
         calls.retain(|&t| t > minute_ago);

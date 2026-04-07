@@ -4,6 +4,7 @@ build-backend = "maturin"
 
 [project]
 name = "agent-guard"
+version = "0.1.0"
 requires-python = ">=3.10"
 description = "Policy-driven security enforcement SDK for AI agents"
 license = { text = "MIT" }
@@ -20,7 +21,6 @@ classifiers = [
 
 [tool.maturin]
 manifest-path = "crates/agent-guard-python/Cargo.toml"
-python-source = "python"
 module-name = "agent_guard"
 # abi3 wheels are compatible with all CPython >= 3.10
 features = ["pyo3/abi3-py310"]

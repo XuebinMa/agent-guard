@@ -131,7 +131,7 @@ pub fn parse_trust(trust_str: &str) -> PyResult<TrustLevel> {
 ///     guard = agent_guard.Guard.from_yaml(\"version: 1\\ndefault_mode: workspace_write\\n\")
 ///     d = guard.check(\"bash\", \"ls -la\", trust_level=\"trusted\")
 ///     assert d.is_allow()
-#[pyclass(module = "agent_guard")]
+#[pyclass(name = "Guard", module = "agent_guard")]
 pub struct PyGuard {
     inner: Guard,
 }

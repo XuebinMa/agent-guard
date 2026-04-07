@@ -36,5 +36,12 @@ fn agent_guard(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<Decision>()?;
     m.add("GuardError", m.py().get_type::<GuardError>())?;
     m.add("__version__", env!("CARGO_PKG_VERSION"))?;
+
+    #[pyfn(m)]
+    #[pyo3(name = "init_tracing")]
+    fn init_tracing_py() {
+        let _ = tracing_subscriber::fmt::try_init();
+    }
+
     Ok(())
 }

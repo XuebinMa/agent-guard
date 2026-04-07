@@ -21,6 +21,7 @@ glob = "0.3"
 evalexpr = "11"
 arc-swap = "1.7"
 tracing = "0.1"
+tracing-subscriber = "0.3"
 prometheus-client = "0.22"
 windows-sys = { version = "0.52", features = [
     "Win32_Foundation",

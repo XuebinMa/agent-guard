@@ -1,9 +1,9 @@
-use std::sync::Arc;
 use prometheus_client::encoding::EncodeLabelSet;
 use prometheus_client::metrics::counter::Counter;
 use prometheus_client::metrics::family::Family;
 use prometheus_client::metrics::histogram::{exponential_buckets, Histogram};
 use prometheus_client::registry::Registry;
+use std::sync::{Arc, OnceLock};
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq, EncodeLabelSet)]
 pub struct DecisionLabels {
@@ -16,8 +16,6 @@ pub struct ExecutionLabels {
     pub tool: String,
     pub sandbox: String,
 }
-
-use std::sync::{Arc, OnceLock};
 
 pub struct Metrics {
     pub registry: Registry,
