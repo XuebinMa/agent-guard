@@ -1,6 +1,7 @@
 pub mod guard;
 pub mod metrics;
 pub mod anomaly;
+pub use anomaly::{get_detector, AnomalyDetector, AnomalyStatus};
 
 pub use metrics::{get_metrics, Metrics};
 pub use prometheus_client;

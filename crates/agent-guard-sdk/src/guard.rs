@@ -144,31 +144,25 @@ impl Guard {
         let actor = input.context.actor.as_deref().unwrap_or("unknown");
         let anomaly_cfg = state.engine.anomaly_config();
 
-        if crate::anomaly::get_detector().check(actor, anomaly_cfg) {
-            let decision = GuardDecision::deny(
-                DecisionCode::AnomalyDetected,
-                format!(
-                    "anomaly detected: tool call frequency exceeded limit ({} calls / {}s)",
-                    anomaly_cfg.rate_limit.max_calls, anomaly_cfg.rate_limit.window_seconds
-                ),
-            );
-
-            // P1-1: Record anomaly metric
-            metrics.anomaly_triggered_total.get_or_create(&crate::metrics::ToolLabels {
-                agent_id: agent_id.clone(),
-                tool: input.tool.name().to_string(),
-            }).inc();
-            
-            metrics.decision_total.get_or_create(&crate::metrics::DecisionLabels {
-                agent_id: agent_id.clone(),
-                tool: input.tool.name().to_string(),
-                outcome: "deny".to_string(),
-            }).inc();
-
-            if state.audit_cfg.enabled {
-                self.write_audit(input, &decision, state);
+        match crate::anomaly::get_detector().check(actor, anomaly_cfg) {
+            crate::anomaly::AnomalyStatus::Normal => {}
+            crate::anomaly::AnomalyStatus::RateLimited => {
+                let decision = GuardDecision::deny(
+                    DecisionCode::AnomalyDetected,
+                    format!(
+                        "anomaly detected: tool call frequency exceeded limit ({} calls / {}s)",
+                        anomaly_cfg.rate_limit.max_calls, anomaly_cfg.rate_limit.window_seconds
+                    ),
+                );
+                return self.finalize_check(input, &decision, state, &agent_id, "deny");
             }
-            return decision;
+            crate::anomaly::AnomalyStatus::Locked => {
+                let decision = GuardDecision::deny(
+                    DecisionCode::AgentLocked,
+                    "anomaly detected: agent locked due to too many security denials (Deny Fuse)",
+                );
+                return self.finalize_check(input, &decision, state, &agent_id, "deny");
+            }
         }
 
         let decision = self.evaluate(input, state);
@@ -176,19 +170,45 @@ impl Guard {
         // M4.2: Record metrics
         let outcome = match &decision {
             GuardDecision::Allow => "allow",
-            GuardDecision::Deny { .. } => "deny",
+            GuardDecision::Deny { .. } => {
+                // Report denial to trigger Deny Fuse
+                crate::anomaly::get_detector().report_denial(actor, anomaly_cfg);
+                "deny"
+            }
             GuardDecision::AskUser { .. } => "ask",
         };
+        self.finalize_check(input, &decision, state, &agent_id, outcome)
+    }
+
+    /// Helper to record metrics, write audit, and return decision.
+    fn finalize_check(
+        &self,
+        input: &GuardInput,
+        decision: &GuardDecision,
+        state: &GuardState,
+        agent_id: &str,
+        outcome: &str,
+    ) -> GuardDecision {
+        let metrics = crate::metrics::get_metrics();
+        
+        // Record metrics
         metrics.decision_total.get_or_create(&crate::metrics::DecisionLabels {
-            agent_id,
+            agent_id: agent_id.to_string(),
             tool: input.tool.name().to_string(),
             outcome: outcome.to_string(),
         }).inc();
 
-        if state.audit_cfg.enabled {
-            self.write_audit(input, &decision, state);
+        if outcome == "deny" && matches!(decision, GuardDecision::Deny { reason } if reason.code == DecisionCode::AnomalyDetected || reason.code == DecisionCode::AgentLocked) {
+             metrics.anomaly_triggered_total.get_or_create(&crate::metrics::ToolLabels {
+                agent_id: agent_id.to_string(),
+                tool: input.tool.name().to_string(),
+            }).inc();
         }
-        decision
+
+        if state.audit_cfg.enabled {
+            self.write_audit(input, decision, state);
+        }
+        decision.clone()
     }
 
     /// High-level execution method that enforces policy and runs the tool in a sandbox.

@@ -69,6 +69,7 @@ To reconstruct a security event, correlate across these fields:
 | :--- | :--- | :--- | :--- |
 | **Policy Deny** | `decision: "deny"`, `code: "DENIED_BY_RULE"` | `decision_total{outcome="deny"}` | `INFO` |
 | **Anomaly Triggered** | `decision: "deny"`, `code: "ANOMALY_DETECTED"` | `anomaly_triggered_total` | `WARN` |
+| **Agent Locked** | `decision: "deny"`, `code: "AGENT_LOCKED"` | `anomaly_triggered_total` | `ERROR` |
 | **Sandbox Execution** | `event: "tool_call"`, `stdout/stderr` | `execution_duration_seconds` | `DEBUG` |
 | **Sandbox Failure** | `SandboxError` (in ExecuteResult) | N/A (Internal Error) | `ERROR` |
 | **Policy Reload** | `event: "policy_reload"` | N/A | `INFO` |
@@ -112,12 +113,15 @@ groups:
     3. Review the last 10 tool calls from that actor to determine if it's a legitimate bot loop or a malicious attempt to bypass via volume.
     4. Adjust `anomaly.rate_limit` in `policy.yaml` if necessary.
 
-### **Scenario B: Sandbox Fail-Closed**
-*   **Symptom**: `Guard::execute()` returns a `SandboxError`.
+### **Scenario B: Agent Locked (Deny Fuse)**
+*   **Symptom**: `agent_guard_decision_total{outcome="deny"}` for a specific agent stays at 100% of calls, and audit logs show `code: "AGENT_LOCKED"`.
 *   **Action**:
-    1. Check `tracing` logs at `ERROR` level.
-    2. For Windows: Look for Win32 error codes (e.g., `CreateProcessAsUserW failed: 5 (Access is denied)`).
-    3. For Linux: Check if `libseccomp` is correctly installed or if a specific syscall is being blocked that the tool requires.
+    1. This indicates the agent triggered too many rule-based denials (e.g., trying to access forbidden files) and has been automatically "fused" (locked).
+    2. Review the `audit.jsonl` history for that agent to see the preceding denials that triggered the fuse.
+    3. If the agent's behavior is corrected, restart the host application to reset the in-memory fuse (or use a management API if implemented).
+    4. Adjust `anomaly.deny_fuse` settings in `policy.yaml` if the threshold is too sensitive.
+
+### **Scenario C: Sandbox Fail-Closed**
 
 ---
 

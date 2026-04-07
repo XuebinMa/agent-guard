@@ -64,12 +64,16 @@ trust:
     override_mode: read_only
 
 # Anomaly detection (Phase 4/5).
-# Limits tool call frequency to prevent DoS or rapid bypass attempts.
+# Limits tool call frequency and triggers fuses on consecutive denials.
 anomaly:
   enabled: true
   rate_limit:
     window_seconds: 60
     max_calls: 30
+  deny_fuse:
+    enabled: true
+    threshold: 5
+    window_seconds: 60
 
 # Audit configuration.
 audit:

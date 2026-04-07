@@ -98,6 +98,25 @@ pub struct AnomalyConfig {
     pub enabled: bool,
     #[serde(default)]
     pub rate_limit: RateLimitConfig,
+    #[serde(default)]
+    pub deny_fuse: DenyFuseConfig,
+}
+
+#[derive(Debug, Deserialize, Clone)]
+pub struct DenyFuseConfig {
+    #[serde(default = "default_false")]
+    pub enabled: bool,
+    #[serde(default = "default_fuse_threshold")]
+    pub threshold: usize,
+    #[serde(default = "default_window")]
+    pub window_seconds: u64,
+}
+
+fn default_false() -> bool {
+    false
+}
+fn default_fuse_threshold() -> usize {
+    5
 }
 
 fn default_true() -> bool {
@@ -124,6 +143,7 @@ impl Default for AnomalyConfig {
         Self {
             enabled: true,
             rate_limit: RateLimitConfig::default(),
+            deny_fuse: DenyFuseConfig::default(),
         }
     }
 }
@@ -133,6 +153,16 @@ impl Default for RateLimitConfig {
         Self {
             window_seconds: 60,
             max_calls: 30,
+        }
+    }
+}
+
+impl Default for DenyFuseConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            threshold: 5,
+            window_seconds: 60,
         }
     }
 }

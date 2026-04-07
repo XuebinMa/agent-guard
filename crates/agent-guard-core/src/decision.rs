@@ -155,4 +155,6 @@ pub enum DecisionCode {
     InternalError,
     #[serde(rename = "ANOMALY_DETECTED")]
     AnomalyDetected,
+    #[serde(rename = "AGENT_LOCKED")]
+    AgentLocked,
 }

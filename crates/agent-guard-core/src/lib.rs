@@ -9,5 +9,5 @@ mod tests;
 
 pub use audit::{AuditDecision, AuditEvent, AuditRecord, ReloadEvent, ReloadStatus};
 pub use decision::{DecisionCode, DecisionReason, GuardDecision};
-pub use policy::{AnomalyConfig, AuditConfig, PolicyEngine, PolicyError, PolicyMode, RateLimitConfig};
+pub use policy::{AnomalyConfig, AuditConfig, DenyFuseConfig, PolicyEngine, PolicyError, PolicyMode, RateLimitConfig};
 pub use types::{Context, CustomToolId, CustomToolIdError, GuardInput, Tool, TrustLevel};
