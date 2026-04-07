@@ -70,7 +70,7 @@ Categorized analysis of threats and implemented defenses:
 | **Primary Goal** | Syscall Hardening | Filesystem Isolation | Resource & Lifecycle Mgmt |
 | **Network Blocking** | ✅ Native (Strict) | 🟡 Experimental (Permissive) | ❌ **No** |
 | **Filesystem Read** | ✅ Restricted | ❌ No (Global User Read) | ❌ No (Global User Read) |
-| **Filesystem Write** | ✅ Restricted | ✅ Restricted (Workspace) | 🟡 **Low-IL Enforced** |
+| **Filesystem Write** | ✅ Restricted | ✅ Restricted (Workspace) | ✅ **Low-IL Enforced** |
 | **Resource Limits** | ✅ Native | ❌ No | ✅ **Verifiable Prototype** |
 | **Fail-Closed** | ✅ Yes | ✅ Yes | ✅ Yes |
 
@@ -80,8 +80,8 @@ Categorized analysis of threats and implemented defenses:
 
 ### 1. Windows Global Filesystem Access
 - **Status**: **Strengthened Prototype**. 
-- **Bypass**: Current Job Object implementation does not restrict all filesystem access.
-- **Mitigation**: **Low-Integrity Level (Low-IL)** token enforcement (implemented in Phase 5). This prevents writing to medium/high integrity folders even if the user has access.
+- **Mitigation**: **Low-Integrity Level (Low-IL)** token enforcement is **active**. This prevents writing to medium/high integrity folders even if the user has access.
+- **Reference**: See [docs/sandbox-windows.md](sandbox-windows.md).
 
 ### 2. macOS Global Read Access
 - **Bypass**: The Seatbelt prototype focuses on write-prevention.

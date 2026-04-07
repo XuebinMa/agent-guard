@@ -29,9 +29,8 @@ While the Linux implementation uses `seccomp-bpf` for fine-grained syscall filte
 The current Windows implementation is a **Verifiable Prototype**. In Phase 5, we are focused on moving toward a **Stronger Prototype** with better isolation.
 
 ### 1. Low-Integrity Level (Low-IL) Token (P0)
-- **Goal**: Restrict the sandboxed process to a Low Integrity Level.
-- **Feasibility**: Low-IL prevents the process from writing to most of the filesystem and communicating with higher-integrity processes (even if owned by the same user).
-- **Implementation**: Involves creating a restricted token with `SID_LABEL_LOW` and using `CreateProcessAsUserW`.
+- **Status**: **Implemented & Active**.
+- **Implementation**: Restricts the sandboxed process to a Low Integrity Level (SID `S-1-16-4096`). This prevents the process from writing to medium/high integrity folders (e.g., `C:\Windows`, `C:\Users\Admin`) even if the user account has permissions.
 
 ### 2. AppContainer Isolation (P0 - Research)
 - **Goal**: Use the modern Windows AppContainer framework for fine-grained capability and filesystem isolation.
