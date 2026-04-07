@@ -63,7 +63,8 @@ trust:
     # This is a safety floor that cannot be bypassed by tool-level mode settings.
     override_mode: read_only
 
-# Anomaly detection (Phase 4).
+# Anomaly detection (Phase 4/5).
+# Limits tool call frequency to prevent DoS or rapid bypass attempts.
 anomaly:
   enabled: true
   rate_limit:

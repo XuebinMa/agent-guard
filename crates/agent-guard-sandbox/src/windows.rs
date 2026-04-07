@@ -116,6 +116,56 @@ struct WaitOutput {
 }
 
 #[cfg(windows)]
+fn create_pipe() -> Result<(windows_sys::Win32::Foundation::HANDLE, windows_sys::Win32::Foundation::HANDLE), SandboxError> {
+    use windows_sys::Win32::System::Pipes::CreatePipe;
+    use windows_sys::Win32::Foundation::{SetHandleInformation, HANDLE_FLAG_INHERIT};
+    use windows_sys::Win32::Security::SECURITY_ATTRIBUTES;
+
+    unsafe {
+        let mut read_pipe = 0;
+        let mut write_pipe = 0;
+        let mut sa = SECURITY_ATTRIBUTES {
+            nLength: std::mem::size_of::<SECURITY_ATTRIBUTES>() as u32,
+            lpSecurityDescriptor: std::ptr::null_mut(),
+            bInheritHandle: 1, // Write end should be inheritable
+        };
+
+        if CreatePipe(&mut read_pipe, &mut write_pipe, &sa, 0) == 0 {
+            return Err(SandboxError::ExecutionFailed("Windows Sandbox: Failed to create pipe".to_string()));
+        }
+
+        // Ensure read end is NOT inherited
+        if SetHandleInformation(read_pipe, HANDLE_FLAG_INHERIT, 0) == 0 {
+            let _ = windows_sys::Win32::Foundation::CloseHandle(read_pipe);
+            let _ = windows_sys::Win32::Foundation::CloseHandle(write_pipe);
+            return Err(SandboxError::ExecutionFailed("Windows Sandbox: Failed to configure pipe inheritance".to_string()));
+        }
+
+        Ok((read_pipe, write_pipe))
+    }
+}
+
+#[cfg(windows)]
+fn read_handle_to_string(handle: windows_sys::Win32::Foundation::HANDLE) -> String {
+    use windows_sys::Win32::Storage::FileSystem::ReadFile;
+    let mut out = Vec::new();
+    let mut buffer = [0u8; 4096];
+    let mut bytes_read = 0;
+    unsafe {
+        loop {
+            if ReadFile(handle, buffer.as_mut_ptr() as *mut _, buffer.len() as u32, &mut bytes_read, std::ptr::null_mut()) == 0 {
+                break;
+            }
+            if bytes_read == 0 {
+                break;
+            }
+            out.extend_from_slice(&buffer[..bytes_read as usize]);
+        }
+    }
+    String::from_utf8_lossy(&out).into_owned()
+}
+
+#[cfg(windows)]
 fn create_low_integrity_token() -> Result<windows_sys::Win32::Foundation::HANDLE, SandboxError> {
     use windows_sys::Win32::Security::*;
     use windows_sys::Win32::System::Threading::*;
@@ -174,6 +224,15 @@ fn spawn_low_integrity_process(
     use windows_sys::Win32::Foundation::{CloseHandle, HANDLE};
 
     unsafe {
+        // 1. Create Pipes for stdout and stderr
+        let (stdout_read, stdout_write) = create_pipe()?;
+        let _stdout_read_guard = SafeHandle(stdout_read);
+        let _stdout_write_guard = SafeHandle(stdout_write);
+
+        let (stderr_read, stderr_write) = create_pipe()?;
+        let _stderr_read_guard = SafeHandle(stderr_read);
+        let _stderr_write_guard = SafeHandle(stderr_write);
+
         // Prepare command line
         let cmd_string = format!("cmd /C \"{}\"", command);
         let mut cmd_vec: Vec<u16> = std::ffi::OsStr::new(&cmd_string).encode_wide().chain(std::iter::once(0)).collect();
@@ -181,19 +240,23 @@ fn spawn_low_integrity_process(
 
         let mut si: STARTUPINFOW = std::mem::zeroed();
         si.cb = std::mem::size_of::<STARTUPINFOW>() as u32;
-        si.dwFlags = STARTF_USESHOWWINDOW;
+        si.dwFlags = STARTF_USESHOWWINDOW | STARTF_USESTDHANDLES;
         si.wShowWindow = SW_HIDE as u16;
+        si.hStdOutput = stdout_write;
+        si.hStdError = stderr_write;
+        si.hStdInput = 0;
 
         let mut pi: PROCESS_INFORMATION = std::mem::zeroed();
 
-        // 1. Spawn process suspended to allow job assignment
+        // 2. Spawn process suspended to allow job assignment
+        // Set bInheritHandles = 1 (TRUE) so pipes are inherited
         let success = CreateProcessAsUserW(
             token,
             std::ptr::null(),
             cmd_vec.as_mut_ptr(),
             std::ptr::null(),
             std::ptr::null(),
-            0,
+            1, // bInheritHandles
             CREATE_NO_WINDOW | CREATE_BREAKAWAY_FROM_JOB | CREATE_SUSPENDED,
             std::ptr::null(),
             working_dir_vec.as_ptr(),
@@ -209,27 +272,42 @@ fn spawn_low_integrity_process(
         let _process_guard = SafeHandle(pi.hProcess);
         let _thread_guard = SafeHandle(pi.hThread);
 
-        // 2. Assign to Job Object before resuming
+        // 3. Assign to Job Object before resuming
         if AssignProcessToJobObject(job, pi.hProcess) == 0 {
             let _ = TerminateProcess(pi.hProcess, 1);
             return Err(SandboxError::ExecutionFailed("Windows Sandbox: Fail-closed - Failed to assign process to job".to_string()));
         }
 
-        // 3. Resume process
+        // 4. Close parent's write handles so pipes close when child exits
+        drop(_stdout_write_guard);
+        drop(_stderr_write_guard);
+
+        // 5. Resume process
         if ResumeThread(pi.hThread) == u32::MAX {
             let _ = TerminateProcess(pi.hProcess, 1);
             return Err(SandboxError::ExecutionFailed("Windows Sandbox: Failed to resume low-IL process".to_string()));
         }
 
-        // 4. Wait for completion
+        // 6. Read output (WaitOutput)
+        // Use threads to read stdout and stderr in parallel to avoid deadlocks
+        let stdout_read_handle = stdout_read;
+        let stderr_read_handle = stderr_read;
+
+        let stdout_thread = std::thread::spawn(move || read_handle_to_string(stdout_read_handle));
+        let stderr_thread = std::thread::spawn(move || read_handle_to_string(stderr_read_handle));
+
+        // 7. Wait for completion
         WaitForSingleObject(pi.hProcess, INFINITE);
 
         let mut exit_code: u32 = 0;
         GetExitCodeProcess(pi.hProcess, &mut exit_code);
 
+        let stdout = stdout_thread.join().unwrap_or_else(|_| "[Error reading stdout]".to_string());
+        let stderr = stderr_thread.join().unwrap_or_else(|_| "[Error reading stderr]".to_string());
+
         Ok(WaitOutput {
-            stdout: "[Stdout capture pending in Low-IL Prototype]".to_string(),
-            stderr: String::new(),
+            stdout,
+            stderr,
             exit_code: exit_code as i32,
         })
     }
@@ -265,11 +343,52 @@ mod tests {
             working_directory: PathBuf::from("."),
             timeout_ms: None,
         };
-        let res = sandbox.execute("echo test", &ctx);
+        let res = sandbox.execute("echo test_output_capture", &ctx);
         assert!(res.is_ok(), "Windows execution should succeed within Job Object");
         let output = res.unwrap();
-        // Since stdout capture is pending in the prototype, we check the placeholder
-        assert!(output.stdout.contains("capture pending"));
+        // Now stdout should be captured!
+        assert!(output.stdout.contains("test_output_capture"));
+    }
+
+    #[test]
+    fn test_windows_low_il_write_restriction() {
+        let sandbox = JobObjectSandbox;
+        let ctx = SandboxContext {
+            mode: PolicyMode::ReadOnly,
+            working_directory: PathBuf::from("."),
+            timeout_ms: None,
+        };
+        
+        // Try writing to C:\Windows (should fail under Low-IL)
+        // cmd /C "echo test > C:\Windows\test.txt" usually prints "Access is denied" to stderr.
+        let res = sandbox.execute("echo test > C:\\Windows\\agent_guard_low_il_test.txt", &ctx);
+        
+        if let Ok(output) = res {
+            // Under Low-IL, this should trigger "Access is denied" in cmd.exe
+            let stderr = output.stderr.to_lowercase();
+            assert!(stderr.contains("access is denied") || output.exit_code != 0, 
+                "Low-IL must restrict writing to system directories. Stderr: {}", output.stderr);
+        }
+    }
+
+    #[test]
+    fn test_windows_workspace_write_success() {
+        let sandbox = JobObjectSandbox;
+        let temp_dir = std::env::temp_dir().join("agent_guard_p5_test");
+        let _ = std::fs::create_dir_all(&temp_dir);
+        
+        let ctx = SandboxContext {
+            mode: PolicyMode::ReadOnly,
+            working_directory: temp_dir.clone(),
+            timeout_ms: None,
+        };
+        
+        let res = sandbox.execute("echo hello_from_sandbox", &ctx);
+        assert!(res.is_ok());
+        let output = res.unwrap();
+        assert!(output.stdout.contains("hello_from_sandbox"));
+        
+        let _ = std::fs::remove_dir_all(temp_dir);
     }
 
     #[test]

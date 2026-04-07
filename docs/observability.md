@@ -1,87 +1,84 @@
-# Observability Guide — agent-guard
+# Observability Linkage — agent-guard
 
-`agent-guard` is designed to be a "monitorable" security infrastructure component. It provides structured audit logs, real-time metrics, and anomaly detection alerts.
+> Status: **Phase 5 (Active)**  
+> This document describes how `agent-guard` integrates Audit Logs, Prometheus Metrics, and Tracing to provide a unified security monitoring and incident response (IR) framework.
 
 ---
 
-## 1. 📊 Prometheus Metrics
-The SDK exports real-time metrics via the `prometheus-client` registry.
+## 1. 📂 Three Pillars of Observability
 
-### Metrics List
-| Metric Name | Type | Labels | Description |
+| Pillar | Technology | Purpose | Retention |
 | :--- | :--- | :--- | :--- |
-| `agent_guard_decision_total` | Counter | `tool`, `outcome` | Total number of tool calls evaluated. Outcomes: `allow`, `deny`, `ask`. |
-| `agent_guard_execution_duration_seconds` | Histogram | `tool`, `sandbox_type` | Time taken to execute a tool in a sandbox. |
-| `agent_guard_anomaly_triggered_total` | Counter | `tool` | Number of calls blocked by the frequency-based anomaly detector. |
-
-### Labels Usage
-- **`tool`**: The tool name (e.g., `bash`, `read_file`).
-- **`decision`**: The outcome of the policy check.
-- **`sandbox_type`**: The technology used for isolation (e.g., `linux-seccomp`, `macos-seatbelt`).
+| **Audit Logs** | JSONL (Structured) | Detailed forensic trail of every decision, tool call, and sandbox outcome. | Long-term (Archive) |
+| **Metrics** | Prometheus / OpenTelemetry | Real-time health monitoring, anomaly detection, and capacity planning. | Mid-term (Aggregated) |
+| **Tracing** | `tracing` crate (Log-level) | Low-level debugging of internal SDK logic, policy parsing, and Win32/Seccomp setup. | Short-term (Ephemeral) |
 
 ---
 
-## 2. 🚨 Anomaly Detection Configuration
-Anomaly detection prevents malicious or accidental "tool bombing" by limiting call frequency per actor.
+## 2. 🔗 Correlation Map
+To reconstruct a security event (e.g., an anomaly detection or a sandbox failure), correlate across these fields:
 
-### Configuration (`policy.yaml`)
+| Event Type | Audit Field (`audit.jsonl`) | Metric (`agent_guard_...`) | Tracing Level |
+| :--- | :--- | :--- | :--- |
+| **Policy Deny** | `decision: "deny"`, `code: "DENIED_BY_RULE"` | `decision_total{outcome="deny"}` | `INFO` |
+| **Anomaly Triggered** | `decision: "deny"`, `code: "ANOMALY_DETECTED"` | `anomaly_triggered_total` | `WARN` |
+| **Sandbox Execution** | `event: "tool_call"`, `stdout/stderr` | `execution_duration_seconds` | `DEBUG` |
+| **Sandbox Failure** | `SandboxError` (in ExecuteResult) | N/A (Internal Error) | `ERROR` |
+| **Policy Reload** | `event: "policy_reload"` | N/A | `INFO` |
+
+---
+
+## 3. 🚨 Security Runbook: Incident Response
+
+### **Scenario A: High Anomaly Rate**
+*   **Symptom**: `agent_guard_anomaly_triggered_total` spikes in Grafana.
+*   **Action**: 
+    1. Search `audit.jsonl` for `code: "ANOMALY_DETECTED"`.
+    2. Identify the `actor` and `agent_id` involved.
+    3. Review the last 10 tool calls from that actor to determine if it's a legitimate bot loop or a malicious attempt to bypass via volume.
+    4. Adjust `anomaly.rate_limit` in `policy.yaml` if necessary.
+
+### **Scenario B: Sandbox Fail-Closed**
+*   **Symptom**: `Guard::execute()` returns a `SandboxError`.
+*   **Action**:
+    1. Check `tracing` logs at `ERROR` level.
+    2. For Windows: Look for Win32 error codes (e.g., `CreateProcessAsUserW failed: 5 (Access is denied)`).
+    3. For Linux: Check if `libseccomp` is correctly installed or if a specific syscall is being blocked that the tool requires.
+
+### **Scenario C: Policy Bypass Attempt**
+*   **Symptom**: `agent_guard_decision_total{outcome="deny"}` increases.
+*   **Action**:
+    1. Identify the matching rule using the `matched_rule` field in the audit log (e.g., `tools.bash.deny[0]`).
+    2. Inspect the `payload_hash` and (if enabled) the raw payload to understand the attack vector.
+
+---
+
+## 4. 📊 Recommended Prometheus Alerts
+
 ```yaml
-version: 1
-default_mode: workspace_write
+groups:
+- name: AgentGuardAlerts
+  rules:
+  - alert: HighAnomalyRate
+    expr: sum(rate(agent_guard_anomaly_triggered_total[1m])) > 1
+    for: 2m
+    labels:
+      severity: critical
+    annotations:
+      summary: "High frequency of anomalies detected for agent: {{ $labels.agent_id }}"
 
-anomaly:
-  enabled: true
-  rate_limit:
-    window_seconds: 60   # Sliding window size
-    max_calls: 30        # Maximum allowed calls in the window
+  - alert: PolicyDeniedSpike
+    expr: sum(rate(agent_guard_decision_total{outcome="deny"}[5m])) > 5
+    for: 1m
+    labels:
+      severity: warning
+    annotations:
+      summary: "Spike in denied tool calls detected."
 ```
-
-### Traceability
-When an anomaly is triggered:
-1. **Tracing**: A `WARN` level log is emitted via `tracing`.
-2. **Metrics**: `agent_guard_anomaly_triggered_total` is incremented.
-3. **Audit**: A structured JSONL record is written with `decision_code: "anomaly_detected"`.
 
 ---
 
-## 3. 📜 Audit Logs (JSONL)
-Audit logs provide the "ground truth" for security forensics.
-
-### Sample Record
-```json
-{
-  "type": "tool_call",
-  "timestamp": "2026-04-07T04:06:54Z",
-  "request_id": "cdd4e8f4...",
-  "tool": "bash",
-  "actor": "attacker",
-  "decision": "deny",
-  "decision_code": "anomaly_detected",
-  "message": "anomaly detected: tool call frequency exceeded limit (30 calls / 60s)",
-  "policy_version": "f95..."
-}
-```
-
-### Connecting the Dots
-1. **From Dashboard to Audit**: If you see a spike in `agent_guard_anomaly_triggered_total`, search your audit logs for `decision_code: "anomaly_detected"` to identify the offending `actor` and `tool`.
-2. **From Audit to Policy**: Every audit record contains a `policy_version` (SHA-256 hash). Use this to verify which version of the policy was in effect at the time of the call.
-
----
-
-## 4. 🛠️ Integration Guide
-
-### Exporting to Prometheus (Rust)
-```rust
-use agent_guard_sdk::metrics::get_metrics;
-
-// Access the registry to serve a /metrics endpoint
-let mut body = String::new();
-prometheus_client::encoding::text::encode(&mut body, &get_metrics().registry).unwrap();
-```
-
-### Initializing Tracing (Python)
-```python
-import agent_guard
-# Enables internal tracing to capture security warnings
-agent_guard.init_tracing()
-```
+## 5. 🛠️ Configuration Checklist
+- [ ] Set `audit.enabled: true` and `audit.output: file`.
+- [ ] Expose `/metrics` endpoint using the `Registry` from `agent_guard_sdk::metrics`.
+- [ ] Initialize `tracing-subscriber` with at least `INFO` level.
