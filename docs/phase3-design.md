@@ -51,9 +51,9 @@ Enables updating security rules without restarting long-running agent processes.
 ### Implementation
 - **Atomic Swap**: Use `ArcSwap` to replace the internal `PolicyEngine` instance.
 - **Single-Request Isolation (Strict)**: 
-    - Each `check()` or `execute()` request captures a state snapshot (`ArcSwap::load()`) at the very beginning.
-    - The entire request lifecycle (validation, decision, sandbox execution, and auditing) uses the **same** snapshot.
-    - If a `reload()` occurs while a request is in-flight, the in-flight request is unaffected.
+    - Each `check()` or `execute()` request **MUST** capture a state snapshot (`ArcSwap::load()`) at the very beginning.
+    - The entire request lifecycle (validation, decision, sandbox mode calculation, execution, and auditing) **MUST** use the **same** snapshot.
+    - If a `reload()` occurs while a request is in-flight, the in-flight request is unaffected and continues with its initial snapshot.
 - **Methods**:
     - `Guard::reload_from_yaml(str)`
     - `Guard::reload_engine(PolicyEngine)`
