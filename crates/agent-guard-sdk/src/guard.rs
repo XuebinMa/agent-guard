@@ -132,9 +132,11 @@ impl Guard {
     /// This ensures decision, auditing, and execution use the same policy version.
     fn check_internal(&self, input: &GuardInput, state: &GuardState) -> GuardDecision {
         let metrics = crate::metrics::get_metrics();
+        let agent_id = input.context.agent_id.clone().unwrap_or_else(|| "default".to_string());
         
         // P1-1: Record initiation
         metrics.policy_checks_total.get_or_create(&crate::metrics::ToolLabels {
+            agent_id: agent_id.clone(),
             tool: input.tool.name().to_string(),
         }).inc();
 
@@ -153,10 +155,12 @@ impl Guard {
 
             // P1-1: Record anomaly metric
             metrics.anomaly_triggered_total.get_or_create(&crate::metrics::ToolLabels {
+                agent_id: agent_id.clone(),
                 tool: input.tool.name().to_string(),
             }).inc();
             
             metrics.decision_total.get_or_create(&crate::metrics::DecisionLabels {
+                agent_id: agent_id.clone(),
                 tool: input.tool.name().to_string(),
                 outcome: "deny".to_string(),
             }).inc();
@@ -176,6 +180,7 @@ impl Guard {
             GuardDecision::AskUser { .. } => "ask",
         };
         metrics.decision_total.get_or_create(&crate::metrics::DecisionLabels {
+            agent_id,
             tool: input.tool.name().to_string(),
             outcome: outcome.to_string(),
         }).inc();
@@ -223,9 +228,11 @@ impl Guard {
         let duration = start.elapsed().as_secs_f64();
 
         // M4.2: Record execution duration
+        let agent_id = input.context.agent_id.clone().unwrap_or_else(|| "default".to_string());
         crate::metrics::get_metrics()
             .execution_duration_seconds
             .get_or_create(&crate::metrics::ExecutionLabels {
+                agent_id,
                 tool: input.tool.name().to_string(),
                 sandbox_type: sandbox.sandbox_type().to_string(),
             })

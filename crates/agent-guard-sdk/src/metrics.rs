@@ -7,17 +7,20 @@ use std::sync::{Arc, OnceLock};
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq, EncodeLabelSet)]
 pub struct DecisionLabels {
+    pub agent_id: String,
     pub tool: String,
     pub outcome: String, // allow, deny, ask
 }
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq, EncodeLabelSet)]
 pub struct ToolLabels {
+    pub agent_id: String,
     pub tool: String,
 }
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq, EncodeLabelSet)]
 pub struct ExecutionLabels {
+    pub agent_id: String,
     pub tool: String,
     pub sandbox_type: String,
 }
