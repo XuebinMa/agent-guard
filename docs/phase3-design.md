@@ -1,7 +1,7 @@
 # Phase 3 Design — agent-guard
 
-> Status: **Refined Design Document (Post-PM Review)**  
-> Prerequisite: Phase 2 complete (Commit `320f025`)
+> Status: **Final Design Document (PM Approved)**  
+> Prerequisite: Phase 2 complete
 
 ## Overview
 Phase 3 expands the guard's intelligence with context-aware policy rules, enables zero-downtime policy updates via atomic reloading, and extends the SDK to the Node.js ecosystem.
@@ -16,11 +16,11 @@ Enables rules that trigger based on the caller's identity or environment.
 - **Supported Operators**:
   - Comparison: `==`, `!=`
   - Logic: `&&`, `||`, `!`
-- **Constraints**:
+- **Constraints (Strict)**:
   - **No Functions**: `regex_match()` or `to_lower()` are strictly prohibited.
   - **No Arrays**: `val in ['a', 'b']` is not supported (use `||` expansion).
   - **No Comparison Operators**: `>`, `<`, `>=`, `<=` are not allowed.
-  - **No Side-effects**: Assignment or mutable state is impossible by design.
+  - **No Side-effects**: Assignment or mutable state is impossible.
 - **Fail-fast**: Expressions are compiled and validated during policy load. Invalid expressions prevent the engine from starting.
 
 ---
@@ -54,29 +54,8 @@ Enables updating security rules without restarting long-running agent processes.
 
 Expose the `agent-guard` SDK to the JavaScript/TypeScript ecosystem.
 
-### Deliverables
-- `agent-guard-node` crate using `napi-rs`.
-- TypeScript definitions (`.d.ts`).
-- Local `npm install` support for testing.
-
 ---
 
 ## M3.4: macOS Sandbox (Experimental)
 
 Introduction of a best-effort sandbox for macOS using the native `sandbox-exec` (Seatbelt) facility.
-
-### Constraints
-- Lacks the fine-grained syscall filtering of Linux Seccomp.
-- Focused on filesystem isolation (limiting `bash` to the workspace).
-- Opt-in via feature flag: `macos-sandbox`.
-
----
-
-## Roadmap
-
-| Milestone | Deliverable | Priority | Status |
-|---|---|---|---|
-| **M3.1** | Context-aware `if:` logic (evalexpr) | High | **Completed** |
-| **M3.2** | `Guard::reload()` (ArcSwap) | High | **Completed** |
-| **M3.3** | `agent-guard-node` package (napi-rs) | Medium | Pending |
-| **M3.4** | `SeatbeltSandbox` (macos-sandbox flag) | Low | Pending |

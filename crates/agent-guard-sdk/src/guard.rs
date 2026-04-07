@@ -97,11 +97,12 @@ impl Guard {
         }
     }
 
+    /// Return the SHA-256 version hash of the currently loaded policy.
     pub fn policy_version(&self) -> String {
         self.state.load().engine.version().to_string()
     }
 
-    /// [Deprecated] use policy_version() instead.
+    /// [Deprecated] alias for policy_version().
     pub fn policy_hash(&self) -> String {
         self.policy_version()
     }
