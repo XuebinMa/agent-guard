@@ -24,6 +24,26 @@ While the Linux implementation uses `seccomp-bpf` for fine-grained syscall filte
 | **Write Access** | Restricted to Workspace | **Global** (user-level) |
 | **Security Level** | Production-ready | **Experimental / Prototype** |
 
+## Phase 5: Hardening Roadmap (Current)
+
+The current Windows implementation is a **Verifiable Prototype**. In Phase 5, we are focused on moving toward a **Stronger Prototype** with better isolation.
+
+### 1. Low-Integrity Level (Low-IL) Token (P0)
+- **Goal**: Restrict the sandboxed process to a Low Integrity Level.
+- **Feasibility**: Low-IL prevents the process from writing to most of the filesystem and communicating with higher-integrity processes (even if owned by the same user).
+- **Implementation**: Involves creating a restricted token with `SID_LABEL_LOW` and using `CreateProcessAsUserW`.
+
+### 2. AppContainer Isolation (P0 - Research)
+- **Goal**: Use the modern Windows AppContainer framework for fine-grained capability and filesystem isolation.
+- **Feasibility**: Requires complex SID management and capability registration. We are currently researching a 'CLI-friendly' AppContainer prototype that doesn't require full UWP registration.
+
+### 3. Fail-Closed behavior for all Win32 API calls (P0)
+- **Goal**: Ensure that if `AssignProcessToJobObject` or any token-restricted call fails, the entire tool execution is aborted.
+- **Status**: Currently implemented for Job Objects. This will be extended to Low-IL token creation.
+
+### 4. Windows-Specific Integration Tests (P0)
+- **Goal**: Add automated tests to verify that a sandboxed process cannot write to a protected directory (e.g., `C:\Windows`) even if the user has access.
+
 ## Use Cases
 
 ### Suitable for:
