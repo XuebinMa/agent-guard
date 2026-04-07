@@ -78,8 +78,8 @@ impl Sandbox for JobObjectSandbox {
         let _token_guard = TokenHandle(token);
 
         // 4. Execute with Restricted Token (CRITICAL ENFORCEMENT)
-        // This is a direct implementation using CreateProcessAsUserW.
-        // It bypasses the standard Command library to ensure the restricted token is applied.
+        // This is the ACTIVE implementation using CreateProcessAsUserW.
+        // It ENSURES the restricted token is applied to the child process.
         let output = spawn_low_integrity_process(command, &context.working_directory, token, job)?;
 
         Ok(SandboxOutput {
