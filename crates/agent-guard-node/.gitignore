@@ -4,6 +4,6 @@ target/
 dist/
 node_modules/
 
-# TypeScript definitions
-index.d.ts
-index.js
+# TypeScript definitions (napi-rs generated, usually committed)
+# index.d.ts
+# index.js
