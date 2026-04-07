@@ -5,6 +5,12 @@ edition.workspace = true
 license.workspace = true
 description = "High-level SDK for agent-guard policy enforcement"
 
+[features]
+# Enable Linux seccomp-bpf sandbox.
+seccomp = ["agent-guard-sandbox/seccomp"]
+# Enable experimental macOS sandbox using sandbox-exec (Seatbelt).
+macos-sandbox = ["agent-guard-sandbox/macos-sandbox"]
+
 [dependencies]
 agent-guard-core = { path = "../agent-guard-core" }
 agent-guard-validators = { path = "../agent-guard-validators" }

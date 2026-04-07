@@ -177,11 +177,8 @@ impl Guard {
             context: rust_ctx,
         };
 
-        // For now we use the Noop sandbox (or the default SDK execution path).
-        // Since RustGuard's execute is currently sync, we wrap it if needed or 
-        // just call it since we are in an async napi function which runs in 
-        // a background thread anyway.
-        let result = self.inner.execute_noop(&input)
+        // M3.3/3.4: Use execute_default to select the best sandbox (Seccomp/Seatbelt/Noop).
+        let result = self.inner.execute_default(&input)
             .map_err(|e| Error::new(Status::GenericFailure, format!("execution error: {e}")))?;
             
         Ok(execute_outcome_from_rust(result))

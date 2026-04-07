@@ -9,6 +9,8 @@ description = "Sandbox execution layer for agent-guard"
 # Enable Linux seccomp-bpf sandbox. Requires libseccomp C library.
 # Usage: cargo build --features agent-guard-sandbox/seccomp
 seccomp = ["dep:libseccomp"]
+# Enable experimental macOS sandbox using sandbox-exec (Seatbelt).
+macos-sandbox = []
 
 [dependencies]
 agent-guard-core = { path = "../agent-guard-core" }

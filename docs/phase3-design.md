@@ -44,15 +44,21 @@ Enables updating security rules without restarting long-running agent processes.
 - **Audit & Versioning**:
     - Every `AuditEvent` includes `policy_version`.
     - `Guard::policy_version()` returns the current version string.
-- **Structured Auditing**: 
-    - Reload events are recorded as `PolicyReload` records.
-    - Includes `status` (success/failure), `old_version`, `new_version`, and `error`.
 
 ---
 
 ## M3.3: Node.js Support (napi-rs)
 
 Expose the `agent-guard` SDK to the JavaScript/TypeScript ecosystem.
+
+### Implementation
+- **Async API**: Node.js bindings use `async` for execution.
+- **Minimal API Surface**:
+  - `check(tool, payload, context)`: Sync decision
+  - `execute(tool, payload, context)`: Async execution outcome
+  - `reload(yaml)`: Atomic policy update
+  - `policy_version()`: Get version hash
+- **TypeScript**: Auto-generated definitions included.
 
 ---
 

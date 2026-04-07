@@ -3,9 +3,14 @@ pub mod noop;
 #[cfg(target_os = "linux")]
 pub mod linux;
 
+#[cfg(feature = "macos-sandbox")]
+pub mod macos;
+
 pub use noop::NoopSandbox;
 #[cfg(target_os = "linux")]
 pub use linux::SeccompSandbox;
+#[cfg(feature = "macos-sandbox")]
+pub use macos::SeatbeltSandbox;
 
 use std::path::PathBuf;
 

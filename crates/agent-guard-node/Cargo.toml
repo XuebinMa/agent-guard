@@ -9,6 +9,9 @@ description = "Node.js binding for agent-guard via napi-rs"
 name = "agent_guard_node"
 crate-type = ["cdylib"]
 
+[features]
+macos-sandbox = ["agent-guard-sdk/macos-sandbox"]
+
 [dependencies]
 agent-guard-sdk = { path = "../agent-guard-sdk" }
 napi = { version = "2.12", features = ["async", "serde-json"] }

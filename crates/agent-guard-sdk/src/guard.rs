@@ -183,10 +183,32 @@ impl Guard {
         Ok(ExecuteOutcome::Executed { output })
     }
 
+    /// Convenience helper to execute a command using the best available sandbox.
+    pub fn execute_default(&self, input: &GuardInput) -> ExecuteResult {
+        let sandbox = Self::default_sandbox();
+        self.execute(input, sandbox.as_ref())
+    }
+
     /// Convenience helper to execute a command using the Noop sandbox.
     pub fn execute_noop(&self, input: &GuardInput) -> ExecuteResult {
         let sandbox = agent_guard_sandbox::NoopSandbox;
         self.execute(input, &sandbox)
+    }
+
+    /// Returns the best available sandbox for the current platform.
+    pub fn default_sandbox() -> Box<dyn Sandbox> {
+        #[cfg(target_os = "linux")]
+        {
+            Box::new(agent_guard_sandbox::SeccompSandbox::new())
+        }
+        #[cfg(feature = "macos-sandbox")]
+        {
+            Box::new(agent_guard_sandbox::SeatbeltSandbox)
+        }
+        #[cfg(not(any(target_os = "linux", feature = "macos-sandbox")))]
+        {
+            Box::new(agent_guard_sandbox::NoopSandbox)
+        }
     }
 
     fn evaluate(&self, input: &GuardInput, state: &GuardState) -> GuardDecision {
