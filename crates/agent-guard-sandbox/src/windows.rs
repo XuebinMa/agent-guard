@@ -1,10 +1,11 @@
 use std::process::Command;
 use crate::{Sandbox, SandboxContext, SandboxError, SandboxOutput, SandboxResult};
 
-/// Windows sandbox implementation using Job Objects.
+/// Windows sandbox implementation using Job Objects and Restricted Tokens.
 ///
-/// **Experimental Prototype**: Focuses on process tree management and resource
-/// restriction. Fail-closed: if the environment setup fails, execution is blocked.
+/// **Strengthened Prototype (Phase 5)**: Focuses on resource management and
+/// process tree isolation. Filesystem isolation via Low-IL is currently 
+/// in development. Fail-closed: if the environment setup fails, execution is blocked.
 pub struct JobObjectSandbox;
 
 impl Sandbox for JobObjectSandbox {

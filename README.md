@@ -6,7 +6,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Rust](https://img.shields.io/badge/Language-Rust-orange.svg)](https://www.rust-lang.org/)
 [![Version](https://img.shields.io/badge/Version-0.1.0--alpha-blue.svg)]()
-[![Phase](https://img.shields.io/badge/Phase-4%20v1%20Complete-green.svg)]()
+[![Phase](https://img.shields.io/badge/Phase-5%20In%20Progress-yellow.svg)]()
 [![Build Status](https://github.com/XuebinMa/agent-guard/actions/workflows/rust.yml/badge.svg)](https://github.com/XuebinMa/agent-guard/actions)
 
 ---
@@ -35,7 +35,7 @@ When Large Language Models (LLMs) are granted **Tool Use** or **Function Calling
 - 🛡️ **Cross-Platform Sandboxing**:
   - **Linux**: Production-grade `Seccomp-BPF` syscall filtering.
   - **macOS**: Experimental prototype (`SeatbeltSandbox`) for filesystem isolation.
-  - **Windows**: Experimental prototype (`JobObjectSandbox`) for resource and process management.
+  - **Windows**: **Strengthened Prototype** (JobObjectSandbox) for resource and process management.
 
 ---
 
