@@ -27,6 +27,8 @@ pub enum GuardInitError {
 
 // ── Guard ─────────────────────────────────────────────────────────────────────
 
+/// Main entry point for the agent-guard SDK.
+/// Manages policy state with atomic reloading and snapshot isolation.
 pub struct Guard {
     state: ArcSwap<GuardState>,
 }
@@ -50,7 +52,6 @@ impl std::fmt::Debug for Guard {
 
 impl Guard {
     /// Create a Guard from an already-parsed PolicyEngine.
-    /// Returns Err if audit output=file and the file cannot be opened.
     pub fn new(engine: PolicyEngine) -> Result<Self, GuardInitError> {
         let state = GuardState::new(Arc::new(engine))?;
         Ok(Self {
@@ -58,10 +59,12 @@ impl Guard {
         })
     }
 
+    /// Construct a Guard from a YAML string.
     pub fn from_yaml(yaml: &str) -> Result<Self, GuardInitError> {
         Self::new(PolicyEngine::from_yaml_str(yaml)?)
     }
 
+    /// Construct a Guard from a YAML file.
     pub fn from_yaml_file(path: impl AsRef<std::path::Path>) -> Result<Self, GuardInitError> {
         Self::new(PolicyEngine::from_yaml_file(path)?)
     }
@@ -131,6 +134,7 @@ impl Guard {
     }
 
     /// Internal core logic that MUST use a captured state snapshot.
+    /// This ensures decision, auditing, and execution use the same policy version.
     fn check_internal(&self, input: &GuardInput, state: &GuardState) -> GuardDecision {
         let decision = self.evaluate(input, state);
         if state.audit_cfg.enabled {
@@ -139,6 +143,8 @@ impl Guard {
         decision
     }
 
+    /// High-level execution method that enforces policy and runs the tool in a sandbox.
+    /// Implements single-snapshot isolation (M3.2).
     pub fn execute(
         &self,
         input: &GuardInput,
@@ -177,6 +183,7 @@ impl Guard {
         Ok(ExecuteOutcome::Executed { output })
     }
 
+    /// Convenience helper to execute a command using the Noop sandbox.
     pub fn execute_noop(&self, input: &GuardInput) -> ExecuteResult {
         let sandbox = agent_guard_sandbox::NoopSandbox;
         self.execute(input, &sandbox)

@@ -16,12 +16,12 @@ Enables rules that trigger based on the caller's identity or environment.
 - **Supported Operators**:
   - Comparison: `==`, `!=`
   - Logic: `&&`, `||`, `!`
-- **Constraints (Strict)**:
-  - **No Functions**: `regex_match()` or `to_lower()` are strictly prohibited.
-  - **No Arrays**: `val in ['a', 'b']` is not supported (use `||` expansion).
-  - **No Comparison Operators**: `>`, `<`, `>=`, `<=` are not allowed.
+- **Constraints (Strictly Enforced)**:
+  - **No Functions**: `regex_match()`, `to_lower()`, etc. are strictly prohibited.
+  - **No Arrays**: `val in ['a', 'b']` is not supported (use `||` logic).
+  - **No Comparison Operators**: `>`, `<`, `>=`, `<=` are strictly disallowed.
   - **No Side-effects**: Assignment or mutable state is impossible.
-- **Fail-fast**: Expressions are compiled and validated during policy load. Invalid expressions prevent the engine from starting.
+- **Fail-fast**: Expressions are compiled and validated during policy load.
 
 ---
 
@@ -34,7 +34,7 @@ Enables updating security rules without restarting long-running agent processes.
 - **Single-Request Isolation (Strict)**: 
     - Each `check()` or `execute()` request **MUST** capture a state snapshot (`ArcSwap::load()`) at the very beginning.
     - The entire request lifecycle (validation, decision, sandbox mode calculation, execution, and auditing) **MUST** use the **same** snapshot.
-    - If a `reload()` occurs while a request is in-flight, the in-flight request is unaffected and continues with its initial snapshot.
+    - If a `reload()` occurs while a request is in-flight, the in-flight request is unaffected.
 - **Methods (Core)**:
     - `Guard::reload_from_yaml(str)`
     - `Guard::reload_engine(PolicyEngine)`
@@ -42,11 +42,11 @@ Enables updating security rules without restarting long-running agent processes.
     - `Guard::from_yaml_file(path)`
     - `Guard::reload_from_file(path)` - *Optional helper*
 - **Audit & Versioning**:
-    - Every `AuditEvent` includes `policy_version` (SHA-256 hash of the YAML).
-    - `Guard::policy_version()` returns the current version.
+    - Every `AuditEvent` includes `policy_version`.
+    - `Guard::policy_version()` returns the current version string.
 - **Structured Auditing**: 
-    - Reload events are recorded as `PolicyReload` records in the audit log.
-    - Includes `status` (success/failure), `old_version`, `new_version`, and `error` (if failed).
+    - Reload events are recorded as `PolicyReload` records.
+    - Includes `status` (success/failure), `old_version`, `new_version`, and `error`.
 
 ---
 
