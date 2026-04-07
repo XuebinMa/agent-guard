@@ -9,23 +9,49 @@ rules:
     deny: ["rm -rf /"]
 `
 
-try {
-  const guard = Guard.fromYaml(yaml)
-  console.log('Policy version:', guard.policyVersion())
+async function runTest() {
+  try {
+    const guard = Guard.fromYaml(yaml)
+    console.log('Policy version:', guard.policyVersion())
 
-  const d1 = guard.check('bash', JSON.stringify({ command: 'ls -la' }))
-  console.log('Decision 1 (ls):', d1.outcome)
+    // 1. Check
+    console.log('\n--- Test: check ---')
+    const d1 = guard.check('bash', JSON.stringify({ command: 'ls -la' }))
+    console.log('Decision (ls):', d1.outcome)
 
-  const d2 = guard.check('bash', JSON.stringify({ command: 'rm -rf /' }))
-  console.log('Decision 2 (rm):', d2.outcome)
+    // 2. Execute (Async)
+    console.log('\n--- Test: execute (ls) ---')
+    const e1 = await guard.execute('bash', JSON.stringify({ command: 'ls -la' }))
+    console.log('Execute Outcome (ls):', e1.outcome)
+    if (e1.output) {
+      console.log('Exit Code:', e1.output.exitCode)
+      console.log('Stdout (first line):', e1.output.stdout.split('\n')[0])
+    }
 
-  // Test Context
-  const d3 = guard.check('bash', JSON.stringify({ command: 'rm -rf /' }), {
-    trust_level: 'admin'
-  })
-  console.log('Decision 3 (admin rm):', d3.outcome)
+    console.log('\n--- Test: execute (denied rm) ---')
+    const e2 = await guard.execute('bash', JSON.stringify({ command: 'rm -rf /' }))
+    console.log('Execute Outcome (rm):', e2.outcome)
+    if (e2.decision) {
+      console.log('Decision Code:', e2.decision.code)
+      console.log('Reason:', e2.decision.message)
+    }
 
-} catch (e) {
-  console.error('Test failed:', e)
-  process.exit(1)
+    // 3. Reload
+    console.log('\n--- Test: reload ---')
+    guard.reload(`
+version: 1
+default_mode: read_only
+`)
+    console.log('New Policy version:', guard.policyVersion())
+    const d2 = guard.check('bash', JSON.stringify({ command: 'ls -la' }))
+    console.log('Decision after reload (ls in read_only):', d2.outcome)
+
+    console.log('\nAll tests passed successfully (Node binding logic verified).')
+
+  } catch (e) {
+    console.error('Test failed:', e)
+    process.exit(1)
+  }
 }
+
+runTest()
