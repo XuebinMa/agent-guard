@@ -27,14 +27,9 @@ use agent_guard_core::PolicyMode;
 // ── SandboxContext ────────────────────────────────────────────────────────────
 
 /// Runtime constraints for a sandboxed execution.
-///
-/// `timeout_ms` is an execution-time constraint, not a policy field.
-/// Policy decides *whether* a command can run; context decides *how long* it may run.
-/// This separation ensures policy YAML stays free of scheduling parameters.
 #[derive(Debug, Clone)]
 pub struct SandboxContext {
     /// Effective mode resolved by `PolicyEngine::effective_mode()`.
-    /// The sandbox uses this to select its syscall allowlist.
     pub mode: PolicyMode,
     /// Workspace root — writes must stay within this directory.
     pub working_directory: PathBuf,
@@ -70,28 +65,17 @@ pub type SandboxResult = Result<SandboxOutput, SandboxError>;
 // ── Sandbox trait ─────────────────────────────────────────────────────────────
 
 /// Abstraction over execution environments.
-///
-/// Platform support matrix:
-/// - Linux: seccomp-bpf syscall filter — **Phase 2** (`SeccompSandbox`)
-/// - macOS: `sandbox-exec` profiles — **Phase 3 experimental**
-/// - Windows: job object restrictions — **Phase 4**
-///
-/// Current default is `NoopSandbox` (passthrough): enforces policy but
-/// provides no OS-level syscall or filesystem isolation.
 pub trait Sandbox: Send + Sync {
-    /// Friendly display name for the sandbox instance.
+    /// Friendly display name for the sandbox instance (e.g. "Seatbelt").
     fn name(&self) -> &'static str;
 
-    /// Machine-readable identifier for the sandbox technology (e.g. "linux-seccomp").
+    /// Machine-readable identifier for the sandbox technology (e.g. "macos-seatbelt").
     fn sandbox_type(&self) -> &'static str;
 
     /// Return detailed security capabilities for this sandbox.
     fn capabilities(&self) -> SandboxCapabilities;
 
     /// Execute `command` under this sandbox with the given context.
-    ///
-    /// Callers must run `Guard::check()` and receive `Allow` before calling
-    /// this method. The sandbox provides defense-in-depth, not primary enforcement.
     fn execute(&self, command: &str, context: &SandboxContext) -> SandboxResult;
 
     /// Returns `true` if this sandbox implementation is usable on the current platform.
@@ -111,10 +95,6 @@ pub enum SandboxError {
     Timeout { ms: u64 },
     #[error("seccomp filter setup failed: {0}")]
     FilterSetup(String),
-    /// Child process was killed by the seccomp filter (signal 31 / SIGSYS).
-    ///
-    /// This means the child attempted a syscall that was blocked by the installed
-    /// BPF filter. The exit code is captured for diagnosis.
     #[error("process killed by seccomp filter (exit code: {exit_code})")]
     KilledByFilter { exit_code: i32 },
 }
