@@ -222,7 +222,22 @@ impl PyGuard {
         Ok(decision_from_rust(decision))
     }
 
-    fn __repr__(&self) -> &'static str {
-        "Guard(<policy loaded>)"
+    /// Atomically reload the policy from a YAML string.
+    ///
+    /// Raises :exc:`GuardError` on validation failure. The old policy
+    /// remains active if the reload fails.
+    fn reload_from_yaml(&self, yaml: &str) -> PyResult<()> {
+        self.inner
+            .reload_from_yaml(yaml)
+            .map_err(|e| GuardError::new_err(format!("{e}")))
+    }
+
+    /// Return the SHA-256 version hash of the currently loaded policy.
+    fn policy_version(&self) -> String {
+        self.inner.policy_version()
+    }
+
+    fn __repr__(&self) -> String {
+        format!("Guard(version={:?})", self.inner.policy_version())
     }
 }

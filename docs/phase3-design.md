@@ -40,7 +40,7 @@ Enable rules that reference the caller's context. Per PM feedback, we will use a
 ### Supported Operators
 - Comparison: `==`, `!=`, `>`, `<`, `>=`, `<=`
 - Logic: `&&`, `||`, `!`
-- Membership: `in` (for string sets)
+- **Note**: Membership operator `in` and array literals are **NOT** supported in the initial release to keep the DSL minimal.
 
 ---
 
@@ -50,15 +50,17 @@ Enables updating security rules without restarting long-running agent processes.
 
 ### Implementation
 - **Atomic Swap**: Use `ArcSwap` to replace the internal `PolicyEngine` instance.
+- **Single-Request Isolation (Strict)**: 
+    - Each `check()` or `execute()` request captures a state snapshot (`ArcSwap::load()`) at the very beginning.
+    - The entire request lifecycle (validation, decision, sandbox execution, and auditing) uses the **same** snapshot.
+    - If a `reload()` occurs while a request is in-flight, the in-flight request is unaffected.
 - **Methods**:
     - `Guard::reload_from_yaml(str)`
-    - `Guard::reload_from_file(path)`
-- **Concurrency**:
-    - Requests in-flight continue using the engine instance they started with.
-    - New requests immediately pick up the swapped engine.
-- **Audit**: Every `AuditEvent` will now include:
-    - `policy_version`: A unique string/hash of the loaded policy.
-    - `sandbox_backend`: `seccomp`, `sandbox-exec`, or `noop`.
+    - `Guard::reload_engine(PolicyEngine)`
+- **Audit & Versioning**:
+    - Every `AuditEvent` includes `policy_version` (SHA-256 hash of the YAML).
+    - `Guard::policy_version()` returns the current version.
+- **Logging**: Reload success/failure events are logged to `stderr` with timestamps.
 
 ---
 

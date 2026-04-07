@@ -69,8 +69,8 @@ impl Guard {
     /// If the new engine's audit configuration is different, the audit file
     /// will be opened/updated accordingly.
     pub fn reload_engine(&self, engine: PolicyEngine) -> Result<(), GuardInitError> {
-        let old_version = self.state.load().engine.hash().to_string();
-        let new_version = engine.hash().to_string();
+        let old_version = self.state.load().engine.version().to_string();
+        let new_version = engine.version().to_string();
         
         let new_state = GuardState::new(Arc::new(engine))?;
         self.state.store(Arc::new(new_state));
@@ -100,8 +100,12 @@ impl Guard {
         }
     }
 
+    pub fn policy_version(&self) -> String {
+        self.state.load().engine.version().to_string()
+    }
+
     pub fn policy_hash(&self) -> String {
-        self.state.load().engine.hash().to_string()
+        self.policy_version()
     }
 
     /// Evaluate the guard decision for a tool call.
@@ -114,9 +118,14 @@ impl Guard {
     pub fn check(&self, input: &GuardInput) -> GuardDecision {
         // M3.2: Take a snapshot of the current state at the start of the request.
         let state = self.state.load();
-        let decision = self.evaluate(input, &state);
+        self.check_internal(input, &state)
+    }
+
+    /// Internal version of check that uses a specific state snapshot.
+    fn check_internal(&self, input: &GuardInput, state: &GuardState) -> GuardDecision {
+        let decision = self.evaluate(input, state);
         if state.audit_cfg.enabled {
-            self.write_audit(input, &decision, &state);
+            self.write_audit(input, &decision, state);
         }
         decision
     }
@@ -247,12 +256,13 @@ impl Guard {
         payload: impl Into<String>,
         context: Context,
     ) -> GuardDecision {
+        let state = self.state.load();
         let input = GuardInput {
             tool,
             payload: payload.into(),
             context,
         };
-        self.check(&input)
+        self.check_internal(&input, &state)
     }
 }
 
@@ -331,8 +341,10 @@ impl Guard {
         input: &GuardInput,
         sandbox: &dyn Sandbox,
     ) -> ExecuteResult {
+        // M3.2: Single snapshot for the entire execute() flow.
         let state = self.state.load();
-        let decision = self.check(input);
+
+        let decision = self.check_internal(input, &state);
         match &decision {
             GuardDecision::Allow { .. } => {}
             GuardDecision::Deny { .. } => {
@@ -344,9 +356,6 @@ impl Guard {
         }
 
         // Extract the command string from the JSON payload.
-        // Payload contract: {"command": "<shell command>"} for Tool::Bash.
-        // This mirrors the validator's extraction and must never fall back to
-        // bare-string matching — that would break the structured payload contract.
         let command = extract_bash_command(&input.payload)?;
 
         let mode = state.engine.effective_mode(&input.tool, &input.context);
@@ -359,7 +368,7 @@ impl Guard {
         let ctx = SandboxContext {
             mode,
             working_directory,
-            timeout_ms: None, // callers may wrap with a context that sets this
+            timeout_ms: None,
         };
 
         let output = sandbox.execute(&command, &ctx)?;
@@ -501,7 +510,7 @@ version: 1
 default_mode: read_only
 "#;
         let guard = Guard::from_yaml(yaml).unwrap();
-        let expected_hash = guard.policy_hash();
+        let expected_version = guard.policy_version();
         
         let ctx = Context {
             trust_level: TrustLevel::Trusted,
@@ -513,8 +522,8 @@ default_mode: read_only
             context: ctx,
         };
         
-        // Verify policy_hash() works.
-        assert!(!expected_hash.is_empty());
-        assert_eq!(expected_hash.len(), 64); // SHA-256 hex
+        // Verify policy_version() works.
+        assert!(!expected_version.is_empty());
+        assert_eq!(expected_version.len(), 64); // SHA-256 hex
     }
 }

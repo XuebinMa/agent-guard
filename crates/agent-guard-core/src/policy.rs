@@ -222,6 +222,10 @@ impl PolicyEngine {
         Self::from_yaml_str(&content)
     }
 
+    pub fn version(&self) -> &str {
+        &self.hash
+    }
+
     pub fn hash(&self) -> &str {
         &self.hash
     }
