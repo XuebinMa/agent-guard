@@ -153,4 +153,6 @@ pub enum DecisionCode {
     PolicyLoadError,
     #[serde(rename = "INTERNAL_ERROR")]
     InternalError,
+    #[serde(rename = "ANOMALY_DETECTED")]
+    AnomalyDetected,
 }

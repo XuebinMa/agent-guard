@@ -6,11 +6,16 @@ pub mod linux;
 #[cfg(feature = "macos-sandbox")]
 pub mod macos;
 
+#[cfg(feature = "windows-sandbox")]
+pub mod windows;
+
 pub use noop::NoopSandbox;
 #[cfg(target_os = "linux")]
 pub use linux::SeccompSandbox;
 #[cfg(feature = "macos-sandbox")]
 pub use macos::SeatbeltSandbox;
+#[cfg(feature = "windows-sandbox")]
+pub use windows::JobObjectSandbox;
 
 use std::path::PathBuf;
 

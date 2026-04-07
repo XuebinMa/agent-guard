@@ -136,7 +136,32 @@ impl Guard {
     /// Internal core logic that MUST use a captured state snapshot.
     /// This ensures decision, auditing, and execution use the same policy version.
     fn check_internal(&self, input: &GuardInput, state: &GuardState) -> GuardDecision {
+        // M4.3: Anomaly detection
+        let actor = input.context.actor.as_deref().unwrap_or("unknown");
+        if crate::anomaly::get_detector().check(actor) {
+            let decision = GuardDecision::deny(
+                DecisionCode::AnomalyDetected,
+                "anomaly detected: high tool call frequency",
+            );
+            if state.audit_cfg.enabled {
+                self.write_audit(input, &decision, state);
+            }
+            return decision;
+        }
+
         let decision = self.evaluate(input, state);
+        
+        // M4.2: Record metrics
+        let outcome = match &decision {
+            GuardDecision::Allow => "allow",
+            GuardDecision::Deny { .. } => "deny",
+            GuardDecision::AskUser { .. } => "ask",
+        };
+        crate::metrics::get_metrics().policy_checks.get_or_create(&crate::metrics::DecisionLabels {
+            tool: input.tool.name().to_string(),
+            outcome: outcome.to_string(),
+        }).inc();
+
         if state.audit_cfg.enabled {
             self.write_audit(input, &decision, state);
         }
@@ -179,7 +204,16 @@ impl Guard {
             timeout_ms: None,
         };
 
+        let start = std::time::Instant::now();
         let output = sandbox.execute(&command, &ctx)?;
+        let duration = start.elapsed().as_secs_f64();
+
+        // M4.2: Record execution duration
+        crate::metrics::get_metrics().execution_duration.get_or_create(&crate::metrics::ExecutionLabels {
+            tool: input.tool.name().to_string(),
+            sandbox: sandbox.name().to_string(),
+        }).observe(duration);
+
         Ok(ExecuteOutcome::Executed { output })
     }
 
@@ -205,7 +239,11 @@ impl Guard {
         {
             Box::new(agent_guard_sandbox::SeatbeltSandbox)
         }
-        #[cfg(not(any(target_os = "linux", feature = "macos-sandbox")))]
+        #[cfg(feature = "windows-sandbox")]
+        {
+            Box::new(agent_guard_sandbox::JobObjectSandbox)
+        }
+        #[cfg(not(any(target_os = "linux", feature = "macos-sandbox", feature = "windows-sandbox")))]
         {
             Box::new(agent_guard_sandbox::NoopSandbox)
         }

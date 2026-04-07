@@ -10,11 +10,15 @@ description = "High-level SDK for agent-guard policy enforcement"
 seccomp = ["agent-guard-sandbox/seccomp"]
 # Enable experimental macOS sandbox using sandbox-exec (Seatbelt).
 macos-sandbox = ["agent-guard-sandbox/macos-sandbox"]
+# Enable experimental Windows sandbox using Job Objects.
+windows-sandbox = ["agent-guard-sandbox/windows-sandbox"]
 
 [dependencies]
 agent-guard-core = { path = "../agent-guard-core" }
 agent-guard-validators = { path = "../agent-guard-validators" }
 agent-guard-sandbox = { path = "../agent-guard-sandbox" }
+tracing.workspace = true
+prometheus-client.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true

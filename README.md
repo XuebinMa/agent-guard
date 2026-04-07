@@ -59,9 +59,17 @@ cargo run -p agent-guard-sdk --example quickstart
 |---|---|
 | Linux | **Full Support**. Policy enforcement + OS-level sandbox (seccomp-bpf). |
 | macOS | **Experimental Prototype**. Policy enforcement + best-effort filesystem isolation (`SeatbeltSandbox`). |
-| Windows | **Planned** (Phase 4). |
+| Windows | **Experimental Prototype**. Policy enforcement + basic Job Object isolation. |
 
-> **Note on macOS Sandbox**: The current implementation for macOS is an experimental prototype using `sandbox-exec` (Seatbelt). It focuses primarily on filesystem write isolation and does not yet provide full network or global read restrictions. See [docs/sandbox-macos.md](docs/sandbox-macos.md) for the full threat model.
+> **Note on macOS/Windows Sandbox**: The current implementations for macOS and Windows are experimental prototypes. They focus primarily on filesystem/process isolation and do not yet provide full network or global read restrictions. See [docs/sandbox-macos.md](docs/sandbox-macos.md) for details.
+
+## Telemetry & Observability (Phase 4)
+
+`agent-guard` now includes built-in support for structured logging and metrics:
+
+- **Tracing**: Uses the `tracing` crate for high-granularity event logging.
+- **Metrics**: Exposes Prometheus-compatible metrics (`policy_checks_total`, `execution_duration_seconds`) via the `prometheus-client` crate.
+- **Anomaly Detection**: Basic frequency-based detection to prevent rapid-fire destructive tool calls.
 
 ## Workspace Structure
 

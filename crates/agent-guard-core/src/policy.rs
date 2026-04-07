@@ -235,6 +235,11 @@ impl PolicyEngine {
     }
 
     pub fn check(&self, tool: &Tool, payload: &str, context: &Context) -> GuardDecision {
+        tracing::debug!(
+            tool = tool.name(),
+            actor = context.actor.as_deref().unwrap_or("unknown"),
+            "PolicyEngine::check"
+        );
         let trust_level = &context.trust_level;
         let effective_mode = self.effective_mode(tool, context);
         let tool_policy = self.tool_policy(tool);

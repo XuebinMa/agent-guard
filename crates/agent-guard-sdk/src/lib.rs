@@ -1,4 +1,6 @@
 pub mod guard;
+pub mod metrics;
+pub mod anomaly;
 
 pub use guard::{ExecuteOutcome, ExecuteResult, Guard, GuardInitError};
 
@@ -15,3 +17,6 @@ pub use agent_guard_sandbox::SeccompSandbox;
 
 #[cfg(feature = "macos-sandbox")]
 pub use agent_guard_sandbox::SeatbeltSandbox;
+
+#[cfg(feature = "windows-sandbox")]
+pub use agent_guard_sandbox::JobObjectSandbox;
