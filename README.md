@@ -104,9 +104,14 @@ if decision.is_deny() {
 > **Security Note**: macOS and Windows implementations are currently **experimental prototypes**. While they provide valuable isolation, they do not yet match the syscall-level hardening provided by Seccomp on Linux.
 
 #### Windows Specifics (Phase 4 Prototype)
-- **Job Objects**: All tool calls on Windows are now wrapped in a dedicated Job Object with `JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE`.
-- **Process Tree Cleanup**: If the parent process or the guard handle is closed, all child processes spawned by the agent are guaranteed to be terminated.
-- **Fail-Closed**: Any failure in initializing the Job Object environment will result in a hard execution error rather than falling back to unmanaged execution.
+- **Status**: **Verifiable Prototype** focusing on resource management.
+- **Capabilities Matrix**:
+  - **Process Tree Cleanup**: ✅ **Yes** (Job Object `KILL_ON_JOB_CLOSE`)
+  - **Resource Limits**: ✅ **Yes** (Active process limits, termination on exception)
+  - **Filesystem Isolation**: ❌ **No** (Planned / best-effort via ACLs)
+  - **Network Isolation**: ❌ **No**
+  - **Syscall Filtering**: ❌ **No**
+- **Fail-Closed Architecture**: Any failure in initializing the Job Object environment will result in a hard execution error rather than falling back to unmanaged execution.
 
 ---
 

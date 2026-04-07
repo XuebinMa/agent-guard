@@ -128,4 +128,18 @@ mod tests {
         let output = res.unwrap();
         assert!(output.stdout.contains("test"));
     }
+
+    #[test]
+    fn test_windows_fail_closed_logic() {
+        // This is hard to test without mocking Win32, but we can verify 
+        // that invalid commands or environments return proper errors.
+        let sandbox = JobObjectSandbox;
+        let ctx = SandboxContext {
+            mode: PolicyMode::ReadOnly,
+            working_directory: PathBuf::from("NON_EXISTENT_DIR_12345"),
+            timeout_ms: None,
+        };
+        let res = sandbox.execute("echo fail", &ctx);
+        assert!(res.is_err(), "Execution in non-existent directory should fail-closed");
+    }
 }
