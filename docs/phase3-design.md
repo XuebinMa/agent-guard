@@ -38,9 +38,9 @@ Enable rules that reference the caller's context. Per PM feedback, we will use a
 | `working_directory` | Effective working directory. |
 
 ### Supported Operators
-- Comparison: `==`, `!=`, `>`, `<`, `>=`, `<=`
+- Comparison: `==`, `!=`
 - Logic: `&&`, `||`, `!`
-- **Note**: Membership operator `in` and array literals are **NOT** supported in the initial release to keep the DSL minimal.
+- **Note**: Membership operator `in`, array literals, and comparison operators like `>`, `<`, `>=`, `<=` are **NOT** supported in the initial release to keep the DSL minimal and strictly string/boolean-based.
 
 ---
 
@@ -54,9 +54,11 @@ Enables updating security rules without restarting long-running agent processes.
     - Each `check()` or `execute()` request **MUST** capture a state snapshot (`ArcSwap::load()`) at the very beginning.
     - The entire request lifecycle (validation, decision, sandbox mode calculation, execution, and auditing) **MUST** use the **same** snapshot.
     - If a `reload()` occurs while a request is in-flight, the in-flight request is unaffected and continues with its initial snapshot.
-- **Methods**:
+- **Methods (Core)**:
     - `Guard::reload_from_yaml(str)`
     - `Guard::reload_engine(PolicyEngine)`
+- **Methods (SDK Convenience Layer)**:
+    - `Guard::reload_from_file(path)` - *Optional helper*
 - **Audit & Versioning**:
     - Every `AuditEvent` includes `policy_version` (SHA-256 hash of the YAML).
     - `Guard::policy_version()` returns the current version.
@@ -92,7 +94,7 @@ Expand the ecosystem to JavaScript/TypeScript using `napi-rs`.
 
 | Milestone | Deliverable | Priority | Status |
 |---|---|---|---|
-| **M3.1** | Context-aware `if:` logic (evalexpr) | High | Pending |
-| **M3.2** | `Guard::reload()` (ArcSwap) | High | Pending |
+| **M3.1** | Context-aware `if:` logic (evalexpr) | High | **Completed** |
+| **M3.2** | `Guard::reload()` (ArcSwap) | High | **Completed** |
 | **M3.3** | `agent-guard-node` package (napi-rs) | Medium | Pending |
 | **M3.4** | `SeatbeltSandbox` (macos-sandbox flag) | Low | Pending |
