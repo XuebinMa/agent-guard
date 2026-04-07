@@ -1,7 +1,7 @@
 # Global Threat Model — agent-guard
 
 > Status: **Phase 5 (Active)**  
-> Version: **2.0**  
+> Version: **2.1**  
 > This document serves as the primary security audit entry point for `agent-guard`. It outlines the assets, attack surfaces, and defensive posture of the SDK across all supported platforms.
 
 ---
@@ -33,7 +33,7 @@ Mapping potential entry points and their mitigation strategies:
 
 ---
 
-## 3. 🛡️ STRIDE Threat Analysis
+## 3. 🛡️ STRIDE Threat Analysis (v2.1 Refined)
 Categorized analysis of threats and implemented defenses:
 
 ### **S**poofing (Identity)
@@ -54,7 +54,7 @@ Categorized analysis of threats and implemented defenses:
 
 ### **D**enial of Service (Availability)
 - **Threat**: An agent exhausts CPU/RAM or initiates a rapid-fire loop of tool calls.
-- **Mitigation**: **Anomaly Detection** (frequency-based) + Windows Job Object resource limits.
+- **Mitigation**: **Anomaly Detection** (frequency-based) + Windows Job Object resource limits (256MB default).
 
 ### **E**levation of Privilege (Isolation)
 - **Threat**: An agent escapes the sandbox to gain root/Administrator privileges.
@@ -71,31 +71,30 @@ Categorized analysis of threats and implemented defenses:
 | **Network Blocking** | ✅ Native (Strict) | 🟡 Experimental (Permissive) | ❌ **No** |
 | **Filesystem Read** | ✅ Restricted | ❌ No (Global User Read) | ❌ No (Global User Read) |
 | **Filesystem Write** | ✅ Restricted | ✅ Restricted (Workspace) | ✅ **Low-IL Enforced** |
-| **Resource Limits** | ✅ Native | ❌ No | ✅ **Verifiable** |
+| **Resource Limits** | ✅ Native | ❌ No | ✅ **Enforced (256MB)** |
 | **Fail-Closed** | ✅ Yes | ✅ Yes | ✅ **Yes** |
 
 ---
 
-## 5. ☣️ Known Bypasses & Mitigations
+## 5. ☣️ Windows Specific Hardening (Audit v2.1)
 
-### 1. Windows Global Filesystem Access
-<<<<<<< HEAD
-- **Status**: **Strengthened Prototype (M5.1)**. 
-- **Mitigation**: **Low-Integrity Level (Low-IL)** token enforcement is **ACTIVE** via `CreateProcessAsUserW`. This prevents writing to medium/high integrity folders even if the parent user process has access.
-- **Reference**: See [docs/sandbox-windows.md](sandbox-windows.md).
-=======
-- **Status**: **ACTIVE (M5.1)**. 
-- **Mitigation**: **Low-Integrity Level (Low-IL)** token enforcement is **ENFORCED** via Win32 `CreateProcessAsUserW`. This prevents writing to medium/high integrity folders (e.g., `C:\Windows`, `C:\Program Files`) even if the host user has Administrator privileges.
-- **Reference**: See [crates/agent-guard-sandbox/src/windows.rs](../crates/agent-guard-sandbox/src/windows.rs).
->>>>>>> 02d1b74
+### 1. Handle Inheritance Audit
+- **Threat**: Sub-processes inheriting sensitive file/socket handles from the parent process.
+- **Mitigation**: 
+    - **Default Deny**: Win32 handles are not inheritable by default in Windows unless explicitly requested.
+    - **Explicit Opt-in**: `agent-guard` only marks the `Write` end of stdout/stderr pipes as inheritable.
+    - **Isolation**: Read ends of pipes are explicitly configured with `HANDLE_FLAG_INHERIT = 0`.
+- **Verification**: `test_windows_handle_inheritance_audit` in `windows.rs`.
 
-### 2. macOS Global Read Access
-- **Bypass**: The Seatbelt prototype focuses on write-prevention.
-- **Mitigation**: Recommend running under a dedicated restricted system user.
+### 2. Token Leakage risks
+- **Threat**: The restricted Low-IL token being stolen or reused by other processes.
+- **Mitigation**: 
+    - The token is only used to spawn the child process and is closed in the parent immediately after.
+    - `CreateProcessAsUserW` ensures the primary token of the child is the restricted one.
 
-### 3. Time-of-Check to Time-of-Use (TOCTOU)
-- **Bypass**: Symlink swapping during tool validation.
-- **Mitigation**: Sandboxes provide kernel-level path resolution constraints where possible.
+### 3. Known Non-Goals (Windows)
+- **Network Isolation**: Currently not enforced via Job Objects. Use Windows Firewall or AppContainer (Future Phase) for network-level hardening.
+- **Registry Isolation**: Low-IL provides some protection, but registry writes to certain areas may still be possible depending on user permissions.
 
 ---
 

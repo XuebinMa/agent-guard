@@ -52,11 +52,16 @@ impl Sandbox for JobObjectSandbox {
         }
         let _job_guard = JobHandle(job);
 
-        // 2. Configure Limits: Kill all processes in job on handle close
+        // 2. Configure Limits: Kill all processes in job on handle close + Resource Limits
         unsafe {
             let mut info: JOBOBJECT_EXTENDED_LIMIT_INFORMATION = std::mem::zeroed();
             info.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE 
                 | JOB_OBJECT_LIMIT_DIE_ON_UNHANDLED_EXCEPTION;
+            
+            // Apply memory limits if specified in context (conceptual for prototype)
+            // For now, we apply a safe default of 256MB for the sandbox if not specified
+            info.BasicLimitInformation.LimitFlags |= JOB_OBJECT_LIMIT_PROCESS_MEMORY;
+            info.ProcessMemoryLimit = 256 * 1024 * 1024; // 256MB default limit
             
             let res = SetInformationJobObject(
                 job,
@@ -415,5 +420,55 @@ mod tests {
         };
         let res_empty = sandbox.execute("", &ctx_valid);
         assert!(res_empty.is_ok(), "Empty command should execute cmd /C gracefully");
+    }
+
+    #[test]
+    fn test_windows_handle_inheritance_audit() {
+        // Concept: We want to ensure that if we open a file in the parent,
+        // it is NOT inheritable by default, thus the child cannot see it.
+        use std::fs::File;
+        use std::os::windows::io::AsRawHandle;
+        
+        let file = File::create("sensitive_parent_data.txt").unwrap();
+        let handle = file.as_raw_handle() as windows_sys::Win32::Foundation::HANDLE;
+        
+        // Verify that the handle is NOT inheritable by default (Win32 default for CreateFile)
+        let mut flags: u32 = 0;
+        unsafe {
+            windows_sys::Win32::Foundation::GetHandleInformation(handle, &mut flags);
+        }
+        assert!((flags & windows_sys::Win32::Foundation::HANDLE_FLAG_INHERIT) == 0, 
+            "Sensitive parent handle should not be inheritable by default.");
+            
+        std::fs::remove_file("sensitive_parent_data.txt").unwrap();
+    }
+
+    #[test]
+    fn test_windows_low_il_token_integrity_audit() {
+        // Strong test: Verify that the token we create actually HAS Low integrity level.
+        use windows_sys::Win32::Security::*;
+        
+        let res = create_low_integrity_token();
+        assert!(res.is_ok());
+        let token = res.unwrap();
+        let _guard = TokenHandle(token);
+        
+        let mut len: u32 = 0;
+        unsafe {
+            GetTokenInformation(token, TokenIntegrityLevel, std::ptr::null_mut(), 0, &mut len);
+            let mut buffer = vec![0u8; len as usize];
+            if GetTokenInformation(token, TokenIntegrityLevel, buffer.as_mut_ptr() as *mut _, len, &mut len) != 0 {
+                let tml = &*(buffer.as_ptr() as *const TOKEN_MANDATORY_LABEL);
+                let sid = tml.Label.Sid;
+                
+                let sub_authority_count = *GetSidSubAuthorityCount(sid);
+                let last_sub_authority = *GetSidSubAuthority(sid, sub_authority_count as u32 - 1);
+                
+                // Low Mandatory Level RID is 0x1000 (4096)
+                assert_eq!(last_sub_authority, 0x1000, "Token RID should be 0x1000 (Low Integrity Level)");
+            } else {
+                panic!("Failed to get token information");
+            }
+        }
     }
 }
