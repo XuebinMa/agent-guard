@@ -79,8 +79,8 @@ Categorized analysis of threats and implemented defenses:
 ## 5. ☣️ Known Bypasses & Mitigations
 
 ### 1. Windows Global Filesystem Access
-- **Status**: **Strengthened Prototype**. 
-- **Mitigation**: **Low-Integrity Level (Low-IL)** token enforcement is **active**. This prevents writing to medium/high integrity folders even if the user has access.
+- **Status**: **Strengthened Prototype (M5.1)**. 
+- **Mitigation**: **Low-Integrity Level (Low-IL)** token enforcement is **ACTIVE** via `CreateProcessAsUserW`. This prevents writing to medium/high integrity folders even if the parent user process has access.
 - **Reference**: See [docs/sandbox-windows.md](sandbox-windows.md).
 
 ### 2. macOS Global Read Access
