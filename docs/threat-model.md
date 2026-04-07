@@ -58,7 +58,7 @@ Categorized analysis of threats and implemented defenses:
 
 ### **E**levation of Privilege (Isolation)
 - **Threat**: An agent escapes the sandbox to gain root/Administrator privileges.
-- **Mitigation**: **Seccomp-BPF** (Linux) and **Low-IL Token + Job Object** (Windows Prototype).
+- **Mitigation**: **Seccomp-BPF** (Linux) and **Low-IL Token + Job Object** (Windows).
 
 ---
 
@@ -67,21 +67,21 @@ Categorized analysis of threats and implemented defenses:
 | Feature | Linux (Seccomp) | macOS (Seatbelt) | Windows (Job Object) |
 | :--- | :--- | :--- | :--- |
 | **Isolation Backend** | Kernel-level BPF | User-space Proxy (`sandbox-exec`) | OS Job Object + Low-IL Token |
-| **Primary Goal** | Syscall Hardening | Filesystem Isolation | Resource & Lifecycle Mgmt |
+| **Primary Goal** | Syscall Hardening | Filesystem Isolation | Resource & Filesystem Isolation |
 | **Network Blocking** | ✅ Native (Strict) | 🟡 Experimental (Permissive) | ❌ **No** |
 | **Filesystem Read** | ✅ Restricted | ❌ No (Global User Read) | ❌ No (Global User Read) |
 | **Filesystem Write** | ✅ Restricted | ✅ Restricted (Workspace) | ✅ **Low-IL Enforced** |
-| **Resource Limits** | ✅ Native | ❌ No | ✅ **Verifiable Prototype** |
-| **Fail-Closed** | ✅ Yes | ✅ Yes | ✅ Yes |
+| **Resource Limits** | ✅ Native | ❌ No | ✅ **Verifiable** |
+| **Fail-Closed** | ✅ Yes | ✅ Yes | ✅ **Yes** |
 
 ---
 
 ## 5. ☣️ Known Bypasses & Mitigations
 
 ### 1. Windows Global Filesystem Access
-- **Status**: **Strengthened Prototype**. 
-- **Mitigation**: **Low-Integrity Level (Low-IL)** token enforcement is **active**. This prevents writing to medium/high integrity folders even if the user has access.
-- **Reference**: See [docs/sandbox-windows.md](sandbox-windows.md).
+- **Status**: **ACTIVE (M5.1)**. 
+- **Mitigation**: **Low-Integrity Level (Low-IL)** token enforcement is **ENFORCED** via Win32 `CreateProcessAsUserW`. This prevents writing to medium/high integrity folders (e.g., `C:\Windows`, `C:\Program Files`) even if the host user has Administrator privileges.
+- **Reference**: See [crates/agent-guard-sandbox/src/windows.rs](../crates/agent-guard-sandbox/src/windows.rs).
 
 ### 2. macOS Global Read Access
 - **Bypass**: The Seatbelt prototype focuses on write-prevention.
