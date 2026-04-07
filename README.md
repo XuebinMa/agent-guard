@@ -94,10 +94,8 @@ match guard.execute_default(&input) {
 
 ### 🗺️ Roadmap
 
-- [x] **Phase 1-2**: Core Engine, Linux Sandbox, Python Bindings.
-- [x] **Phase 3**: Node.js Bindings, Atomic Reloading, Policy DSL.
-- [x] **Phase 4**: Telemetry (Prometheus), Anomaly Detection, Windows Sandbox Prototype.
-- [ ] **Phase 5**: **(Current)** Windows Hardening (Low-IL), Advanced Threat Model, SIEM Integration.
+- [x] **Phase 1-4**: Core Engine, Linux Sandbox, Telemetry, Anomaly Detection.
+- [ ] **Phase 5**: **(Current)** Windows Hardening (Low-IL Enforcement), Threat Model v2 (STRIDE), SIEM Integration.
 
 ---
 

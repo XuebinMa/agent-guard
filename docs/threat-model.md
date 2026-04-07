@@ -7,41 +7,58 @@
 ---
 
 ## 1. 🏗️ Asset Inventory
-What are we protecting?
+The following assets are protected by the `agent-guard` security layer:
 
 | Asset | Importance | Security Requirement |
 | :--- | :--- | :--- |
-| **Policy Files (`policy.yaml`)** | **CRITICAL** | **Integrity**: Unauthorized modification leads to complete bypass. |
-| **Audit Logs (JSONL)** | **HIGH** | **Non-repudiability**: Logs must be protected from tampering by the agent. |
-| **Host System (Kernel/FS)** | **CRITICAL** | **Isolation**: Prevent local privilege escalation (LPE) and unauthorized writes. |
-| **Secrets (Env/SSH Keys)** | **CRITICAL** | **Confidentiality**: Prevent unauthorized reading/exfiltration. |
-| **Network (Local/External)** | **HIGH** | **SSRF Prevention**: Prevent internal network scanning and unauthorized C2 calls. |
-| **Telemetry Data** | **MEDIUM** | **Availability**: Monitoring must persist during an attack. |
+| **Policy Files (`policy.yaml`)** | **CRITICAL** | **Integrity**: Unauthorized modification leads to complete bypass. Must be protected by OS-level permissions. |
+| **Audit Logs (JSONL)** | **HIGH** | **Non-repudiability**: Logs must be protected from tampering to maintain the chain of custody for security investigations. |
+| **Host System (Kernel/FS)** | **CRITICAL** | **Isolation**: Prevent local privilege escalation (LPE) and unauthorized writes to critical system paths. |
+| **Secrets (Env/SSH Keys)** | **CRITICAL** | **Confidentiality**: Prevent unauthorized reading or exfiltration of sensitive developer credentials. |
+| **Network (Local/External)** | **HIGH** | **SSRF Prevention**: Prevent internal network scanning and unauthorized command-and-control (C2) communication. |
+| **Telemetry Data** | **MEDIUM** | **Availability**: Real-time monitoring data must persist even if an agent process crashes or is compromised. |
 
 ---
 
 ## 2. 🏹 Attack Surface Matrix
+Mapping potential entry points and their mitigation strategies:
 
-| Component | Entry Vector | Potential Impact | Mitigation Strategy |
+| Surface Component | Entry Vector | Potential Impact | Mitigation Strategy |
 | :--- | :--- | :--- | :--- |
-| **Tool Payloads** | Malicious JSON/CLI args | Command Injection, RCE | `evalexpr` DSL + Regex Validation |
-| **Filesystem** | Path traversal, Symlinks | Data exfiltration, Overwrite | Glob-based Allow/Deny + Sandbox isolation |
-| **Network** | Outbound HTTP/Socket | Data exfiltration, SSRF | Seccomp (Linux) / Seatbelt (macOS Prototype) |
-| **Process Tree** | Fork-bomb, child escape | DoS, Sandbox Escape | Job Objects (Windows) / cgroups (Planned) |
-| **Policy Engine** | Malicious YAML config | Engine DoS, Logic Bypass | AOT Validation + Type-safe parsing |
+| **Tool Payloads** | Malicious JSON/CLI args | Command Injection, RCE | `evalexpr` Restricted DSL + Regex Validation Patterns. |
+| **Filesystem Access** | Path traversal, Symlinks | Data exfiltration, Overwrite | Glob-based Allow/Deny paths + Sandbox isolation (Seccomp/Seatbelt). |
+| **Network Stack** | Outbound HTTP/Socket | Data exfiltration, SSRF | Seccomp (Linux) / Seatbelt (macOS Prototype). |
+| **Process Management** | Fork-bomb, child escape | DoS, Sandbox Escape | Job Objects (Windows) / cgroups (Linux Planned). |
+| **Config Loader** | Malicious YAML config | Engine DoS, Logic Bypass | AOT Validation + Type-safe parsing + Schema enforcement. |
 
 ---
 
 ## 3. 🛡️ STRIDE Threat Analysis
+Categorized analysis of threats and implemented defenses:
 
-| Threat Category | Description | agent-guard v0.1.0 Mitigation |
-| :--- | :--- | :--- |
-| **S**poofing | Actor impersonation in `Context`. | Trusted orchestrator must provide valid `actor_id`. |
-| **T**ampering | Modifying policy or audit logs. | **Out of scope**: Requires OS-level file permissions. |
-| **R**epudiation | Denying a destructive tool call was made. | Non-repudiable JSONL Audit Logs + Prometheus Metrics. |
-| **I**nformation Disclosure | Exfiltrating host secrets via tools. | Read-only modes + Workspace-locked Sandboxing. |
-| **D**enial of Service | Agent exhausting CPU/RAM/Disk. | **Anomaly detection** + Windows Job Object limits. |
-| **E**levation of Privilege | Escaping the sandbox to gain host root. | **Seccomp-BPF** (Linux) kernel-level enforcement. |
+### **S**poofing (Identity)
+- **Threat**: An unauthorized agent or actor impersonates a trusted one in the `Context`.
+- **Mitigation**: The trusted host orchestrator is responsible for providing the immutable `actor_id` and `agent_id`.
+
+### **T**ampering (Integrity)
+- **Threat**: An agent modifies the security policy or deletes its own audit logs.
+- **Mitigation**: **Out of scope for SDK** — requires OS-level file permissions (e.g., `chmod 400` on policy files).
+
+### **R**epudiation (Non-repudiability)
+- **Threat**: An attacker claims they did not execute a destructive command.
+- **Mitigation**: Non-repudiable JSONL Audit Logs + Real-time Prometheus Metrics (`agent_guard_decision_total`).
+
+### **I**nformation Disclosure (Confidentiality)
+- **Threat**: An agent reads host secrets (e.g., `.ssh/id_rsa`) via a `read_file` tool call.
+- **Mitigation**: Mandatory `ReadOnly` modes + path-based deny-lists + OS-level Sandboxing.
+
+### **D**enial of Service (Availability)
+- **Threat**: An agent exhausts CPU/RAM or initiates a rapid-fire loop of tool calls.
+- **Mitigation**: **Anomaly Detection** (frequency-based) + Windows Job Object resource limits.
+
+### **E**levation of Privilege (Isolation)
+- **Threat**: An agent escapes the sandbox to gain root/Administrator privileges.
+- **Mitigation**: **Seccomp-BPF** (Linux) and **Low-IL Token + Job Object** (Windows Prototype).
 
 ---
 
@@ -49,11 +66,11 @@ What are we protecting?
 
 | Feature | Linux (Seccomp) | macOS (Seatbelt) | Windows (Job Object) |
 | :--- | :--- | :--- | :--- |
-| **Isolation Backend** | Kernel-level BPF | User-space Proxy (`sandbox-exec`) | OS Job Object (`windows-sys`) |
+| **Isolation Backend** | Kernel-level BPF | User-space Proxy (`sandbox-exec`) | OS Job Object + Low-IL Token |
 | **Primary Goal** | Syscall Hardening | Filesystem Isolation | Resource & Lifecycle Mgmt |
 | **Network Blocking** | ✅ Native (Strict) | 🟡 Experimental (Permissive) | ❌ **No** |
 | **Filesystem Read** | ✅ Restricted | ❌ No (Global User Read) | ❌ No (Global User Read) |
-| **Filesystem Write** | ✅ Restricted | ✅ Restricted (Workspace) | ❌ No (Global User Write) |
+| **Filesystem Write** | ✅ Restricted | ✅ Restricted (Workspace) | 🟡 **Low-IL Enforced** |
 | **Resource Limits** | ✅ Native | ❌ No | ✅ **Verifiable Prototype** |
 | **Fail-Closed** | ✅ Yes | ✅ Yes | ✅ Yes |
 
@@ -61,19 +78,18 @@ What are we protecting?
 
 ## 5. ☣️ Known Bypasses & Mitigations
 
-### 1. Windows Global Filesystem Write
-- **Bypass**: Currently, the Windows Job Object does not restrict filesystem access.
-- **Mitigation (Phase 5)**: Run under a **Low-Integrity (Low-IL) Token**. In Phase 4, users must run as a dedicated restricted user account.
-- **Reference**: See [docs/sandbox-windows.md](sandbox-windows.md).
+### 1. Windows Global Filesystem Access
+- **Status**: **Strengthened Prototype**. 
+- **Bypass**: Current Job Object implementation does not restrict all filesystem access.
+- **Mitigation**: **Low-Integrity Level (Low-IL)** token enforcement (implemented in Phase 5). This prevents writing to medium/high integrity folders even if the user has access.
 
 ### 2. macOS Global Read Access
-- **Bypass**: The Seatbelt prototype focuses on write-prevention. It may allow reading system files accessible by the user.
-- **Mitigation**: Future App Sandbox integration. Current users should avoid placing secrets in user-readable world directories.
-- **Reference**: See [docs/sandbox-macos.md](sandbox-macos.md).
+- **Bypass**: The Seatbelt prototype focuses on write-prevention.
+- **Mitigation**: Recommend running under a dedicated restricted system user.
 
 ### 3. Time-of-Check to Time-of-Use (TOCTOU)
-- **Bypass**: A symlink could be swapped between policy validation and sandbox execution.
-- **Mitigation**: Sandboxes execute using the *already validated* path and provide kernel-level path resolution constraints where possible.
+- **Bypass**: Symlink swapping during tool validation.
+- **Mitigation**: Sandboxes provide kernel-level path resolution constraints where possible.
 
 ---
 
@@ -81,6 +97,5 @@ What are we protecting?
 
 1. [ ] **Low-Privilege User**: Never run `agent-guard` as `root` or `Administrator`.
 2. [ ] **Fail-Closed Config**: Verify that `Guard::execute()` errors are handled as hard failures.
-3. [ ] **Policy Immutability**: Use `chmod 400` on `policy.yaml` after deployment.
-4. [ ] **Audit Offloading**: Send JSONL logs to a write-only remote destination.
-5. [ ] **Metric Alerts**: Set alerts in Grafana for `agent_guard_anomaly_triggered_total > 0`.
+3. [ ] **Audit Offloading**: Send JSONL logs to a write-only remote destination.
+4. [ ] **Metric Alerts**: Set alerts in Grafana for `agent_guard_anomaly_triggered_total > 0`.

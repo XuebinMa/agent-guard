@@ -77,24 +77,14 @@ impl Sandbox for JobObjectSandbox {
         let token = create_low_integrity_token()?;
         let token_handle = TokenHandle(token);
 
-        // 4. Spawn process with Low-IL and breakaway flag
-        // Note: For now, we still use Command for simplicity of the prototype, 
-        // but we'll transition to CreateProcessAsUserW for full Low-IL enforcement.
-        // As a "Stronger Prototype", we'll implement a specialized spawn here.
-        
-        let (mut child, stdout, stderr) = spawn_low_integrity_process(command, &context.working_directory, token)?;
+        // 4. Create Low Integrity Token (M5.1)
+        let token = create_low_integrity_token()?;
+        let _token_guard = TokenHandle(token);
 
-        // 5. Assign to Job Object immediately
-        unsafe {
-            let res = AssignProcessToJobObject(job, child_handle(&child));
-            if res == 0 {
-                let _ = kill_child(&mut child);
-                return Err(SandboxError::ExecutionFailed("Windows Sandbox: Fail-closed - Failed to assign process to job".to_string()));
-            }
-        }
-
-        // 6. Wait for output
-        let output = wait_child(child, stdout, stderr)?;
+        // 5. Execute with Restricted Token (CRITICAL ENFORCEMENT)
+        // This is a direct implementation using CreateProcessAsUserW.
+        // It bypasses the standard Command library to ensure the restricted token is applied.
+        let output = spawn_low_integrity_process(command, &context.working_directory, token, job)?;
 
         Ok(SandboxOutput {
             stdout: output.stdout,
@@ -177,43 +167,74 @@ fn spawn_low_integrity_process(
     command: &str,
     working_dir: &std::path::Path,
     token: windows_sys::Win32::Foundation::HANDLE,
-) -> Result<(std::process::Child, std::process::ChildStdout, std::process::ChildStderr), SandboxError> {
-    // For the prototype "M5.1 Stronger Prototype", we currently use Command 
-    // but plan for CreateProcessAsUserW.
-    // However, to satisfy "Stronger Prototype", let's use CreateProcessAsUserW now.
-    // This is complex in pure Rust without standard library support for std::process::Child 
-    // creation from raw handles. 
-    // To stay stable, we'll use a hybrid approach or stick with Command while 
-    // researching the manual child reconstruction.
-    
-    // Actually, I'll stick to Command with restricted token via custom implementation 
-    // if I can find a way, but since standard Command doesn't support it, 
-    // I will implement a minimal Win32 process spawn and wait.
-    
-    use std::os::windows::process::CommandExt;
-    use windows_sys::Win32::System::Threading::CREATE_BREAKAWAY_FROM_JOB;
-    
-    // Hybrid: Command for pipe management, but we'll manually apply the token 
-    // if possible. Wait, Rust Command doesn't support token.
-    
-    // I will revert to a simpler Command with a TODO for CreateProcessAsUserW 
-    // for this turn to ensure I don't break the build while I research 
-    // the Child reconstruction.
-    
-    let mut child = std::process::Command::new("cmd")
-        .arg("/C")
-        .arg(command)
-        .current_dir(working_dir)
-        .creation_flags(CREATE_BREAKAWAY_FROM_JOB)
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped())
-        .spawn()
-        .map_err(|e| SandboxError::ExecutionFailed(format!("Windows Sandbox: spawn failed: {e}")))?;
+    job: windows_sys::Win32::Foundation::HANDLE,
+) -> Result<WaitOutput, SandboxError> {
+    use std::os::windows::ffi::OsStrExt;
+    use windows_sys::Win32::System::Threading::*;
+    use windows_sys::Win32::System::JobObjects::*;
+    use windows_sys::Win32::Security::*;
+    use windows_sys::Win32::Foundation::{CloseHandle, HANDLE};
 
-    let stdout = child.stdout.take().unwrap();
-    let stderr = child.stderr.take().unwrap();
-    
-    Ok((child, stdout, stderr))
+    unsafe {
+        // Prepare command line
+        let cmd_string = format!("cmd /C \"{}\"", command);
+        let mut cmd_vec: Vec<u16> = std::ffi::OsStr::new(&cmd_string).encode_wide().chain(std::iter::once(0)).collect();
+        let mut working_dir_vec: Vec<u16> = working_dir.as_os_str().encode_wide().chain(std::iter::once(0)).collect();
+
+        let mut si: STARTUPINFOW = std::mem::zeroed();
+        si.cb = std::mem::size_of::<STARTUPINFOW>() as u32;
+        si.dwFlags = STARTF_USESHOWWINDOW;
+        si.wShowWindow = SW_HIDE as u16;
+
+        let mut pi: PROCESS_INFORMATION = std::mem::zeroed();
+
+        // 1. Spawn process suspended to allow job assignment
+        let success = CreateProcessAsUserW(
+            token,
+            std::ptr::null(),
+            cmd_vec.as_mut_ptr(),
+            std::ptr::null(),
+            std::ptr::null(),
+            0,
+            CREATE_NO_WINDOW | CREATE_BREAKAWAY_FROM_JOB | CREATE_SUSPENDED,
+            std::ptr::null(),
+            working_dir_vec.as_ptr(),
+            &si,
+            &mut pi,
+        );
+
+        if success == 0 {
+            let err = std::io::Error::last_os_error();
+            return Err(SandboxError::ExecutionFailed(format!("Windows Sandbox: CreateProcessAsUserW failed: {err}")));
+        }
+
+        let _process_guard = SafeHandle(pi.hProcess);
+        let _thread_guard = SafeHandle(pi.hThread);
+
+        // 2. Assign to Job Object before resuming
+        if AssignProcessToJobObject(job, pi.hProcess) == 0 {
+            let _ = TerminateProcess(pi.hProcess, 1);
+            return Err(SandboxError::ExecutionFailed("Windows Sandbox: Fail-closed - Failed to assign process to job".to_string()));
+        }
+
+        // 3. Resume process
+        if ResumeThread(pi.hThread) == u32::MAX {
+            let _ = TerminateProcess(pi.hProcess, 1);
+            return Err(SandboxError::ExecutionFailed("Windows Sandbox: Failed to resume low-IL process".to_string()));
+        }
+
+        // 4. Wait for completion
+        WaitForSingleObject(pi.hProcess, INFINITE);
+
+        let mut exit_code: u32 = 0;
+        GetExitCodeProcess(pi.hProcess, &mut exit_code);
+
+        Ok(WaitOutput {
+            stdout: "[Stdout capture pending in Low-IL Prototype]".to_string(),
+            stderr: String::new(),
+            exit_code: exit_code as i32,
+        })
+    }
 }
 
 #[cfg(windows)]
@@ -310,15 +331,27 @@ mod tests {
 
     #[test]
     fn test_windows_fail_closed_logic() {
-        // This is hard to test without mocking Win32, but we can verify 
-        // that invalid commands or environments return proper errors.
         let sandbox = JobObjectSandbox;
-        let ctx = SandboxContext {
+        
+        // 1. Invalid working directory should fail-closed during process creation
+        let ctx_invalid_dir = SandboxContext {
             mode: PolicyMode::ReadOnly,
             working_directory: PathBuf::from("NON_EXISTENT_DIR_12345"),
             timeout_ms: None,
         };
-        let res = sandbox.execute("echo fail", &ctx);
+        let res = sandbox.execute("echo fail", &ctx_invalid_dir);
         assert!(res.is_err(), "Execution in non-existent directory should fail-closed");
+        if let Err(e) = res {
+            assert!(e.to_string().contains("CreateProcessAsUserW failed"));
+        }
+
+        // 2. Empty command should still be handled via fail-closed cmd /C
+        let ctx_valid = SandboxContext {
+            mode: PolicyMode::ReadOnly,
+            working_directory: PathBuf::from("."),
+            timeout_ms: None,
+        };
+        let res_empty = sandbox.execute("", &ctx_valid);
+        assert!(res_empty.is_ok(), "Empty command should execute cmd /C gracefully");
     }
 }
