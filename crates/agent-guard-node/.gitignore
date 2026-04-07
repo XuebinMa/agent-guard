@@ -1,0 +1,9 @@
+# Build artifacts
+*.node
+target/
+dist/
+node_modules/
+
+# TypeScript definitions
+index.d.ts
+index.js

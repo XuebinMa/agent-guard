@@ -1,0 +1,18 @@
+[package]
+name = "agent-guard-node"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Node.js binding for agent-guard via napi-rs"
+
+[lib]
+name = "agent_guard_node"
+crate-type = ["cdylib"]
+
+[dependencies]
+agent-guard-sdk = { path = "../agent-guard-sdk" }
+napi = { version = "2.12", features = ["async", "serde-json"] }
+napi-derive = "2.12"
+
+[build-dependencies]
+napi-build = "2.0"
