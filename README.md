@@ -58,20 +58,22 @@ cargo run -p agent-guard-sdk --example quickstart
 | Platform | Status |
 |---|---|
 | Linux | **Full Support**. Policy enforcement + OS-level sandbox (seccomp-bpf). |
-| macOS | **Experimental**. Policy enforcement + experimental `SeatbeltSandbox` (Phase 3.4). |
+| macOS | **Experimental Prototype**. Policy enforcement + best-effort filesystem isolation (`SeatbeltSandbox`). |
 | Windows | **Planned** (Phase 4). |
+
+> **Note on macOS Sandbox**: The current implementation for macOS is an experimental prototype using `sandbox-exec` (Seatbelt). It focuses primarily on filesystem write isolation and does not yet provide full network or global read restrictions. See [docs/sandbox-macos.md](docs/sandbox-macos.md) for the full threat model.
 
 ## Workspace Structure
 
 ```
 agent-guard/
 ├── crates/
-│   ├── agent-guard-core/       # Core types, policy engine, audit events
+│   ├── agent-guard-core/       # Core types, policy engine, audit events (M3.1, M3.2)
 │   ├── agent-guard-validators/ # Bash and path validators
 │   ├── agent-guard-sandbox/    # Sandbox trait + Seccomp (Linux) / Seatbelt (macOS)
 │   ├── agent-guard-sdk/        # High-level Guard API (check + execute)
-│   ├── agent-guard-python/     # PyO3 bindings
-│   └── agent-guard-node/       # Node.js bindings (napi-rs)
+│   ├── agent-guard-python/     # PyO3 bindings (Phase 2)
+│   └── agent-guard-node/       # Node.js bindings (napi-rs) (M3.3)
 ├── demos/
 │   ├── python/                 # LangChain and Python examples
 │   └── node/                   # Node.js integration examples
@@ -80,22 +82,37 @@ agent-guard/
 └── Cargo.toml                  # Workspace root
 ```
 
-## Execute API (Phase 2 & 3)
+## Execute API (Phase 3)
 
-`Guard::execute()` (Rust) and `guard.execute()` (Node/Python) provide a one-call solution that checks policy and then runs the command in a secure sandbox.
+`Guard::execute_default()` (Rust) and `guard.execute()` (Node/Python) provide a one-call solution that automatically selects the best available sandbox for the current platform (Seccomp on Linux, Seatbelt on macOS).
+
+**Rust Example:**
 
 ```rust
 use agent_guard_sdk::{Guard, Tool, GuardInput, ExecuteOutcome};
-use agent_guard_sandbox::SeccompSandbox; // Linux
 
+let guard = Guard::from_yaml("version: 1")?;
 let input = GuardInput::new(Tool::Bash, r#"{"command":"ls -la"}"#);
-let sandbox = SeccompSandbox::new();
 
-match guard.execute(&input, &sandbox) {
+// Automatically chooses the best sandbox (Linux: Seccomp, macOS: Seatbelt)
+match guard.execute_default(&input) {
     Ok(ExecuteOutcome::Executed { output }) => {
         println!("stdout: {}", output.stdout);
     }
     _ => {}
+}
+```
+
+**Node.js Example:**
+
+```typescript
+import { Guard } from '@agent-guard/node';
+
+const guard = Guard.fromYaml('version: 1');
+const outcome = await guard.execute('bash', JSON.stringify({ command: 'ls' }));
+
+if (outcome.outcome === 'executed') {
+  console.log(outcome.output.stdout);
 }
 ```
 
