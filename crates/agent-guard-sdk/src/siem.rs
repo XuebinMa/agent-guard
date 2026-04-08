@@ -1,4 +1,19 @@
 use agent_guard_core::{AuditConfig, AuditRecord};
+use std::sync::OnceLock;
+
+/// Shared runtime for SIEM exports to avoid overhead of creating new ones per call.
+static SIEM_RUNTIME: OnceLock<tokio::runtime::Runtime> = OnceLock::new();
+
+fn get_siem_runtime() -> &'static tokio::runtime::Runtime {
+    SIEM_RUNTIME.get_or_init(|| {
+        tokio::runtime::Builder::new_multi_thread()
+            .worker_threads(2)
+            .enable_all()
+            .thread_name("agent-guard-siem")
+            .build()
+            .expect("Failed to create SIEM runtime")
+    })
+}
 
 /// Dispatches audit events to external SIEM systems.
 pub struct SiemExporter {
@@ -23,35 +38,24 @@ impl SiemExporter {
             return;
         }
 
-        // 1. Local logging (already handled by write_audit in guard.rs, 
-        // but we could extend it here for unified SIEM logic).
-
-        // 2. Webhook Export
+        // Webhook Export
         if let (Some(url), Some(client)) = (&self.config.webhook_url, &self.client) {
             let url = url.clone();
             let client = client.clone();
             let record = record.clone();
             
-            // Fire and forget for now to avoid blocking the main thread
-            std::thread::spawn(move || {
-                let runtime = tokio::runtime::Builder::new_current_thread()
-                    .enable_all()
-                    .build()
-                    .unwrap();
-                
-                runtime.block_on(async {
-                    let _ = client.post(&url)
-                        .json(&record)
-                        .send()
-                        .await;
-                });
+            // Dispatch to the shared SIEM runtime
+            let rt = get_siem_runtime();
+            rt.spawn(async move {
+                let _ = client.post(&url)
+                    .json(&record)
+                    .send()
+                    .await;
             });
         }
 
-        // 3. OTLP Export (Planned)
+        // OTLP Export (Planned)
         if let Some(_endpoint) = &self.config.otlp_endpoint {
-            // OTLP implementation using opentelemetry-otlp crate would go here.
-            // For now, we'll log that it's planned.
             tracing::debug!("OTLP export triggered (implementation pending)");
         }
     }
