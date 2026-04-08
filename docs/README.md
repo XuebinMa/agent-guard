@@ -1,4 +1,4 @@
-# agent-guard Documentation Hub
+# agent-guard Documentation Hub (v0.2.0-rc1)
 
 Welcome to the documentation hub for `agent-guard`, the high-performance security layer for AI Agents. Use the map below to find the right information for your role or objective.
 

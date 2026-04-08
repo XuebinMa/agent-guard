@@ -2,9 +2,9 @@
 
 | Field | Details |
 | :--- | :--- |
-| **Status** | 🟢 Finalized (v0.2.0) |
+| **Status** | 🟢 Released (v0.2.0-rc1) |
 | **Audience** | Architects, Security Engineers |
-| **Version** | 1.1 |
+| **Version** | 1.2 |
 | **Last Reviewed** | 2026-04-08 |
 | **Related Docs** | [Threat Model](threat-model.md), [Capability Parity](capability-parity.md) |
 
