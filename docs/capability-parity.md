@@ -1,22 +1,23 @@
 # Capability Parity Matrix — agent-guard
 
-> Status: **Phase 7 (Active Verification)**  
+> Status: **Baseline Established / Gaps Documented (v0.2.0)**  
 > Version: **1.0**  
-> This document tracks the enforcement of Unified Capability Model (UCM) features across all supported platforms.
+> This document defines the security baseline for the Unified Capability Model (UCM). It serves as a transparent record of what is enforced vs. what remains as a known gap on each platform.
 
 ---
 
 ## 📊 Parity Matrix (v0.2.0 Baseline)
 
-| UCM Capability | Linux (Seccomp) | macOS (Seatbelt) | Windows (Low-IL) | Noop (None) |
-| :--- | :---: | :---: | :---: | :---: |
-| **`filesystem_read_workspace`** | ✅ | ✅ | ✅ | ✅ |
-| **`filesystem_read_global`** | ✅ | ✅ | ✅ | ✅ |
-| **`filesystem_write_workspace`** | ✅ | ✅ | ✅ | ✅ |
-| **`filesystem_write_global`** | 🛡️ Blocked | 🛡️ Blocked | 🛡️ Blocked | ❌ Allowed |
-| **`network_outbound_any`** | 🛡️ Blocked | 🛡️ Blocked | ❌ Allowed | ❌ Allowed |
-| **`child_process_spawn`** | ✅ | ✅ | ✅ | ✅ |
-| **`registry_write`** | N/A | N/A | 🛡️ Blocked | ❌ Allowed |
+| **UCM Capability** | **Linux (Seccomp)** | **macOS (Seatbelt)** | **Windows (Low-IL)** | **Windows (AppContainer)** | **Noop (None)** |
+| :--- | :---: | :---: | :---: | :---: | :---: |
+| **`filesystem_read_workspace`** | ✅ | ✅ | ✅ | ✅ | ✅ |
+| **`filesystem_read_global`** | ✅ | ✅ | ✅ | 🛡️ Blocked | ✅ |
+| **`filesystem_write_workspace`** | ✅ | ✅ | ✅ | ✅ | ✅ |
+| **`filesystem_write_global`** | 🛡️ Blocked | 🛡️ Blocked | 🛡️ Blocked | 🛡️ Blocked | ❌ Allowed |
+| **`network_outbound_any`** | 🛡️ Blocked | 🛡️ Blocked | ❌ Allowed | 🛡️ Blocked | ❌ Allowed |
+| **`network_outbound_internet`**| 🛡️ Blocked | 🛡️ Blocked | ❌ Allowed | ✅ Allowed | ❌ Allowed |
+| **`child_process_spawn`** | ✅ | ✅ | ✅ | ✅ | ✅ |
+| **`registry_write`** | N/A | N/A | 🛡️ Blocked | 🛡️ Blocked | ❌ Allowed |
 
 **Legend**:
 - ✅ **Allowed**: Intentionally permitted by the sandbox.

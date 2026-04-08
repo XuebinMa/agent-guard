@@ -13,6 +13,8 @@ seccomp = ["dep:libseccomp"]
 macos-sandbox = []
 # Enable experimental Windows sandbox using Job Objects.
 windows-sandbox = ["dep:windows-sys"]
+# Enable experimental Windows AppContainer sandbox.
+windows-appcontainer = ["dep:windows"]
 
 [dependencies]
 agent-guard-core = { path = "../agent-guard-core" }
@@ -26,3 +28,4 @@ libc = "0.2"
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { workspace = true, optional = true }
+windows = { workspace = true, optional = true }

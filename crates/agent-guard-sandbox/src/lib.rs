@@ -9,6 +9,9 @@ pub mod macos;
 #[cfg(feature = "windows-sandbox")]
 pub mod windows;
 
+#[cfg(feature = "windows-appcontainer")]
+pub mod windows_appcontainer;
+
 pub use noop::NoopSandbox;
 #[cfg(target_os = "linux")]
 pub use linux::SeccompSandbox;
@@ -16,6 +19,8 @@ pub use linux::SeccompSandbox;
 pub use macos::SeatbeltSandbox;
 #[cfg(feature = "windows-sandbox")]
 pub use windows::JobObjectSandbox;
+#[cfg(feature = "windows-appcontainer")]
+pub use windows_appcontainer::AppContainerSandbox;
 
 use std::path::PathBuf;
 
@@ -134,6 +139,8 @@ impl CapabilityDoctor {
             Box::new(macos::SeatbeltSandbox),
             #[cfg(feature = "windows-sandbox")]
             Box::new(JobObjectSandbox),
+            #[cfg(feature = "windows-appcontainer")]
+            Box::new(AppContainerSandbox),
         ];
 
         let mut reports = Vec::new();
