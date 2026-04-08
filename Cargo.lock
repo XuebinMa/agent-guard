@@ -7,9 +7,11 @@ name = "agent-guard-core"
 version = "0.1.0"
 dependencies = [
  "chrono",
+ "ed25519-dalek",
  "evalexpr",
  "glob",
  "hex",
+ "rand",
  "regex",
  "serde",
  "serde_json",
