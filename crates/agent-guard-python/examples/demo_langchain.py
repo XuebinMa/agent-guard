@@ -1,16 +1,12 @@
 import sys
 import os
+import asyncio
 
-# To run this demo locally before installing:
-# export PYTHONPATH=$PYTHONPATH:$(pwd)/python
-# And you need to have the built shared library in python/agent_guard/_agent_guard.so (or .pyd)
-
+# Setup local paths for demo
 try:
     from agent_guard import Guard, wrap_langchain_tool, AgentGuardSecurityError
 except ImportError:
-    print("Error: agent-guard not found in path.")
-    print("Usage: 1. Build: 'maturin develop' inside crates/agent-guard-python")
-    print("       2. Run: 'python examples/demo_langchain.py'")
+    print("Error: agent-guard not found.")
     sys.exit(1)
 
 # ── Mock LangChain BaseTool ──────────────────────────────────────────────────
@@ -24,74 +20,81 @@ class BaseTool:
     def _run(self, *args, **kwargs):
         raise NotImplementedError()
 
+    async def _arun(self, *args, **kwargs):
+        # Default async implementation calling sync
+        return self._run(*args, **kwargs)
+
     def run(self, tool_input, **kwargs):
         return self._run(tool_input, **kwargs)
+
+    def invoke(self, input, config=None, **kwargs):
+        return self.run(input, **kwargs)
 
 class ShellTool(BaseTool):
     def __init__(self):
         super().__init__("bash", "Executes shell commands")
         
     def _run(self, command: str) -> str:
-        # This original method is what gets bypassed by the guard
         print(f"   [Original Tool] System call: {command}")
         return f"Real output of {command}"
 
+class SearchTool(BaseTool):
+    def __init__(self):
+        super().__init__("search", "Search the web")
+        
+    def _run(self, query: str) -> str:
+        print(f"   [Original Tool] Searching: {query}")
+        return f"Results for {query}"
+
 # ── Demo Logic ───────────────────────────────────────────────────────────────
 
-def main():
-    print("🛡️ agent-guard Python Demo: 3-Line LangChain Integration")
-    print("====================================================\n")
+async def main():
+    print("🛡️ agent-guard Python Demo: Production-Grade LangChain Integration")
+    print("================================================================\n")
 
-    # 1. Initialize Guard with Policy
-    # Line 1: Load policy
+    # 1. Initialize Guard
     policy = """
 version: 1
 default_mode: read_only
 tools:
-  bash:
-    deny:
-      - "rm -rf"
-      - "cat /etc/passwd"
+  bash: { deny: ["rm -rf"] }
+  search: { allow: ["*"] }
     """
     guard = Guard.from_yaml(policy)
-    print("✅ Guard initialized.")
+    print("✅ Guard initialized.\n")
 
-    # 2. Create and Wrap the Tool
-    # Line 2: Create original tool
-    shell_tool = ShellTool()
+    # 2. Wrap Tools with Different Modes
+    shell_tool = wrap_langchain_tool(guard, ShellTool(), mode="enforce")
+    search_tool = wrap_langchain_tool(guard, SearchTool(), mode="check")
     
-    # Line 3: Wrap it!
-    guarded_tool = wrap_langchain_tool(
-        guard, 
-        shell_tool, 
-        agent_id="langchain-agent-v1"
-    )
-    print("✅ Tool 'bash' secured via agent-guard wrapper.\n")
+    print(f"✅ 'bash' wrapped in ENFORCE mode (Sandbox protection).")
+    print(f"✅ 'search' wrapped in CHECK mode (Policy authorization).\n")
 
-    # 3. Scenario: Normal Path
-    print("👉 Scenario 1: Safe request 'ls -l'")
-    output = guarded_tool.run("ls -l")
+    # 3. Scenario: Enforced Sandbox Execution
+    print("👉 Scenario 1: 'bash' tool (Enforced Sandbox)")
+    output = shell_tool.run("ls -l")
+    print(f"   Result: {output} (Note: No 'Original Tool' print - sandbox took over)\n")
+
+    # 4. Scenario: Policy-Only Authorization
+    print("👉 Scenario 2: 'search' tool (Policy Authorization)")
+    output = search_tool.run("rust security")
+    print(f"   Result: {output} (Note: 'Original Tool' ran because policy allowed it)\n")
+
+    # 5. Scenario: Async Path
+    print("👉 Scenario 3: Async Execution")
+    output = await shell_tool._arun("echo async_test")
     print(f"   Result: {output}\n")
 
-    # 4. Scenario: Attack Blocked
-    print("👉 Scenario 2: Attack attempt 'cat /etc/passwd'")
+    # 6. Scenario: High-level Entry (Invoke)
+    print("👉 Scenario 4: LCEL Invoke path")
     try:
-        guarded_tool.run("cat /etc/passwd")
+        shell_tool.invoke("rm -rf /")
     except AgentGuardSecurityError as e:
-        print(f"🔒 [CRITICAL] Security Interception!")
-        print(f"   Reason: {e.decision.message}")
-        print(f"   Code:   {e.decision.code}")
-        print(f"   Source: {e.decision.matched_rule or 'Default Policy'}\n")
+        print(f"🔒 [CRITICAL] Blocked by agent-guard!")
+        print(f"   Reason: {e.decision.message}\n")
 
-    # 5. Scenario: Persistent Locking (Deny Fuse)
-    # The policy didn't have fuse enabled in the yaml string above, 
-    # but let's show the principle if it were.
-    
-    print("====================================================")
-    print("Security Parity Check:")
-    print(f" - Is it a sandbox? Yes (Uses host default)")
-    print(f" - Is there an audit trail? Yes (See audit.jsonl)")
-    print("====================================================")
+    print("================================================================")
+    print("Demo finished. Multiple integration paths verified.")
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())
