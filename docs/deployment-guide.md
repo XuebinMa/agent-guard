@@ -1,6 +1,6 @@
 # Production Deployment Guide — agent-guard
 
-> Status: **Draft (Phase 7)**  
+> Status: **Operational Guide (v0.2.0-rc1)**  
 > Version: **1.0**  
 > This guide provides best practices and operational procedures for deploying `agent-guard` in production environments.
 
