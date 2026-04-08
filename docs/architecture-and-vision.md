@@ -1,7 +1,14 @@
-# agent-guard Project Architecture & Future Vision
+# 🏗️ Architecture & Vision
 
-> Status: **v0.2.0-rc1 Refined**  
-> Date: April 2026
+| Field | Details |
+| :--- | :--- |
+| **Status** | 🟢 Finalized (v0.2.0) |
+| **Audience** | Architects, Security Engineers |
+| **Version** | 1.1 |
+| **Last Reviewed** | 2026-04-08 |
+| **Related Docs** | [Threat Model](threat-model.md), [Capability Parity](capability-parity.md) |
+
+---
 
 ## 1. 🏗️ High-Level Architecture
 
@@ -29,19 +36,18 @@
 
 ---
 
-## 2. 🛡️ Current Security Posture (v0.2.0)
+## 🛡️ Security Boundaries (v0.2.0)
 
-| Feature | Posture |
-| :--- | :--- |
-| **Logic** | Full YAML rule enforcement with regex payload validation. |
-| **Windows** | Strengthened Prototype (Low-IL Enforced + AppContainer Opt-in). |
-| **Linux** | Production Ready (Seccomp-BPF syscall filtering). |
-| **macOS** | Active Prototype (Seatbelt FS isolation). |
-| **Observability** | Enterprise-ready (Prometheus + SIEM Webhook). |
+| Category | What this protects | What this does not protect |
+| :--- | :--- | :--- |
+| **Filesystem** | Prevents unauthorized writes to system directories and reads of sensitive files (platform dependent). | Global read access on macOS/Windows (Low-IL). |
+| **Execution** | Ensures only approved commands with safe arguments reach the OS. | Logical errors in allowed scripts (e.g., an allowed script deleting its own data). |
+| **Probing** | Automatically locks agents that repeatedly violate security policies. | Distributed attacks from multiple agents (Actor-based only). |
+| **Trust** | Provides cryptographic proof that an execution happened under a specific policy. | Protection against host-level private key theft (TPM planned). |
 
 ---
 
-## 3. 🚀 Future Evolution Vision
+## 🚀 Future Evolution Vision
 
 ### Phase 1: Isolation Fidelity (v0.3.0)
 - **Linux Landlock**: Integrate Landlock for fine-grained, path-based filesystem isolation at the kernel level.
@@ -56,13 +62,9 @@
 - **LLM-Based Anomaly Detection**: Use small local models to detect semantic drift in tool usage (e.g., an agent behaving "out of character").
 - **Dynamic Risk Scoring**: Adjust policy strictness in real-time based on the agent's recent audit history.
 
-### Phase 4: Cloud-Native Expansion
-- **Native OTLP Support**: Direct gRPC/HTTP export to OpenTelemetry collectors.
-- **K8s Sidecar Integration**: Provide a pre-configured sidecar container for seamless deployment in Kubernetes clusters.
-
 ---
 
 ## 🔍 Technical Debt & Risks
 1. **Windows Dependency Weight**: The `windows` crate adds significant compile-time overhead; need to keep feature flags strictly modular.
 2. **Platform Parity Gaps**: Linux and macOS currently have different FS-read boundaries; need to align these via Landlock/Seatbelt updates.
-3. **Async SIEM**: Current Webhook export uses a basic thread-spawn; may need a robust internal queue for high-volume environments.
+3. **Async SIEM**: Current Webhook export uses a shared runtime but lacks persistent queuing for crash-resilience.

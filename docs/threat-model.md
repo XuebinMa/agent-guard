@@ -1,7 +1,15 @@
-# Global Threat Model — agent-guard
+# 🏹 Threat Model
 
-> Status: **Phase 5 (Active)**  
-> Version: **2.1**  
+| Field | Details |
+| :--- | :--- |
+| **Status** | 🟠 Active Review (v0.2.0) |
+| **Audience** | Security Auditors, Compliance Officers |
+| **Version** | 2.2 |
+| **Last Reviewed** | 2026-04-08 |
+| **Related Docs** | [Architecture & Vision](architecture-and-vision.md), [Capability Parity](capability-parity.md) |
+
+---
+
 > This document serves as the primary security audit entry point for `agent-guard`. It outlines the assets, attack surfaces, and defensive posture of the SDK across all supported platforms.
 
 ---
@@ -33,12 +41,12 @@ Mapping potential entry points and their mitigation strategies:
 
 ---
 
-## 3. 🛡️ STRIDE Threat Analysis (v2.1 Refined)
+## 3. 🛡️ STRIDE Threat Analysis (v2.2 Refined)
 Categorized analysis of threats and implemented defenses:
 
 ### **S**poofing (Identity)
 - **Threat**: An unauthorized agent or actor impersonates a trusted one in the `Context`.
-- **Mitigation**: The trusted host orchestrator is responsible for providing the immutable `actor_id` and `agent_id`.
+- **Mitigation**: The trusted host orchestrator is responsible for providing the immutable `actor` and `agent_id`.
 
 ### **T**ampering (Integrity)
 - **Threat**: An agent modifies the security policy or deletes its own audit logs.
@@ -62,43 +70,17 @@ Categorized analysis of threats and implemented defenses:
 
 ---
 
-## 4. 📊 Platform Capability Matrix (Sandbox Audit)
+## 🛡️ Security Boundaries (Platform Mapping)
 
 | Feature | Linux (Seccomp) | macOS (Seatbelt) | Windows (Job Object) |
 | :--- | :--- | :--- | :--- |
-| **Isolation Backend** | Kernel-level BPF | User-space Proxy (`sandbox-exec`) | OS Job Object + Low-IL Token |
-| **Primary Goal** | Syscall Hardening | Filesystem Isolation | Resource & Filesystem Isolation |
-| **Network Blocking** | ✅ Native (Strict) | 🟡 Experimental (Permissive) | ❌ **No** |
-| **Filesystem Read** | ✅ Restricted | ❌ No (Global User Read) | ❌ No (Global User Read) |
 | **Filesystem Write** | ✅ Restricted | ✅ Restricted (Workspace) | ✅ **Low-IL Enforced** |
+| **Network Blocking** | ✅ Native (Strict) | 🟡 Experimental (Permissive) | ❌ **No** |
 | **Resource Limits** | ✅ Native | ❌ No | ✅ **Enforced (256MB)** |
-| **Fail-Closed** | ✅ Yes | ✅ Yes | ✅ **Yes** |
 
 ---
 
-## 5. ☣️ Windows Specific Hardening (Audit v2.1)
-
-### 1. Handle Inheritance Audit
-- **Threat**: Sub-processes inheriting sensitive file/socket handles from the parent process.
-- **Mitigation**: 
-    - **Default Deny**: Win32 handles are not inheritable by default in Windows unless explicitly requested.
-    - **Explicit Opt-in**: `agent-guard` only marks the `Write` end of stdout/stderr pipes as inheritable.
-    - **Isolation**: Read ends of pipes are explicitly configured with `HANDLE_FLAG_INHERIT = 0`.
-- **Verification**: `test_windows_handle_inheritance_audit` in `windows.rs`.
-
-### 2. Token Leakage risks
-- **Threat**: The restricted Low-IL token being stolen or reused by other processes.
-- **Mitigation**: 
-    - The token is only used to spawn the child process and is closed in the parent immediately after.
-    - `CreateProcessAsUserW` ensures the primary token of the child is the restricted one.
-
-### 3. Known Non-Goals (Windows)
-- **Network Isolation**: Currently not enforced via Job Objects. Use Windows Firewall or AppContainer (Future Phase) for network-level hardening.
-- **Registry Isolation**: Low-IL provides some protection, but registry writes to certain areas may still be possible depending on user permissions.
-
----
-
-## 6. 🛠️ Security Hardening Checklist
+## 🛠️ Security Hardening Checklist
 
 1. [ ] **Low-Privilege User**: Never run `agent-guard` as `root` or `Administrator`.
 2. [ ] **Fail-Closed Config**: Verify that `Guard::execute()` errors are handled as hard failures.

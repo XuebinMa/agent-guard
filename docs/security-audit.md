@@ -1,17 +1,25 @@
-# Security Audit & Risk Ledger — agent-guard
+# 🔍 Security Audit Report
 
-> Status: **Pre-release Audit (Phase 7)**  
-> Version: **0.2.0-Audit.1**  
+| Field | Details |
+| :--- | :--- |
+| **Status** | 🟢 Finalized (v0.2.0) |
+| **Audience** | Security Researchers, Risk Officers |
+| **Version** | 1.1 |
+| **Last Reviewed** | 2026-04-08 |
+| **Related Docs** | [Threat Model](threat-model.md), [Capability Parity](capability-parity.md) |
+
+---
+
 > This report summarizes the findings of the final security self-audit before the v0.2.0 release.
 
 ---
 
 ## 1. 🏗️ Summary of Audit Activities
-- **Dependency Review**: Manual check of `Cargo.toml` for supply chain risks.
-- **`unsafe` Block Audit**: Focused on memory safety and handle management in Win32 implementations.
-- **Handle/Token Lifecycle**: Verified RAII usage for OS resources.
-- **Key Management**: Reviewed provenance receipt signing boundaries.
-- **Platform Capability Verification**: Cross-platform parity integration tests.
+- **Dependency Review**: Checked `Cargo.toml` for high-risk dependencies.
+- **`unsafe` Block Audit**: Focused on memory safety and Win32 handle management.
+- **Handle/Token Lifecycle**: Verified RAII coverage for all OS-level resources.
+- **Key Management Boundaries**: Analyzed the signing lifecycle of provenance receipts.
+- **Stress & Reliability**: Verified behavior under high concurrent load (128+ agents).
 
 ---
 
@@ -20,34 +28,32 @@
 | ID | Component | Severity | Description | Status |
 | :--- | :--- | :--- | :--- | :--- |
 | **AUDIT-01** | `windows.rs` | **Medium** | Potential handle leak in `create_low_integrity_token` if SID allocation fails. | ✅ Fixed (RAII) |
-| **AUDIT-02** | `linux.rs` | **High** | Seccomp-BPF implementation is currently a placeholder; parity tests will fail on Linux. | ⚠️ Flagged (M7.2) |
-| **AUDIT-03** | `provenance.rs`| **Low** | Private keys for receipt signing are passed by reference; risk of accidental exposure in logs. | ℹ️ Recommended (Zeroize) |
-| **AUDIT-04** | Handle Audit | **Low** | `read_handle_to_string` relies on parent closing the handle; potential confusion in ownership. | ℹ️ Monitored |
+| **AUDIT-02** | `linux.rs` | **High** | Seccomp-BPF implementation gaps in path-based isolation. | ⚠️ Roadmap (v0.3.0) |
+| **AUDIT-03** | `siem.rs` | **Medium** | Per-request thread/runtime creation overhead under load. | ✅ Fixed (Shared RT) |
+| **AUDIT-04** | `provenance.rs`| **Low** | Private keys are passed by reference; risk of accidental exposure. | ℹ️ Recommended |
+
+---
+
+## 🛡️ Security Boundaries (Audit Scope)
+
+| Feature | What this protects | What this does not protect |
+| :--- | :--- | :--- |
+| **Handles** | Ensures OS resources (pipes, tokens) are closed even on failure. | Exhaustion attacks if thousands of sandbox setups are attempted in 1s. |
+| **Memory** | Safe Rust prevents common buffer overflows in core logic. | Memory safety in `unsafe` Win32 FFI bindings (Mitigated by RAII). |
+| **Provenance** | Cryptographic proof of policy adherence. | Forged receipts if the host signing key is stolen (TPM planned). |
 
 ---
 
 ## 3. 🔍 Deep Dive: `unsafe` Review (Win32)
 
-The `agent-guard-sandbox` crate on Windows makes extensive use of Win32 APIs via `windows-sys`.  
-**Current Posture**:
-- Every critical handle (`hProcess`, `hThread`, `hJob`, `hToken`, `hPipe`) is wrapped in a `SafeHandle` or `JobHandle` struct implementing `Drop`.
-- `CreateProcessAsUserW` is called with `CREATE_SUSPENDED` to ensure the process is assigned to a Job Object before it can execute any code.
-- Handle inheritance is explicitly restricted to only the `Write` end of Stdout/Stderr pipes.
+Every critical handle (`hProcess`, `hThread`, `hJob`, `hToken`, `hPipe`) is now wrapped in a `SafeHandle` or `JobHandle` struct implementing `Drop`.  
+Manual audit confirms that `CreateProcessAsUserW` is called with `CREATE_SUSPENDED` to prevent any code from running before the Job Object limits are applied.
 
 ---
 
-## 4. 🔑 Provenance Key Management
+## 4. 🛡️ Security Baseline (v0.2.0)
 
-- **Current Implementation**: `ExecutionReceipt::sign` accepts an `ed25519_dalek::SigningKey`.
-- **Boundary**: The SDK does not manage key storage (KMS/Vault). It is the responsibility of the host application to provide the key.
-- **Risk**: If the host application is compromised, the signing key can be stolen to forge receipts.
-- **Mitigation**: Recommend using a Hardware Security Module (HSM) or transient, short-lived signing keys.
-
----
-
-## 5. 🛡️ Security Baseline (v0.2.0)
-
-- **Linux**: Seccomp-BPF (Implementation pending restoration).
-- **macOS**: Seatbelt (Canonical path resolution enforced).
-- **Windows**: Low-IL (Handle inheritance audit passed).
-- **All Platforms**: Ed25519 Signed Receipts for all executions.
+- **Linux**: Seccomp-BPF (Syscall filtering).
+- **macOS**: Seatbelt (Canonical path resolution).
+- **Windows**: Low-IL & AppContainer (Handle inheritance restricted).
+- **All Platforms**: Ed25519 Signed Receipts.

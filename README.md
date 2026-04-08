@@ -48,10 +48,10 @@ Run our standardized demos to see the security layers in real-time:
 
 Ready to secure your agents? Follow our comprehensive guides:
 
-- 📘 **[User Manual](docs/guides/user-manual.md)** - **Start here!** Installation, configuration, and integration guide.
+- 📘 **[User Manual](docs/guides/getting-started/user-manual.md)** - **Start here!** Installation, configuration, and integration guide.
 - 🏗️ **[Architecture & Vision](docs/architecture-and-vision.md)** - Understanding the four layers of defense.
 - 🗺️ **[Capability Matrix](docs/capability-parity.md)** - Feature alignment across Linux, macOS, and Windows.
-- 🚀 **[Deployment Guide](docs/guides/deployment-guide.md)** - Best practices for production rollouts.
+- 🚀 **[Documentation Hub](docs/README.md)** - Full index of operational and security guides.
 
 ---
 

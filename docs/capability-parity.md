@@ -1,7 +1,15 @@
-# Capability Parity Matrix — agent-guard
+# 🗺️ Capability Parity Matrix
 
-> Status: **Baseline Established / Gaps Documented (v0.2.0)**  
-> Version: **1.0**  
+| Field | Details |
+| :--- | :--- |
+| **Status** | 🟢 Baseline Established (v0.2.0) |
+| **Audience** | DevOps, Security Engineers |
+| **Version** | 1.1 |
+| **Last Reviewed** | 2026-04-08 |
+| **Related Docs** | [Architecture & Vision](architecture-and-vision.md), [Threat Model](threat-model.md) |
+
+---
+
 > This document defines the security baseline for the Unified Capability Model (UCM). It serves as a transparent record of what is enforced vs. what remains as a known gap on each platform.
 
 ---
@@ -27,21 +35,13 @@
 
 ---
 
-## 🔍 Verification Methodology
+## 🛡️ Security Boundaries (Platform Summary)
 
-Parity is verified using the unified integration test suite located at `crates/agent-guard-sdk/tests/parity.rs`.  
-To run the verification on your current platform:
-
-```bash
-# Linux
-cargo test --test parity --features seccomp
-
-# macOS
-cargo test --test parity --features macos-sandbox
-
-# Windows
-cargo test --test parity --features windows-sandbox
-```
+| Platform | What this protects | What this does not protect |
+| :--- | :--- | :--- |
+| **Linux** | Syscall-level hardening, global filesystem write protection. | Fine-grained path-level read restriction (Landlock planned). |
+| **macOS** | Workspace write isolation via Seatbelt profiles. | Global read access (Prototype limit). |
+| **Windows** | Integrity-based write protection (Low-IL) or SID-based isolation (AppContainer). | Network access in default Low-IL mode. |
 
 ---
 
