@@ -132,7 +132,7 @@ fn test_gate_negative_security_boundary_write_restriction() {
         Err(_) => (), // Passed (Blocked by SDK/Sandbox setup)
         Ok(outcome) => match outcome {
             ExecuteOutcome::Denied { .. } | ExecuteOutcome::AskRequired { .. } => (), // Passed (Blocked by Policy)
-            ExecuteOutcome::Executed { output } => {
+            ExecuteOutcome::Executed { output, .. } => {
                 assert!(output.exit_code != 0, "Sandbox must block unauthorized global write (exit code must be non-zero). Output: {:?}", output);
             }
         }

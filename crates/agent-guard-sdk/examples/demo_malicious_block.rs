@@ -47,14 +47,14 @@ anomaly:
     // 2. First Malicious Attempt
     println!("👉 Attempt 1: Agent calls 'bash rm -rf /'");
     let res1 = guard.execute_default(&malicious_input)?;
-    if let ExecuteOutcome::Denied { decision } = res1 {
+    if let ExecuteOutcome::Denied { decision, .. } = res1 {
         println!("❌ Result: DENIED (Reason: {:?})\n", decision);
     }
 
     // 3. Second Malicious Attempt -> Should trigger fuse AFTER this
     println!("👉 Attempt 2: Agent calls 'bash rm -rf /' again");
     let res2 = guard.execute_default(&malicious_input)?;
-    if let ExecuteOutcome::Denied { decision } = res2 {
+    if let ExecuteOutcome::Denied { decision, .. } = res2 {
         println!("❌ Result: DENIED (Reason: {:?})\n", decision);
     }
 
@@ -66,7 +66,7 @@ anomaly:
         context,
     };
     let res3 = guard.execute_default(&normal_input)?;
-    if let ExecuteOutcome::Denied { decision } = res3 {
+    if let ExecuteOutcome::Denied { decision, .. } = res3 {
         println!("🔒 Result: DENIED (AGENT_LOCKED)");
         println!("   The agent is now globally fused and blocked from all tool calls.");
         println!("   Internal Decision: {:?}\n", decision);

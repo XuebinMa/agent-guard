@@ -89,7 +89,7 @@ pub struct ExecuteOutcome {
 
 fn execute_outcome_from_rust(o: RustExecuteOutcome) -> ExecuteOutcome {
     match o {
-        RustExecuteOutcome::Executed { output } => ExecuteOutcome {
+        RustExecuteOutcome::Executed { output, .. } => ExecuteOutcome {
             outcome: "executed".to_string(),
             output: Some(SandboxOutput {
                 exit_code: output.exit_code,
@@ -98,12 +98,12 @@ fn execute_outcome_from_rust(o: RustExecuteOutcome) -> ExecuteOutcome {
             }),
             decision: None,
         },
-        RustExecuteOutcome::Denied { decision } => ExecuteOutcome {
+        RustExecuteOutcome::Denied { decision, .. } => ExecuteOutcome {
             outcome: "denied".to_string(),
             output: None,
             decision: Some(decision_from_rust(decision)),
         },
-        RustExecuteOutcome::AskRequired { decision } => ExecuteOutcome {
+        RustExecuteOutcome::AskRequired { decision, .. } => ExecuteOutcome {
             outcome: "ask_required".to_string(),
             output: None,
             decision: Some(decision_from_rust(decision)),

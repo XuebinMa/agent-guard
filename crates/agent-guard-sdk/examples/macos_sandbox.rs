@@ -37,7 +37,7 @@ default_mode: workspace_write
         };
 
         let res_ok = guard.execute(&input_ok, &sandbox)?;
-        if let ExecuteOutcome::Executed { output } = res_ok {
+        if let ExecuteOutcome::Executed { output, .. } = res_ok {
             println!("✅ Status: EXECUTED (Exit Code: {})\n", output.exit_code);
         }
 
@@ -50,7 +50,7 @@ default_mode: workspace_write
         };
 
         let res_fail = guard.execute(&input_fail, &sandbox)?;
-        if let ExecuteOutcome::Executed { output } = res_fail {
+        if let ExecuteOutcome::Executed { output, .. } = res_fail {
             println!("🔒 Status: BLOCKED by OS (Exit Code: {})", output.exit_code);
             println!("📝 Stderr: {}\n", output.stderr.trim());
         }

@@ -44,7 +44,7 @@ default_mode: workspace_write
         };
 
         let res = guard.execute(&input, &sandbox)?;
-        if let agent_guard_sdk::ExecuteOutcome::Executed { output } = res {
+        if let agent_guard_sdk::ExecuteOutcome::Executed { output, .. } = res {
             println!("✅ Status: EXECUTED");
             println!("📝 Stdout: {}", output.stdout.trim());
         }

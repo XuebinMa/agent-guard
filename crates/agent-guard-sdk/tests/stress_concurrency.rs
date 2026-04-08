@@ -125,7 +125,7 @@ anomaly:
                             stats.actual_allows.fetch_add(1, Ordering::SeqCst);
                             assert!(!shadow.is_locked, "Agent {} should not be able to execute while locked", agent_id);
                         }
-                        ExecuteOutcome::Denied { decision } => {
+                        ExecuteOutcome::Denied { decision, .. } => {
                             if let GuardDecision::Deny { reason } = decision {
                                 match reason.code {
                                     DecisionCode::DeniedByRule | DecisionCode::WriteInReadOnlyMode => {

@@ -34,7 +34,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("[Tier 1: Policy-Only (Rule Based)]");
     let guard_p1 = Guard::from_yaml("version: 1\ndefault_mode: read_only")?;
     let res_p1 = guard_p1.execute(&input, &NoopSandbox)?;
-    if let ExecuteOutcome::Denied { decision } = res_p1 {
+    if let ExecuteOutcome::Denied { decision, .. } = res_p1 {
         println!("   Status: ✅ BLOCKED by Rules");
         println!("   Reason: {:?}", decision);
         println!("   Risk:   If a complex bypass (base64, obfuscation) is used, Tier 1 may fail.\n");
@@ -51,7 +51,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         ExecuteOutcome::Denied { .. } => {
             println!("   Status: ✅✅ BLOCKED by Rules (First Line)");
         }
-        ExecuteOutcome::Executed { output } => {
+        ExecuteOutcome::Executed { output, .. } => {
             if output.exit_code != 0 {
                 println!("   Status: ✅✅ BLOCKED by OS Sandbox (Second Line)");
                 println!("   Result: Command execution attempted but OS kernel prevented the write.");

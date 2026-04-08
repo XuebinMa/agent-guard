@@ -71,7 +71,7 @@ fn e1_allowed_command_executes() {
     let guard = Guard::from_yaml(POLICY_READ_ONLY).expect("guard init");
     let inp = input(r#"{"command": "echo hello"}"#);
     match execute_noop(&guard, &inp).expect("no sandbox error") {
-        ExecuteOutcome::Executed { output } => {
+        ExecuteOutcome::Executed { output, .. } => {
             assert_eq!(output.exit_code, 0);
             assert_eq!(output.stdout.trim(), "hello");
         }
@@ -115,7 +115,7 @@ fn e3_read_only_blocks_write_command() {
         ExecuteOutcome::Denied { .. } | ExecuteOutcome::AskRequired { .. } => {
             // Expected: validator blocked the write via `dd`.
         }
-        ExecuteOutcome::Executed { output } => {
+        ExecuteOutcome::Executed { output, .. } => {
             // dd ran — the validator did not catch it. This is a known gap:
             // NoopSandbox cannot enforce syscall-level write blocking.
             // Document this as expected behaviour with a non-fatal note.
@@ -138,7 +138,7 @@ fn e4_workspace_write_allows_write() {
     let cmd = format!(r#"{{"command": "echo e4 > {}"}}"#, target.display());
     let inp = input(&cmd);
     match execute_noop(&guard, &inp).expect("no sandbox error") {
-        ExecuteOutcome::Executed { output } => {
+        ExecuteOutcome::Executed { output, .. } => {
             assert_eq!(output.exit_code, 0, "write should succeed in workspace_write mode");
         }
         other => panic!("expected Executed, got {other:?}"),
@@ -153,7 +153,7 @@ fn e5_full_access_executes() {
     let guard = Guard::from_yaml(POLICY_FULL_ACCESS).expect("guard init");
     let inp = input(r#"{"command": "ls /tmp"}"#);
     match execute_noop(&guard, &inp).expect("no sandbox error") {
-        ExecuteOutcome::Executed { output } => {
+        ExecuteOutcome::Executed { output, .. } => {
             assert_eq!(output.exit_code, 0);
         }
         other => panic!("expected Executed, got {other:?}"),
@@ -211,7 +211,7 @@ fn e7_untrusted_context_downgrades_mode() {
     };
     // Untrusted cannot access a full_access tool → Denied(InsufficientPermissionMode).
     match execute_noop(&guard, &inp).expect("no sandbox error") {
-        ExecuteOutcome::Denied { decision } => {
+        ExecuteOutcome::Denied { decision, .. } => {
             assert!(matches!(decision, agent_guard_sdk::GuardDecision::Deny { .. }));
         }
         other => panic!("expected Denied for Untrusted+full_access, got {other:?}"),

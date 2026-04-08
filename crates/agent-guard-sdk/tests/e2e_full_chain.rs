@@ -38,7 +38,7 @@ audit:
     let res = guard.execute(&input, &sandbox).unwrap();
     
     // 2. Verify Output
-    if let ExecuteOutcome::Executed { output } = res {
+    if let ExecuteOutcome::Executed { output, .. } = res {
         assert_eq!(output.exit_code, 0);
         assert!(output.stdout.contains("hello"));
     } else {
@@ -103,7 +103,7 @@ audit:
     // 1. Execute (Should be denied)
     let res = guard.execute(&input, &sandbox).unwrap();
     
-    if let ExecuteOutcome::Denied { decision } = res {
+    if let ExecuteOutcome::Denied { decision, .. } = res {
         if let GuardDecision::Deny { reason } = decision {
             assert_eq!(reason.code, DecisionCode::DeniedByRule);
         } else {
@@ -165,7 +165,7 @@ anomaly:
 
     // 1. Trigger first deny
     let res1 = guard.execute(&input, &sandbox).unwrap();
-    if let ExecuteOutcome::Denied { decision } = res1 {
+    if let ExecuteOutcome::Denied { decision, .. } = res1 {
         if let GuardDecision::Deny { reason } = decision {
             assert_eq!(reason.code, DecisionCode::DeniedByRule);
         }
@@ -173,7 +173,7 @@ anomaly:
 
     // 2. Trigger second deny -> will trigger fuse internally AFTER this check
     let res2 = guard.execute(&input, &sandbox).unwrap();
-    if let ExecuteOutcome::Denied { decision } = res2 {
+    if let ExecuteOutcome::Denied { decision, .. } = res2 {
         if let GuardDecision::Deny { reason } = decision {
             assert_eq!(reason.code, DecisionCode::DeniedByRule);
         }
@@ -181,7 +181,7 @@ anomaly:
 
     // 3. Subsequent call should be short-circuited (AgentLocked)
     let res3 = guard.execute(&input, &sandbox).unwrap();
-    if let ExecuteOutcome::Denied { decision } = res3 {
+    if let ExecuteOutcome::Denied { decision, .. } = res3 {
         if let GuardDecision::Deny { reason } = decision {
             assert_eq!(reason.code, DecisionCode::AgentLocked);
         } else {

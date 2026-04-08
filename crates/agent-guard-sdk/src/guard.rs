@@ -242,14 +242,15 @@ impl Guard {
         let request_id = Uuid::new_v4().to_string();
 
         // Use the snapshot for decision, auditing, mode calculation, and execution.
+        let policy_version = state.engine.version().to_string();
         let decision = self.check_internal(input, &state, &request_id);
         match &decision {
             GuardDecision::Allow => {}
             GuardDecision::Deny { .. } => {
-                return Ok(ExecuteOutcome::Denied { decision });
+                return Ok(ExecuteOutcome::Denied { decision, policy_version });
             }
             GuardDecision::AskUser { .. } => {
-                return Ok(ExecuteOutcome::AskRequired { decision });
+                return Ok(ExecuteOutcome::AskRequired { decision, policy_version });
             }
         }
 
@@ -320,7 +321,7 @@ impl Guard {
             })
             .observe(duration.as_secs_f64());
 
-        Ok(ExecuteOutcome::Executed { output })
+        Ok(ExecuteOutcome::Executed { output, policy_version })
     }
 
     /// Convenience helper to execute a command using the best available sandbox.
@@ -474,9 +475,18 @@ pub type ExecuteResult = Result<ExecuteOutcome, SandboxError>;
 #[derive(Debug, Clone, Serialize)]
 #[serde(tag = "outcome", rename_all = "snake_case")]
 pub enum ExecuteOutcome {
-    Executed { output: SandboxOutput },
-    Denied { decision: GuardDecision },
-    AskRequired { decision: GuardDecision },
+    Executed {
+        output: SandboxOutput,
+        policy_version: String,
+    },
+    Denied {
+        decision: GuardDecision,
+        policy_version: String,
+    },
+    AskRequired {
+        decision: GuardDecision,
+        policy_version: String,
+    },
 }
 
 fn extract_bash_command(payload: &str) -> Result<String, SandboxError> {

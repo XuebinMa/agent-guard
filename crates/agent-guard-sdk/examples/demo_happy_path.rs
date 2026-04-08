@@ -41,7 +41,7 @@ audit:
     let res = guard.execute_default(&input)?;
 
     // 3. Display Result
-    if let ExecuteOutcome::Executed { output } = res {
+    if let ExecuteOutcome::Executed { output, .. } = res {
         println!("✅ Status: EXECUTED");
         println!("📝 Stdout: {}", output.stdout.trim());
         println!("🔢 Exit Code: {}\n", output.exit_code);

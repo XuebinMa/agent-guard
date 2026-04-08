@@ -64,7 +64,7 @@ fn test_parity_filesystem_write_workspace() {
     let res = guard.execute(&input(&cmd, temp_dir.clone()), sandbox.as_ref());
     assert!(res.is_ok(), "Sandbox execution should not fail");
     
-    if let ExecuteOutcome::Executed { output } = res.unwrap() {
+    if let ExecuteOutcome::Executed { output, .. } = res.unwrap() {
         assert_eq!(output.exit_code, 0, "Write to workspace should succeed. Stderr: {}", output.stderr);
         assert!(target_file.exists(), "File should have been created");
     }
@@ -103,7 +103,7 @@ fn test_parity_filesystem_write_global() {
     
     let res = guard.execute(&input(&cmd, temp_dir.clone()), sandbox.as_ref());
     
-    if let Ok(ExecuteOutcome::Executed { output }) = res {
+    if let Ok(ExecuteOutcome::Executed { output, .. }) = res {
         // If it "executed", check if it actually failed at OS level
         let stderr = output.stderr.to_lowercase();
         let access_denied = stderr.contains("denied") || stderr.contains("permission");
@@ -125,7 +125,7 @@ fn test_parity_filesystem_read_global() {
         let cmd = if cfg!(windows) { format!("type {}", target) } else { format!("cat {}", target) };
         
         let res = guard.execute(&input(&cmd, std::env::current_dir().unwrap()), sandbox.as_ref());
-        if let Ok(ExecuteOutcome::Executed { output }) = res {
+        if let Ok(ExecuteOutcome::Executed { output, .. }) = res {
             assert!(output.exit_code != 0 || output.stdout.is_empty(), "Global read should be restricted");
         }
     }
@@ -145,7 +145,7 @@ fn test_parity_network_outbound() {
     let cmd = if cfg!(windows) { "ping -n 1 8.8.8.8" } else { "ping -c 1 8.8.8.8" };
     
     let res = guard.execute(&input(cmd, std::env::current_dir().unwrap()), sandbox.as_ref());
-    if let Ok(ExecuteOutcome::Executed { output }) = res {
+    if let Ok(ExecuteOutcome::Executed { output, .. }) = res {
         assert!(output.exit_code != 0, "Network outbound should be blocked. Output: {:?}", output);
     }
 }
@@ -164,7 +164,7 @@ fn test_parity_child_process_spawn() {
     
     let res = guard.execute(&input(cmd, std::env::current_dir().unwrap()), sandbox.as_ref());
     assert!(res.is_ok());
-    if let ExecuteOutcome::Executed { output } = res.unwrap() {
+    if let ExecuteOutcome::Executed { output, .. } = res.unwrap() {
         assert_eq!(output.exit_code, 0);
         assert!(output.stdout.contains('1'));
     }

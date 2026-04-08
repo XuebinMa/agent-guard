@@ -33,7 +33,7 @@ async fn test_stress_resource_spawn_loop() {
 
     for _ in 0..count {
         let res = guard.execute(&input("echo 1"), sandbox.as_ref()).unwrap();
-        if let ExecuteOutcome::Executed { output } = res {
+        if let ExecuteOutcome::Executed { output, .. } = res {
             assert_eq!(output.exit_code, 0);
         }
     }
@@ -74,7 +74,7 @@ async fn test_stress_resource_large_output() {
 
     let res = guard.execute(&input(cmd), sandbox.as_ref()).unwrap();
     
-    if let ExecuteOutcome::Executed { output } = res {
+    if let ExecuteOutcome::Executed { output, .. } = res {
         assert_eq!(output.exit_code, 0);
         assert!(output.stdout.contains("STDOUT_LINE_1000"));
         assert!(output.stderr.contains("STDERR_LINE_1000"));
