@@ -1,6 +1,15 @@
-# 🛡️ agent-guard Documentation Hub
+# agent-guard Documentation Hub
 
-Welcome to the documentation hub for `agent-guard`, the high-performance security layer for AI Agents. Use the map below to find the right information for your role.
+Welcome to the documentation hub for `agent-guard`, the high-performance security layer for AI Agents. Use the map below to find the right information for your role or objective.
+
+---
+
+## 🎯 Find by Goal (Objective)
+- **I want to integrate quickly** → [User Manual](guides/getting-started/user-manual.md)
+- **I want to deploy safely** → [Deployment Guide](guides/operations/deployment-guide.md)
+- **I want to audit security posture** → [Threat Model](threat-model.md)
+- **I want to compare platform gaps** → [Capability Parity Matrix](capability-parity.md)
+- **I want to see the roadmap** → [Architecture & Vision](architecture-and-vision.md)
 
 ---
 

@@ -1,4 +1,4 @@
-# 🛡️ agent-guard
+# agent-guard
 
 > **The Ultimate Security Layer for AI Agents.**  
 > **Intercept tool calls, evaluate against zero-trust policies, and execute in hardened OS sandboxes.**
@@ -26,7 +26,7 @@ Unlike basic "System Prompt" instructions, `agent-guard` enforces security at th
 
 ## 📈 Performance & Reliability (Stress Tested)
 
-`agent-guard` is built for high-scale production environments. Our v0.2.0-rc1 release has been rigorously tested:
+`agent-guard` is built for high-scale production environments. Our v0.2.0-rc1 release has been [rigorously tested](docs/security-audit.md#2-findings--remediations):
 - **Zero Resource Leaks**: Passed 60,000+ executions in 30s with zero handle or memory drift.
 - **Concurrent Correctness**: Successfully handled 128+ concurrent agents with 100% decision accuracy.
 - **Fail-Closed Design**: Guaranteed block on any sandbox or environment initialization failure.
