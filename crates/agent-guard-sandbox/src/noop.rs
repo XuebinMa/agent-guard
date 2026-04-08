@@ -14,16 +14,23 @@ impl Sandbox for NoopSandbox {
 
     fn capabilities(&self) -> SandboxCapabilities {
         SandboxCapabilities {
-            syscall_filtering: false,
-            filesystem_isolation: false,
-            network_blocking: false,
-            resource_limits: false,
-            process_tree_cleanup: false,
+            filesystem_read_workspace: true,
+            filesystem_read_global: true,
+            filesystem_write_workspace: true,
+            filesystem_write_global: true,
+            network_outbound_any: true,
+            network_outbound_internet: true,
+            network_outbound_local: true,
+            child_process_spawn: true,
+            registry_write: true,
         }
     }
 
     fn execute(&self, command: &str, context: &SandboxContext) -> SandboxResult {
         use std::process::Command;
+        use std::time::Duration;
+        use std::thread;
+        use std::sync::mpsc;
         
         let mut child = Command::new("sh")
             .arg("-c")
@@ -33,6 +40,35 @@ impl Sandbox for NoopSandbox {
             .stderr(std::process::Stdio::piped())
             .spawn()
             .map_err(|e| SandboxError::ExecutionFailed(e.to_string()))?;
+
+        if let Some(timeout_ms) = context.timeout_ms {
+            let (tx, rx) = mpsc::channel();
+            thread::spawn(move || {
+                thread::sleep(Duration::from_millis(timeout_ms));
+                let _ = tx.send(());
+            });
+
+            loop {
+                match child.try_wait() {
+                    Ok(Some(status)) => {
+                        let output = child.wait_with_output().map_err(|e| SandboxError::ExecutionFailed(e.to_string()))?;
+                        return Ok(SandboxOutput {
+                            stdout: String::from_utf8_lossy(&output.stdout).to_string(),
+                            stderr: String::from_utf8_lossy(&output.stderr).to_string(),
+                            exit_code: status.code().unwrap_or(-1),
+                        });
+                    }
+                    Ok(None) => {
+                        if rx.try_recv().is_ok() {
+                            let _ = child.kill();
+                            return Err(SandboxError::Timeout { ms: timeout_ms });
+                        }
+                        thread::sleep(Duration::from_millis(10));
+                    }
+                    Err(e) => return Err(SandboxError::ExecutionFailed(e.to_string())),
+                }
+            }
+        }
 
         let output = child.wait_with_output()
             .map_err(|e| SandboxError::ExecutionFailed(e.to_string()))?;

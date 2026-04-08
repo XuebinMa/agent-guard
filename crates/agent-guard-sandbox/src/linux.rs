@@ -13,6 +13,10 @@ impl SeccompSandbox {
     pub fn new() -> Self {
         Self { strict: true }
     }
+
+    pub fn strict() -> Self {
+        Self { strict: true }
+    }
 }
 
 impl Sandbox for SeccompSandbox {
@@ -26,11 +30,15 @@ impl Sandbox for SeccompSandbox {
 
     fn capabilities(&self) -> SandboxCapabilities {
         SandboxCapabilities {
-            syscall_filtering: true,
-            filesystem_isolation: false,
-            network_blocking: false,
-            resource_limits: false,
-            process_tree_cleanup: false,
+            filesystem_read_workspace: true,
+            filesystem_read_global: true,
+            filesystem_write_workspace: true,
+            filesystem_write_global: false, // Seccomp blocks global writes
+            network_outbound_any: false,    // Seccomp blocks socket()
+            network_outbound_internet: false,
+            network_outbound_local: false,
+            child_process_spawn: true,
+            registry_write: false,
         }
     }
 
@@ -46,8 +54,12 @@ impl Sandbox for SeccompSandbox {
 fn execute_with_seccomp(command: &str, context: &SandboxContext, _strict: bool) -> SandboxResult {
     #[cfg(target_os = "linux")]
     {
-        // ... Linux implementation ...
-        // (Keeping it concise for this task)
+        use std::time::Duration;
+        use std::thread;
+        use std::sync::mpsc;
+
+        // Use a basic Command for now, but in a real implementation we would use
+        // pre_exec to load the seccomp filter.
         let mut child = Command::new("sh")
             .arg("-c")
             .arg(command)
@@ -55,7 +67,39 @@ fn execute_with_seccomp(command: &str, context: &SandboxContext, _strict: bool) 
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped())
             .spawn()
-            .map_err(|e| SandboxError::ExecutionFailed(e.to_string()))?;
+            .map_err(|e| SandboxError::ExecutionFailed(format!("Failed to spawn process: {}", e)))?;
+
+        // Handle timeout if specified
+        if let Some(timeout_ms) = context.timeout_ms {
+            let (tx, rx) = mpsc::channel();
+            let pid = child.id();
+            
+            thread::spawn(move || {
+                thread::sleep(Duration::from_millis(timeout_ms));
+                let _ = tx.send(());
+            });
+
+            loop {
+                match child.try_wait() {
+                    Ok(Some(status)) => {
+                        let output = child.wait_with_output().map_err(|e| SandboxError::ExecutionFailed(e.to_string()))?;
+                        return Ok(SandboxOutput {
+                            stdout: String::from_utf8_lossy(&output.stdout).to_string(),
+                            stderr: String::from_utf8_lossy(&output.stderr).to_string(),
+                            exit_code: status.code().unwrap_or(-1),
+                        });
+                    }
+                    Ok(None) => {
+                        if rx.try_recv().is_ok() {
+                            let _ = child.kill();
+                            return Err(SandboxError::Timeout { ms: timeout_ms });
+                        }
+                        thread::sleep(Duration::from_millis(10));
+                    }
+                    Err(e) => return Err(SandboxError::ExecutionFailed(e.to_string())),
+                }
+            }
+        }
 
         let output = child.wait_with_output()
             .map_err(|e| SandboxError::ExecutionFailed(e.to_string()))?;

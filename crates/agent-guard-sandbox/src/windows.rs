@@ -18,11 +18,15 @@ impl Sandbox for JobObjectSandbox {
 
     fn capabilities(&self) -> crate::SandboxCapabilities {
         crate::SandboxCapabilities {
-            syscall_filtering: false,
-            filesystem_isolation: true, // Low-IL provides write isolation
-            network_blocking: false,
-            resource_limits: true,
-            process_tree_cleanup: true,
+            filesystem_read_workspace: true,
+            filesystem_read_global: true, // Low-IL allows global read
+            filesystem_write_workspace: true,
+            filesystem_write_global: false, // Low-IL provides write isolation
+            network_outbound_any: true,    // Current prototype allows all network
+            network_outbound_internet: true,
+            network_outbound_local: true,
+            child_process_spawn: true,
+            registry_write: false,
         }
     }
 
@@ -187,12 +191,12 @@ fn create_low_integrity_token() -> Result<windows_sys::Win32::Foundation::HANDLE
         if DuplicateTokenEx(process_token, TOKEN_ALL_ACCESS, std::ptr::null(), SecurityImpersonation, TokenPrimary, &mut low_token) == 0 {
             return Err(SandboxError::ExecutionFailed("Windows Sandbox: Failed to duplicate token".to_string()));
         }
+        let _lt_guard = SafeHandle(low_token);
         
         let mut integrity_sid: *mut std::ffi::c_void = std::ptr::null_mut();
         // S-1-16-4096 (Low Mandatory Level)
         let mut low_integrity_sid_auth = SID_IDENTIFIER_AUTHORITY { Value: [0, 0, 0, 0, 0, 16] };
         if AllocateAndInitializeSid(&low_integrity_sid_auth, 1, 0x1000, 0, 0, 0, 0, 0, 0, 0, &mut integrity_sid) == 0 {
-            CloseHandle(low_token);
             return Err(SandboxError::ExecutionFailed("Windows Sandbox: Failed to allocate SID".to_string()));
         }
 
@@ -207,10 +211,12 @@ fn create_low_integrity_token() -> Result<windows_sys::Win32::Foundation::HANDLE
         FreeSid(integrity_sid);
 
         if res == 0 {
-            CloseHandle(low_token);
             return Err(SandboxError::ExecutionFailed("Windows Sandbox: Failed to set token integrity level".to_string()));
         }
 
+        // Return the raw handle, but we need to prevent the guard from closing it here
+        // The caller will wrap it in TokenHandle.
+        std::mem::forget(_lt_guard);
         Ok(low_token)
     }
 }

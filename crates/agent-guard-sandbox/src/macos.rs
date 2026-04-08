@@ -15,11 +15,15 @@ impl Sandbox for SeatbeltSandbox {
 
     fn capabilities(&self) -> SandboxCapabilities {
         SandboxCapabilities {
-            syscall_filtering: false,
-            filesystem_isolation: true,
-            network_blocking: true,
-            resource_limits: false,
-            process_tree_cleanup: false,
+            filesystem_read_workspace: true,
+            filesystem_read_global: true, // Seatbelt prototype currently allows global read
+            filesystem_write_workspace: true,
+            filesystem_write_global: false,
+            network_outbound_any: false,
+            network_outbound_internet: false,
+            network_outbound_local: false,
+            child_process_spawn: true,
+            registry_write: false,
         }
     }
 
@@ -30,18 +34,34 @@ impl Sandbox for SeatbeltSandbox {
     fn execute(&self, command: &str, context: &SandboxContext) -> SandboxResult {
         #[cfg(target_os = "macos")]
         {
-            // Implementation...
-            let mut child = Command::new("sh")
+            let resolved_dir = context.working_directory.canonicalize()
+                .map_err(|e| SandboxError::ExecutionFailed(format!("Failed to resolve workspace path: {}", e)))?;
+
+            let profile = format!(
+                r#"(version 1)
+(deny default)
+(allow file-read* (subpath "/"))
+(allow file-write* (subpath "{}"))
+(allow process-fork)
+(allow process-exec)
+(deny network*)"#,
+                resolved_dir.display()
+            );
+
+            let mut child = Command::new("sandbox-exec")
+                .arg("-p")
+                .arg(profile)
+                .arg("sh")
                 .arg("-c")
                 .arg(command)
                 .current_dir(&context.working_directory)
                 .stdout(std::process::Stdio::piped())
                 .stderr(std::process::Stdio::piped())
                 .spawn()
-                .map_err(|e| SandboxError::ExecutionFailed(e.to_string()))?;
+                .map_err(|e| SandboxError::ExecutionFailed(format!("Failed to spawn sandbox-exec: {}", e)))?;
 
             let output = child.wait_with_output()
-                .map_err(|e| SandboxError::ExecutionFailed(e.to_string()))?;
+                .map_err(|e| SandboxError::ExecutionFailed(format!("Failed to wait for sandboxed process: {}", e)))?;
 
             Ok(SandboxOutput {
                 stdout: String::from_utf8_lossy(&output.stdout).to_string(),

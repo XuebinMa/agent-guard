@@ -48,14 +48,18 @@ pub struct SandboxOutput {
 
 // ── SandboxCapabilities ────────────────────────────────────────────────────────
 
-/// Descriptive metadata about a sandbox's security features.
+/// Descriptive metadata about a sandbox's security features based on the Unified Capability Model (UCM).
 #[derive(Debug, Clone, Serialize)]
 pub struct SandboxCapabilities {
-    pub syscall_filtering: bool,
-    pub filesystem_isolation: bool,
-    pub network_blocking: bool,
-    pub resource_limits: bool,
-    pub process_tree_cleanup: bool,
+    pub filesystem_read_workspace: bool,
+    pub filesystem_read_global: bool,
+    pub filesystem_write_workspace: bool,
+    pub filesystem_write_global: bool,
+    pub network_outbound_any: bool,
+    pub network_outbound_internet: bool,
+    pub network_outbound_local: bool,
+    pub child_process_spawn: bool,
+    pub registry_write: bool,
 }
 
 // ── SandboxResult ─────────────────────────────────────────────────────────────
