@@ -12,6 +12,8 @@ use serde::Serialize;
 use thiserror::Error;
 use uuid::Uuid;
 
+use crate::siem::SiemExporter;
+
 // ── GuardInitError ────────────────────────────────────────────────────────────
 
 #[derive(Debug, Error)]
@@ -37,6 +39,7 @@ struct GuardState {
     engine: Arc<PolicyEngine>,
     audit_cfg: AuditConfig,
     audit_file: Option<Arc<std::sync::Mutex<std::fs::File>>>,
+    siem_exporter: Arc<SiemExporter>,
 }
 
 impl std::fmt::Debug for Guard {
@@ -109,7 +112,8 @@ impl Guard {
     /// Captures the policy state exactly once for the entire request flow.
     pub fn check(&self, input: &GuardInput) -> GuardDecision {
         let state = self.state.load();
-        self.check_internal(input, &state)
+        let request_id = Uuid::new_v4().to_string();
+        self.check_internal(input, &state, &request_id)
     }
 
     /// Higher-level check that accepts tool/payload/context.
@@ -120,17 +124,18 @@ impl Guard {
         context: Context,
     ) -> GuardDecision {
         let state = self.state.load();
+        let request_id = Uuid::new_v4().to_string();
         let input = GuardInput {
             tool,
             payload: payload.into(),
             context,
         };
-        self.check_internal(&input, &state)
+        self.check_internal(&input, &state, &request_id)
     }
 
     /// Internal core logic that MUST use a captured state snapshot.
     /// This ensures decision, auditing, and execution use the same policy version.
-    fn check_internal(&self, input: &GuardInput, state: &GuardState) -> GuardDecision {
+    fn check_internal(&self, input: &GuardInput, state: &GuardState, request_id: &str) -> GuardDecision {
         let metrics = crate::metrics::get_metrics();
         let agent_id = input.context.agent_id.clone().unwrap_or_else(|| "default".to_string());
         
@@ -154,14 +159,14 @@ impl Guard {
                         anomaly_cfg.rate_limit.max_calls, anomaly_cfg.rate_limit.window_seconds
                     ),
                 );
-                return self.finalize_check(input, &decision, state, &agent_id, "deny");
+                return self.finalize_check(input, &decision, state, &agent_id, "deny", request_id);
             }
             crate::anomaly::AnomalyStatus::Locked => {
                 let decision = GuardDecision::deny(
                     DecisionCode::AgentLocked,
                     "anomaly detected: agent locked due to too many security denials (Deny Fuse)",
                 );
-                return self.finalize_check(input, &decision, state, &agent_id, "deny");
+                return self.finalize_check(input, &decision, state, &agent_id, "deny", request_id);
             }
         }
 
@@ -177,7 +182,7 @@ impl Guard {
             }
             GuardDecision::AskUser { .. } => "ask",
         };
-        self.finalize_check(input, &decision, state, &agent_id, outcome)
+        self.finalize_check(input, &decision, state, &agent_id, outcome, request_id)
     }
 
     /// Helper to record metrics, write audit, and return decision.
@@ -188,6 +193,7 @@ impl Guard {
         state: &GuardState,
         agent_id: &str,
         outcome: &str,
+        request_id: &str,
     ) -> GuardDecision {
         let metrics = crate::metrics::get_metrics();
         
@@ -203,10 +209,27 @@ impl Guard {
                 agent_id: agent_id.to_string(),
                 tool: input.tool.name().to_string(),
             }).inc();
+             
+             // M6.4: SIEM anomaly export
+             let event = agent_guard_core::AnomalyEvent {
+                 timestamp: chrono::Utc::now(),
+                 agent_id: Some(agent_id.to_string()),
+                 actor: input.context.actor.clone(),
+                 reason: match decision {
+                     GuardDecision::Deny { reason } => reason.message.clone(),
+                     _ => "anomaly".to_string(),
+                 },
+             };
+             let record = if matches!(decision, GuardDecision::Deny { reason } if reason.code == DecisionCode::AgentLocked) {
+                 agent_guard_core::AuditRecord::AgentLocked(event)
+             } else {
+                 agent_guard_core::AuditRecord::AnomalyTriggered(event)
+             };
+             state.siem_exporter.export(record);
         }
 
         if state.audit_cfg.enabled {
-            self.write_audit(input, decision, state);
+            self.write_audit(input, decision, state, request_id);
         }
         decision.clone()
     }
@@ -216,9 +239,10 @@ impl Guard {
     pub fn execute(&self, input: &GuardInput, sandbox: &dyn Sandbox) -> ExecuteResult {
         // M3.2: Capture state snapshot EXACTLY ONCE at the entry point.
         let state = self.state.load();
+        let request_id = Uuid::new_v4().to_string();
 
         // Use the snapshot for decision, auditing, mode calculation, and execution.
-        let decision = self.check_internal(input, &state);
+        let decision = self.check_internal(input, &state, &request_id);
         match &decision {
             GuardDecision::Allow => {}
             GuardDecision::Deny { .. } => {
@@ -243,9 +267,47 @@ impl Guard {
             timeout_ms: None,
         };
 
+        // M6.4 SIEM: Execution Started
+        state.siem_exporter.export(agent_guard_core::AuditRecord::ExecutionStarted(agent_guard_core::ExecutionEvent {
+            timestamp: chrono::Utc::now(),
+            request_id: request_id.clone(),
+            agent_id: input.context.agent_id.clone(),
+            tool: input.tool.name().to_string(),
+            sandbox_type: sandbox.sandbox_type().to_string(),
+            duration_ms: None,
+            exit_code: None,
+        }));
+
         let start = std::time::Instant::now();
-        let output = sandbox.execute(&command, &ctx)?;
-        let duration = start.elapsed().as_secs_f64();
+        let execution_res = sandbox.execute(&command, &ctx);
+        let duration = start.elapsed();
+        
+        let output = match execution_res {
+            Ok(out) => out,
+            Err(e) => {
+                // M6.4 SIEM: Sandbox Failure
+                state.siem_exporter.export(agent_guard_core::AuditRecord::SandboxFailure(agent_guard_core::SandboxFailureEvent {
+                    timestamp: chrono::Utc::now(),
+                    request_id: request_id.clone(),
+                    agent_id: input.context.agent_id.clone(),
+                    tool: input.tool.name().to_string(),
+                    sandbox_type: sandbox.sandbox_type().to_string(),
+                    error: e.to_string(),
+                }));
+                return Err(e);
+            }
+        };
+
+        // M6.4 SIEM: Execution Finished
+        state.siem_exporter.export(agent_guard_core::AuditRecord::ExecutionFinished(agent_guard_core::ExecutionEvent {
+            timestamp: chrono::Utc::now(),
+            request_id: request_id.clone(),
+            agent_id: input.context.agent_id.clone(),
+            tool: input.tool.name().to_string(),
+            sandbox_type: sandbox.sandbox_type().to_string(),
+            duration_ms: Some(duration.as_millis() as u64),
+            exit_code: Some(output.exit_code),
+        }));
 
         // M4.2: Record execution duration
         let agent_id = input.context.agent_id.clone().unwrap_or_else(|| "default".to_string());
@@ -256,7 +318,7 @@ impl Guard {
                 tool: input.tool.name().to_string(),
                 sandbox_type: sandbox.sandbox_type().to_string(),
             })
-            .observe(duration);
+            .observe(duration.as_secs_f64());
 
         Ok(ExecuteOutcome::Executed { output })
     }
@@ -327,10 +389,9 @@ impl Guard {
         state.engine.check(&input.tool, &input.payload, &input.context)
     }
 
-    fn write_audit(&self, input: &GuardInput, decision: &GuardDecision, state: &GuardState) {
-        let request_id = Uuid::new_v4().to_string();
+    fn write_audit(&self, input: &GuardInput, decision: &GuardDecision, state: &GuardState, request_id: &str) {
         let event = AuditEvent::from_decision(
-            request_id,
+            request_id.to_string(),
             &input.tool,
             &input.payload,
             decision,
@@ -341,6 +402,9 @@ impl Guard {
             state.engine.version().to_string(),
         );
         let line = event.to_jsonl();
+
+        // M6.4 SIEM Export
+        state.siem_exporter.export(agent_guard_core::AuditRecord::ToolCall(event));
 
         if state.audit_cfg.output == "file" {
             if let Some(ref mutex) = state.audit_file {
@@ -356,6 +420,10 @@ impl Guard {
 
     fn write_reload_audit(&self, event: &ReloadEvent, state: &GuardState) {
         let line = event.to_jsonl();
+        
+        // M6.4 SIEM Export
+        state.siem_exporter.export(agent_guard_core::AuditRecord::PolicyReload(event.clone()));
+
         if state.audit_cfg.enabled && state.audit_cfg.output == "file" {
             if let Some(ref mutex) = state.audit_file {
                 if let Ok(mut file) = mutex.lock() {
@@ -388,10 +456,13 @@ impl GuardState {
             None
         };
 
+        let siem_exporter = Arc::new(SiemExporter::new(audit_cfg.clone()));
+
         Ok(Self {
             engine,
             audit_cfg,
             audit_file,
+            siem_exporter,
         })
     }
 }

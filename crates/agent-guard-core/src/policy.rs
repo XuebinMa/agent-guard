@@ -264,6 +264,8 @@ pub struct AuditConfig {
     pub file_path: Option<String>,
     #[serde(default = "audit_hash_default")]
     pub include_payload_hash: bool,
+    pub webhook_url: Option<String>,
+    pub otlp_endpoint: Option<String>,
 }
 
 fn audit_enabled_default() -> bool { true }

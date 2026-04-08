@@ -1,16 +1,21 @@
 pub mod guard;
 pub mod metrics;
 pub mod anomaly;
-pub use anomaly::{get_detector, AnomalyDetector, AnomalyStatus};
+pub mod provenance;
+pub mod siem;
 
+pub use anomaly::{get_detector, AnomalyDetector, AnomalyStatus};
 pub use metrics::{get_metrics, Metrics};
+pub use provenance::{ExecutionReceipt, RECEIPT_VERSION};
+pub use siem::SiemExporter;
 pub use prometheus_client;
 pub use guard::{ExecuteOutcome, ExecuteResult, Guard, GuardInitError};
 
 // Re-export core types so SDK users don't need to depend on agent-guard-core
 pub use agent_guard_core::{
-    Context, CustomToolId, DecisionCode, DecisionReason, GuardDecision, GuardInput, Tool,
-    TrustLevel,
+    AuditConfig, AuditDecision, AuditEvent, AuditRecord, Context, CustomToolId, DecisionCode, 
+    DecisionReason, GuardDecision, GuardInput, ReloadEvent, ReloadStatus, Tool, TrustLevel,
+    AnomalyEvent, ExecutionEvent, SandboxFailureEvent
 };
 
 // Re-export sandbox types for direct usage

@@ -37,6 +37,40 @@ pub enum AuditDecision {
 pub enum AuditRecord {
     ToolCall(AuditEvent),
     PolicyReload(ReloadEvent),
+    ExecutionStarted(ExecutionEvent),
+    ExecutionFinished(ExecutionEvent),
+    SandboxFailure(SandboxFailureEvent),
+    AnomalyTriggered(AnomalyEvent),
+    AgentLocked(AnomalyEvent),
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ExecutionEvent {
+    pub timestamp: DateTime<Utc>,
+    pub request_id: String,
+    pub agent_id: Option<String>,
+    pub tool: String,
+    pub sandbox_type: String,
+    pub duration_ms: Option<u64>,
+    pub exit_code: Option<i32>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SandboxFailureEvent {
+    pub timestamp: DateTime<Utc>,
+    pub request_id: String,
+    pub agent_id: Option<String>,
+    pub tool: String,
+    pub sandbox_type: String,
+    pub error: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AnomalyEvent {
+    pub timestamp: DateTime<Utc>,
+    pub agent_id: Option<String>,
+    pub actor: Option<String>,
+    pub reason: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -71,12 +71,34 @@ To reconstruct a security event, correlate across these fields:
 | **Anomaly Triggered** | `decision: "deny"`, `code: "ANOMALY_DETECTED"` | `anomaly_triggered_total` | `WARN` |
 | **Agent Locked** | `decision: "deny"`, `code: "AGENT_LOCKED"` | `anomaly_triggered_total` | `ERROR` |
 | **Sandbox Execution** | `event: "tool_call"`, `stdout/stderr` | `execution_duration_seconds` | `DEBUG` |
-| **Sandbox Failure** | `SandboxError` (in ExecuteResult) | N/A (Internal Error) | `ERROR` |
-| **Policy Reload** | `event: "policy_reload"` | N/A | `INFO` |
+| **Sandbox Failure** | `type: "sandbox_failure"` | N/A (Internal Error) | `ERROR` |
+| **Execution Started** | `type: "execution_started"` | N/A | `DEBUG` |
+| **Execution Finished** | `type: "execution_finished"` | `execution_duration_seconds` | `DEBUG` |
+| **Policy Reload** | `type: "policy_reload"` | N/A | `INFO` |
 
 ---
 
-## 5. 🚨 Recommended Prometheus Alerts
+## 5. 🌐 Webhook & SIEM Export (Phase 6)
+
+`agent-guard` supports real-time export of unified audit records to external SIEM systems via Webhooks.
+
+### Configuration
+In `policy.yaml`:
+```yaml
+audit:
+  enabled: true
+  webhook_url: "https://siem.example.com/ingest"
+  include_payload_hash: true
+```
+
+### Event Schema
+The Webhook sends a POST request with an `AuditRecord` JSON body. Supported types:
+- `tool_call`: Detailed tool evaluation result.
+- `execution_started`: Emitted before sandbox spawn.
+- `execution_finished`: Emitted after sandbox exit (includes exit code and duration).
+- `sandbox_failure`: Emitted when sandbox setup or execution fails.
+- `anomaly_triggered`: Rate limit violation.
+- `agent_locked`: Deny fuse triggered.
 
 ```yaml
 groups:
