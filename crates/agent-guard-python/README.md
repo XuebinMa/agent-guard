@@ -8,6 +8,8 @@ This package provides Python bindings for `agent-guard`, enabling you to interce
 
 ## 🚀 Quick Start (LangChain)
 
+> **Note**: The LangChain adapter is currently an **Integration Prototype**. It is optimized for shell-like tools and is being validated for broad framework compatibility.
+
 Integrate `agent-guard` into your existing LangChain tools in just 3 lines of code:
 
 ```python

@@ -41,19 +41,41 @@ def wrap_langchain_tool(
     original_arun = getattr(tool, "_arun", None)
     
     # Resolve mode
+    is_shell_tool = tool.name in ["bash", "shell", "terminal"]
     if mode == "auto":
-        resolved_mode = "enforce" if tool.name in ["bash", "shell", "terminal"] else "check"
+        resolved_mode = "enforce" if is_shell_tool else "check"
     else:
         resolved_mode = mode
 
     def _prepare_payload(*args, **kwargs) -> str:
-        if args and not kwargs and len(args) == 1:
-            payload_data = args[0]
+        """
+        Ensures the payload conforms to the agent-guard SDK expectations.
+        For shell tools, expected format is {"command": "..."}
+        For others, a generic JSON object representing the input.
+        """
+        raw_input = None
+        if args and len(args) == 1 and not kwargs:
+            raw_input = args[0]
+        elif kwargs and not args:
+            raw_input = kwargs
         else:
-            payload_data = {**kwargs}
-            if args:
-                payload_data["args"] = args
-        return json.dumps(payload_data) if not isinstance(payload_data, (str, bytes)) else payload_data
+            raw_input = {"args": args, "kwargs": kwargs}
+
+        # Contract Alignment: 
+        # If it's a shell tool, the SDK expects {"command": str}
+        if is_shell_tool:
+            if isinstance(raw_input, str):
+                return json.dumps({"command": raw_input})
+            elif isinstance(raw_input, dict) and "command" in raw_input:
+                return json.dumps(raw_input)
+            else:
+                # Fallback: wrap whatever it is
+                return json.dumps({"command": str(raw_input)})
+        
+        # Generic Tool Alignment:
+        if isinstance(raw_input, (str, bytes, int, float, bool)):
+            return json.dumps({"input": raw_input})
+        return json.dumps(raw_input)
 
     def guarded_run(*args, **kwargs) -> Any:
         payload_str = _prepare_payload(*args, **kwargs)
@@ -72,7 +94,7 @@ def wrap_langchain_tool(
                 return result.output.stdout if result.output else ""
             elif result.status == "denied":
                 raise AgentGuardSecurityError(result.decision)
-            elif result.status == "ask_required":
+            else:
                 raise AgentGuardSecurityError(result.decision)
         else:
             # Tier 1: Policy Check only (Wrap original logic)
@@ -130,9 +152,9 @@ def wrap_langchain_tool(
     
     # Also override high-level invoke if it exists (LangChain LCEL)
     if hasattr(tool, "invoke"):
-        original_invoke = tool.invoke
         def guarded_invoke(input, config=None, **kwargs):
-            # This ensures even LCEL path is guarded
+            # Map invoke back to the guarded run method
+            # This ensures we handle callbacks/config if the tool expects them
             return tool.run(input, **kwargs)
         tool.invoke = guarded_invoke
 

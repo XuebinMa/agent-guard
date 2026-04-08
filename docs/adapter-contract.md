@@ -1,8 +1,11 @@
 # Adapter Contract: agent-guard Integration Layer
 
-> Status: **Draft**  
-> Version: **1.0**  
-> Target: FFI Binding maintainers (Python, Node.js, etc.)
+| Field | Details |
+| :--- | :--- |
+| **Status** | 🟢 Baseline Established |
+| **Audience** | FFI Binding maintainers (Python, Node.js, etc.) |
+| **Version** | 1.1 |
+| **Last Reviewed** | 2026-04-08 |
 
 To ensure a consistent security experience across ecosystems, all `agent-guard` language bindings MUST adhere to this contract.
 
@@ -14,51 +17,48 @@ The primary `Guard` object in any language MUST expose the following methods:
 
 - `check(...) -> Decision`: Non-executing policy validation.
 - `execute(...) -> ExecuteResult`: Policy validation followed by OS-level sandbox execution.
-- `reload_from_yaml(yaml: str)`: Atomic policy update.
 - `policy_version() -> str`: Return current policy hash.
 
 ### Parameters
 Both `check` and `execute` MUST accept:
 - `tool`: String identifier.
 - `payload`: JSON-encoded string.
-- `trust_level`: "untrusted" (default), "trusted", "admin".
-- `agent_id`, `session_id`, `actor`: Optional correlation strings.
+- `trust_level`, `agent_id`, `session_id`, `actor`: Context strings.
 
 ---
 
-## 2. Unified Result Semantics
+## 2. Payload Construction Contract
 
-### Decision Object (Check)
-- `outcome`: "allow", "deny", "ask_user".
-- `code`: The `DecisionCode` string (e.g., `DENIED_BY_RULE`).
-- `policy_version`: The hash of the policy used for this specific check.
+Adapters MUST normalize tool inputs into the following JSON schemas before calling the Rust SDK:
 
-### ExecuteResult Object (Execute)
-- `status`: "executed", "denied", "ask_required".
-- `output`: Optional object containing `stdout`, `stderr`, `exit_code`.
-- `decision`: Required if status is NOT "executed".
-- `policy_version`: Must reflect the snapshot used during execution.
+### A. Shell / Terminal Tools
+Expected format: `{"command": "string"}`.
+Adapters MUST wrap raw string inputs into this object for tools identified as shell providers.
+
+### B. Generic / Structured Tools
+Expected format: A JSON object representing the input arguments.
+If the tool receives a single scalar value, it SHOULD be wrapped as `{"input": value}` to ensure a valid JSON object is passed to the Rust policy engine.
 
 ---
 
-## 3. Adapter Design Patterns (Wrappers)
+## 3. Adapter Support Scope (v0.3.0)
 
-When building framework-specific adapters (e.g., for LangChain), use the following patterns:
+Adapters currently target two primary modes of operation:
 
-### A. Authorization Mode (`mode="check"`)
-- **Workflow**: `guard.check()` -> if Allow -> `original_logic()`
-- **Usage**: For general API tools or local Python functions where sandbox execution is not possible/desired.
+### 🛡️ Enforcement Mode (`mode="enforce"`)
+- **Primary Target**: Shell tools (`bash`, `shell`, `terminal`).
+- **Mechanism**: The original tool execution logic is **replaced** by the `agent-guard` sandbox.
+- **Outcome**: Returns the standard output of the sandbox.
 
-### B. Enforcement Mode (`mode="enforce"`)
-- **Workflow**: `guard.execute()` -> return sandbox output directly.
-- **Usage**: For shell, terminal, or system-level tools where OS isolation is required.
+### 🛡️ Authorization Mode (`mode="check"`)
+- **Primary Target**: General API tools, local Python/JS functions.
+- **Mechanism**: `guard.check()` is called as a gatekeeper. If allowed, the **original** tool logic executes.
+- **Outcome**: Returns the original tool's output.
 
 ---
 
 ## 4. Operational Requirements
 
-1. **Fail-Closed**: Any internal error (binding failure, sandbox init failure) MUST result in an exception that blocks tool execution.
-2. **Async Integrity**: 
-   - Async methods (e.g., `_arun`) MUST be supported. 
-   - Blocking FFI calls MUST be dispatched to background threads (e.g., `asyncio.to_thread` in Python) to avoid stalling the event loop.
-3. **Traceability**: The adapter MUST ensure that `agent_id` and `actor` are passed through from the framework context to the SDK for auditing.
+1. **Fail-Closed**: Any internal error (binding failure, sandbox init failure) MUST block tool execution.
+2. **Async Integrity**: Blocking FFI calls MUST be dispatched to background threads (e.g., `asyncio.to_thread`) to prevent stalling event loops.
+3. **LCEL Compatibility**: For LangChain, high-level entry points like `invoke` MUST be patched to ensure the security wrapper is not bypassed.
