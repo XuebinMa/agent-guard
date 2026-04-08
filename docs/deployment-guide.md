@@ -14,7 +14,7 @@ For most enterprise use cases, we recommend the following sidecar or host-agent 
 2. **agent-guard SDK**: Integrated into the host application to intercept tool calls.
 3. **OS Sandboxes**:
    - **Linux**: Seccomp-BPF (Production Ready).
-   - **Windows**: Low-IL (Strengthened Prototype).
+   - **Windows**: Low-IL (Strengthened Prototype - Default) or **AppContainer** (Experimental - Opt-in).
    - **macOS**: Seatbelt (Internal Prototype).
 4. **SIEM / Observability Stack**: Grafana, Prometheus, and a Webhook listener.
 

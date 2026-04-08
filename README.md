@@ -5,8 +5,8 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Rust](https://img.shields.io/badge/Language-Rust-orange.svg)](https://www.rust-lang.org/)
-[![Version](https://img.shields.io/badge/Version-0.1.0--alpha-blue.svg)]()
-[![Phase](https://img.shields.io/badge/Phase-5%20In%20Progress-yellow.svg)]()
+[![Version](https://img.shields.io/badge/Version-0.2.0--rc1-blue.svg)]()
+[![Phase](https://img.shields.io/badge/Phase-7%20Complete-green.svg)]()
 [![Build Status](https://github.com/XuebinMa/agent-guard/actions/workflows/rust.yml/badge.svg)](https://github.com/XuebinMa/agent-guard/actions)
 
 ---
@@ -34,8 +34,8 @@ When Large Language Models (LLMs) are granted **Tool Use** or **Function Calling
   - **Python**: Deep integration with **LangChain 0.3** and native observability support.
 - 🛡️ **Cross-Platform Sandboxing**:
   - **Linux**: Production-grade `Seccomp-BPF` syscall filtering.
-  - **macOS**: Experimental prototype (`SeatbeltSandbox`) for filesystem isolation.
-  - **Windows**: **Strengthened Prototype** (JobObjectSandbox) for resource and process management.
+  - **macOS**: `sandbox-exec` (Seatbelt) for filesystem isolation.
+  - **Windows**: **Low-IL Enforcement** (default) and **AppContainer Prototype** (opt-in) for object-level isolation.
 
 ---
 
@@ -87,23 +87,27 @@ match guard.execute_default(&input) {
 
 ### 📊 Platform Capability Matrix
 
-| Security Feature | Linux (Seccomp) | macOS (Seatbelt) | Windows (Job Object) |
-| :--- | :---: | :---: | :---: |
-| **Policy Enforcement** | ✅ Full | ✅ Full | ✅ Full |
-| **Syscall Filtering** | ✅ BPF | ❌ N/A | ❌ N/A |
-| **Filesystem Isolation** | ✅ Strict | 🟡 Experimental | ✅ **Low-IL** |
-| **Resource Limits** | ✅ Native | ❌ N/A | ✅ **Verifiable** |
-| **Anomaly Detection** | ✅ Full | ✅ Full | ✅ Full |
-| **Telemetry (Prometheus)** | ✅ Full | ✅ Full | ✅ Full |
+| Security Feature | Linux (Seccomp) | macOS (Seatbelt) | Windows (Low-IL) | Windows (AppContainer) |
+| :--- | :---: | :---: | :---: | :---: |
+| **Policy Enforcement** | ✅ Full | ✅ Full | ✅ Full | ✅ Full |
+| **Syscall Filtering** | ✅ BPF | ❌ N/A | ❌ N/A | ❌ N/A |
+| **Filesystem Isolation** | ✅ Strict | 🟡 Experimental | ✅ **Low-IL** | ✅ **SID-Based** |
+| **Network Blocking** | ✅ Strict | ✅ Strict | ❌ Planned | ✅ **Restricted** |
+| **Resource Limits** | ✅ Native | ❌ N/A | ✅ Verifiable | ✅ Verifiable |
+| **Anomaly Detection** | ✅ Full | ✅ Full | ✅ Full | ✅ Full |
+| **Telemetry & SIEM** | ✅ Full | ✅ Full | ✅ Full | ✅ Full |
 
-> **Security Note**: macOS and Windows implementations are currently **experimental prototypes**. While they provide valuable isolation, they do not yet match the syscall-level hardening provided by Seccomp on Linux. See [docs/threat-model.md](docs/threat-model.md) for detailed boundaries.
+> **Security Note**: Windows AppContainer is currently an **experimental prototype** (opt-in). Linux Seccomp-BPF is the recommended choice for high-security production environments. See [docs/capability-parity.md](docs/capability-parity.md) for detailed comparisons.
 
 ---
 
 ### 🗺️ Roadmap
 
 - [x] **Phase 1-4**: Core Engine, Linux Sandbox, Telemetry, Anomaly Detection.
-- [ ] **Phase 5**: **(Current)** Windows Hardening (Low-IL Enforcement), Threat Model v2 (STRIDE), SIEM Integration.
+- [x] **Phase 5**: Windows Low-IL Enforcement, Threat Model v2 (STRIDE).
+- [x] **Phase 6**: Enterprise Security: Unified Capability Model (UCM), Signed Receipts, SIEM (Webhook).
+- [x] **Phase 7**: Production Hardening, Cross-platform Parity Tests, AppContainer Prototype.
+- [ ] **Phase 8 (v0.3.0)**: TPM-backed Remote Attestation, Linux Landlock/Namespaces integration, OTLP SIEM exporter.
 
 ---
 
