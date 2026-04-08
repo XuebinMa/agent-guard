@@ -26,7 +26,7 @@
 | :--- | :--- | :--- | :--- |
 | **Windows Sandbox** | Low-IL (Default) | AppContainer (Opt-in) | AppContainer (Default) |
 | **Provenance** | Ed25519 Signed Receipts | - | TPM Attestation |
-| **SIEM** | JSONL, OTLP (Basic) | Webhooks | Advanced Filter & Routing |
+| **SIEM** | JSONL, Webhook (Active) | OTLP (Planned) | Advanced Filter & Routing |
 | **Capabilities** | FS (R/W), Child Process | Network, Registry | Clipboard |
 
 ---
@@ -94,6 +94,11 @@ Unified event types across all exporters:
 | **`anomaly_triggered`** | Rate limit or behavioral threshold hit. | WARN |
 | **`agent_locked`** | Deny Fuse activated. | ERROR |
 | **`policy_reloaded`** | Dynamic policy update via ArcSwap. | INFO |
+
+### SIEM Export Strategy
+1. **JSONL (File)**: Local-first, immutable forensic log. (Implemented)
+2. **Webhook (HTTP POST)**: Custom integration for real-time alerting systems. (Active - M6.4)
+3. **OTLP (gRPC/HTTP)**: Standard OpenTelemetry protocol for log management. (Planned - Future v0.2.x)
 
 ---
 
