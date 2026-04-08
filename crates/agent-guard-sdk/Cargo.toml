@@ -34,3 +34,4 @@ reqwest = { workspace = true, features = ["json", "rustls-tls"] }
 
 [dev-dependencies]
 rand = "0.8"
+httpmock = "0.7"
