@@ -68,7 +68,8 @@ anomaly:
     let res3 = guard.execute_default(&normal_input)?;
     if let ExecuteOutcome::Denied { decision } = res3 {
         println!("🔒 Result: DENIED (AGENT_LOCKED)");
-        println!("   The agent is now globally fused and blocked from all tool calls.\n");
+        println!("   The agent is now globally fused and blocked from all tool calls.");
+        println!("   Internal Decision: {:?}\n", decision);
     }
 
     // 5. Show Audit Logs
