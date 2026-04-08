@@ -107,7 +107,8 @@ match guard.execute_default(&input) {
 - [x] **Phase 5**: Windows Low-IL Enforcement, Threat Model v2 (STRIDE).
 - [x] **Phase 6**: Enterprise Security: Unified Capability Model (UCM), Signed Receipts, SIEM (Webhook).
 - [x] **Phase 7**: Production Hardening, Cross-platform Parity Tests, AppContainer Prototype.
-- [ ] **Phase 8 (v0.3.0)**: TPM-backed Remote Attestation, Linux Landlock/Namespaces integration, OTLP SIEM exporter.
+- [x] **Phase 8**: v0.2.0 RC Validation: E2E Test Matrix, Public Demo Pack.
+- [ ] **Phase 9 (v0.3.0)**: TPM-backed Remote Attestation, Linux Landlock/Namespaces integration, OTLP SIEM exporter.
 
 ---
 
