@@ -1,6 +1,7 @@
 # Observability Linkage — agent-guard
 
-> Status: **Phase 5 (Active)**  
+> Status: **Phase 7 (Active)**  
+> Version: **1.1**  
 > This document describes how `agent-guard` integrates Audit Logs, Prometheus Metrics, and Tracing to provide a unified security monitoring and incident response (IR) framework.
 
 ---
@@ -100,6 +101,10 @@ The Webhook sends a POST request with an `AuditRecord` JSON body. Supported type
 - `anomaly_triggered`: Rate limit violation.
 - `agent_locked`: Deny fuse triggered.
 
+---
+
+## 6. 🚨 Recommended Prometheus Alerts
+
 ```yaml
 groups:
 - name: AgentGuardAlerts
@@ -125,7 +130,7 @@ groups:
 
 ---
 
-## 6. 🚨 Security Runbook: Incident Response
+## 7. 🚨 Security Runbook: Incident Response
 
 ### **Scenario A: High Anomaly Rate**
 *   **Symptom**: `agent_guard_anomaly_triggered_total` spikes in Grafana.
@@ -144,10 +149,16 @@ groups:
     4. Adjust `anomaly.deny_fuse` settings in `policy.yaml` if the threshold is too sensitive.
 
 ### **Scenario C: Sandbox Fail-Closed**
+*   **Symptom**: `Guard::execute()` returns a `SandboxError`.
+*   **Action**:
+    1. Check `tracing` logs at `ERROR` level.
+    2. Identify the specific failure (e.g., `CreateProcessAsUserW failed`).
+    3. Ensure the host environment supports the selected sandbox (run `CapabilityDoctor`).
 
 ---
 
-## 7. 🛠️ Configuration Checklist
+## 8. 🛠️ Configuration Checklist
 - [ ] Set `audit.enabled: true` and `audit.output: file`.
 - [ ] Expose `/metrics` endpoint using `agent_guard_sdk::get_metrics()`.
 - [ ] Initialize `tracing-subscriber` with at least `INFO` level.
+- [ ] **Verify platform-specific sandbox selection (execute_default) in production startup logs.**
