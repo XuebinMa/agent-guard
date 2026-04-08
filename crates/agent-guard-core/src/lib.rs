@@ -1,3 +1,4 @@
+pub mod attestation;
 pub mod audit;
 pub mod decision;
 pub mod payload;
@@ -7,6 +8,7 @@ pub mod types;
 #[cfg(test)]
 mod tests;
 
+pub use attestation::ExecutionProof;
 pub use audit::{
     AuditDecision, AuditEvent, AuditRecord, ReloadEvent, ReloadStatus, AnomalyEvent, ExecutionEvent, SandboxFailureEvent
 };
