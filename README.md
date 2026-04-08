@@ -61,7 +61,8 @@ Ready to secure your agents? Follow our comprehensive guides:
 - [x] **Phase 5-6**: Windows Low-IL, Unified Capability Model (UCM), Signed Receipts, SIEM.
 - [x] **Phase 7**: Production Hardening, Cross-platform Parity, AppContainer Prototype.
 - [x] **Phase 8**: RC Validation & Stress Testing.
-- [ ] **Phase 9 (Current)**: v0.3.0 R&D: TPM-backed Remote Attestation, Linux Landlock Integration.
+- [ ] **Phase 9 (Current)**: v0.3.0 Ecosystem & Trust: LangChain/OpenAI Adapters, Receipt Verification CLI.
+- [ ] **Phase 10 (Future)**: TPM-backed Remote Attestation, Linux Landlock Integration.
 
 ---
 

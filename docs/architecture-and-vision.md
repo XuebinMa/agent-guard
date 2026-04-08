@@ -2,69 +2,68 @@
 
 | Field | Details |
 | :--- | :--- |
-| **Status** | 🟢 Released (v0.2.0-rc1) |
-| **Audience** | Architects, Security Engineers |
-| **Version** | 1.2 |
+| **Status** | 🟠 Strategic Pivot (v0.3.0 R&D) |
+| **Audience** | Architects, Product Managers, Security Engineers |
+| **Version** | 1.3 |
 | **Last Reviewed** | 2026-04-08 |
-| **Related Docs** | [Threat Model](threat-model.md), [Capability Parity](capability-parity.md) |
+| **Related Docs** | [User Manual](guides/getting-started/user-manual.md), [Threat Model](threat-model.md) |
 
 ---
 
 ## 1. 🏗️ High-Level Architecture
 
-`agent-guard` is structured as a multi-layered security wrapper designed to intercept, evaluate, and isolate LLM tool calls.
+`agent-guard` is designed as an **Agent Security Runtime**. It acts as a pluggable, cross-framework execution layer that intercepts tool calls to ensure they remain within safe OS boundaries.
 
 ### A. Core Engine (`agent-guard-core`)
-- **Policy Engine**: A YAML-driven rule evaluator using a restricted DSL (`evalexpr`).
-- **Unified Capability Model (UCM)**: Abstract permissions (e.g., `filesystem_write_workspace`) that decouple policy intent from OS-specific implementations.
-- **Unified Audit Model**: A standardized schema for all security events (tool calls, anomalies, sandbox failures).
+- **Policy Engine**: YAML-driven rule evaluator with regex and DSL validation.
+- **Unified Capability Model (UCM)**: Decouples security intent from OS-specific enforcers.
 
 ### B. Integration Layer (`agent-guard-sdk`)
-- **Guard Struct**: Manages state with **Atomic Reloading** (`ArcSwap`) and **Snapshot Isolation**.
-- **Execution Pipeline**: `Check` -> `Anomaly Filter` -> `Audit` -> `Metrics` -> `Sandbox Execute`.
-- **FFI Bindings**: Exposes core logic to Node.js and Python ecosystems.
+- **Multi-Framework Adapters**: Target 3-line integration for LangChain, OpenAI, and AutoGen.
+- **Execution Pipeline**: Check -> Filter -> Audit -> Sandbox.
 
 ### C. Isolation Layer (`agent-guard-sandbox`)
-- **Linux**: `Seccomp-BPF` (Syscall filtering).
-- **macOS**: `Seatbelt` (`sandbox-exec` via manual profile generation).
-- **Windows**: `Low-IL` (Win32 Restricted Tokens) and `AppContainer` (Experimental SID-based isolation).
-- **Capability Doctor**: Host-level diagnostic tool for security feature reporting.
+- **Multi-Backend**: Linux (Seccomp), macOS (Seatbelt), Windows (Low-IL/AppContainer).
+- **Capability Doctor**: Transparency tool for host-level security reporting.
 
-### D. Verification & Trust (`agent-guard-sdk/provenance`)
-- **Signed Receipts**: Ed25519 cryptographic proofs of execution context.
-- **Fail-Closed Design**: Hard errors on any initialization or isolation failure.
+### D. Trust & Provenance (`agent-guard-sdk/provenance`)
+- **Signed Receipts**: Cryptographic proof of policy-compliant execution.
+- **Audit Center**: SIEM-ready event streaming (Webhook).
 
 ---
 
-## 🛡️ Security Boundaries (v0.2.0)
+## 🛡️ Security Boundaries (v0.2.0 Baseline)
 
 | Category | What this protects | What this does not protect |
 | :--- | :--- | :--- |
-| **Filesystem** | Prevents unauthorized writes to system directories and reads of sensitive files (platform dependent). | Global read access on macOS/Windows (Low-IL). |
-| **Execution** | Ensures only approved commands with safe arguments reach the OS. | Logical errors in allowed scripts (e.g., an allowed script deleting its own data). |
-| **Probing** | Automatically locks agents that repeatedly violate security policies. | Distributed attacks from multiple agents (Actor-based only). |
-| **Trust** | Provides cryptographic proof that an execution happened under a specific policy. | Protection against host-level private key theft (TPM planned). |
+| **Filesystem** | Prevents unauthorized writes to system directories. | Global read access on macOS/Windows (v0.2 limit). |
+| **Execution** | Ensures only approved commands reach the OS. | Logical errors in allowed scripts. |
+| **Probing** | Automatically locks agents after repeated violations (Deny Fuse). | Distributed attacks across many unique actors. |
+| **Trust** | Cryptographic proof of execution context. | Host-level key theft (TPM planned). |
 
 ---
 
-## 🚀 Future Evolution Vision
+## 🚀 Future Evolution Vision (Revised v0.3.0+)
 
-### Phase 1: Isolation Fidelity (v0.3.0)
-- **Linux Landlock**: Integrate Landlock for fine-grained, path-based filesystem isolation at the kernel level.
-- **Windows AppContainer Maturity**: Promote AppContainer to the primary Windows backend to enable native network isolation.
-- **User-Namespace Sandboxing**: Explore unprivileged containerization (e.g., `bubblewrap` style) for stronger Linux isolation without root.
+Following our product strategy, we are pivoting to prioritize **Ecosystem Integration** and **Verifiable Trust** over deep kernel research.
 
-### Phase 2: Hardware-Rooted Trust
-- **TPM Remote Attestation**: Move execution receipt signing into the TPM (Trusted Platform Module) to prevent host-level forgery.
-- **Policy Pinning**: Implement cryptographically immutable policy versions referenced by receipts.
+### Phase 1: Ecosystem & Adoption (v0.3.0 - Current Focus)
+- **Framework Adapters**: Official Python/Node middleware for LangChain, OpenAI Agents, and AutoGen.
+- **Trust Tooling**: Standalone `guard-verify` CLI for non-technical auditors to verify signed receipts.
+- **Transparency Dashboard**: Web-based report generated by `CapabilityDoctor` for easy stakeholder review.
 
-### Phase 3: Semantic Guarding
-- **LLM-Based Anomaly Detection**: Use small local models to detect semantic drift in tool usage (e.g., an agent behaving "out of character").
-- **Dynamic Risk Scoring**: Adjust policy strictness in real-time based on the agent's recent audit history.
+### Phase 2: Trust Moat (v0.4.0)
+- **Policy Signing**: Ensure that the `policy.yaml` itself is signed and immutable.
+- **TPM Integration**: Move receipt signing into Hardware Trusted Execution Environments (TPM 2.0).
+- **Landlock Integration**: Deepen Linux FS isolation using Landlock (Path-based).
+
+### Phase 3: Control Plane (Enterprise)
+- **Policy Registry**: Centralized management of policies across multiple agent clusters.
+- **Audit Intelligence**: Risk scoring and behavioral drift detection for enterprise-wide agents.
 
 ---
 
 ## 🔍 Technical Debt & Risks
-1. **Windows Dependency Weight**: The `windows` crate adds significant compile-time overhead; need to keep feature flags strictly modular.
-2. **Platform Parity Gaps**: Linux and macOS currently have different FS-read boundaries; need to align these via Landlock/Seatbelt updates.
-3. **Async SIEM**: Current Webhook export uses a shared runtime but lacks persistent queuing for crash-resilience.
+1. **Integration Surface**: Supporting multiple frameworks (LangChain/OpenAI) increases the maintenance surface.
+2. **Key Management**: Managing signing keys for receipts requires a standard "Best Practice" for users.
+3. **AppContainer Maturity**: Needs to move from Prototype to Default to fix Windows network gaps.
