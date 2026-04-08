@@ -1,4 +1,4 @@
-use agent_guard_core::{Context, Tool, TrustLevel, DecisionCode};
+use agent_guard_core::{Context, Tool, TrustLevel};
 use agent_guard_sdk::{Guard, ExecuteOutcome};
 use std::fs;
 
@@ -48,14 +48,14 @@ anomaly:
     println!("👉 Attempt 1: Agent calls 'bash rm -rf /'");
     let res1 = guard.execute_default(&malicious_input)?;
     if let ExecuteOutcome::Denied { decision } = res1 {
-        println!("❌ Result: DENIED (Reason: {})\n", decision);
+        println!("❌ Result: DENIED (Reason: {:?})\n", decision);
     }
 
     // 3. Second Malicious Attempt -> Should trigger fuse AFTER this
     println!("👉 Attempt 2: Agent calls 'bash rm -rf /' again");
     let res2 = guard.execute_default(&malicious_input)?;
     if let ExecuteOutcome::Denied { decision } = res2 {
-        println!("❌ Result: DENIED (Reason: {})\n", decision);
+        println!("❌ Result: DENIED (Reason: {:?})\n", decision);
     }
 
     // 4. Third Attempt -> Agent should be LOCKED

@@ -1,42 +1,65 @@
-//! Windows Sandbox adopting the unified Sandbox trait.
-//!
-//! Run: cargo run -p agent-guard-sdk --example windows_sandbox --features windows-sandbox
+use agent_guard_core::{Context, Tool, TrustLevel};
+use agent_guard_sdk::{Guard, GuardInput};
+use std::path::PathBuf;
 
-use agent_guard_sdk::{Guard, GuardInput, Tool, Sandbox};
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    #[cfg(target_os = "windows")]
+    {
+        use agent_guard_sandbox::JobObjectSandbox;
+        println!("🛡️ agent-guard Example: Windows Job Object Sandbox");
+        println!("==============================================\n");
 
-fn main() {
-    println!("=== agent-guard Windows Sandbox adoption demo ===");
+        // 1. Initialize Guard
+        let yaml = r#"
+version: 1
+default_mode: workspace_write
+"#;
+        let guard = Guard::from_yaml(yaml)?;
 
-    let guard = Guard::from_yaml("version: 1\ndefault_mode: workspace_write")
-        .expect("Failed to init guard");
+        // 2. Setup Sandbox
+        let sandbox = JobObjectSandbox;
+        let caps = agent_guard_sdk::Sandbox::capabilities(&sandbox);
 
-    // Use default sandbox (will be JobObject on Windows, Noop on others)
-    let sandbox = Guard::default_sandbox();
+        println!("Sandbox Capabilities (UCM):");
+        println!("  - FS Workspace Write: {}", caps.filesystem_write_workspace);
+        println!("  - FS Global Write:    {}", caps.filesystem_write_global);
+        println!("  - Network Any:        {}", caps.network_outbound_any);
+        println!();
+
+        // 3. Execution Example
+        let temp_dir = std::env::temp_dir().join("agent_guard_windows_test");
+        std::fs::create_dir_all(&temp_dir)?;
+
+        let context = Context {
+            agent_id: Some("windows-agent".to_string()),
+            session_id: Some("session-123".to_string()),
+            actor: Some("user-456".to_string()),
+            trust_level: TrustLevel::Trusted,
+            working_directory: Some(temp_dir.clone()),
+        };
+
+        println!("👉 Action: Agent calls 'echo hello'");
+        let input = GuardInput {
+            tool: Tool::Bash,
+            payload: r#"{"command":"echo hello"}"#.to_string(),
+            context,
+        };
+
+        let res = guard.execute(&input, &sandbox)?;
+        if let agent_guard_sdk::ExecuteOutcome::Executed { output } = res {
+            println!("✅ Status: EXECUTED");
+            println!("📝 Stdout: {}", output.stdout.trim());
+        }
+
+        // Cleanup
+        let _ = std::fs::remove_dir_all(temp_dir);
+        println!("\n==============================================");
+    }
     
-    println!("Sandbox Name:     {}", sandbox.name());
-    println!("Sandbox Type:     {}", sandbox.sandbox_type());
-    
-    let caps = sandbox.capabilities();
-    println!("Capabilities:");
-    println!("  - Syscall Filtering:   {}", caps.syscall_filtering);
-    println!("  - Filesystem Isolation: {}", caps.filesystem_isolation);
-    println!("  - Resource Limits:      {}", caps.resource_limits);
-    println!("  - Process Tree Cleanup: {}", caps.process_tree_cleanup);
-
-    if !sandbox.is_available() {
-        println!("\n[INFO] JobObject sandbox not available on this platform.");
-        println!("Falling back to Noop for demonstration purposes.");
+    #[cfg(not(target_os = "windows"))]
+    {
+        println!("This example is intended for Windows systems.");
     }
 
-    let input = GuardInput::new(Tool::Bash, r#"{"command":"echo 'hello from sandbox'"}"#);
-    
-    println!("\nExecuting command...");
-    match guard.execute(&input, sandbox.as_ref()) {
-        Ok(outcome) => {
-            println!("Result: {:?}", outcome);
-        }
-        Err(e) => {
-            eprintln!("Error: {}", e);
-        }
-    }
+    Ok(())
 }

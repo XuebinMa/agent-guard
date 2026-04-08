@@ -25,11 +25,11 @@ fn main() {
         }
         
         println!("Capabilities:");
-        println!("  - Syscall Filtering:  {}", if report.capabilities.syscall_filtering { "Yes" } else { "No" });
-        println!("  - FS Isolation:       {}", if report.capabilities.filesystem_isolation { "Yes" } else { "No" });
-        println!("  - Network Blocking:   {}", if report.capabilities.network_blocking { "Yes" } else { "No" });
-        println!("  - Resource Limits:    {}", if report.capabilities.resource_limits { "Yes" } else { "No" });
-        println!("  - Process Tree Clean: {}", if report.capabilities.process_tree_cleanup { "Yes" } else { "No" });
+        println!("  - FS Workspace Read:  {}", if report.capabilities.filesystem_read_workspace { "Yes" } else { "No" });
+        println!("  - FS Global Read:     {}", if report.capabilities.filesystem_read_global { "Yes" } else { "No" });
+        println!("  - FS Workspace Write: {}", if report.capabilities.filesystem_write_workspace { "Yes" } else { "No" });
+        println!("  - FS Global Write:    {}", if report.capabilities.filesystem_write_global { "Yes" } else { "No" });
+        println!("  - Network Any:        {}", if report.capabilities.network_outbound_any { "Yes" } else { "No" });
         println!();
     }
 }

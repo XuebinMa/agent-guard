@@ -1,70 +1,61 @@
-use agent_guard_sdk::{Guard, GuardInput, Tool, Sandbox};
-#[cfg(feature = "macos-sandbox")]
-use agent_guard_sdk::SeatbeltSandbox;
+use agent_guard_core::{Context, Tool, GuardDecision, DecisionCode, TrustLevel};
+use agent_guard_sdk::{Guard, ExecuteOutcome};
+use agent_guard_sandbox::SeatbeltSandbox;
+use std::path::PathBuf;
 
-fn main() {
-    #[cfg(not(feature = "macos-sandbox"))]
-    {
-        println!("This example requires the 'macos-sandbox' feature.");
-        println!("Run with: cargo run --example macos_sandbox --features macos-sandbox");
-        return;
-    }
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    println!("🛡️ agent-guard Example: macOS Seatbelt Sandbox");
+    println!("==============================================\n");
 
-    #[cfg(feature = "macos-sandbox")]
-    {
-        println!("=== agent-guard macOS Seatbelt Sandbox Demo ===\n");
-
-        let guard = Guard::from_yaml(r#"
-version: 1
-default_mode: read_only
-tools:
-  bash:
-    allow: ["*"]
-"#).unwrap();
-
-        let sandbox = SeatbeltSandbox;
-        if !sandbox.is_available() {
-            println!("macOS Seatbelt sandbox (sandbox-exec) is not available on this system.");
-            return;
-        }
-
-        // 1. Try a read (should be allowed by policy and sandbox)
-        println!("[TEST 1] Read /etc/hosts (Policy: ReadOnly, Sandbox: ReadOnly)");
-        let input = GuardInput::new(Tool::Bash, r#"{"command":"cat /etc/hosts | head -n 5"}"#);
-        match guard.execute(&input, &sandbox) {
-            Ok(outcome) => println!("Outcome: {:?}\n", outcome),
-            Err(e) => println!("Error: {:?}\n", e),
-        }
-
-        // 2. Try a write (should be allowed by policy but BLOCKED by sandbox)
-        println!("[TEST 2] Write to /tmp/test_sandbox.txt (Policy: ReadOnly, Sandbox: Blocked)");
-        let input = GuardInput::new(Tool::Bash, r#"{"command":"echo 'hello' > /tmp/test_sandbox.txt"}"#);
-        match guard.execute(&input, &sandbox) {
-            Ok(outcome) => {
-                println!("Outcome: {:?}", outcome);
-                // Note: sandbox-exec returns exit code 1 or similar for permission denied
-            },
-            Err(e) => println!("Error: {:?}", e),
-        }
-        println!();
-
-        // 3. Try a write with WorkspaceWrite (should be allowed by both if in workspace)
-        println!("[TEST 3] Write to workspace (Policy: WorkspaceWrite, Sandbox: Allowed)");
-        let guard_write = Guard::from_yaml(r#"
+    // 1. Initialize Guard
+    let yaml = r#"
 version: 1
 default_mode: workspace_write
-"#).unwrap();
-        
-        // Ensure the working directory is set to current workspace
-        let mut ctx = agent_guard_sdk::Context::default();
-        ctx.working_directory = Some(std::env::current_dir().unwrap());
-        
-        let input = GuardInput::new(Tool::Bash, r#"{"command":"echo 'sandbox ok' > target/sandbox_test.txt"}"#)
-            .with_context(ctx);
-        
-        match guard_write.execute(&input, &sandbox) {
-            Ok(outcome) => println!("Outcome: {:?}\n", outcome),
-            Err(e) => println!("Error: {:?}\n", e),
-        }
+"#;
+    let guard = Guard::from_yaml(yaml)?;
+
+    // 2. Setup Sandbox and Context
+    let sandbox = SeatbeltSandbox;
+    let temp_dir = std::env::temp_dir().join("agent_guard_macos_test");
+    std::fs::create_dir_all(&temp_dir)?;
+
+    let context = Context {
+        agent_id: Some("macos-agent".to_string()),
+        session_id: Some("session-123".to_string()),
+        actor: Some("user-456".to_string()),
+        trust_level: TrustLevel::Trusted,
+        working_directory: Some(temp_dir.clone()),
+    };
+
+    // 3. Test Authorized Write (Inside Workspace)
+    println!("👉 Action: Writing to workspace (Expected: SUCCESS)");
+    let input_ok = agent_guard_sdk::GuardInput {
+        tool: Tool::Bash,
+        payload: format!(r#"{{"command":"echo 'hello' > {}/test.txt"}}"#, temp_dir.display()),
+        context: context.clone(),
+    };
+
+    let res_ok = guard.execute(&input_ok, &sandbox)?;
+    if let ExecuteOutcome::Executed { output } = res_ok {
+        println!("✅ Status: EXECUTED (Exit Code: {})\n", output.exit_code);
     }
+
+    // 4. Test Unauthorized Write (Outside Workspace)
+    println!("👉 Action: Writing to /etc (Expected: BLOCKED by OS)");
+    let input_fail = agent_guard_sdk::GuardInput {
+        tool: Tool::Bash,
+        payload: r#"{"command":"echo 'hack' > /etc/agent_guard_test.txt"}"#.to_string(),
+        context,
+    };
+
+    let res_fail = guard.execute(&input_fail, &sandbox)?;
+    if let ExecuteOutcome::Executed { output } = res_fail {
+        println!("🔒 Status: BLOCKED by OS (Exit Code: {})", output.exit_code);
+        println!("📝 Stderr: {}\n", output.stderr.trim());
+    }
+
+    // Cleanup
+    std::fs::remove_dir_all(temp_dir)?;
+    println!("==============================================");
+    Ok(())
 }
