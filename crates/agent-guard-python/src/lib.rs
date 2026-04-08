@@ -4,7 +4,7 @@ mod types;
 use pyo3::prelude::*;
 
 use error::GuardError;
-use types::{Decision, PyGuard};
+use types::{Decision, ExecuteResult, PyGuard, SandboxOutput};
 
 /// agent-guard Python binding.
 ///
@@ -22,26 +22,28 @@ use types::{Decision, PyGuard};
 ///     tools:
 ///       bash:
 ///         deny:
-///           - prefix: \"rm -rf\"
+///           - \"rm -rf\"
 ///     \"\"\")
 ///
 ///     d = guard.check(\"bash\", \"ls -la\", trust_level=\"trusted\")
 ///     print(d.outcome)  # "allow"
 ///
 ///     d = guard.check(\"bash\", \"rm -rf /\", trust_level=\"trusted\")
-///     print(d.outcome, d.code)  # "ask_user" "DestructiveCommand"
+///     print(d.outcome, d.code)  # "deny" "DeniedByRule"
 #[pymodule]
-fn agent_guard(m: &Bound<'_, PyModule>) -> PyResult<()> {
+fn _agent_guard(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<PyGuard>()?;
     m.add_class::<Decision>()?;
+    m.add_class::<ExecuteResult>()?;
+    m.add_class::<SandboxOutput>()?;
     m.add("GuardError", m.py().get_type::<GuardError>())?;
     m.add("__version__", env!("CARGO_PKG_VERSION"))?;
-
-    #[pyfn(m)]
-    #[pyo3(name = "init_tracing")]
-    fn init_tracing_py() {
-        let _ = tracing_subscriber::fmt::try_init();
-    }
+    m.add_function(wrap_pyfunction!(init_tracing, m)?)?;
 
     Ok(())
+}
+
+#[pyfunction]
+fn init_tracing() {
+    let _ = tracing_subscriber::fmt::try_init();
 }
