@@ -1,4 +1,4 @@
-use agent_guard_core::{Context, Tool, GuardDecision};
+use agent_guard_core::{Context, Tool};
 use agent_guard_sdk::{Guard, ExecutionReceipt};
 use ed25519_dalek::SigningKey;
 use rand::rngs::OsRng;

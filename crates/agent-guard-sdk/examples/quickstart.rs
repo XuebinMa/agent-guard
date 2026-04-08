@@ -65,7 +65,7 @@ fn main() {
         };
         let decision = guard.check_tool(tool.clone(), *payload, ctx);
         
-        let mut label = match &decision {
+        let label = match &decision {
             GuardDecision::Allow => "ALLOW    ",
             GuardDecision::Deny { .. } => "DENY     ",
             GuardDecision::AskUser { .. } => "ASK_USER ",

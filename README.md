@@ -39,6 +39,19 @@ When Large Language Models (LLMs) are granted **Tool Use** or **Function Calling
 
 ---
 
+### 📺 Security Demos
+
+- **Demo 1: Happy Path** - Standard execution + audit + verifiable receipt.
+  - `cargo run --example demo_happy_path`
+- **Demo 2: Malicious Block** - Proactive defense via Deny Fuse.
+  - `cargo run --example demo_malicious_block`
+- **Demo 3: Transparency** - Real-time host capability report (UCM).
+  - `cargo run --example demo_transparency`
+- **Demo 4: The Comparison** - Comparison of security tiers (No Guard vs. Full Guard).
+  - `cargo run --example demo_comparison`
+
+---
+
 ### 🏥 Adoption & Migration
 
 - **Capability Doctor**: Use the `CapabilityDoctor` to detect and report on the host's security features.

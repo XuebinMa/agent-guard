@@ -1,10 +1,8 @@
-use agent_guard_core::{Context, Tool, TrustLevel};
-use agent_guard_sdk::{Guard, GuardInput};
-use std::path::PathBuf;
-
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     #[cfg(target_os = "windows")]
     {
+        use agent_guard_core::{Context, Tool, TrustLevel};
+        use agent_guard_sdk::{Guard, GuardInput};
         use agent_guard_sandbox::JobObjectSandbox;
         println!("🛡️ agent-guard Example: Windows Job Object Sandbox");
         println!("==============================================\n");
