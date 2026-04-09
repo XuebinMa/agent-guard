@@ -58,7 +58,7 @@ Ready to secure your agents? Follow our comprehensive guides:
 ## 🗺️ Roadmap
 
 - [x] **Phase 1-4**: Core Engine, Linux Sandbox, Telemetry, Anomaly Detection.
-- [x] **Phase 5-6**: Windows Low-IL, Unified Capability Model (UCM), Signed Receipts (Automatic), SIEM.
+- [x] **Phase 5-6**: Windows Low-IL, Unified Capability Model (UCM), Signed Receipts (Supported), SIEM.
 - [x] **Phase 7**: Production Hardening, Cross-platform Parity, AppContainer Prototype.
 - [x] **Phase 8**: RC Validation & Stress Testing.
 - [ ] **Phase 9 (Current)**: v0.3.0 Ecosystem & Trust: LangChain/OpenAI Adapters, Receipt Verification CLI.

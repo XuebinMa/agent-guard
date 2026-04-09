@@ -31,7 +31,7 @@ secured_tool.run("ls -la")
 ## ✨ Features
 
 - 🛡️ **OS-Level Isolation**: Seamless access to Linux Seccomp, Windows Low-IL, and macOS Seatbelt sandboxes.
-- 📜 **Signed Receipts**: Cryptographic proof of execution for every tool call.
+- 📜 **Signed Receipts**: Optional cryptographic proof of execution (requires signing key).
 - 🔒 **Deny Fuse**: Automatically locks agents that repeatedly violate security rules.
 - 📊 **Real-time Auditing**: Forensic JSONL logs and metrics integration.
 

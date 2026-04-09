@@ -253,10 +253,15 @@ impl Guard {
             }
         }
 
+        // Enforcement mode (sandbox execution) is currently optimized for shell tools.
+        // For other tools, the payload is typically JSON which cannot be directly executed.
         let command = if let Tool::Bash = input.tool {
             extract_bash_command(&input.payload)?
         } else {
-            input.payload.clone()
+            return Err(SandboxError::ExecutionFailed(format!(
+                "Enforcement mode (sandbox) is not supported for tool '{}'. Use check mode instead.",
+                input.tool.name()
+            )));
         };
 
         let mode = state.engine.effective_mode(&input.tool, &input.context);
