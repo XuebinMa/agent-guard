@@ -10,6 +10,15 @@ pub enum GuardDecision {
     AskUser { message: String, reason: DecisionReason },
 }
 
+impl std::fmt::Display for GuardDecision {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Allow => write!(f, "allow"),
+            Self::Deny { reason } => write!(f, "deny ({:?}: {})", reason.code, reason.message),
+            Self::AskUser { message, .. } => write!(f, "ask_user ({})", message),
+        }
+    }
+}
 impl GuardDecision {
     pub fn deny(code: DecisionCode, message: impl Into<String>) -> Self {
         Self::Deny {
@@ -157,4 +166,6 @@ pub enum DecisionCode {
     AnomalyDetected,
     #[serde(rename = "AGENT_LOCKED")]
     AgentLocked,
+    #[serde(rename = "BLOCKED_BY_MODE")]
+    BlockedByMode,
 }

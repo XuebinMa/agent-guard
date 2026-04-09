@@ -133,7 +133,7 @@ impl AuditEvent {
             session_id,
             agent_id,
             actor,
-            tool: tool.name(),
+            tool: tool.name().to_string(),
             payload_hash,
             decision: audit_decision,
             policy_version,

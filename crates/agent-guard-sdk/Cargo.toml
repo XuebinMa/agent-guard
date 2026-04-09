@@ -12,6 +12,8 @@ seccomp = ["agent-guard-sandbox/seccomp"]
 macos-sandbox = ["agent-guard-sandbox/macos-sandbox"]
 # Enable experimental Windows sandbox using Job Objects.
 windows-sandbox = ["agent-guard-sandbox/windows-sandbox"]
+# Enable experimental Windows AppContainer sandbox.
+windows-appcontainer = ["agent-guard-sandbox/windows-appcontainer"]
 
 [dependencies]
 agent-guard-core = { path = "../agent-guard-core" }
@@ -24,6 +26,7 @@ serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
 uuid.workspace = true
+sha2.workspace = true
 # Make SIEM dependencies non-optional to resolve compilation errors in siem.rs
 tokio = { version = "1", features = ["rt", "rt-multi-thread", "macros"] }
 arc-swap.workspace = true

@@ -2,17 +2,22 @@ use agent_guard_core::{AuditConfig, AuditRecord};
 use std::sync::OnceLock;
 
 /// Shared runtime for SIEM exports to avoid overhead of creating new ones per call.
-static SIEM_RUNTIME: OnceLock<tokio::runtime::Runtime> = OnceLock::new();
+static SIEM_RUNTIME: OnceLock<Option<tokio::runtime::Runtime>> = OnceLock::new();
 
-fn get_siem_runtime() -> &'static tokio::runtime::Runtime {
+fn get_siem_runtime() -> Option<&'static tokio::runtime::Runtime> {
     SIEM_RUNTIME.get_or_init(|| {
-        tokio::runtime::Builder::new_multi_thread()
+        match tokio::runtime::Builder::new_multi_thread()
             .worker_threads(2)
             .enable_all()
             .thread_name("agent-guard-siem")
-            .build()
-            .expect("Failed to create SIEM runtime")
-    })
+            .build() {
+                Ok(rt) => Some(rt),
+                Err(e) => {
+                    tracing::error!("Failed to create SIEM runtime: {}", e);
+                    None
+                }
+            }
+    }).as_ref()
 }
 
 /// Dispatches audit events to external SIEM systems.
@@ -45,13 +50,23 @@ impl SiemExporter {
             let record = record.clone();
             
             // Dispatch to the shared SIEM runtime
-            let rt = get_siem_runtime();
-            rt.spawn(async move {
-                let _ = client.post(&url)
-                    .json(&record)
-                    .send()
-                    .await;
-            });
+            if let Some(rt) = get_siem_runtime() {
+                rt.spawn(async move {
+                    match client.post(&url)
+                        .json(&record)
+                        .send()
+                        .await {
+                            Ok(res) => {
+                                if !res.status().is_success() {
+                                    tracing::error!("SIEM Webhook failed with status: {}", res.status());
+                                }
+                            }
+                            Err(e) => {
+                                tracing::error!("SIEM Webhook request failed: {}", e);
+                            }
+                        }
+                });
+            }
         }
 
         // OTLP Export (Planned)

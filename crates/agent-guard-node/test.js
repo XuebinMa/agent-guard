@@ -3,8 +3,8 @@ const { Guard } = require('./index.js')
 const yaml = `
 version: 1
 default_mode: workspace_write
-rules:
-  - tool: bash
+tools:
+  bash:
     allow: ["ls"]
     deny: ["rm -rf /"]
 `
@@ -22,7 +22,7 @@ async function runTest() {
     // 2. Execute (Async)
     console.log('\n--- Test: execute (ls) ---')
     const e1 = await guard.execute('bash', JSON.stringify({ command: 'ls -la' }))
-    console.log('Execute Outcome (ls):', e1.outcome)
+    console.log('Execute Status (ls):', e1.status)
     if (e1.output) {
       console.log('Exit Code:', e1.output.exitCode)
       console.log('Stdout (first line):', e1.output.stdout.split('\n')[0])
@@ -30,7 +30,7 @@ async function runTest() {
 
     console.log('\n--- Test: execute (denied rm) ---')
     const e2 = await guard.execute('bash', JSON.stringify({ command: 'rm -rf /' }))
-    console.log('Execute Outcome (rm):', e2.outcome)
+    console.log('Execute Status (rm):', e2.status)
     if (e2.decision) {
       console.log('Decision Code:', e2.decision.code)
       console.log('Reason:', e2.decision.message)

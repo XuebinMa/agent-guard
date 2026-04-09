@@ -143,7 +143,8 @@ impl AppContainerSandbox {
         let _ = InitializeProcThreadAttributeList(LPPROC_THREAD_ATTRIBUTE_LIST::default(), 1, 0, &mut size);
         let mut buffer = vec![0u8; size];
         let attribute_list = LPPROC_THREAD_ATTRIBUTE_LIST(buffer.as_mut_ptr() as *mut _);
-        InitializeProcThreadAttributeList(attribute_list, 1, 0, &mut size).unwrap();
+        InitializeProcThreadAttributeList(attribute_list, 1, 0, &mut size)
+            .map_err(|e| SandboxError::ExecutionFailed(format!("AppContainer: Failed to second-init attribute list: {}", e)))?;
 
         UpdateProcThreadAttribute(
             attribute_list,
@@ -153,7 +154,7 @@ impl AppContainerSandbox {
             std::mem::size_of::<SECURITY_CAPABILITIES>(),
             None,
             None,
-        ).unwrap();
+        ).map_err(|e| SandboxError::ExecutionFailed(format!("AppContainer: Failed to update attribute: {}", e)))?;
 
         let mut si = STARTUPINFOEXW::default();
         si.StartupInfo.cb = std::mem::size_of::<STARTUPINFOEXW>() as u32;
@@ -163,7 +164,9 @@ impl AppContainerSandbox {
         si.StartupInfo.hStdOutput = stdout_write;
         si.StartupInfo.hStdError = stderr_write;
 
-        let cmd_string = format!("cmd /C \"{}\"", command);
+        // Prepare command line
+        let escaped_command = command.replace("\"", "\"\"");
+        let cmd_string = format!("cmd.exe /C \"{}\"", escaped_command);
         let mut cmd_vec: Vec<u16> = std::ffi::OsStr::new(&cmd_string).encode_wide().chain(std::iter::once(0)).collect();
         let mut pi = PROCESS_INFORMATION::default();
 
@@ -191,13 +194,23 @@ impl AppContainerSandbox {
         let _ = CloseHandle(stdout_write);
         let _ = CloseHandle(stderr_write);
 
-        // Concurrent read
+        // Concurrent read - Start BEFORE wait/resume logic
         let out_h = stdout_read;
         let err_h = stderr_read;
         let t1 = std::thread::spawn(move || read_handle_to_string_win(out_h));
         let t2 = std::thread::spawn(move || read_handle_to_string_win(err_h));
 
-        WaitForSingleObject(pi.hProcess, INFINITE);
+        // Note: AppContainer prototype uses CreateProcessW directly (not suspended here)
+        // but for safety we should still have the threads running before we block on wait.
+
+        let timeout_ms = context.timeout_ms.unwrap_or(u32::MAX as u64);
+        let wait_res = WaitForSingleObject(pi.hProcess, timeout_ms as u32);
+
+        if wait_res == WAIT_TIMEOUT {
+            let _ = TerminateProcess(pi.hProcess, 1);
+            return Err(SandboxError::Timeout { ms: timeout_ms });
+        }
+
         let mut exit_code: u32 = 0;
         let _ = GetExitCodeProcess(pi.hProcess, &mut exit_code);
 

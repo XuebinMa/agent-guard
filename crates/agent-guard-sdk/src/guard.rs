@@ -35,11 +35,13 @@ pub struct Guard {
     state: ArcSwap<GuardState>,
 }
 
+#[derive(Clone)]
 struct GuardState {
     engine: Arc<PolicyEngine>,
     audit_cfg: AuditConfig,
     audit_file: Option<Arc<std::sync::Mutex<std::fs::File>>>,
     siem_exporter: Arc<SiemExporter>,
+    signing_key: Option<ed25519_dalek::SigningKey>,
 }
 
 impl std::fmt::Debug for Guard {
@@ -72,13 +74,22 @@ impl Guard {
         Self::new(PolicyEngine::from_yaml_file(path)?)
     }
 
+    /// Set the Ed25519 signing key for provenance receipts.
+    pub fn with_signing_key(&self, key: ed25519_dalek::SigningKey) {
+        let old_state = self.state.load();
+        let mut new_state = (**old_state).clone();
+        new_state.signing_key = Some(key);
+        self.state.store(Arc::new(new_state));
+    }
+
     /// Atomically reload the policy engine from a new instance.
     pub fn reload_engine(&self, engine: PolicyEngine) -> Result<(), GuardInitError> {
         let old_state = self.state.load();
         let old_version = old_state.engine.version().to_string();
         let new_version = engine.version().to_string();
         
-        let new_state = GuardState::new(Arc::new(engine))?;
+        let mut new_state = GuardState::new(Arc::new(engine))?;
+        new_state.signing_key = old_state.signing_key.clone();
         self.state.store(Arc::new(new_state));
         
         let event = ReloadEvent::success(old_version, new_version);
@@ -89,12 +100,11 @@ impl Guard {
 
     /// Atomically reload the policy from a YAML string.
     pub fn reload_from_yaml(&self, yaml: &str) -> Result<(), GuardInitError> {
-        let old_state = self.state.load();
-        let old_version = old_state.engine.version().to_string();
-
         match PolicyEngine::from_yaml_str(yaml) {
             Ok(engine) => self.reload_engine(engine),
             Err(e) => {
+                let old_state = self.state.load();
+                let old_version = old_state.engine.version().to_string();
                 let err = GuardInitError::Policy(e);
                 let event = ReloadEvent::failure(old_version, err.to_string());
                 self.write_reload_audit(&event, &old_state);
@@ -103,20 +113,22 @@ impl Guard {
         }
     }
 
-    /// Return the SHA-256 version hash of the currently loaded policy.
+    /// Return the current policy version (alias for version)
     pub fn policy_version(&self) -> String {
         self.state.load().engine.version().to_string()
     }
 
-    /// Evaluate the guard decision for a tool call.
-    /// Captures the policy state exactly once for the entire request flow.
+    /// Return the SHA-256 hash of the currently loaded policy.
+    pub fn policy_hash(&self) -> String {
+        self.state.load().engine.hash().to_string()
+    }
+
     pub fn check(&self, input: &GuardInput) -> GuardDecision {
         let state = self.state.load();
         let request_id = Uuid::new_v4().to_string();
         self.check_internal(input, &state, &request_id)
     }
 
-    /// Higher-level check that accepts tool/payload/context.
     pub fn check_tool(
         &self,
         tool: Tool,
@@ -133,19 +145,15 @@ impl Guard {
         self.check_internal(&input, &state, &request_id)
     }
 
-    /// Internal core logic that MUST use a captured state snapshot.
-    /// This ensures decision, auditing, and execution use the same policy version.
     fn check_internal(&self, input: &GuardInput, state: &GuardState, request_id: &str) -> GuardDecision {
         let metrics = crate::metrics::get_metrics();
         let agent_id = input.context.agent_id.clone().unwrap_or_else(|| "default".to_string());
         
-        // P1-1: Record initiation
         metrics.policy_checks_total.get_or_create(&crate::metrics::ToolLabels {
             agent_id: agent_id.clone(),
             tool: input.tool.name().to_string(),
         }).inc();
 
-        // M4.3: Anomaly detection
         let actor = input.context.actor.as_deref().unwrap_or("unknown");
         let anomaly_cfg = state.engine.anomaly_config();
 
@@ -172,11 +180,9 @@ impl Guard {
 
         let decision = self.evaluate(input, state);
 
-        // M4.2: Record metrics
         let outcome = match &decision {
             GuardDecision::Allow => "allow",
             GuardDecision::Deny { .. } => {
-                // Report denial to trigger Deny Fuse
                 crate::anomaly::get_detector().report_denial(actor, anomaly_cfg);
                 "deny"
             }
@@ -185,7 +191,6 @@ impl Guard {
         self.finalize_check(input, &decision, state, &agent_id, outcome, request_id)
     }
 
-    /// Helper to record metrics, write audit, and return decision.
     fn finalize_check(
         &self,
         input: &GuardInput,
@@ -197,7 +202,6 @@ impl Guard {
     ) -> GuardDecision {
         let metrics = crate::metrics::get_metrics();
         
-        // Record metrics
         metrics.decision_total.get_or_create(&crate::metrics::DecisionLabels {
             agent_id: agent_id.to_string(),
             tool: input.tool.name().to_string(),
@@ -210,7 +214,6 @@ impl Guard {
                 tool: input.tool.name().to_string(),
             }).inc();
              
-             // M6.4: SIEM anomaly export
              let event = agent_guard_core::AnomalyEvent {
                  timestamp: chrono::Utc::now(),
                  agent_id: Some(agent_id.to_string()),
@@ -234,15 +237,11 @@ impl Guard {
         decision.clone()
     }
 
-    /// High-level execution method that enforces policy and runs the tool in a sandbox.
-    /// Implements single-snapshot isolation (M3.2).
     pub fn execute(&self, input: &GuardInput, sandbox: &dyn Sandbox) -> ExecuteResult {
-        // M3.2: Capture state snapshot EXACTLY ONCE at the entry point.
         let state = self.state.load();
         let request_id = Uuid::new_v4().to_string();
-
-        // Use the snapshot for decision, auditing, mode calculation, and execution.
         let policy_version = state.engine.version().to_string();
+
         let decision = self.check_internal(input, &state, &request_id);
         match &decision {
             GuardDecision::Allow => {}
@@ -254,7 +253,12 @@ impl Guard {
             }
         }
 
-        let command = extract_bash_command(&input.payload)?;
+        let command = if let Tool::Bash = input.tool {
+            extract_bash_command(&input.payload)?
+        } else {
+            input.payload.clone()
+        };
+
         let mode = state.engine.effective_mode(&input.tool, &input.context);
         let working_directory = input
             .context
@@ -268,7 +272,6 @@ impl Guard {
             timeout_ms: None,
         };
 
-        // M6.4 SIEM: Execution Started
         state.siem_exporter.export(agent_guard_core::AuditRecord::ExecutionStarted(agent_guard_core::ExecutionEvent {
             timestamp: chrono::Utc::now(),
             request_id: request_id.clone(),
@@ -286,7 +289,6 @@ impl Guard {
         let output = match execution_res {
             Ok(out) => out,
             Err(e) => {
-                // M6.4 SIEM: Sandbox Failure
                 state.siem_exporter.export(agent_guard_core::AuditRecord::SandboxFailure(agent_guard_core::SandboxFailureEvent {
                     timestamp: chrono::Utc::now(),
                     request_id: request_id.clone(),
@@ -299,7 +301,6 @@ impl Guard {
             }
         };
 
-        // M6.4 SIEM: Execution Finished
         state.siem_exporter.export(agent_guard_core::AuditRecord::ExecutionFinished(agent_guard_core::ExecutionEvent {
             timestamp: chrono::Utc::now(),
             request_id: request_id.clone(),
@@ -310,44 +311,59 @@ impl Guard {
             exit_code: Some(output.exit_code),
         }));
 
-        // M4.2: Record execution duration
         let agent_id = input.context.agent_id.clone().unwrap_or_else(|| "default".to_string());
         crate::metrics::get_metrics()
             .execution_duration_seconds
             .get_or_create(&crate::metrics::ExecutionLabels {
-                agent_id,
+                agent_id: agent_id.clone(),
                 tool: input.tool.name().to_string(),
                 sandbox_type: sandbox.sandbox_type().to_string(),
             })
             .observe(duration.as_secs_f64());
 
-        Ok(ExecuteOutcome::Executed { output, policy_version })
+        let receipt = state.signing_key.as_ref().map(|key| {
+            crate::provenance::ExecutionReceipt::sign(
+                &agent_id,
+                input.tool.name(),
+                &policy_version,
+                sandbox.sandbox_type(),
+                &decision,
+                &sha256_hash(&input.payload),
+                key,
+            )
+        });
+
+        Ok(ExecuteOutcome::Executed { 
+            output, 
+            policy_version,
+            receipt,
+        })
     }
 
-    /// Convenience helper to execute a command using the best available sandbox.
     pub fn execute_default(&self, input: &GuardInput) -> ExecuteResult {
         let sandbox = Self::default_sandbox();
         self.execute(input, sandbox.as_ref())
     }
 
-    /// Returns the best available sandbox for the current platform.
     pub fn default_sandbox() -> Box<dyn Sandbox> {
         #[cfg(target_os = "linux")]
         {
-            Box::new(agent_guard_sandbox::SeccompSandbox::new())
+            return Box::new(agent_guard_sandbox::SeccompSandbox::new());
         }
-        #[cfg(feature = "macos-sandbox")]
+        #[cfg(all(target_os = "macos", feature = "macos-sandbox"))]
         {
-            Box::new(agent_guard_sandbox::SeatbeltSandbox)
+            return Box::new(agent_guard_sandbox::SeatbeltSandbox);
         }
-        #[cfg(feature = "windows-sandbox")]
+        #[cfg(all(target_os = "windows", feature = "windows-appcontainer"))]
         {
-            Box::new(agent_guard_sandbox::JobObjectSandbox)
+            return Box::new(agent_guard_sandbox::AppContainerSandbox);
         }
-        #[cfg(not(any(target_os = "linux", feature = "macos-sandbox", feature = "windows-sandbox")))]
+        #[cfg(all(target_os = "windows", feature = "windows-sandbox"))]
         {
-            Box::new(agent_guard_sandbox::NoopSandbox)
+            return Box::new(agent_guard_sandbox::JobObjectSandbox);
         }
+        #[allow(unreachable_code)]
+        Box::new(agent_guard_sandbox::NoopSandbox)
     }
 
     fn evaluate(&self, input: &GuardInput, state: &GuardState) -> GuardDecision {
@@ -404,14 +420,20 @@ impl Guard {
         );
         let line = event.to_jsonl();
 
-        // M6.4 SIEM Export
         state.siem_exporter.export(agent_guard_core::AuditRecord::ToolCall(event));
 
         if state.audit_cfg.output == "file" {
             if let Some(ref mutex) = state.audit_file {
-                if let Ok(mut file) = mutex.lock() {
-                    use std::io::Write;
-                    let _ = writeln!(file, "{}", line);
+                match mutex.lock() {
+                    Ok(mut file) => {
+                        use std::io::Write;
+                        if let Err(e) = writeln!(file, "{}", line) {
+                            tracing::error!("Failed to write to audit file: {}", e);
+                        }
+                    }
+                    Err(_) => {
+                        tracing::error!("Audit file mutex poisoned");
+                    }
                 }
             }
         } else {
@@ -421,15 +443,20 @@ impl Guard {
 
     fn write_reload_audit(&self, event: &ReloadEvent, state: &GuardState) {
         let line = event.to_jsonl();
-        
-        // M6.4 SIEM Export
         state.siem_exporter.export(agent_guard_core::AuditRecord::PolicyReload(event.clone()));
 
         if state.audit_cfg.enabled && state.audit_cfg.output == "file" {
             if let Some(ref mutex) = state.audit_file {
-                if let Ok(mut file) = mutex.lock() {
-                    use std::io::Write;
-                    let _ = writeln!(file, "{}", line);
+                match mutex.lock() {
+                    Ok(mut file) => {
+                        use std::io::Write;
+                        if let Err(e) = writeln!(file, "{}", line) {
+                            tracing::error!("Failed to write reload event to audit file: {}", e);
+                        }
+                    }
+                    Err(_) => {
+                        tracing::error!("Audit file mutex poisoned during reload");
+                    }
                 }
             }
         }
@@ -464,6 +491,7 @@ impl GuardState {
             audit_cfg,
             audit_file,
             siem_exporter,
+            signing_key: None,
         })
     }
 }
@@ -478,6 +506,7 @@ pub enum ExecuteOutcome {
     Executed {
         output: SandboxOutput,
         policy_version: String,
+        receipt: Option<crate::provenance::ExecutionReceipt>,
     },
     Denied {
         decision: GuardDecision,
@@ -503,6 +532,7 @@ fn policy_mode_to_permission_mode(mode: &PolicyMode) -> PermissionMode {
         PolicyMode::ReadOnly => PermissionMode::ReadOnly,
         PolicyMode::WorkspaceWrite => PermissionMode::WorkspaceWrite,
         PolicyMode::FullAccess => PermissionMode::DangerFullAccess,
+        PolicyMode::Blocked => PermissionMode::Blocked,
     }
 }
 
@@ -516,4 +546,11 @@ fn classify_block_reason(reason: &str) -> DecisionCode {
     } else {
         DecisionCode::DeniedByRule
     }
+}
+
+fn sha256_hash(data: &str) -> String {
+    use sha2::{Digest, Sha256};
+    let mut hasher = Sha256::new();
+    hasher.update(data.as_bytes());
+    hex::encode(hasher.finalize())
 }

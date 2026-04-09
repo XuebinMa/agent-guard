@@ -167,5 +167,25 @@ fn path_matches(candidate: &str, root: &Path) -> bool {
 }
 
 fn normalize_path(path: &Path) -> PathBuf {
-    std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf())
+    // Industrial Standard: Avoid relying solely on canonicalize() which fails if path doesn't exist.
+    // We combine lexical normalization with canonicalization where possible.
+    
+    let mut normalized = PathBuf::new();
+    for component in path.components() {
+        match component {
+            std::path::Component::ParentDir => {
+                normalized.pop();
+            }
+            std::path::Component::CurDir => {}
+            _ => {
+                normalized.push(component);
+            }
+        }
+    }
+
+    if let Ok(canon) = std::fs::canonicalize(&normalized) {
+        canon
+    } else {
+        normalized
+    }
 }

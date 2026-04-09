@@ -57,6 +57,8 @@ impl Sandbox for JobObjectSandbox {
         let _job_guard = JobHandle(job);
 
         // 2. Configure Limits: Kill all processes in job on handle close + Resource Limits
+        // Safety: Initializing JOBOBJECT_EXTENDED_LIMIT_INFORMATION with zeroes is safe.
+        // SetInformationJobObject is called with valid handles and pointers.
         unsafe {
             let mut info: JOBOBJECT_EXTENDED_LIMIT_INFORMATION = std::mem::zeroed();
             info.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE 
@@ -100,7 +102,9 @@ impl Sandbox for JobObjectSandbox {
 }
 
 // RAII handle to ensure Win32 handles are closed.
+#[cfg(windows)]
 struct SafeHandle(windows_sys::Win32::Foundation::HANDLE);
+#[cfg(windows)]
 impl Drop for SafeHandle {
     fn drop(&mut self) {
         if self.0 != 0 {
@@ -109,7 +113,9 @@ impl Drop for SafeHandle {
     }
 }
 
+#[cfg(windows)]
 struct TokenHandle(windows_sys::Win32::Foundation::HANDLE);
+#[cfg(windows)]
 impl Drop for TokenHandle {
     fn drop(&mut self) {
         if self.0 != 0 {
@@ -160,6 +166,7 @@ fn read_handle_to_string(handle: windows_sys::Win32::Foundation::HANDLE) -> Stri
     let mut out = Vec::new();
     let mut buffer = [0u8; 4096];
     let mut bytes_read = 0;
+    // Safety: Reading from a valid handle is safe. The buffer is pre-allocated.
     unsafe {
         loop {
             if ReadFile(handle, buffer.as_mut_ptr() as *mut _, buffer.len() as u32, &mut bytes_read, std::ptr::null_mut()) == 0 {
@@ -188,7 +195,8 @@ fn create_low_integrity_token() -> Result<windows_sys::Win32::Foundation::HANDLE
         let _pt_guard = SafeHandle(process_token);
 
         let mut low_token: HANDLE = 0;
-        if DuplicateTokenEx(process_token, TOKEN_ALL_ACCESS, std::ptr::null(), SecurityImpersonation, TokenPrimary, &mut low_token) == 0 {
+        // Point 9 Fix: Use minimal permissions for the duplicated token
+        if DuplicateTokenEx(process_token, TOKEN_QUERY | TOKEN_DUPLICATE | TOKEN_ADJUST_DEFAULT | TOKEN_ASSIGN_PRIMARY, std::ptr::null(), SecurityImpersonation, TokenPrimary, &mut low_token) == 0 {
             return Err(SandboxError::ExecutionFailed("Windows Sandbox: Failed to duplicate token".to_string()));
         }
         let _lt_guard = SafeHandle(low_token);
@@ -244,8 +252,11 @@ fn spawn_low_integrity_process(
         let _stderr_read_guard = SafeHandle(stderr_read);
         let _stderr_write_guard = SafeHandle(stderr_write);
 
-        // Prepare command line
-        let cmd_string = format!("cmd /C \"{}\"", command);
+        // Prepare command line - use a safer way to pass the command to cmd /C
+        // Industrial Standard: Properly escaping for cmd.exe is complex.
+        // We wrap the command in double quotes and escape internal double quotes.
+        let escaped_command = command.replace("\"", "\"\"");
+        let cmd_string = format!("cmd.exe /C \"{}\"", escaped_command);
         let mut cmd_vec: Vec<u16> = std::ffi::OsStr::new(&cmd_string).encode_wide().chain(std::iter::once(0)).collect();
         let mut working_dir_vec: Vec<u16> = working_dir.as_os_str().encode_wide().chain(std::iter::once(0)).collect();
 
@@ -293,22 +304,27 @@ fn spawn_low_integrity_process(
         drop(_stdout_write_guard);
         drop(_stderr_write_guard);
 
-        // 5. Resume process
-        if ResumeThread(pi.hThread) == u32::MAX {
-            let _ = TerminateProcess(pi.hProcess, 1);
-            return Err(SandboxError::ExecutionFailed("Windows Sandbox: Failed to resume low-IL process".to_string()));
-        }
-
-        // 6. Read output (WaitOutput)
-        // Use threads to read stdout and stderr in parallel to avoid deadlocks
+        // 5. Start reader threads BEFORE resuming to avoid deadlocks on small pipe buffers
         let stdout_read_handle = stdout_read;
         let stderr_read_handle = stderr_read;
 
         let stdout_thread = std::thread::spawn(move || read_handle_to_string(stdout_read_handle));
         let stderr_thread = std::thread::spawn(move || read_handle_to_string(stderr_read_handle));
 
-        // 7. Wait for completion
-        WaitForSingleObject(pi.hProcess, INFINITE);
+        // 6. Resume process
+        if ResumeThread(pi.hThread) == u32::MAX {
+            let _ = TerminateProcess(pi.hProcess, 1);
+            return Err(SandboxError::ExecutionFailed("Windows Sandbox: Failed to resume low-IL process".to_string()));
+        }
+
+        // 7. Wait for completion with optional timeout
+        let timeout_ms = context.timeout_ms.unwrap_or(u32::MAX as u64); // INFINITE if None
+        let wait_res = WaitForSingleObject(pi.hProcess, timeout_ms as u32);
+
+        if wait_res == WAIT_TIMEOUT {
+            let _ = TerminateProcess(pi.hProcess, 1);
+            return Err(SandboxError::Timeout { ms: timeout_ms });
+        }
 
         let mut exit_code: u32 = 0;
         GetExitCodeProcess(pi.hProcess, &mut exit_code);
@@ -325,7 +341,7 @@ fn spawn_low_integrity_process(
 }
 
 #[cfg(not(windows))]
-fn create_low_integrity_token() -> Result<windows_sys::Win32::Foundation::HANDLE, SandboxError> {
+fn create_low_integrity_token() -> Result<u64, SandboxError> {
     Ok(0)
 }
 
@@ -333,8 +349,8 @@ fn create_low_integrity_token() -> Result<windows_sys::Win32::Foundation::HANDLE
 fn spawn_low_integrity_process(
     _command: &str,
     _working_dir: &std::path::Path,
-    _token: windows_sys::Win32::Foundation::HANDLE,
-    _job: windows_sys::Win32::Foundation::HANDLE,
+    _token: u64,
+    _job: u64,
 ) -> Result<WaitOutput, SandboxError> {
     Err(SandboxError::NotAvailable("JobObjectSandbox requires Windows.".to_string()))
 }

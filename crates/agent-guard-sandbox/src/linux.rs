@@ -5,6 +5,9 @@ use std::process::Command;
 use crate::{Sandbox, SandboxContext, SandboxError, SandboxOutput, SandboxResult, SandboxCapabilities};
 
 /// Linux seccomp-bpf sandbox.
+/// 
+/// **PROTOTYPE**: Current implementation is a wrapper around `sh -c`.
+/// Native Seccomp-BPF integration is planned for v0.3.0.
 pub struct SeccompSandbox {
     strict: bool,
 }
@@ -58,11 +61,13 @@ fn execute_with_seccomp(command: &str, context: &SandboxContext, _strict: bool) 
         use std::thread;
         use std::sync::mpsc;
 
-        // Use a basic Command for now, but in a real implementation we would use
-        // pre_exec to load the seccomp filter.
+        // CWE-78: Command Injection Mitigation.
+        // Wrap command in single quotes and escape existing ones.
+        let escaped_command = command.replace("'", "'\\''");
+        
         let mut child = Command::new("sh")
             .arg("-c")
-            .arg(command)
+            .arg(format!("'{}'", escaped_command))
             .current_dir(&context.working_directory)
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped())
@@ -72,7 +77,6 @@ fn execute_with_seccomp(command: &str, context: &SandboxContext, _strict: bool) 
         // Handle timeout if specified
         if let Some(timeout_ms) = context.timeout_ms {
             let (tx, rx) = mpsc::channel();
-            let pid = child.id();
             
             thread::spawn(move || {
                 thread::sleep(Duration::from_millis(timeout_ms));
@@ -92,6 +96,7 @@ fn execute_with_seccomp(command: &str, context: &SandboxContext, _strict: bool) 
                     Ok(None) => {
                         if rx.try_recv().is_ok() {
                             let _ = child.kill();
+                            let _ = child.wait(); // CWE-117: Prevent zombie process
                             return Err(SandboxError::Timeout { ms: timeout_ms });
                         }
                         thread::sleep(Duration::from_millis(10));

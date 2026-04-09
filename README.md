@@ -16,8 +16,8 @@ AI Agents are powerful, but giving them raw shell access or uncontrolled API key
 Unlike basic "System Prompt" instructions, `agent-guard` enforces security at the **OS level**. Even if your Agent is fully subverted via Prompt Injection, the host system remains protected.
 
 ### 🚀 Key Advantages
-- 🛡️ **Defense in Depth**: Combines a YAML rule engine with OS-native sandboxing (Linux Seccomp, Windows Low-IL, macOS Seatbelt).
-- 📜 **Verifiable Provenance**: Generates **Ed25519 Signed Receipts** for every execution. Prove what was run, when, and under what policy.
+- 🛡️ **Defense in Depth**: Combines a YAML rule engine with multi-platform sandboxing (Linux Prototype, Windows, macOS).
+- 📜 **Verifiable Provenance**: Ed25519 Signed Receipts (Automatic) for cryptographic execution proof.
 - 🔒 **Proactive Protection**: Built-in **Deny Fuse** automatically locks out Agents after repeated policy violations to stop active probing.
 - 📊 **Enterprise Observability**: Real-time Prometheus metrics and SIEM-ready Webhooks for instant incident response.
 - 🏥 **Security Transparency**: Built-in `CapabilityDoctor` to verify exactly what your host OS supports—no more black-box security.
@@ -58,7 +58,7 @@ Ready to secure your agents? Follow our comprehensive guides:
 ## 🗺️ Roadmap
 
 - [x] **Phase 1-4**: Core Engine, Linux Sandbox, Telemetry, Anomaly Detection.
-- [x] **Phase 5-6**: Windows Low-IL, Unified Capability Model (UCM), Signed Receipts, SIEM.
+- [x] **Phase 5-6**: Windows Low-IL, Unified Capability Model (UCM), Signed Receipts (Automatic), SIEM.
 - [x] **Phase 7**: Production Hardening, Cross-platform Parity, AppContainer Prototype.
 - [x] **Phase 8**: RC Validation & Stress Testing.
 - [ ] **Phase 9 (Current)**: v0.3.0 Ecosystem & Trust: LangChain/OpenAI Adapters, Receipt Verification CLI.

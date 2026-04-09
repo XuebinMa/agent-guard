@@ -52,7 +52,7 @@ working_directory: "/var/lib/agent-workspace"
 audit:
   enabled: true
   output: "file"
-  path: "/var/log/agent-guard/audit.jsonl"
+  file_path: "/var/log/agent-guard/audit.jsonl"
   webhook_url: "https://your-siem-webhook.internal/ingest"
 
 anomaly:

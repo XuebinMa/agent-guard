@@ -16,14 +16,20 @@ pub enum Tool {
 }
 
 impl Tool {
-    pub fn name(&self) -> String {
+    pub fn name(&self) -> &str {
         match self {
-            Tool::Bash => "bash".to_string(),
-            Tool::ReadFile => "read_file".to_string(),
-            Tool::WriteFile => "write_file".to_string(),
-            Tool::HttpRequest => "http_request".to_string(),
-            Tool::Custom(id) => id.as_str().to_string(),
+            Tool::Bash => "bash",
+            Tool::ReadFile => "read_file",
+            Tool::WriteFile => "write_file",
+            Tool::HttpRequest => "http_request",
+            Tool::Custom(id) => id.as_str(),
         }
+    }
+}
+
+impl std::fmt::Display for Tool {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.name())
     }
 }
 

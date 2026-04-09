@@ -34,7 +34,13 @@ impl AnomalyDetector {
             return AnomalyStatus::Normal;
         }
 
-        let mut states = self.states.lock().unwrap();
+        let mut states = match self.states.lock() {
+            Ok(guard) => guard,
+            Err(_) => {
+                // If the mutex is poisoned, we fail-closed for security.
+                return AnomalyStatus::Locked;
+            }
+        };
         let state = states.entry(actor.to_string()).or_default();
 
         if state.is_locked {
@@ -48,6 +54,12 @@ impl AnomalyDetector {
         let call_cutoff = now - call_window;
         state.call_history.retain(|&t| t > call_cutoff);
         state.call_history.push(now);
+
+        // CWE-CWE-770: Allocation of Resources Without Limits or Throttling
+        // Limit history to prevent OOM
+        if state.call_history.len() > 1000 {
+            state.call_history.remove(0);
+        }
 
         if state.call_history.len() > config.rate_limit.max_calls {
             tracing::warn!(
@@ -87,7 +99,10 @@ impl AnomalyDetector {
             return;
         }
 
-        let mut states = self.states.lock().unwrap();
+        let mut states = match self.states.lock() {
+            Ok(guard) => guard,
+            Err(_) => return, // Silent return on poison for non-critical update
+        };
         let state = states.entry(actor.to_string()).or_default();
         
         if state.is_locked {
@@ -96,6 +111,11 @@ impl AnomalyDetector {
 
         let now = Instant::now();
         state.denial_history.push(now);
+
+        // Limit history to prevent OOM
+        if state.denial_history.len() > 1000 {
+            state.denial_history.remove(0);
+        }
 
         let fuse_window = Duration::from_secs(config.deny_fuse.window_seconds);
         let fuse_cutoff = now - fuse_window;

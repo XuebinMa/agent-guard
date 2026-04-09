@@ -28,7 +28,7 @@ This document describes how `agent-guard` integrates Audit Logs, Prometheus Metr
 
 | Category | What this protects | What this does not protect |
 | :--- | :--- | :--- |
-| **Audit** | Provides a tamper-evident record of all tool calls. | Audit logs themselves can be deleted if host OS is compromised. |
+| **Audit** | Provides a structured record of all tool calls. | Audit logs themselves can be deleted if host OS is compromised. |
 | **SIEM** | Pushes real-time alerts via Webhooks. | Alert fatigue if thresholds are set too low. |
 | **Metrics** | Identifies abnormal patterns across 128+ concurrent agents. | Privacy of payload contents (Hashes only by default). |
 

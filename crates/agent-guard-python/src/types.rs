@@ -8,21 +8,7 @@ use crate::error::GuardError;
 
 // ── PyDecision ────────────────────────────────────────────────────────────────
 
-/// Result of a `Guard.check()` call.
-///
-/// Attributes
-/// ----------
-/// outcome : str
-///     One of ``"allow"``, ``"deny"``, or ``"ask_user"``.
-/// message : str | None
-///     Human-readable explanation for ``deny`` and ``ask_user`` outcomes.
-/// code : str | None
-///     Machine-readable decision code, e.g. ``"DENIED_BY_RULE"``.
-/// matched_rule : str | None
-///     Which policy rule triggered the decision, e.g. ``"tools.bash.deny[0]"``.
-/// ask_prompt : str | None
-///     The question to surface to the user; only present for ``"ask_user"``.
-#[pyclass(module = "agent_guard")]
+#[pyclass(module = "agent_guard", from_py_object)]
 #[derive(Clone)]
 pub struct SandboxOutput {
     #[pyo3(get)]
@@ -50,7 +36,7 @@ pub struct Decision {
     pub policy_version: String,
 }
 
-#[pyclass(module = "agent_guard")]
+#[pyclass(module = "agent_guard", from_py_object)]
 #[derive(Clone)]
 pub struct ExecuteResult {
     #[pyo3(get)]
@@ -61,6 +47,8 @@ pub struct ExecuteResult {
     pub decision: Option<Decision>,
     #[pyo3(get)]
     pub policy_version: String,
+    #[pyo3(get)]
+    pub receipt: Option<String>, // JSON-encoded receipt
 }
 
 #[pymethods]
@@ -131,20 +119,6 @@ pub fn parse_trust(trust_str: &str) -> PyResult<TrustLevel> {
 
 // ── PyGuard ───────────────────────────────────────────────────────────────────
 
-/// Policy-enforcing guard for AI agent tool calls.
-///
-/// Construction
-/// ------------
-/// Use :meth:`from_yaml` or :meth:`from_yaml_file` — do not call ``__init__`` directly.
-///
-/// Example
-/// -------
-/// .. code-block:: python
-///
-///     import agent_guard
-///     guard = agent_guard.Guard.from_yaml(\"version: 1\\ndefault_mode: workspace_write\\n\")
-///     d = guard.check(\"bash\", \"ls -la\", trust_level=\"trusted\")
-///     assert d.is_allow()
 #[pyclass(name = "Guard", module = "agent_guard")]
 pub struct PyGuard {
     inner: Guard,
@@ -152,9 +126,6 @@ pub struct PyGuard {
 
 #[pymethods]
 impl PyGuard {
-    /// Construct a Guard from a YAML string.
-    ///
-    /// Raises :exc:`GuardError` on parse or initialisation failure.
     #[staticmethod]
     fn from_yaml(yaml: &str) -> PyResult<Self> {
         let inner = Guard::from_yaml(yaml)
@@ -162,9 +133,6 @@ impl PyGuard {
         Ok(Self { inner })
     }
 
-    /// Construct a Guard from a YAML file path.
-    ///
-    /// Raises :exc:`GuardError` on I/O, parse, or initialisation failure.
     #[staticmethod]
     fn from_yaml_file(path: &str) -> PyResult<Self> {
         let inner = Guard::from_yaml_file(path)
@@ -172,37 +140,19 @@ impl PyGuard {
         Ok(Self { inner })
     }
 
-    /// Check whether a tool call is allowed by policy.
-    ///
-    /// Parameters
-    /// ----------
-    /// tool : str
-    ///     Tool name: ``"bash"``, ``"read_file"``, ``"write_file"``,
-    ///     ``"http_request"``, or a custom tool id.
-    /// payload : str
-    ///     Raw JSON string. For ``read_file``/``write_file`` use
-    ///     ``{"path": "..."}``; for ``http_request`` use ``{"url": "..."}``.
-    /// trust_level : str
-    ///     One of ``"untrusted"`` (default), ``"trusted"``, or ``"admin"``.
-    /// agent_id : str | None
-    ///     Optional identifier for the agent making the call.
-    /// session_id : str | None
-    ///     Optional session identifier for audit correlation.
-    /// actor : str | None
-    ///     Optional human actor identifier.
-    /// working_directory : str | None
-    ///     Workspace root path. Used by the bash validator for
-    ///     workspace-write boundary enforcement.
-    ///
-    /// Returns
-    /// -------
-    /// Decision
-    ///     The enforcement decision.
-    ///
-    /// Raises
-    /// ------
-    /// GuardError
-    ///     On invalid ``tool`` or ``trust_level`` values.
+    /// Set the Ed25519 signing key for provenance receipts.
+    /// The key must be a 32-byte hex-encoded string.
+    fn set_signing_key(&self, hex_key: &str) -> PyResult<()> {
+        use ed25519_dalek::SigningKey;
+        let bytes = hex::decode(hex_key)
+            .map_err(|e| GuardError::new_err(format!("Invalid hex key: {e}")))?;
+        let key_array: [u8; 32] = bytes.try_into()
+            .map_err(|_| GuardError::new_err("Key must be exactly 32 bytes (64 hex characters)"))?;
+        let signing_key = SigningKey::from_bytes(&key_array);
+        self.inner.with_signing_key(signing_key);
+        Ok(())
+    }
+
     #[pyo3(signature = (
         tool,
         payload,
@@ -236,7 +186,6 @@ impl PyGuard {
         Ok(decision_from_rust(decision, self.inner.policy_version()))
     }
 
-    /// Securely execute a tool command using the default sandbox for the current platform.
     #[pyo3(signature = (
         tool,
         payload,
@@ -276,7 +225,7 @@ impl PyGuard {
             .map_err(|e| GuardError::new_err(format!("Execution failed: {e}")))?;
 
         match result {
-            agent_guard_sdk::ExecuteOutcome::Executed { output, policy_version } => {
+            agent_guard_sdk::ExecuteOutcome::Executed { output, policy_version, receipt } => {
                 Ok(ExecuteResult {
                     status: "executed".to_string(),
                     output: Some(SandboxOutput {
@@ -286,6 +235,7 @@ impl PyGuard {
                     }),
                     decision: None,
                     policy_version,
+                    receipt: receipt.map(|r| serde_json::to_string(&r).unwrap_or_default()),
                 })
             }
             agent_guard_sdk::ExecuteOutcome::Denied { decision, policy_version } => {
@@ -294,6 +244,7 @@ impl PyGuard {
                     output: None,
                     decision: Some(decision_from_rust(decision, policy_version.clone())),
                     policy_version,
+                    receipt: None,
                 })
             }
             agent_guard_sdk::ExecuteOutcome::AskRequired { decision, policy_version } => {
@@ -302,29 +253,24 @@ impl PyGuard {
                     output: None,
                     decision: Some(decision_from_rust(decision, policy_version.clone())),
                     policy_version,
+                    receipt: None,
                 })
             }
         }
     }
 
-    /// Atomically reload the policy from a YAML string.
-    ///
-    /// Raises :exc:`GuardError` on validation failure. The old policy
-    /// remains active if the reload fails.
     fn reload_from_yaml(&self, yaml: &str) -> PyResult<()> {
         self.inner
             .reload_from_yaml(yaml)
             .map_err(|e| GuardError::new_err(format!("{e}")))
     }
 
-    /// Return the SHA-256 version hash of the currently loaded policy.
     fn policy_version(&self) -> String {
         self.inner.policy_version()
     }
 
-    /// Alias for policy_version(). [Deprecated: use policy_version instead]
     fn policy_hash(&self) -> String {
-        self.inner.policy_version()
+        self.inner.policy_hash()
     }
 
     fn __repr__(&self) -> String {

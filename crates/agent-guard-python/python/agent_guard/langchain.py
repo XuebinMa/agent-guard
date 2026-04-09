@@ -50,8 +50,6 @@ def wrap_langchain_tool(
     def _prepare_payload(*args, **kwargs) -> str:
         """
         Ensures the payload conforms to the agent-guard SDK expectations.
-        For shell tools, expected format is {"command": "..."}
-        For others, a generic JSON object representing the input.
         """
         raw_input = None
         if args and len(args) == 1 and not kwargs:
@@ -61,27 +59,27 @@ def wrap_langchain_tool(
         else:
             raw_input = {"args": args, "kwargs": kwargs}
 
-        # Contract Alignment: 
-        # If it's a shell tool, the SDK expects {"command": str}
+        # CWE-770: Limit payload size to 1MB
+        payload_json = json.dumps(raw_input)
+        if len(payload_json) > 1024 * 1024:
+             raise ValueError("Tool payload too large (max 1MB)")
+
         if is_shell_tool:
             if isinstance(raw_input, str):
                 return json.dumps({"command": raw_input})
             elif isinstance(raw_input, dict) and "command" in raw_input:
                 return json.dumps(raw_input)
             else:
-                # Fallback: wrap whatever it is
                 return json.dumps({"command": str(raw_input)})
         
-        # Generic Tool Alignment:
         if isinstance(raw_input, (str, bytes, int, float, bool)):
             return json.dumps({"input": raw_input})
-        return json.dumps(raw_input)
+        return payload_json
 
     def guarded_run(*args, **kwargs) -> Any:
         payload_str = _prepare_payload(*args, **kwargs)
         
         if resolved_mode == "enforce":
-            # Tier 2: Sandbox Enforcement (Direct Execution)
             result: ExecuteResult = guard.execute(
                 tool=tool.name,
                 payload=payload_str,
@@ -92,12 +90,9 @@ def wrap_langchain_tool(
             
             if result.status == "executed":
                 return result.output.stdout if result.output else ""
-            elif result.status == "denied":
-                raise AgentGuardSecurityError(result.decision)
             else:
                 raise AgentGuardSecurityError(result.decision)
         else:
-            # Tier 1: Policy Check only (Wrap original logic)
             decision = guard.check(
                 tool=tool.name,
                 payload=payload_str,
@@ -115,7 +110,6 @@ def wrap_langchain_tool(
         payload_str = _prepare_payload(*args, **kwargs)
         
         if resolved_mode == "enforce":
-            # Run blocking rust execution in a thread to remain async-friendly
             result = await asyncio.to_thread(
                 guard.execute,
                 tool=tool.name,
@@ -145,17 +139,14 @@ def wrap_langchain_tool(
             else:
                 raise AgentGuardSecurityError(decision)
 
-    # Patch the tool
-    tool._run = guarded_run
-    if original_arun or hasattr(tool, "_arun"):
-        tool._arun = guarded_arun
-    
-    # Also override high-level invoke if it exists (LangChain LCEL)
-    if hasattr(tool, "invoke"):
-        def guarded_invoke(input, config=None, **kwargs):
-            # Map invoke back to the guarded run method
-            # This ensures we handle callbacks/config if the tool expects them
-            return tool.run(input, **kwargs)
-        tool.invoke = guarded_invoke
+    # Patch the tool internals.
+    try:
+        tool.__dict__["_run"] = guarded_run
+        if original_arun or hasattr(tool, "_arun"):
+            tool.__dict__["_arun"] = guarded_arun
+    except (AttributeError, TypeError):
+        tool._run = guarded_run
+        if original_arun or hasattr(tool, "_arun"):
+            tool._arun = guarded_arun
 
     return tool

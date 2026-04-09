@@ -48,17 +48,54 @@ impl Sandbox for SeatbeltSandbox {
                 resolved_dir.display()
             );
 
+            // CWE-78: Command Injection Mitigation.
+            let escaped_command = command.replace("'", "'\\''");
             let mut child = Command::new("sandbox-exec")
                 .arg("-p")
                 .arg(profile)
                 .arg("sh")
                 .arg("-c")
-                .arg(command)
+                .arg(format!("'{}'", escaped_command))
                 .current_dir(&context.working_directory)
                 .stdout(std::process::Stdio::piped())
                 .stderr(std::process::Stdio::piped())
                 .spawn()
                 .map_err(|e| SandboxError::ExecutionFailed(format!("Failed to spawn sandbox-exec: {}", e)))?;
+
+            // Handle timeout if specified
+            if let Some(timeout_ms) = context.timeout_ms {
+                use std::time::Duration;
+                use std::thread;
+                use std::sync::mpsc;
+
+                let (tx, rx) = mpsc::channel();
+                thread::spawn(move || {
+                    thread::sleep(Duration::from_millis(timeout_ms));
+                    let _ = tx.send(());
+                });
+
+                loop {
+                    match child.try_wait() {
+                        Ok(Some(status)) => {
+                            let output = child.wait_with_output().map_err(|e| SandboxError::ExecutionFailed(e.to_string()))?;
+                            return Ok(SandboxOutput {
+                                stdout: String::from_utf8_lossy(&output.stdout).to_string(),
+                                stderr: String::from_utf8_lossy(&output.stderr).to_string(),
+                                exit_code: status.code().unwrap_or(-1),
+                            });
+                        }
+                        Ok(None) => {
+                            if rx.try_recv().is_ok() {
+                                let _ = child.kill();
+                                let _ = child.wait(); // Prevent zombie
+                                return Err(SandboxError::Timeout { ms: timeout_ms });
+                            }
+                            thread::sleep(Duration::from_millis(10));
+                        }
+                        Err(e) => return Err(SandboxError::ExecutionFailed(e.to_string())),
+                    }
+                }
+            }
 
             let output = child.wait_with_output()
                 .map_err(|e| SandboxError::ExecutionFailed(format!("Failed to wait for sandboxed process: {}", e)))?;

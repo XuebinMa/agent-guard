@@ -13,6 +13,9 @@ crate-type = ["cdylib"]
 agent-guard-sdk = { path = "../agent-guard-sdk" }
 tracing-subscriber = { workspace = true }
 pyo3 = { version = "0.28", features = ["abi3-py310"] }
+hex.workspace = true
+serde_json.workspace = true
+ed25519-dalek.workspace = true
 
 [features]
 extension-module = ["pyo3/extension-module"]

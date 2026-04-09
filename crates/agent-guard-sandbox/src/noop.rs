@@ -32,9 +32,12 @@ impl Sandbox for NoopSandbox {
         use std::thread;
         use std::sync::mpsc;
         
+        // CWE-78: Command Injection Mitigation.
+        let escaped_command = command.replace("'", "'\\''");
+
         let mut child = Command::new("sh")
             .arg("-c")
-            .arg(command)
+            .arg(format!("'{}'", escaped_command))
             .current_dir(&context.working_directory)
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped())
@@ -61,6 +64,7 @@ impl Sandbox for NoopSandbox {
                     Ok(None) => {
                         if rx.try_recv().is_ok() {
                             let _ = child.kill();
+                            let _ = child.wait(); // CWE-117: Prevent zombie process
                             return Err(SandboxError::Timeout { ms: timeout_ms });
                         }
                         thread::sleep(Duration::from_millis(10));

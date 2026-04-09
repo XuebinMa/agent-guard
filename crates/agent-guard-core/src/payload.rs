@@ -54,6 +54,13 @@ pub fn extract_bash_command(payload: &str) -> Result<ExtractedPayload<'_>, Guard
 }
 
 fn extract_string_field(payload: &str, field: &str) -> Result<String, GuardDecision> {
+    // CWE-770: Limit payload size to 1MB to prevent memory exhaustion
+    if payload.len() > 1024 * 1024 {
+        return Err(GuardDecision::deny(
+            DecisionCode::InvalidPayload,
+            "payload exceeds maximum size of 1MB".to_string(),
+        ));
+    }
     let v: serde_json::Value = serde_json::from_str(payload).map_err(|_| {
         GuardDecision::deny(
             DecisionCode::InvalidPayload,

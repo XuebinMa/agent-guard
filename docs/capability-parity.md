@@ -16,7 +16,7 @@
 
 ## 📊 Parity Matrix (v0.2.0 Baseline)
 
-| **UCM Capability** | **Linux (Seccomp)** | **macOS (Seatbelt)** | **Windows (Low-IL)** | **Windows (AppContainer)** | **Noop (None)** |
+| **UCM Capability** | **Linux (Prototype)** | **macOS (Seatbelt)** | **Windows (Low-IL)** | **Windows (AppContainer)** | **Noop (None)** |
 | :--- | :---: | :---: | :---: | :---: | :---: |
 | **`filesystem_read_workspace`** | ✅ | ✅ | ✅ | ✅ | ✅ |
 | **`filesystem_read_global`** | ✅ | ✅ | ✅ | 🛡️ Blocked | ✅ |
@@ -39,7 +39,7 @@
 
 | Platform | What this protects | What this does not protect |
 | :--- | :--- | :--- |
-| **Linux** | Syscall-level hardening, global filesystem write protection. | Fine-grained path-level read restriction (Landlock planned). |
+| **Linux** | Command execution context, global filesystem write protection (Prototype). | Syscall-level filtering (Seccomp-BPF planned), fine-grained path-level read restriction. |
 | **macOS** | Workspace write isolation via Seatbelt profiles. | Global read access (Prototype limit). |
 | **Windows** | Integrity-based write protection (Low-IL) or SID-based isolation (AppContainer). | Network access in default Low-IL mode. |
 

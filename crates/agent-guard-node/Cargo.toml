@@ -17,6 +17,9 @@ agent-guard-sdk = { path = "../agent-guard-sdk" }
 napi = { version = "2.12", features = ["async", "serde-json"] }
 napi-derive = "2.12"
 serde = { version = "1.0", features = ["derive"] }
+serde_json.workspace = true
+hex.workspace = true
+ed25519-dalek.workspace = true
 
 [build-dependencies]
 napi-build = "2.0"

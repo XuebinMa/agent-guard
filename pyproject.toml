@@ -4,7 +4,7 @@ build-backend = "maturin"
 
 [project]
 name = "agent-guard"
-version = "0.1.0"
+version = "0.2.0-rc1"
 requires-python = ">=3.10"
 description = "Policy-driven security enforcement SDK for AI agents"
 license = { text = "MIT" }

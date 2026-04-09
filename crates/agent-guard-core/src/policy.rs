@@ -68,7 +68,13 @@ impl Condition {
         };
 
         if let Ok(ctx) = eval_ctx {
-            self.node.eval_boolean_with_context(&ctx).unwrap_or(false)
+            match self.node.eval_boolean_with_context(&ctx) {
+                Ok(b) => b,
+                Err(e) => {
+                    tracing::error!("Condition evaluation failed: {}", e);
+                    false
+                }
+            }
         } else {
             false
         }
@@ -102,6 +108,16 @@ pub struct AnomalyConfig {
     pub deny_fuse: DenyFuseConfig,
 }
 
+impl Default for AnomalyConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            rate_limit: RateLimitConfig::default(),
+            deny_fuse: DenyFuseConfig::default(),
+        }
+    }
+}
+
 #[derive(Debug, Deserialize, Clone)]
 pub struct DenyFuseConfig {
     #[serde(default = "default_false")]
@@ -110,6 +126,16 @@ pub struct DenyFuseConfig {
     pub threshold: usize,
     #[serde(default = "default_window")]
     pub window_seconds: u64,
+}
+
+impl Default for DenyFuseConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            threshold: 5,
+            window_seconds: 60,
+        }
+    }
 }
 
 fn default_false() -> bool {
@@ -131,23 +157,6 @@ pub struct RateLimitConfig {
     pub max_calls: usize,
 }
 
-fn default_window() -> u64 {
-    60
-}
-fn default_max_calls() -> usize {
-    30
-}
-
-impl Default for AnomalyConfig {
-    fn default() -> Self {
-        Self {
-            enabled: true,
-            rate_limit: RateLimitConfig::default(),
-            deny_fuse: DenyFuseConfig::default(),
-        }
-    }
-}
-
 impl Default for RateLimitConfig {
     fn default() -> Self {
         Self {
@@ -157,14 +166,11 @@ impl Default for RateLimitConfig {
     }
 }
 
-impl Default for DenyFuseConfig {
-    fn default() -> Self {
-        Self {
-            enabled: false,
-            threshold: 5,
-            window_seconds: 60,
-        }
-    }
+fn default_window() -> u64 {
+    60
+}
+fn default_max_calls() -> usize {
+    30
 }
 
 fn default_mode() -> PolicyMode {
@@ -232,21 +238,23 @@ pub struct RulePatternMap {
     pub condition: Option<Condition>,
 }
 
-#[derive(Debug, Deserialize, Clone, PartialEq, Eq, Default)]
-#[serde(rename_all = "snake_case")]
+#[derive(Debug, Deserialize, Clone, PartialEq, Eq, Default, Serialize)]
 pub enum PolicyMode {
     #[default]
+    #[serde(rename = "read_only")]
     ReadOnly,
+    #[serde(rename = "workspace_write")]
     WorkspaceWrite,
+    #[serde(rename = "full_access")]
     FullAccess,
+    #[serde(rename = "blocked")]
+    Blocked,
 }
 
 #[derive(Debug, Deserialize, Default, Clone)]
 pub struct TrustConfig {
     pub untrusted: Option<TrustOverride>,
     pub trusted: Option<TrustOverride>,
-    // admin: bypass_deny_rules is intentionally NOT supported in Phase 1.
-    // See roadmap: Phase 2/3 will introduce hard-deny vs soft-deny distinction.
     pub admin: Option<TrustOverride>,
 }
 
@@ -292,7 +300,42 @@ impl PolicyEngine {
         hasher.update(yaml.as_bytes());
         let hash = hex::encode(hasher.finalize());
 
-        Ok(Self { policy, hash })
+        let engine = Self { policy, hash };
+        engine.validate_patterns()?;
+        Ok(engine)
+    }
+
+    fn validate_patterns(&self) -> Result<(), PolicyError> {
+        let policies = vec![
+            self.policy.tools.bash.as_ref(),
+            self.policy.tools.read_file.as_ref(),
+            self.policy.tools.write_file.as_ref(),
+            self.policy.tools.http_request.as_ref(),
+        ];
+        
+        for p in policies.into_iter().flatten() {
+            self.check_tool_patterns(p)?;
+        }
+        
+        for p in self.policy.tools.custom.values() {
+            self.check_tool_patterns(p)?;
+        }
+        Ok(())
+    }
+
+    fn check_tool_patterns(&self, p: &ToolPolicy) -> Result<(), PolicyError> {
+        let all_rules = p.deny.iter().chain(p.allow.iter()).chain(p.ask.iter());
+        for rule in all_rules {
+            if let RulePattern::Map(m) = rule {
+                if let Some(ref re_str) = m.regex {
+                    Regex::new(re_str).map_err(|e| PolicyError::ParseError(format!("Invalid regex '{}': {}", re_str, e)))?;
+                }
+            }
+        }
+        for glob_pat in p.deny_paths.iter().chain(p.allow_paths.iter()) {
+            glob::Pattern::new(glob_pat).map_err(|e| PolicyError::ParseError(format!("Invalid glob '{}': {}", glob_pat, e)))?;
+        }
+        Ok(())
     }
 
     pub fn from_yaml_file(path: impl AsRef<Path>) -> Result<Self, PolicyError> {
@@ -318,25 +361,17 @@ impl PolicyEngine {
     }
 
     pub fn check(&self, tool: &Tool, payload: &str, context: &Context) -> GuardDecision {
-        tracing::debug!(
-            tool = tool.name(),
-            actor = context.actor.as_deref().unwrap_or("unknown"),
-            "PolicyEngine::check"
-        );
         let trust_level = &context.trust_level;
         let effective_mode = self.effective_mode(tool, context);
         let tool_policy = self.tool_policy(tool);
         let tool_name = tool.name();
 
-        // Untrusted override: if effective_mode is read_only but the resolved tool mode
-        // (tool-level or default) is higher, block the call entirely.
         if effective_mode == PolicyMode::ReadOnly {
             let tool_mode = tool_policy
-                .as_ref()
-                .and_then(|tp| tp.mode.clone())
-                .unwrap_or_else(|| self.policy.default_mode.clone());
+                .map(|tp| tp.mode.as_ref().unwrap_or(&self.policy.default_mode))
+                .unwrap_or(&self.policy.default_mode);
 
-            if tool_mode == PolicyMode::WorkspaceWrite || tool_mode == PolicyMode::FullAccess {
+            if *tool_mode == PolicyMode::WorkspaceWrite || *tool_mode == PolicyMode::FullAccess {
                 return GuardDecision::deny(
                     DecisionCode::InsufficientPermissionMode,
                     format!(
@@ -349,9 +384,8 @@ impl PolicyEngine {
             }
         }
 
-        // A1: extract structured payload for tools that require it.
-        // For ReadFile/WriteFile we need the path; for HttpRequest we need the url.
-        // Extraction failure is a hard deny — we never fall back to matching raw JSON.
+        let is_blocked = effective_mode == PolicyMode::Blocked;
+
         let extracted = match tool {
             Tool::ReadFile | Tool::WriteFile => {
                 match extract_path(payload) {
@@ -371,13 +405,11 @@ impl PolicyEngine {
                     Err(deny) => return deny,
                 }
             }
-            // Custom tools: rules match against raw payload string.
             _ => ExtractedPayload::Raw(payload),
         };
         let match_value = extracted.match_value();
 
         if let Some(tp) = tool_policy {
-            // deny rules — highest priority, always evaluated first.
             for (i, rule) in tp.deny.iter().enumerate() {
                 let res = pattern_matches(rule, match_value, tool, context);
                 if res.matched {
@@ -395,7 +427,6 @@ impl PolicyEngine {
                 }
             }
 
-            // deny_paths — evaluated before ask/allow so paths can't be bypassed.
             for (i, glob_pattern) in tp.deny_paths.iter().enumerate() {
                 if path_glob_matches(glob_pattern, match_value) {
                     let rule_ref = format!("tools.{}.deny_paths[{}]", tool_name, i);
@@ -408,7 +439,6 @@ impl PolicyEngine {
                 }
             }
 
-            // ask rules.
             for (i, rule) in tp.ask.iter().enumerate() {
                 let res = pattern_matches(rule, match_value, tool, context);
                 if res.matched {
@@ -432,8 +462,6 @@ impl PolicyEngine {
                 }
             }
 
-            // A2: allow_paths as a positive allowlist.
-            // If allow_paths is non-empty and the path doesn't match any entry → deny.
             if !tp.allow_paths.is_empty() {
                 let in_allowlist = tp.allow_paths
                     .iter()
@@ -450,7 +478,6 @@ impl PolicyEngine {
                 }
             }
 
-            // Explicit allow rules — short-circuit to Allow.
             for rule in tp.allow.iter() {
                 if pattern_matches(rule, match_value, tool, context).matched {
                     return GuardDecision::Allow;
@@ -458,15 +485,24 @@ impl PolicyEngine {
             }
         }
 
-        GuardDecision::Allow
+        if is_blocked {
+            GuardDecision::deny(
+                DecisionCode::BlockedByMode,
+                format!("tool '{}' is in blocked mode and no explicit allow rule matched", tool_name)
+            )
+        } else {
+            GuardDecision::Allow
+        }
     }
 
-    /// Returns the effective `PolicyMode` for a given tool and trust level.
-    ///
-    /// This is the single source of truth for mode resolution — callers (e.g. the bash
-    /// validator in the SDK layer) must use this instead of deriving mode from trust_level
-    /// alone, so that tool-level `mode:` overrides in policy YAML are respected.
     pub fn effective_mode(&self, tool: &Tool, context: &Context) -> PolicyMode {
+        // Tool-level "blocked" always takes precedence regardless of trust level
+        if let Some(ref tp) = self.tool_policy(tool) {
+            if tp.mode.as_ref() == Some(&PolicyMode::Blocked) {
+                return PolicyMode::Blocked;
+            }
+        }
+
         match context.trust_level {
             TrustLevel::Untrusted => self
                 .policy
@@ -475,26 +511,41 @@ impl PolicyEngine {
                 .as_ref()
                 .and_then(|t| t.override_mode.clone())
                 .unwrap_or_else(|| self.policy.default_mode.clone()),
-            TrustLevel::Trusted | TrustLevel::Admin => self
-                .tool_policy(tool)
-                .and_then(|tp| tp.mode.clone())
-                .unwrap_or_else(|| self.policy.default_mode.clone()),
+            TrustLevel::Trusted => self
+                .policy
+                .trust
+                .trusted
+                .as_ref()
+                .and_then(|t| t.override_mode.clone())
+                .unwrap_or_else(|| {
+                    self.tool_policy(tool)
+                        .and_then(|tp| tp.mode.clone())
+                        .unwrap_or_else(|| self.policy.default_mode.clone())
+                }),
+            TrustLevel::Admin => self
+                .policy
+                .trust
+                .admin
+                .as_ref()
+                .and_then(|t| t.override_mode.clone())
+                .unwrap_or_else(|| {
+                    self.tool_policy(tool)
+                        .and_then(|tp| tp.mode.clone())
+                        .unwrap_or_else(|| self.policy.default_mode.clone())
+                }),
         }
     }
 
-    fn tool_policy(&self, tool: &Tool) -> Option<ToolPolicy> {
+    fn tool_policy(&self, tool: &Tool) -> Option<&ToolPolicy> {
         match tool {
-            Tool::Bash => self.policy.tools.bash.clone(),
-            Tool::ReadFile => self.policy.tools.read_file.clone(),
-            Tool::WriteFile => self.policy.tools.write_file.clone(),
-            Tool::HttpRequest => self.policy.tools.http_request.clone(),
-            // Custom tools are resolved from the separate custom map
-            Tool::Custom(id) => self.policy.tools.custom.get(id.as_str()).cloned(),
+            Tool::Bash => self.policy.tools.bash.as_ref(),
+            Tool::ReadFile => self.policy.tools.read_file.as_ref(),
+            Tool::WriteFile => self.policy.tools.write_file.as_ref(),
+            Tool::HttpRequest => self.policy.tools.http_request.as_ref(),
+            Tool::Custom(id) => self.policy.tools.custom.get(id.as_str()),
         }
     }
 }
-
-// ── Pattern matching helpers ──────────────────────────────────────────────────
 
 #[derive(Debug, Default)]
 struct MatchResult {
@@ -504,7 +555,6 @@ struct MatchResult {
 
 fn pattern_matches(rule: &RulePattern, value: &str, tool: &Tool, context: &Context) -> MatchResult {
     match rule {
-        // Plain string: substring match (explicit, intentional — different from prefix:).
         RulePattern::Plain(s) => MatchResult {
             matched: value.contains(s.as_str()),
             condition: None,
@@ -515,7 +565,6 @@ fn pattern_matches(rule: &RulePattern, value: &str, tool: &Tool, context: &Conte
                 condition: m.condition.as_ref().map(|c| c.raw.clone()),
             };
 
-            // First check condition if present.
             if let Some(ref condition) = m.condition {
                 if !condition.evaluate(tool, context) {
                     return MatchResult {
@@ -525,7 +574,6 @@ fn pattern_matches(rule: &RulePattern, value: &str, tool: &Tool, context: &Conte
                 }
             }
 
-            // If condition passed (or was absent), check the pattern.
             if let Some(ref prefix) = m.prefix {
                 if value.trim_start().starts_with(prefix.as_str()) {
                     result.matched = true;
@@ -547,52 +595,33 @@ fn pattern_matches(rule: &RulePattern, value: &str, tool: &Tool, context: &Conte
                 }
             }
 
-            // If no pattern fields are present but there's a condition,
-            // then the condition itself is the rule.
-            if m.prefix.is_none() && m.regex.is_none() && m.plain.is_none() {
-                result.matched = true;
-            }
             result
         }
     }
-}
-
-fn path_glob_matches(pattern: &str, value: &str) -> bool {
-    if let Ok(matcher) = glob::Pattern::new(pattern) {
-        // Match both the exact string and with glob options for path separators.
-        return matcher.matches(value)
-            || matcher.matches_with(value, glob::MatchOptions {
-                case_sensitive: true,
-                require_literal_separator: false,
-                require_literal_leading_dot: false,
-            });
-    }
-    false
 }
 
 fn pattern_display(rule: &RulePattern) -> String {
     match rule {
         RulePattern::Plain(s) => s.clone(),
         RulePattern::Map(m) => {
-            let mut parts = Vec::new();
-            if let Some(ref p) = m.prefix {
-                parts.push(format!("prefix:{}", p));
-            }
-            if let Some(ref r) = m.regex {
-                parts.push(format!("regex:{}", r));
-            }
-            if let Some(ref p) = m.plain {
-                parts.push(format!("plain:{}", p));
-            }
-            if let Some(ref c) = m.condition {
-                parts.push(format!("if:{}", c.raw));
-            }
-            if parts.is_empty() {
-                "(empty rule)".to_string()
+            if let Some(ref re) = m.regex {
+                format!("regex:{}", re)
+            } else if let Some(ref prefix) = m.prefix {
+                format!("prefix:{}", prefix)
+            } else if let Some(ref plain) = m.plain {
+                plain.clone()
             } else {
-                parts.join(", ")
+                "complex rule".to_string()
             }
         }
+    }
+}
+
+fn path_glob_matches(pattern: &str, path: &str) -> bool {
+    if let Ok(glob) = glob::Pattern::new(pattern) {
+        glob.matches(path)
+    } else {
+        false
     }
 }
 
@@ -604,14 +633,12 @@ fn trust_level_str(level: &TrustLevel) -> &'static str {
     }
 }
 
-// ── PolicyError ───────────────────────────────────────────────────────────────
-
 #[derive(Debug, Error)]
 pub enum PolicyError {
+    #[error("failed to load policy: {0}")]
+    IoError(String),
     #[error("failed to parse policy YAML: {0}")]
     ParseError(String),
-    #[error("unsupported policy version {0} (only version 1 is supported)")]
+    #[error("unsupported policy version: {0}")]
     UnsupportedVersion(u32),
-    #[error("IO error reading policy file: {0}")]
-    IoError(String),
 }
