@@ -4,10 +4,7 @@
 //! to the workspace directory only. Network restriction requires Landlock
 //! ABI v4 and is not yet implemented.
 
-use crate::{
-    Sandbox, SandboxCapabilities, SandboxContext, SandboxError, SandboxOutput, SandboxResult,
-};
-use std::process::Command;
+use crate::{Sandbox, SandboxCapabilities, SandboxContext, SandboxError, SandboxResult};
 
 /// Landlock-based sandbox restricting filesystem writes to the workspace directory.
 ///
@@ -72,9 +69,7 @@ fn is_landlock_supported() -> bool {
         Access, AccessFs, PathBeneath, PathFd, Ruleset, RulesetAttr, RulesetCreatedAttr,
         RulesetStatus,
     };
-    match Ruleset::default()
-        .handle_access(AccessFs::from_all(abi))
-    {
+    match Ruleset::default().handle_access(AccessFs::from_all(abi)) {
         Ok(ruleset) => {
             // If we can create the ruleset, Landlock is supported
             // We don't restrict_self here — just probe.
@@ -92,10 +87,9 @@ fn execute_with_landlock(command: &str, context: &SandboxContext) -> SandboxResu
     use std::thread;
     use std::time::Duration;
 
-    let resolved_dir = context
-        .working_directory
-        .canonicalize()
-        .map_err(|e| SandboxError::ExecutionFailed(format!("Failed to resolve workspace: {}", e)))?;
+    let resolved_dir = context.working_directory.canonicalize().map_err(|e| {
+        SandboxError::ExecutionFailed(format!("Failed to resolve workspace: {}", e))
+    })?;
 
     let workspace_path = resolved_dir.clone();
 
@@ -109,22 +103,19 @@ fn execute_with_landlock(command: &str, context: &SandboxContext) -> SandboxResu
     // Apply Landlock restrictions in the child process before exec
     unsafe {
         cmd.pre_exec(move || {
-            apply_landlock_rules(&workspace_path).map_err(|e| {
-                std::io::Error::new(std::io::ErrorKind::PermissionDenied, e)
-            })
+            apply_landlock_rules(&workspace_path)
+                .map_err(|e| std::io::Error::new(std::io::ErrorKind::PermissionDenied, e))
         });
     }
 
-    let mut child = cmd
-        .spawn()
-        .map_err(|e| {
-            let msg = e.to_string();
-            if msg.contains("PermissionDenied") || msg.contains("landlock") {
-                SandboxError::FilterSetup(format!("Landlock setup failed: {}", msg))
-            } else {
-                SandboxError::ExecutionFailed(format!("Failed to spawn process: {}", msg))
-            }
-        })?;
+    let mut child = cmd.spawn().map_err(|e| {
+        let msg = e.to_string();
+        if msg.contains("PermissionDenied") || msg.contains("landlock") {
+            SandboxError::FilterSetup(format!("Landlock setup failed: {}", msg))
+        } else {
+            SandboxError::ExecutionFailed(format!("Failed to spawn process: {}", msg))
+        }
+    })?;
 
     // Timeout handling (same pattern as macos.rs)
     if let Some(timeout_ms) = context.timeout_ms {
@@ -188,8 +179,7 @@ fn apply_landlock_rules(workspace: &std::path::Path) -> Result<(), String> {
 
     // Rule 1: Allow full read + execute access globally (from /)
     let read_access = AccessFs::ReadFile | AccessFs::ReadDir | AccessFs::Execute;
-    let root_fd = PathFd::new("/")
-        .map_err(|e| format!("Failed to open /: {}", e))?;
+    let root_fd = PathFd::new("/").map_err(|e| format!("Failed to open /: {}", e))?;
     ruleset = ruleset
         .add_rule(PathBeneath::new(root_fd, read_access))
         .map_err(|e| format!("Failed to add read rule for /: {}", e))?;

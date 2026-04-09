@@ -82,8 +82,7 @@ impl ExecutionReceipt {
 fn load_receipt(path: &PathBuf) -> Result<ExecutionReceipt, String> {
     let contents = std::fs::read_to_string(path)
         .map_err(|e| format!("Failed to read receipt file '{}': {}", path.display(), e))?;
-    serde_json::from_str(&contents)
-        .map_err(|e| format!("Failed to parse receipt JSON: {}", e))
+    serde_json::from_str(&contents).map_err(|e| format!("Failed to parse receipt JSON: {}", e))
 }
 
 fn load_public_key(input: &str) -> Result<[u8; 32], String> {
@@ -95,10 +94,14 @@ fn load_public_key(input: &str) -> Result<[u8; 32], String> {
         input.to_string()
     };
 
-    let bytes = hex::decode(hex_str.trim())
-        .map_err(|e| format!("Invalid public key hex: {}", e))?;
-    bytes.try_into()
-        .map_err(|v: Vec<u8>| format!("Public key must be 32 bytes (64 hex chars), got {} bytes", v.len()))
+    let bytes =
+        hex::decode(hex_str.trim()).map_err(|e| format!("Invalid public key hex: {}", e))?;
+    bytes.try_into().map_err(|v: Vec<u8>| {
+        format!(
+            "Public key must be 32 bytes (64 hex chars), got {} bytes",
+            v.len()
+        )
+    })
 }
 
 fn cmd_verify(receipt_path: &PathBuf, public_key_input: &str) {
@@ -152,8 +155,16 @@ fn cmd_inspect(receipt_path: &PathBuf) {
     println!("Sandbox Type: {}", receipt.sandbox_type);
     println!("Decision:     {}", receipt.decision);
     println!("Command Hash: {}", receipt.command_hash);
-    println!("Timestamp:    {} ({})", receipt.timestamp, format_timestamp(receipt.timestamp));
-    println!("Signature:    {}...{}", &receipt.signature[..16], &receipt.signature[receipt.signature.len()-16..]);
+    println!(
+        "Timestamp:    {} ({})",
+        receipt.timestamp,
+        format_timestamp(receipt.timestamp)
+    );
+    println!(
+        "Signature:    {}...{}",
+        &receipt.signature[..16],
+        &receipt.signature[receipt.signature.len() - 16..]
+    );
     println!("---");
     println!("Note: Use 'guard-verify verify' to validate the signature.");
 }
@@ -168,11 +179,14 @@ fn cmd_keygen(output: &Option<PathBuf>) {
     let public_hex = hex::encode(verifying_key.to_bytes());
 
     if let Some(path) = output {
-        std::fs::write(path, &private_hex)
-            .unwrap_or_else(|e| {
-                eprintln!("ERROR: Failed to write private key to '{}': {}", path.display(), e);
-                std::process::exit(1);
-            });
+        std::fs::write(path, &private_hex).unwrap_or_else(|e| {
+            eprintln!(
+                "ERROR: Failed to write private key to '{}': {}",
+                path.display(),
+                e
+            );
+            std::process::exit(1);
+        });
         println!("Private key written to: {}", path.display());
     } else {
         println!("Private key (hex): {}", private_hex);
@@ -180,8 +194,17 @@ fn cmd_keygen(output: &Option<PathBuf>) {
     println!("Public key  (hex): {}", public_hex);
     println!();
     println!("Usage:");
-    println!("  1. Set signing key:  guard.load_signing_key_file(\"{}\")", output.as_ref().map(|p| p.display().to_string()).unwrap_or_else(|| "<key-file>".to_string()));
-    println!("  2. Verify receipts:  guard-verify verify --receipt <file> --public-key {}", public_hex);
+    println!(
+        "  1. Set signing key:  guard.load_signing_key_file(\"{}\")",
+        output
+            .as_ref()
+            .map(|p| p.display().to_string())
+            .unwrap_or_else(|| "<key-file>".to_string())
+    );
+    println!(
+        "  2. Verify receipts:  guard-verify verify --receipt <file> --public-key {}",
+        public_hex
+    );
 }
 
 fn format_timestamp(ts: u64) -> String {
@@ -194,7 +217,10 @@ fn main() {
     let cli = Cli::parse();
 
     match &cli.command {
-        Commands::Verify { receipt, public_key } => cmd_verify(receipt, public_key),
+        Commands::Verify {
+            receipt,
+            public_key,
+        } => cmd_verify(receipt, public_key),
         Commands::Inspect { receipt } => cmd_inspect(receipt),
         Commands::Keygen { output } => cmd_keygen(output),
     }

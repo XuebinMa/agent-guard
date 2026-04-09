@@ -368,7 +368,5 @@ pub fn verify_receipt(receipt_json: String, public_key_hex: String) -> Result<bo
         return Ok(false);
     };
 
-    Ok(verifying_key
-        .verify(payload.as_bytes(), &signature)
-        .is_ok())
+    Ok(verifying_key.verify(payload.as_bytes(), &signature).is_ok())
 }

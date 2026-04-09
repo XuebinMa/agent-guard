@@ -675,9 +675,8 @@ fn sha256_hash(data: &str) -> String {
 }
 
 fn parse_hex_signing_key(hex_str: &str) -> Result<ed25519_dalek::SigningKey, GuardInitError> {
-    let bytes = hex::decode(hex_str).map_err(|e| {
-        GuardInitError::SigningKeyLoad(format!("invalid hex: {}", e))
-    })?;
+    let bytes = hex::decode(hex_str)
+        .map_err(|e| GuardInitError::SigningKeyLoad(format!("invalid hex: {}", e)))?;
     let seed: [u8; 32] = bytes.try_into().map_err(|v: Vec<u8>| {
         GuardInitError::SigningKeyLoad(format!(
             "expected 32 bytes (64 hex chars), got {} bytes",

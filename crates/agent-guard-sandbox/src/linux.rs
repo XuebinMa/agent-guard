@@ -40,8 +40,8 @@ impl Sandbox for SeccompSandbox {
             filesystem_read_workspace: true,
             filesystem_read_global: true,
             filesystem_write_workspace: true,
-            filesystem_write_global: true,  // No kernel-level write blocking yet
-            network_outbound_any: true,     // No syscall filtering yet
+            filesystem_write_global: true, // No kernel-level write blocking yet
+            network_outbound_any: true,    // No syscall filtering yet
             network_outbound_internet: true,
             network_outbound_local: true,
             child_process_spawn: true,

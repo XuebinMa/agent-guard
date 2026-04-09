@@ -173,9 +173,17 @@ fn render_html(reports: &[SandboxReport], json: &str) -> String {
 
 fn cap_icon(value: bool, positive_means_good: bool) -> &'static str {
     if positive_means_good {
-        if value { "&#9989;" } else { "&#10060;" }
+        if value {
+            "&#9989;"
+        } else {
+            "&#10060;"
+        }
     } else {
         // For restriction capabilities: false = blocked = good
-        if value { "&#9888;&#65039; Allowed" } else { "&#9989; Blocked" }
+        if value {
+            "&#9888;&#65039; Allowed"
+        } else {
+            "&#9989; Blocked"
+        }
     }
 }

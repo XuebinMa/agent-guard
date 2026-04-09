@@ -15,10 +15,10 @@ pub mod windows;
 #[cfg(feature = "windows-appcontainer")]
 pub mod windows_appcontainer;
 
-#[cfg(target_os = "linux")]
-pub use linux::SeccompSandbox;
 #[cfg(feature = "landlock")]
 pub use landlock::LandlockSandbox;
+#[cfg(target_os = "linux")]
+pub use linux::SeccompSandbox;
 #[cfg(feature = "macos-sandbox")]
 pub use macos::SeatbeltSandbox;
 pub use noop::NoopSandbox;
