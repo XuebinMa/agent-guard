@@ -1,5 +1,5 @@
 use agent_guard_core::{Context, Tool};
-use agent_guard_sdk::{Guard, ExecutionReceipt};
+use agent_guard_sdk::{ExecutionReceipt, Guard};
 use ed25519_dalek::SigningKey;
 use rand::rngs::OsRng;
 
@@ -42,7 +42,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // 5. Verification
     let is_valid = receipt.verify(&public_key.to_bytes());
-    println!("\nVerification status: {}", if is_valid { "✅ VALID" } else { "❌ INVALID" });
+    println!(
+        "\nVerification status: {}",
+        if is_valid { "✅ VALID" } else { "❌ INVALID" }
+    );
 
     Ok(())
 }

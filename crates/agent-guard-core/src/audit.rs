@@ -90,6 +90,7 @@ pub enum ReloadStatus {
 }
 
 impl AuditEvent {
+    #[allow(clippy::too_many_arguments)]
     pub fn from_decision(
         request_id: String,
         tool: &Tool,
@@ -146,9 +147,8 @@ impl AuditEvent {
 
     pub fn to_jsonl(&self) -> String {
         let record = AuditRecord::ToolCall(self.clone());
-        serde_json::to_string(&record).unwrap_or_else(|e| {
-            format!("{{\"error\":\"audit serialization failed: {e}\"}}")
-        })
+        serde_json::to_string(&record)
+            .unwrap_or_else(|e| format!("{{\"error\":\"audit serialization failed: {e}\"}}"))
     }
 }
 
@@ -175,8 +175,7 @@ impl ReloadEvent {
 
     pub fn to_jsonl(&self) -> String {
         let record = AuditRecord::PolicyReload(self.clone());
-        serde_json::to_string(&record).unwrap_or_else(|e| {
-            format!("{{\"error\":\"audit serialization failed: {e}\"}}")
-        })
+        serde_json::to_string(&record)
+            .unwrap_or_else(|e| format!("{{\"error\":\"audit serialization failed: {e}\"}}"))
     }
 }

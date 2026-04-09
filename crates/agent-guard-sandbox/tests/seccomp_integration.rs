@@ -39,7 +39,9 @@ mod seccomp_tests {
         let sandbox = SeccompSandbox::new();
         let result = sandbox.execute("echo hello", &ctx(PolicyMode::ReadOnly));
         match result {
-            Ok(SandboxOutput { stdout, exit_code, .. }) => {
+            Ok(SandboxOutput {
+                stdout, exit_code, ..
+            }) => {
                 assert_eq!(exit_code, 0, "echo should exit 0");
                 assert!(stdout.trim() == "hello", "stdout = {stdout:?}");
             }
@@ -76,7 +78,10 @@ mod seccomp_tests {
             Ok(out) => {
                 // On some kernels the shell itself may absorb SIGSYS differently;
                 // but at minimum the write must not have succeeded cleanly.
-                assert_ne!(out.exit_code, 0, "write should not succeed in read_only mode; got exit 0");
+                assert_ne!(
+                    out.exit_code, 0,
+                    "write should not succeed in read_only mode; got exit 0"
+                );
             }
             Err(e) => panic!("unexpected error: {e}"),
         }
@@ -130,8 +135,8 @@ mod seccomp_tests {
         // On a system with seccomp support this should succeed (filter loads OK).
         // If it fails it must be FilterSetup, not a silent noop.
         match result {
-            Ok(_) => {} // filter loaded and command ran
-            Err(SandboxError::FilterSetup(_)) => {} // acceptable: filter setup failed hard
+            Ok(_) => {}                                    // filter loaded and command ran
+            Err(SandboxError::FilterSetup(_)) => {}        // acceptable: filter setup failed hard
             Err(SandboxError::KilledByFilter { .. }) => {} // filter fired: also acceptable
             Err(e) => panic!("strict mode got unexpected error: {e}"),
         }

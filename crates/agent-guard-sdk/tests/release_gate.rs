@@ -1,16 +1,22 @@
-use agent_guard_core::{Context, Tool, TrustLevel, GuardDecision};
-use agent_guard_sdk::{Guard, ExecuteOutcome, GuardInput, ExecutionReceipt};
-use agent_guard_sandbox::{Sandbox, SandboxContext, SandboxError, SandboxResult, SandboxCapabilities};
-use std::path::PathBuf;
+use agent_guard_core::{Context, GuardDecision, Tool, TrustLevel};
+use agent_guard_sandbox::{
+    Sandbox, SandboxCapabilities, SandboxContext, SandboxError, SandboxResult,
+};
+use agent_guard_sdk::{ExecuteOutcome, ExecutionReceipt, Guard, GuardInput};
 use ed25519_dalek::SigningKey;
 use rand::rngs::OsRng;
+use std::path::PathBuf;
 
 // ── Mock Sandbox for Fail-Closed Testing ────────────────────────────────────
 
 struct FailingSandbox;
 impl Sandbox for FailingSandbox {
-    fn name(&self) -> &'static str { "failing" }
-    fn sandbox_type(&self) -> &'static str { "failing" }
+    fn name(&self) -> &'static str {
+        "failing"
+    }
+    fn sandbox_type(&self) -> &'static str {
+        "failing"
+    }
     fn capabilities(&self) -> SandboxCapabilities {
         SandboxCapabilities {
             filesystem_read_workspace: true,
@@ -25,15 +31,19 @@ impl Sandbox for FailingSandbox {
         }
     }
     fn execute(&self, _command: &str, _context: &SandboxContext) -> SandboxResult {
-        Err(SandboxError::ExecutionFailed("Simulated init failure".to_string()))
+        Err(SandboxError::ExecutionFailed(
+            "Simulated init failure".to_string(),
+        ))
     }
-    fn is_available(&self) -> bool { true }
+    fn is_available(&self) -> bool {
+        true
+    }
 }
 
 // ── Tests ───────────────────────────────────────────────────────────────────
 
 /// GATE 1: Fail-Closed Robustness
-/// Ensures that any failure in sandbox initialization or environment setup 
+/// Ensures that any failure in sandbox initialization or environment setup
 /// results in a hard error and blocks tool execution.
 #[test]
 fn test_gate_fail_closed_robustness() {
@@ -53,7 +63,7 @@ fn test_gate_fail_closed_robustness() {
 
     let sandbox = FailingSandbox;
     let res = guard.execute(&input, &sandbox);
-    
+
     // FAIL-CLOSED: Any sandbox error must be returned as Err, blocking execution result.
     assert!(res.is_err(), "Sandbox failure must be a hard error");
     if let Err(e) = res {
@@ -67,28 +77,32 @@ fn test_gate_fail_closed_robustness() {
 fn test_gate_platform_selection_consistency() {
     let sandbox = Guard::default_sandbox();
     let s_type = sandbox.sandbox_type();
-    
+
     #[cfg(target_os = "linux")]
     assert_eq!(s_type, "linux-seccomp");
-    
+
     #[cfg(all(target_os = "macos", feature = "macos-sandbox"))]
     assert_eq!(s_type, "macos-seatbelt");
-    
+
     #[cfg(all(target_os = "windows", feature = "windows-sandbox"))]
     assert_eq!(s_type, "windows-job-object");
 
-    #[cfg(not(any(target_os = "linux", all(target_os = "macos", feature = "macos-sandbox"), all(target_os = "windows", feature = "windows-sandbox"))))]
+    #[cfg(not(any(
+        target_os = "linux",
+        all(target_os = "macos", feature = "macos-sandbox"),
+        all(target_os = "windows", feature = "windows-sandbox")
+    )))]
     assert_eq!(s_type, "none");
 }
 
 /// GATE 3: Negative Security Boundary
-/// Ensures that illegal operations (e.g., global filesystem writes) are strictly 
+/// Ensures that illegal operations (e.g., global filesystem writes) are strictly
 /// blocked by the OS-level sandbox, regardless of the policy outcome.
 #[test]
 fn test_gate_negative_security_boundary_write_restriction() {
     let guard = Guard::from_yaml("version: 1\ndefault_mode: workspace_write").unwrap();
     let sandbox = Guard::default_sandbox();
-    
+
     if !sandbox.is_available() || sandbox.sandbox_type() == "none" {
         return; // Skip if no real sandbox is active
     }
@@ -122,8 +136,8 @@ fn test_gate_negative_security_boundary_write_restriction() {
     };
 
     let res = guard.execute(&input, sandbox.as_ref());
-    
-    // SUCCESS CRITERIA: 
+
+    // SUCCESS CRITERIA:
     // The write must NOT succeed. This can be manifested as:
     // 1. A hard SandboxError (Err)
     // 2. A Denied outcome
@@ -135,7 +149,7 @@ fn test_gate_negative_security_boundary_write_restriction() {
             ExecuteOutcome::Executed { output, .. } => {
                 assert!(output.exit_code != 0, "Sandbox must block unauthorized global write (exit code must be non-zero). Output: {:?}", output);
             }
-        }
+        },
     }
 
     let _ = std::fs::remove_dir_all(temp_dir);
@@ -178,10 +192,13 @@ fn test_gate_receipt_and_audit_integrity() {
     );
 
     // 2. Verify Integrity
-    assert!(receipt.verify(&public_key.to_bytes()), "Receipt verification failed");
+    assert!(
+        receipt.verify(&public_key.to_bytes()),
+        "Receipt verification failed"
+    );
     assert_eq!(receipt.agent_id, "gate-agent");
     assert_eq!(receipt.decision, "allow");
-    
+
     // 3. Audit check (conceptual - verifying serialization works)
     let json = serde_json::to_string(&receipt).unwrap();
     assert!(json.contains("\"signature\""));

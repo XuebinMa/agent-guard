@@ -1,26 +1,24 @@
 //! Cross-platform parity integration tests.
 //! Verifies UCM (Unified Capability Model) behavior across all platforms.
 
-use std::path::PathBuf;
 use agent_guard_sdk::{
     guard::{ExecuteOutcome, Guard},
-    Context, GuardInput, Tool, TrustLevel, Sandbox,
-    SandboxContext,
+    Context, GuardInput, Sandbox, Tool, TrustLevel,
 };
-use agent_guard_sandbox::CapabilityDoctor;
+use std::path::PathBuf;
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
 fn get_active_sandbox() -> Box<dyn Sandbox> {
     #[cfg(target_os = "linux")]
     return Box::new(agent_guard_sandbox::SeccompSandbox::new());
-    
+
     #[cfg(target_os = "macos")]
     return Box::new(agent_guard_sandbox::SeatbeltSandbox);
-    
+
     #[cfg(target_os = "windows")]
     return Box::new(agent_guard_sandbox::JobObjectSandbox);
-    
+
     #[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
     return Box::new(agent_guard_sandbox::NoopSandbox);
 }
@@ -45,14 +43,14 @@ fn input(command: &str, working_dir: PathBuf) -> GuardInput {
 fn test_parity_filesystem_write_workspace() {
     let sandbox = get_active_sandbox();
     let caps = sandbox.capabilities();
-    
+
     if !caps.filesystem_write_workspace {
         return; // Skip if capability not claimed
     }
 
     let temp_dir = std::env::temp_dir().join("agent_guard_parity_ws");
     let _ = std::fs::create_dir_all(&temp_dir);
-    
+
     let guard = Guard::from_yaml("version: 1\ndefault_mode: workspace_write").unwrap();
     let target_file = temp_dir.join("test.txt");
     let cmd = if cfg!(windows) {
@@ -60,15 +58,19 @@ fn test_parity_filesystem_write_workspace() {
     } else {
         format!("echo test > {}", target_file.display())
     };
-    
+
     let res = guard.execute(&input(&cmd, temp_dir.clone()), sandbox.as_ref());
     assert!(res.is_ok(), "Sandbox execution should not fail");
-    
+
     if let ExecuteOutcome::Executed { output, .. } = res.unwrap() {
-        assert_eq!(output.exit_code, 0, "Write to workspace should succeed. Stderr: {}", output.stderr);
+        assert_eq!(
+            output.exit_code, 0,
+            "Write to workspace should succeed. Stderr: {}",
+            output.stderr
+        );
         assert!(target_file.exists(), "File should have been created");
     }
-    
+
     let _ = std::fs::remove_dir_all(temp_dir);
 }
 
@@ -76,16 +78,16 @@ fn test_parity_filesystem_write_workspace() {
 fn test_parity_filesystem_write_global() {
     let sandbox = get_active_sandbox();
     let caps = sandbox.capabilities();
-    
+
     if caps.filesystem_write_global {
         return; // Only test restriction
     }
 
     let temp_dir = std::env::temp_dir().join("agent_guard_parity_global_write");
     let _ = std::fs::create_dir_all(&temp_dir);
-    
+
     let guard = Guard::from_yaml("version: 1\ndefault_mode: workspace_write").unwrap();
-    
+
     // Attempt to write to a "global" path (outside workspace)
     // On Windows, we use C:\Windows\test.txt (which requires Low-IL restriction)
     // On Unix, we try /usr/bin/test.txt or similar if possible, or just a sibling of temp_dir
@@ -94,22 +96,26 @@ fn test_parity_filesystem_write_global() {
     } else {
         PathBuf::from("/etc/agent_guard_parity_test.txt")
     };
-    
+
     let cmd = if cfg!(windows) {
         format!("echo test > \"{}\"", global_path.display())
     } else {
         format!("echo test > {}", global_path.display())
     };
-    
+
     let res = guard.execute(&input(&cmd, temp_dir.clone()), sandbox.as_ref());
-    
+
     if let Ok(ExecuteOutcome::Executed { output, .. }) = res {
         // If it "executed", check if it actually failed at OS level
         let stderr = output.stderr.to_lowercase();
         let access_denied = stderr.contains("denied") || stderr.contains("permission");
-        assert!(access_denied || output.exit_code != 0, "Write to global path should be restricted. Output: {:?}", output);
+        assert!(
+            access_denied || output.exit_code != 0,
+            "Write to global path should be restricted. Output: {:?}",
+            output
+        );
     }
-    
+
     let _ = std::fs::remove_dir_all(temp_dir);
 }
 
@@ -117,16 +123,30 @@ fn test_parity_filesystem_write_global() {
 fn test_parity_filesystem_read_global() {
     let sandbox = get_active_sandbox();
     let caps = sandbox.capabilities();
-    
+
     if !caps.filesystem_read_global {
         // Test that read is BLOCKED if capability is false
         let guard = Guard::from_yaml("version: 1\ndefault_mode: read_only").unwrap();
-        let target = if cfg!(windows) { "C:\\Windows\\System32\\drivers\\etc\\hosts" } else { "/etc/hosts" };
-        let cmd = if cfg!(windows) { format!("type {}", target) } else { format!("cat {}", target) };
-        
-        let res = guard.execute(&input(&cmd, std::env::current_dir().unwrap()), sandbox.as_ref());
+        let target = if cfg!(windows) {
+            "C:\\Windows\\System32\\drivers\\etc\\hosts"
+        } else {
+            "/etc/hosts"
+        };
+        let cmd = if cfg!(windows) {
+            format!("type {}", target)
+        } else {
+            format!("cat {}", target)
+        };
+
+        let res = guard.execute(
+            &input(&cmd, std::env::current_dir().unwrap()),
+            sandbox.as_ref(),
+        );
         if let Ok(ExecuteOutcome::Executed { output, .. }) = res {
-            assert!(output.exit_code != 0 || output.stdout.is_empty(), "Global read should be restricted");
+            assert!(
+                output.exit_code != 0 || output.stdout.is_empty(),
+                "Global read should be restricted"
+            );
         }
     }
 }
@@ -135,18 +155,29 @@ fn test_parity_filesystem_read_global() {
 fn test_parity_network_outbound() {
     let sandbox = get_active_sandbox();
     let caps = sandbox.capabilities();
-    
+
     if caps.network_outbound_any {
         return; // Current sandbox allows network
     }
 
     let guard = Guard::from_yaml("version: 1\ndefault_mode: full_access").unwrap();
     // Try a simple ping or curl
-    let cmd = if cfg!(windows) { "ping -n 1 8.8.8.8" } else { "ping -c 1 8.8.8.8" };
-    
-    let res = guard.execute(&input(cmd, std::env::current_dir().unwrap()), sandbox.as_ref());
+    let cmd = if cfg!(windows) {
+        "ping -n 1 8.8.8.8"
+    } else {
+        "ping -c 1 8.8.8.8"
+    };
+
+    let res = guard.execute(
+        &input(cmd, std::env::current_dir().unwrap()),
+        sandbox.as_ref(),
+    );
     if let Ok(ExecuteOutcome::Executed { output, .. }) = res {
-        assert!(output.exit_code != 0, "Network outbound should be blocked. Output: {:?}", output);
+        assert!(
+            output.exit_code != 0,
+            "Network outbound should be blocked. Output: {:?}",
+            output
+        );
     }
 }
 
@@ -154,15 +185,22 @@ fn test_parity_network_outbound() {
 fn test_parity_child_process_spawn() {
     let sandbox = get_active_sandbox();
     let caps = sandbox.capabilities();
-    
+
     if !caps.child_process_spawn {
         return;
     }
 
     let guard = Guard::from_yaml("version: 1\ndefault_mode: read_only").unwrap();
-    let cmd = if cfg!(windows) { "cmd /C \"echo 1\"" } else { "sh -c \"echo 1\"" };
-    
-    let res = guard.execute(&input(cmd, std::env::current_dir().unwrap()), sandbox.as_ref());
+    let cmd = if cfg!(windows) {
+        "cmd /C \"echo 1\""
+    } else {
+        "sh -c \"echo 1\""
+    };
+
+    let res = guard.execute(
+        &input(cmd, std::env::current_dir().unwrap()),
+        sandbox.as_ref(),
+    );
     assert!(res.is_ok());
     if let ExecuteOutcome::Executed { output, .. } = res.unwrap() {
         assert_eq!(output.exit_code, 0);

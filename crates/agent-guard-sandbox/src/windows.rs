@@ -1,4 +1,4 @@
-use crate::{Sandbox, SandboxContext, SandboxError, SandboxOutput, SandboxResult};
+use crate::{Sandbox, SandboxContext, SandboxError, SandboxResult};
 
 /// Windows sandbox implementation using Job Objects and Restricted Tokens.
 ///
@@ -22,7 +22,7 @@ impl Sandbox for JobObjectSandbox {
             filesystem_read_global: true, // Low-IL allows global read
             filesystem_write_workspace: true,
             filesystem_write_global: false, // Low-IL provides write isolation
-            network_outbound_any: true,    // Current prototype allows all network
+            network_outbound_any: true,     // Current prototype allows all network
             network_outbound_internet: true,
             network_outbound_local: true,
             child_process_spawn: true,
@@ -32,7 +32,9 @@ impl Sandbox for JobObjectSandbox {
 
     #[cfg(not(windows))]
     fn execute(&self, _command: &str, _context: &SandboxContext) -> SandboxResult {
-        Err(SandboxError::NotAvailable("JobObjectSandbox requires Windows.".to_string()))
+        Err(SandboxError::NotAvailable(
+            "JobObjectSandbox requires Windows.".to_string(),
+        ))
     }
 
     #[cfg(windows)]
@@ -44,7 +46,9 @@ impl Sandbox for JobObjectSandbox {
         // Safety: Creating a private job object for the command.
         let job = unsafe { CreateJobObjectW(std::ptr::null(), std::ptr::null()) };
         if job == 0 {
-            return Err(SandboxError::ExecutionFailed("Windows Sandbox: Fail-closed - Failed to create Job Object".to_string()));
+            return Err(SandboxError::ExecutionFailed(
+                "Windows Sandbox: Fail-closed - Failed to create Job Object".to_string(),
+            ));
         }
 
         // RAII handle to ensure cleanup
@@ -61,14 +65,14 @@ impl Sandbox for JobObjectSandbox {
         // SetInformationJobObject is called with valid handles and pointers.
         unsafe {
             let mut info: JOBOBJECT_EXTENDED_LIMIT_INFORMATION = std::mem::zeroed();
-            info.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE 
-                | JOB_OBJECT_LIMIT_DIE_ON_UNHANDLED_EXCEPTION;
-            
+            info.BasicLimitInformation.LimitFlags =
+                JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE | JOB_OBJECT_LIMIT_DIE_ON_UNHANDLED_EXCEPTION;
+
             // Apply memory limits if specified in context (conceptual for prototype)
             // For now, we apply a safe default of 256MB for the sandbox if not specified
             info.BasicLimitInformation.LimitFlags |= JOB_OBJECT_LIMIT_PROCESS_MEMORY;
             info.ProcessMemoryLimit = 256 * 1024 * 1024; // 256MB default limit
-            
+
             let res = SetInformationJobObject(
                 job,
                 JobObjectExtendedLimitInformation,
@@ -76,7 +80,9 @@ impl Sandbox for JobObjectSandbox {
                 std::mem::size_of::<JOBOBJECT_EXTENDED_LIMIT_INFORMATION>() as u32,
             );
             if res == 0 {
-                return Err(SandboxError::ExecutionFailed("Windows Sandbox: Fail-closed - Failed to configure Job Object".to_string()));
+                return Err(SandboxError::ExecutionFailed(
+                    "Windows Sandbox: Fail-closed - Failed to configure Job Object".to_string(),
+                ));
             }
         }
 
@@ -124,6 +130,7 @@ impl Drop for TokenHandle {
     }
 }
 
+#[allow(dead_code)]
 struct WaitOutput {
     stdout: String,
     stderr: String,
@@ -131,10 +138,16 @@ struct WaitOutput {
 }
 
 #[cfg(windows)]
-fn create_pipe() -> Result<(windows_sys::Win32::Foundation::HANDLE, windows_sys::Win32::Foundation::HANDLE), SandboxError> {
-    use windows_sys::Win32::System::Pipes::CreatePipe;
+fn create_pipe() -> Result<
+    (
+        windows_sys::Win32::Foundation::HANDLE,
+        windows_sys::Win32::Foundation::HANDLE,
+    ),
+    SandboxError,
+> {
     use windows_sys::Win32::Foundation::{SetHandleInformation, HANDLE_FLAG_INHERIT};
     use windows_sys::Win32::Security::SECURITY_ATTRIBUTES;
+    use windows_sys::Win32::System::Pipes::CreatePipe;
 
     unsafe {
         let mut read_pipe = 0;
@@ -146,14 +159,18 @@ fn create_pipe() -> Result<(windows_sys::Win32::Foundation::HANDLE, windows_sys:
         };
 
         if CreatePipe(&mut read_pipe, &mut write_pipe, &sa, 0) == 0 {
-            return Err(SandboxError::ExecutionFailed("Windows Sandbox: Failed to create pipe".to_string()));
+            return Err(SandboxError::ExecutionFailed(
+                "Windows Sandbox: Failed to create pipe".to_string(),
+            ));
         }
 
         // Ensure read end is NOT inherited
         if SetHandleInformation(read_pipe, HANDLE_FLAG_INHERIT, 0) == 0 {
             let _ = windows_sys::Win32::Foundation::CloseHandle(read_pipe);
             let _ = windows_sys::Win32::Foundation::CloseHandle(write_pipe);
-            return Err(SandboxError::ExecutionFailed("Windows Sandbox: Failed to configure pipe inheritance".to_string()));
+            return Err(SandboxError::ExecutionFailed(
+                "Windows Sandbox: Failed to configure pipe inheritance".to_string(),
+            ));
         }
 
         Ok((read_pipe, write_pipe))
@@ -169,7 +186,14 @@ fn read_handle_to_string(handle: windows_sys::Win32::Foundation::HANDLE) -> Stri
     // Safety: Reading from a valid handle is safe. The buffer is pre-allocated.
     unsafe {
         loop {
-            if ReadFile(handle, buffer.as_mut_ptr() as *mut _, buffer.len() as u32, &mut bytes_read, std::ptr::null_mut()) == 0 {
+            if ReadFile(
+                handle,
+                buffer.as_mut_ptr() as *mut _,
+                buffer.len() as u32,
+                &mut bytes_read,
+                std::ptr::null_mut(),
+            ) == 0
+            {
                 break;
             }
             if bytes_read == 0 {
@@ -183,29 +207,63 @@ fn read_handle_to_string(handle: windows_sys::Win32::Foundation::HANDLE) -> Stri
 
 #[cfg(windows)]
 fn create_low_integrity_token() -> Result<windows_sys::Win32::Foundation::HANDLE, SandboxError> {
+    use windows_sys::Win32::Foundation::{CloseHandle, HANDLE};
     use windows_sys::Win32::Security::*;
     use windows_sys::Win32::System::Threading::*;
-    use windows_sys::Win32::Foundation::{CloseHandle, HANDLE};
 
     unsafe {
         let mut process_token: HANDLE = 0;
-        if OpenProcessToken(GetCurrentProcess(), TOKEN_DUPLICATE | TOKEN_QUERY | TOKEN_ADJUST_DEFAULT | TOKEN_ASSIGN_PRIMARY, &mut process_token) == 0 {
-            return Err(SandboxError::ExecutionFailed("Windows Sandbox: Failed to open process token".to_string()));
+        if OpenProcessToken(
+            GetCurrentProcess(),
+            TOKEN_DUPLICATE | TOKEN_QUERY | TOKEN_ADJUST_DEFAULT | TOKEN_ASSIGN_PRIMARY,
+            &mut process_token,
+        ) == 0
+        {
+            return Err(SandboxError::ExecutionFailed(
+                "Windows Sandbox: Failed to open process token".to_string(),
+            ));
         }
         let _pt_guard = SafeHandle(process_token);
 
         let mut low_token: HANDLE = 0;
         // Point 9 Fix: Use minimal permissions for the duplicated token
-        if DuplicateTokenEx(process_token, TOKEN_QUERY | TOKEN_DUPLICATE | TOKEN_ADJUST_DEFAULT | TOKEN_ASSIGN_PRIMARY, std::ptr::null(), SecurityImpersonation, TokenPrimary, &mut low_token) == 0 {
-            return Err(SandboxError::ExecutionFailed("Windows Sandbox: Failed to duplicate token".to_string()));
+        if DuplicateTokenEx(
+            process_token,
+            TOKEN_QUERY | TOKEN_DUPLICATE | TOKEN_ADJUST_DEFAULT | TOKEN_ASSIGN_PRIMARY,
+            std::ptr::null(),
+            SecurityImpersonation,
+            TokenPrimary,
+            &mut low_token,
+        ) == 0
+        {
+            return Err(SandboxError::ExecutionFailed(
+                "Windows Sandbox: Failed to duplicate token".to_string(),
+            ));
         }
         let _lt_guard = SafeHandle(low_token);
-        
+
         let mut integrity_sid: *mut std::ffi::c_void = std::ptr::null_mut();
         // S-1-16-4096 (Low Mandatory Level)
-        let mut low_integrity_sid_auth = SID_IDENTIFIER_AUTHORITY { Value: [0, 0, 0, 0, 0, 16] };
-        if AllocateAndInitializeSid(&low_integrity_sid_auth, 1, 0x1000, 0, 0, 0, 0, 0, 0, 0, &mut integrity_sid) == 0 {
-            return Err(SandboxError::ExecutionFailed("Windows Sandbox: Failed to allocate SID".to_string()));
+        let mut low_integrity_sid_auth = SID_IDENTIFIER_AUTHORITY {
+            Value: [0, 0, 0, 0, 0, 16],
+        };
+        if AllocateAndInitializeSid(
+            &low_integrity_sid_auth,
+            1,
+            0x1000,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            &mut integrity_sid,
+        ) == 0
+        {
+            return Err(SandboxError::ExecutionFailed(
+                "Windows Sandbox: Failed to allocate SID".to_string(),
+            ));
         }
 
         let mut tml = TOKEN_MANDATORY_LABEL {
@@ -215,11 +273,18 @@ fn create_low_integrity_token() -> Result<windows_sys::Win32::Foundation::HANDLE
             },
         };
 
-        let res = SetTokenInformation(low_token, TokenIntegrityLevel, &tml as *const _ as *const _, std::mem::size_of::<TOKEN_MANDATORY_LABEL>() as u32);
+        let res = SetTokenInformation(
+            low_token,
+            TokenIntegrityLevel,
+            &tml as *const _ as *const _,
+            std::mem::size_of::<TOKEN_MANDATORY_LABEL>() as u32,
+        );
         FreeSid(integrity_sid);
 
         if res == 0 {
-            return Err(SandboxError::ExecutionFailed("Windows Sandbox: Failed to set token integrity level".to_string()));
+            return Err(SandboxError::ExecutionFailed(
+                "Windows Sandbox: Failed to set token integrity level".to_string(),
+            ));
         }
 
         // Return the raw handle, but we need to prevent the guard from closing it here
@@ -237,10 +302,10 @@ fn spawn_low_integrity_process(
     job: windows_sys::Win32::Foundation::HANDLE,
 ) -> Result<WaitOutput, SandboxError> {
     use std::os::windows::ffi::OsStrExt;
-    use windows_sys::Win32::System::Threading::*;
-    use windows_sys::Win32::System::JobObjects::*;
-    use windows_sys::Win32::Security::*;
     use windows_sys::Win32::Foundation::{CloseHandle, HANDLE};
+    use windows_sys::Win32::Security::*;
+    use windows_sys::Win32::System::JobObjects::*;
+    use windows_sys::Win32::System::Threading::*;
 
     unsafe {
         // 1. Create Pipes for stdout and stderr
@@ -257,8 +322,15 @@ fn spawn_low_integrity_process(
         // We wrap the command in double quotes and escape internal double quotes.
         let escaped_command = command.replace("\"", "\"\"");
         let cmd_string = format!("cmd.exe /C \"{}\"", escaped_command);
-        let mut cmd_vec: Vec<u16> = std::ffi::OsStr::new(&cmd_string).encode_wide().chain(std::iter::once(0)).collect();
-        let mut working_dir_vec: Vec<u16> = working_dir.as_os_str().encode_wide().chain(std::iter::once(0)).collect();
+        let mut cmd_vec: Vec<u16> = std::ffi::OsStr::new(&cmd_string)
+            .encode_wide()
+            .chain(std::iter::once(0))
+            .collect();
+        let mut working_dir_vec: Vec<u16> = working_dir
+            .as_os_str()
+            .encode_wide()
+            .chain(std::iter::once(0))
+            .collect();
 
         let mut si: STARTUPINFOW = std::mem::zeroed();
         si.cb = std::mem::size_of::<STARTUPINFOW>() as u32;
@@ -288,7 +360,9 @@ fn spawn_low_integrity_process(
 
         if success == 0 {
             let err = std::io::Error::last_os_error();
-            return Err(SandboxError::ExecutionFailed(format!("Windows Sandbox: CreateProcessAsUserW failed: {err}")));
+            return Err(SandboxError::ExecutionFailed(format!(
+                "Windows Sandbox: CreateProcessAsUserW failed: {err}"
+            )));
         }
 
         let _process_guard = SafeHandle(pi.hProcess);
@@ -297,7 +371,9 @@ fn spawn_low_integrity_process(
         // 3. Assign to Job Object before resuming
         if AssignProcessToJobObject(job, pi.hProcess) == 0 {
             let _ = TerminateProcess(pi.hProcess, 1);
-            return Err(SandboxError::ExecutionFailed("Windows Sandbox: Fail-closed - Failed to assign process to job".to_string()));
+            return Err(SandboxError::ExecutionFailed(
+                "Windows Sandbox: Fail-closed - Failed to assign process to job".to_string(),
+            ));
         }
 
         // 4. Close parent's write handles so pipes close when child exits
@@ -314,7 +390,9 @@ fn spawn_low_integrity_process(
         // 6. Resume process
         if ResumeThread(pi.hThread) == u32::MAX {
             let _ = TerminateProcess(pi.hProcess, 1);
-            return Err(SandboxError::ExecutionFailed("Windows Sandbox: Failed to resume low-IL process".to_string()));
+            return Err(SandboxError::ExecutionFailed(
+                "Windows Sandbox: Failed to resume low-IL process".to_string(),
+            ));
         }
 
         // 7. Wait for completion with optional timeout
@@ -329,8 +407,12 @@ fn spawn_low_integrity_process(
         let mut exit_code: u32 = 0;
         GetExitCodeProcess(pi.hProcess, &mut exit_code);
 
-        let stdout = stdout_thread.join().unwrap_or_else(|_| "[Error reading stdout]".to_string());
-        let stderr = stderr_thread.join().unwrap_or_else(|_| "[Error reading stderr]".to_string());
+        let stdout = stdout_thread
+            .join()
+            .unwrap_or_else(|_| "[Error reading stdout]".to_string());
+        let stderr = stderr_thread
+            .join()
+            .unwrap_or_else(|_| "[Error reading stderr]".to_string());
 
         Ok(WaitOutput {
             stdout,
@@ -341,18 +423,22 @@ fn spawn_low_integrity_process(
 }
 
 #[cfg(not(windows))]
+#[allow(dead_code)]
 fn create_low_integrity_token() -> Result<u64, SandboxError> {
     Ok(0)
 }
 
 #[cfg(not(windows))]
+#[allow(dead_code)]
 fn spawn_low_integrity_process(
     _command: &str,
     _working_dir: &std::path::Path,
     _token: u64,
     _job: u64,
 ) -> Result<WaitOutput, SandboxError> {
-    Err(SandboxError::NotAvailable("JobObjectSandbox requires Windows.".to_string()))
+    Err(SandboxError::NotAvailable(
+        "JobObjectSandbox requires Windows.".to_string(),
+    ))
 }
 
 #[cfg(all(test, windows))]
@@ -371,7 +457,10 @@ mod tests {
             timeout_ms: None,
         };
         let res = sandbox.execute("echo test_output_capture", &ctx);
-        assert!(res.is_ok(), "Windows execution should succeed within Job Object");
+        assert!(
+            res.is_ok(),
+            "Windows execution should succeed within Job Object"
+        );
         let output = res.unwrap();
         // Now stdout should be captured!
         assert!(output.stdout.contains("test_output_capture"));
@@ -385,16 +474,19 @@ mod tests {
             working_directory: PathBuf::from("."),
             timeout_ms: None,
         };
-        
+
         // Try writing to C:\Windows (should fail under Low-IL)
         // cmd /C "echo test > C:\Windows\test.txt" usually prints "Access is denied" to stderr.
         let res = sandbox.execute("echo test > C:\\Windows\\agent_guard_low_il_test.txt", &ctx);
-        
+
         if let Ok(output) = res {
             // Under Low-IL, this should trigger "Access is denied" in cmd.exe
             let stderr = output.stderr.to_lowercase();
-            assert!(stderr.contains("access is denied") || output.exit_code != 0, 
-                "Low-IL must restrict writing to system directories. Stderr: {}", output.stderr);
+            assert!(
+                stderr.contains("access is denied") || output.exit_code != 0,
+                "Low-IL must restrict writing to system directories. Stderr: {}",
+                output.stderr
+            );
         }
     }
 
@@ -403,25 +495,25 @@ mod tests {
         let sandbox = JobObjectSandbox;
         let temp_dir = std::env::temp_dir().join("agent_guard_p5_test");
         let _ = std::fs::create_dir_all(&temp_dir);
-        
+
         let ctx = SandboxContext {
             mode: PolicyMode::ReadOnly,
             working_directory: temp_dir.clone(),
             timeout_ms: None,
         };
-        
+
         let res = sandbox.execute("echo hello_from_sandbox", &ctx);
         assert!(res.is_ok());
         let output = res.unwrap();
         assert!(output.stdout.contains("hello_from_sandbox"));
-        
+
         let _ = std::fs::remove_dir_all(temp_dir);
     }
 
     #[test]
     fn test_windows_fail_closed_logic() {
         let sandbox = JobObjectSandbox;
-        
+
         // 1. Invalid working directory should fail-closed during process creation
         let ctx_invalid_dir = SandboxContext {
             mode: PolicyMode::ReadOnly,
@@ -429,7 +521,10 @@ mod tests {
             timeout_ms: None,
         };
         let res = sandbox.execute("echo fail", &ctx_invalid_dir);
-        assert!(res.is_err(), "Execution in non-existent directory should fail-closed");
+        assert!(
+            res.is_err(),
+            "Execution in non-existent directory should fail-closed"
+        );
         if let Err(e) = res {
             assert!(e.to_string().contains("CreateProcessAsUserW failed"));
         }
@@ -441,7 +536,10 @@ mod tests {
             timeout_ms: None,
         };
         let res_empty = sandbox.execute("", &ctx_valid);
-        assert!(res_empty.is_ok(), "Empty command should execute cmd /C gracefully");
+        assert!(
+            res_empty.is_ok(),
+            "Empty command should execute cmd /C gracefully"
+        );
     }
 
     #[test]
@@ -450,18 +548,20 @@ mod tests {
         // it is NOT inheritable by default, thus the child cannot see it.
         use std::fs::File;
         use std::os::windows::io::AsRawHandle;
-        
+
         let file = File::create("sensitive_parent_data.txt").unwrap();
         let handle = file.as_raw_handle() as windows_sys::Win32::Foundation::HANDLE;
-        
+
         // Verify that the handle is NOT inheritable by default (Win32 default for CreateFile)
         let mut flags: u32 = 0;
         unsafe {
             windows_sys::Win32::Foundation::GetHandleInformation(handle, &mut flags);
         }
-        assert!((flags & windows_sys::Win32::Foundation::HANDLE_FLAG_INHERIT) == 0, 
-            "Sensitive parent handle should not be inheritable by default.");
-            
+        assert!(
+            (flags & windows_sys::Win32::Foundation::HANDLE_FLAG_INHERIT) == 0,
+            "Sensitive parent handle should not be inheritable by default."
+        );
+
         std::fs::remove_file("sensitive_parent_data.txt").unwrap();
     }
 
@@ -469,25 +569,41 @@ mod tests {
     fn test_windows_low_il_token_integrity_audit() {
         // Strong test: Verify that the token we create actually HAS Low integrity level.
         use windows_sys::Win32::Security::*;
-        
+
         let res = create_low_integrity_token();
         assert!(res.is_ok());
         let token = res.unwrap();
         let _guard = TokenHandle(token);
-        
+
         let mut len: u32 = 0;
         unsafe {
-            GetTokenInformation(token, TokenIntegrityLevel, std::ptr::null_mut(), 0, &mut len);
+            GetTokenInformation(
+                token,
+                TokenIntegrityLevel,
+                std::ptr::null_mut(),
+                0,
+                &mut len,
+            );
             let mut buffer = vec![0u8; len as usize];
-            if GetTokenInformation(token, TokenIntegrityLevel, buffer.as_mut_ptr() as *mut _, len, &mut len) != 0 {
+            if GetTokenInformation(
+                token,
+                TokenIntegrityLevel,
+                buffer.as_mut_ptr() as *mut _,
+                len,
+                &mut len,
+            ) != 0
+            {
                 let tml = &*(buffer.as_ptr() as *const TOKEN_MANDATORY_LABEL);
                 let sid = tml.Label.Sid;
-                
+
                 let sub_authority_count = *GetSidSubAuthorityCount(sid);
                 let last_sub_authority = *GetSidSubAuthority(sid, sub_authority_count as u32 - 1);
-                
+
                 // Low Mandatory Level RID is 0x1000 (4096)
-                assert_eq!(last_sub_authority, 0x1000, "Token RID should be 0x1000 (Low Integrity Level)");
+                assert_eq!(
+                    last_sub_authority, 0x1000,
+                    "Token RID should be 0x1000 (Low Integrity Level)"
+                );
             } else {
                 panic!("Failed to get token information");
             }

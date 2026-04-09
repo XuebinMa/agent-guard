@@ -1,5 +1,5 @@
 use agent_guard_core::{Context, Tool};
-use agent_guard_sdk::{get_metrics, Guard, prometheus_client};
+use agent_guard_sdk::{get_metrics, prometheus_client, Guard};
 use prometheus_client::encoding::text::encode;
 
 /// A simple example showing how to access and encode agent-guard metrics.
@@ -24,7 +24,7 @@ default_mode: read_only
 
     // An allowed call
     guard.check_tool(Tool::Bash, r#"{"command":"ls"}"#, context.clone());
-    
+
     // An allowed call (different tool name for demonstration)
     guard.check_tool(Tool::ReadFile, r#"{"path":"README.md"}"#, context.clone());
 

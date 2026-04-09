@@ -48,7 +48,10 @@ impl CustomToolId {
         if id.is_empty() || id.len() > Self::MAX_LEN {
             return Err(CustomToolIdError::InvalidLength);
         }
-        if !id.chars().all(|c| c.is_ascii_alphanumeric() || "._-".contains(c)) {
+        if !id
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || "._-".contains(c))
+        {
             return Err(CustomToolIdError::InvalidChars);
         }
         if Self::BUILTIN_NAMES.contains(&id.to_lowercase().as_str()) {

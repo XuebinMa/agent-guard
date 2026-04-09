@@ -1,5 +1,5 @@
 use agent_guard_core::{Context, Tool, TrustLevel};
-use agent_guard_sdk::{Guard, ExecuteOutcome};
+use agent_guard_sdk::{ExecuteOutcome, Guard};
 use std::fs;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -10,7 +10,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let _ = fs::remove_file(audit_path);
 
     // 1. Setup Policy with Deny Fuse
-    let yaml = format!(r#"
+    let yaml = format!(
+        r#"
 version: 1
 default_mode: read_only
 tools:
@@ -27,7 +28,9 @@ anomaly:
     enabled: true
     threshold: 2
     window_seconds: 60
-"#, audit_path);
+"#,
+        audit_path
+    );
 
     let guard = Guard::from_yaml(&yaml)?;
     let context = Context {
@@ -75,7 +78,14 @@ anomaly:
     // 5. Show Audit Logs
     println!("📜 Audit Records (Last 2 lines):");
     let audit_log = fs::read_to_string(audit_path)?;
-    for line in audit_log.lines().rev().take(2).collect::<Vec<_>>().into_iter().rev() {
+    for line in audit_log
+        .lines()
+        .rev()
+        .take(2)
+        .collect::<Vec<_>>()
+        .into_iter()
+        .rev()
+    {
         println!("{}", line);
     }
     println!("\n====================================================");

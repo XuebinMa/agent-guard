@@ -37,20 +37,17 @@ impl<'a> ExtractedPayload<'a> {
 
 /// Extract path from `{"path": "..."}` (used by ReadFile / WriteFile).
 pub fn extract_path(payload: &str) -> Result<ExtractedPayload<'_>, GuardDecision> {
-    extract_string_field(payload, "path")
-        .map(ExtractedPayload::Path)
+    extract_string_field(payload, "path").map(ExtractedPayload::Path)
 }
 
 /// Extract url from `{"url": "..."}` (used by HttpRequest).
 pub fn extract_url(payload: &str) -> Result<ExtractedPayload<'_>, GuardDecision> {
-    extract_string_field(payload, "url")
-        .map(ExtractedPayload::Url)
+    extract_string_field(payload, "url").map(ExtractedPayload::Url)
 }
 
 /// Extract command from `{"command": "..."}` (used by Tool::Bash).
 pub fn extract_bash_command(payload: &str) -> Result<ExtractedPayload<'_>, GuardDecision> {
-    extract_string_field(payload, "command")
-        .map(ExtractedPayload::Command)
+    extract_string_field(payload, "command").map(ExtractedPayload::Command)
 }
 
 fn extract_string_field(payload: &str, field: &str) -> Result<String, GuardDecision> {

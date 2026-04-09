@@ -1,6 +1,6 @@
 use agent_guard_core::{Context, Tool, TrustLevel};
-use agent_guard_sdk::{Guard, ExecuteOutcome, GuardInput};
 use agent_guard_sandbox::NoopSandbox;
+use agent_guard_sdk::{ExecuteOutcome, Guard, GuardInput};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("🛡️ agent-guard Demo 4: The Comparison (Security Tiers)");
@@ -21,7 +21,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         context,
     };
 
-    println!("👉 Scenario: Agent is compromised and tries to exfiltrate data or modify system keys.");
+    println!(
+        "👉 Scenario: Agent is compromised and tries to exfiltrate data or modify system keys."
+    );
     println!("👉 Target Action: '{}'\n", malicious_cmd);
 
     // --- Tier 0: No Guard (Simulated Standard Framework) ---
@@ -37,7 +39,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     if let ExecuteOutcome::Denied { decision, .. } = res_p1 {
         println!("   Status: ✅ BLOCKED by Rules");
         println!("   Reason: {:?}", decision);
-        println!("   Risk:   If a complex bypass (base64, obfuscation) is used, Tier 1 may fail.\n");
+        println!(
+            "   Risk:   If a complex bypass (base64, obfuscation) is used, Tier 1 may fail.\n"
+        );
     }
 
     // --- Tier 2: Full agent-guard (Rules + OS Sandbox) ---
@@ -45,7 +49,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Use the real default sandbox for the platform
     let sandbox = Guard::default_sandbox();
     let guard_p2 = Guard::from_yaml("version: 1\ndefault_mode: read_only")?;
-    
+
     let res_p2 = guard_p2.execute(&input, sandbox.as_ref())?;
     match res_p2 {
         ExecuteOutcome::Denied { .. } => {
@@ -54,7 +58,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         ExecuteOutcome::Executed { output, .. } => {
             if output.exit_code != 0 {
                 println!("   Status: ✅✅ BLOCKED by OS Sandbox (Second Line)");
-                println!("   Result: Command execution attempted but OS kernel prevented the write.");
+                println!(
+                    "   Result: Command execution attempted but OS kernel prevented the write."
+                );
             }
         }
         _ => {}

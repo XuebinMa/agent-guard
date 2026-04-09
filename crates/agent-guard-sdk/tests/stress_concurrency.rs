@@ -1,6 +1,6 @@
 use agent_guard_core::{Context, DecisionCode, GuardDecision, Tool, TrustLevel};
-use agent_guard_sdk::{get_metrics, ExecuteOutcome, Guard, GuardInput, ExecutionReceipt};
 use agent_guard_sandbox::NoopSandbox;
+use agent_guard_sdk::{get_metrics, ExecuteOutcome, ExecutionReceipt, Guard, GuardInput};
 use ed25519_dalek::SigningKey;
 use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
@@ -38,9 +38,13 @@ struct GlobalStats {
 // ── Test Logic ──────────────────────────────────────────────────────────────
 
 async fn run_stress_tier(agent_count: usize, duration_secs: u64, tier_name: &str) {
-    println!("\n🚀 Starting Stress Tier [{}]: {} agents, {}s", tier_name, agent_count, duration_secs);
+    println!(
+        "\n🚀 Starting Stress Tier [{}]: {} agents, {}s",
+        tier_name, agent_count, duration_secs
+    );
 
-    let yaml = format!(r#"
+    let yaml = format!(
+        r#"
 version: 1
 default_mode: read_only
 tools:
@@ -56,7 +60,9 @@ anomaly:
     enabled: true
     threshold: {}
     window_seconds: 60
-"#, ANOMALY_MAX_CALLS, DENY_FUSE_THRESHOLD);
+"#,
+        ANOMALY_MAX_CALLS, DENY_FUSE_THRESHOLD
+    );
 
     let guard = Arc::new(Guard::from_yaml(&yaml).expect("Failed to init Guard"));
     let stats = Arc::new(GlobalStats {
@@ -69,17 +75,20 @@ anomaly:
 
     let start_time = Instant::now();
     let end_time = start_time + Duration::from_secs(duration_secs);
-    
+
     let mut workers: Vec<JoinHandle<()>> = Vec::new();
 
     for i in 0..agent_count {
         let guard = guard.clone();
         let stats = stats.clone();
         let agent_id = format!("{}-agent-{}", TEST_PREFIX, i);
-        
+
         workers.push(tokio::spawn(async move {
             let mut rng = StdRng::seed_from_u64(i as u64);
-            let mut shadow = ShadowState { denial_count: 0, is_locked: false };
+            let mut shadow = ShadowState {
+                denial_count: 0,
+                is_locked: false,
+            };
             let sandbox = NoopSandbox;
 
             while Instant::now() < end_time {
@@ -100,8 +109,12 @@ anomaly:
                 };
 
                 // If anomaly trigger, fire many requests quickly
-                let burst = if matches!(traffic, TrafficType::AnomalyTrigger) { 15 } else { 1 };
-                
+                let burst = if matches!(traffic, TrafficType::AnomalyTrigger) {
+                    15
+                } else {
+                    1
+                };
+
                 for _ in 0..burst {
                     let context = Context {
                         agent_id: Some(agent_id.clone()),
@@ -117,18 +130,25 @@ anomaly:
                         context,
                     };
 
-                    let res = guard.execute(&input, &sandbox).expect("SDK execution panicked");
+                    let res = guard
+                        .execute(&input, &sandbox)
+                        .expect("SDK execution panicked");
                     stats.total_requests.fetch_add(1, Ordering::SeqCst);
 
                     match res {
                         ExecuteOutcome::Executed { .. } => {
                             stats.actual_allows.fetch_add(1, Ordering::SeqCst);
-                            assert!(!shadow.is_locked, "Agent {} should not be able to execute while locked", agent_id);
+                            assert!(
+                                !shadow.is_locked,
+                                "Agent {} should not be able to execute while locked",
+                                agent_id
+                            );
                         }
                         ExecuteOutcome::Denied { decision, .. } => {
                             if let GuardDecision::Deny { reason } = decision {
                                 match reason.code {
-                                    DecisionCode::DeniedByRule | DecisionCode::WriteInReadOnlyMode => {
+                                    DecisionCode::DeniedByRule
+                                    | DecisionCode::WriteInReadOnlyMode => {
                                         stats.actual_denies.fetch_add(1, Ordering::SeqCst);
                                         shadow.denial_count += 1;
                                         // Check if fuse should have triggered
@@ -163,8 +183,14 @@ anomaly:
     }
 
     let elapsed = start_time.elapsed();
-    println!("✅ Tier [{}] Finished in {:?}. Total requests: {}", tier_name, elapsed, stats.total_requests.load(Ordering::SeqCst));
-    println!("   Results: Allows: {}, Denies: {}, Anomalies: {}, Locks: {}", 
+    println!(
+        "✅ Tier [{}] Finished in {:?}. Total requests: {}",
+        tier_name,
+        elapsed,
+        stats.total_requests.load(Ordering::SeqCst)
+    );
+    println!(
+        "   Results: Allows: {}, Denies: {}, Anomalies: {}, Locks: {}",
         stats.actual_allows.load(Ordering::SeqCst),
         stats.actual_denies.load(Ordering::SeqCst),
         stats.actual_anomalies.load(Ordering::SeqCst),
@@ -174,11 +200,15 @@ anomaly:
     // ── Assertions ──
 
     // 1. Consistency: Sum of decisions must equal total requests
-    let sum = stats.actual_allows.load(Ordering::SeqCst) 
-            + stats.actual_denies.load(Ordering::SeqCst)
-            + stats.actual_anomalies.load(Ordering::SeqCst)
-            + stats.actual_locks.load(Ordering::SeqCst);
-    assert_eq!(sum, stats.total_requests.load(Ordering::SeqCst), "Decision sum mismatch");
+    let sum = stats.actual_allows.load(Ordering::SeqCst)
+        + stats.actual_denies.load(Ordering::SeqCst)
+        + stats.actual_anomalies.load(Ordering::SeqCst)
+        + stats.actual_locks.load(Ordering::SeqCst);
+    assert_eq!(
+        sum,
+        stats.total_requests.load(Ordering::SeqCst),
+        "Decision sum mismatch"
+    );
 
     // 2. Metrics Consistency (Sampling)
     let metrics = get_metrics();
@@ -189,13 +219,16 @@ anomaly:
         outcome: "allow".to_string(),
     };
     // Metrics should have values for at least some agents
-    assert!(metrics.decision_total.get_or_create(&labels).get() > 0, "Metrics not incremented correctly");
+    assert!(
+        metrics.decision_total.get_or_create(&labels).get() > 0,
+        "Metrics not incremented correctly"
+    );
 
     // 3. Receipt Verification (Sampling)
     let mut csprng = StdRng::from_entropy();
     let signing_key = SigningKey::generate(&mut csprng);
     let public_key = signing_key.verifying_key();
-    
+
     let sample_input = GuardInput {
         tool: Tool::Bash,
         payload: r#"{"command":"echo receipt-test"}"#.to_string(),
@@ -208,8 +241,19 @@ anomaly:
         },
     };
     let decision = guard.check(&sample_input);
-    let receipt = ExecutionReceipt::sign(&agent_sample_id, "bash", "v1", "noop", &decision, "h", &signing_key);
-    assert!(receipt.verify(&public_key.to_bytes()), "Receipt verification failed under load");
+    let receipt = ExecutionReceipt::sign(
+        &agent_sample_id,
+        "bash",
+        "v1",
+        "noop",
+        &decision,
+        "h",
+        &signing_key,
+    );
+    assert!(
+        receipt.verify(&public_key.to_bytes()),
+        "Receipt verification failed under load"
+    );
 }
 
 #[tokio::test]

@@ -2,8 +2,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     #[cfg(all(target_os = "macos", feature = "macos-sandbox"))]
     {
         use agent_guard_core::{Context, Tool, TrustLevel};
-        use agent_guard_sdk::{Guard, ExecuteOutcome};
         use agent_guard_sandbox::SeatbeltSandbox;
+        use agent_guard_sdk::{ExecuteOutcome, Guard};
 
         println!("🛡️ agent-guard Example: macOS Seatbelt Sandbox");
         println!("==============================================\n");
@@ -32,7 +32,10 @@ default_mode: workspace_write
         println!("👉 Action: Writing to workspace (Expected: SUCCESS)");
         let input_ok = agent_guard_sdk::GuardInput {
             tool: Tool::Bash,
-            payload: format!(r#"{{"command":"echo 'hello' > {}/test.txt"}}"#, temp_dir.display()),
+            payload: format!(
+                r#"{{"command":"echo 'hello' > {}/test.txt"}}"#,
+                temp_dir.display()
+            ),
             context: context.clone(),
         };
 

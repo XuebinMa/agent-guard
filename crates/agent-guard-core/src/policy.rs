@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use thiserror::Error;
 
-use crate::decision::{DecisionCode, GuardDecision, DecisionReason};
+use crate::decision::{DecisionCode, DecisionReason, GuardDecision};
 use crate::payload::{extract_bash_command, extract_path, extract_url, ExtractedPayload};
 use crate::types::{Context, Tool, TrustLevel};
 
@@ -37,14 +37,14 @@ impl<'de> serde::Deserialize<'de> for Condition {
         let node = evalexpr::build_operator_tree(&s).map_err(serde::de::Error::custom)?;
 
         // Validate whitelist and no functions (AOT validation)
-        for func in node.iter_function_identifiers() {
+        if let Some(func) = node.iter_function_identifiers().next() {
             return Err(serde::de::Error::custom(format!(
                 "Function calls are not allowed in conditions: {}",
                 func
             )));
         }
         for var in node.iter_variable_identifiers() {
-            if !CONDITION_WHITELIST.contains(&var.as_ref()) {
+            if !CONDITION_WHITELIST.contains(&var) {
                 return Err(serde::de::Error::custom(format!(
                     "Unknown variable in condition: {}",
                     var
@@ -276,9 +276,15 @@ pub struct AuditConfig {
     pub otlp_endpoint: Option<String>,
 }
 
-fn audit_enabled_default() -> bool { true }
-fn audit_output_default() -> String { "stdout".to_string() }
-fn audit_hash_default() -> bool { true }
+fn audit_enabled_default() -> bool {
+    true
+}
+fn audit_output_default() -> String {
+    "stdout".to_string()
+}
+fn audit_hash_default() -> bool {
+    true
+}
 
 // ── PolicyEngine ──────────────────────────────────────────────────────────────
 
@@ -290,8 +296,8 @@ pub struct PolicyEngine {
 
 impl PolicyEngine {
     pub fn from_yaml_str(yaml: &str) -> Result<Self, PolicyError> {
-        let policy: PolicyFile = serde_yaml::from_str(yaml)
-            .map_err(|e| PolicyError::ParseError(e.to_string()))?;
+        let policy: PolicyFile =
+            serde_yaml::from_str(yaml).map_err(|e| PolicyError::ParseError(e.to_string()))?;
         if policy.version != 1 {
             return Err(PolicyError::UnsupportedVersion(policy.version));
         }
@@ -312,11 +318,11 @@ impl PolicyEngine {
             self.policy.tools.write_file.as_ref(),
             self.policy.tools.http_request.as_ref(),
         ];
-        
+
         for p in policies.into_iter().flatten() {
             self.check_tool_patterns(p)?;
         }
-        
+
         for p in self.policy.tools.custom.values() {
             self.check_tool_patterns(p)?;
         }
@@ -328,19 +334,23 @@ impl PolicyEngine {
         for rule in all_rules {
             if let RulePattern::Map(m) = rule {
                 if let Some(ref re_str) = m.regex {
-                    Regex::new(re_str).map_err(|e| PolicyError::ParseError(format!("Invalid regex '{}': {}", re_str, e)))?;
+                    Regex::new(re_str).map_err(|e| {
+                        PolicyError::ParseError(format!("Invalid regex '{}': {}", re_str, e))
+                    })?;
                 }
             }
         }
         for glob_pat in p.deny_paths.iter().chain(p.allow_paths.iter()) {
-            glob::Pattern::new(glob_pat).map_err(|e| PolicyError::ParseError(format!("Invalid glob '{}': {}", glob_pat, e)))?;
+            glob::Pattern::new(glob_pat).map_err(|e| {
+                PolicyError::ParseError(format!("Invalid glob '{}': {}", glob_pat, e))
+            })?;
         }
         Ok(())
     }
 
     pub fn from_yaml_file(path: impl AsRef<Path>) -> Result<Self, PolicyError> {
-        let content = std::fs::read_to_string(path)
-            .map_err(|e| PolicyError::IoError(e.to_string()))?;
+        let content =
+            std::fs::read_to_string(path).map_err(|e| PolicyError::IoError(e.to_string()))?;
         Self::from_yaml_str(&content)
     }
 
@@ -387,24 +397,18 @@ impl PolicyEngine {
         let is_blocked = effective_mode == PolicyMode::Blocked;
 
         let extracted = match tool {
-            Tool::ReadFile | Tool::WriteFile => {
-                match extract_path(payload) {
-                    Ok(ep) => ep,
-                    Err(deny) => return deny,
-                }
-            }
-            Tool::HttpRequest => {
-                match extract_url(payload) {
-                    Ok(ep) => ep,
-                    Err(deny) => return deny,
-                }
-            }
-            Tool::Bash => {
-                match extract_bash_command(payload) {
-                    Ok(ep) => ep,
-                    Err(deny) => return deny,
-                }
-            }
+            Tool::ReadFile | Tool::WriteFile => match extract_path(payload) {
+                Ok(ep) => ep,
+                Err(deny) => return deny,
+            },
+            Tool::HttpRequest => match extract_url(payload) {
+                Ok(ep) => ep,
+                Err(deny) => return deny,
+            },
+            Tool::Bash => match extract_bash_command(payload) {
+                Ok(ep) => ep,
+                Err(deny) => return deny,
+            },
             _ => ExtractedPayload::Raw(payload),
         };
         let match_value = extracted.match_value();
@@ -463,7 +467,8 @@ impl PolicyEngine {
             }
 
             if !tp.allow_paths.is_empty() {
-                let in_allowlist = tp.allow_paths
+                let in_allowlist = tp
+                    .allow_paths
                     .iter()
                     .any(|p| path_glob_matches(p, match_value));
                 if !in_allowlist {
@@ -488,7 +493,10 @@ impl PolicyEngine {
         if is_blocked {
             GuardDecision::deny(
                 DecisionCode::BlockedByMode,
-                format!("tool '{}' is in blocked mode and no explicit allow rule matched", tool_name)
+                format!(
+                    "tool '{}' is in blocked mode and no explicit allow rule matched",
+                    tool_name
+                ),
             )
         } else {
             GuardDecision::Allow
@@ -497,7 +505,7 @@ impl PolicyEngine {
 
     pub fn effective_mode(&self, tool: &Tool, context: &Context) -> PolicyMode {
         // Tool-level "blocked" always takes precedence regardless of trust level
-        if let Some(ref tp) = self.tool_policy(tool) {
+        if let Some(tp) = self.tool_policy(tool) {
             if tp.mode.as_ref() == Some(&PolicyMode::Blocked) {
                 return PolicyMode::Blocked;
             }
@@ -593,6 +601,12 @@ fn pattern_matches(rule: &RulePattern, value: &str, tool: &Tool, context: &Conte
                     result.matched = true;
                     return result;
                 }
+            }
+
+            // If no match criteria (prefix, regex, plain) are provided,
+            // the existence of a condition that passed makes it a match.
+            if m.prefix.is_none() && m.regex.is_none() && m.plain.is_none() {
+                result.matched = true;
             }
 
             result

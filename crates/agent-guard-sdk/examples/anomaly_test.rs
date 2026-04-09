@@ -1,5 +1,5 @@
+use agent_guard_core::{DecisionCode, GuardDecision};
 use agent_guard_sdk::{Guard, GuardInput};
-use agent_guard_core::{GuardDecision, DecisionCode};
 
 fn main() {
     // 1. Load policy with anomaly detection (limit 5 calls per minute)
@@ -19,8 +19,9 @@ anomaly:
     for i in 1..=10 {
         let decision = guard.check(&input);
         println!("Call #{}: is_allowed = {}", i, decision.is_allowed());
-        
-        if i > 5 { // The 6th call should trigger the anomaly detection
+
+        if i > 5 {
+            // The 6th call should trigger the anomaly detection
             match decision {
                 GuardDecision::Deny { reason } => {
                     assert_eq!(reason.code, DecisionCode::AnomalyDetected);

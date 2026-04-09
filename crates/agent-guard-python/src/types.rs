@@ -53,9 +53,15 @@ pub struct ExecuteResult {
 
 #[pymethods]
 impl ExecuteResult {
-    fn is_executed(&self) -> bool { self.status == "executed" }
-    fn is_denied(&self) -> bool { self.status == "denied" }
-    fn is_ask(&self) -> bool { self.status == "ask_required" }
+    fn is_executed(&self) -> bool {
+        self.status == "executed"
+    }
+    fn is_denied(&self) -> bool {
+        self.status == "denied"
+    }
+    fn is_ask(&self) -> bool {
+        self.status == "ask_required"
+    }
 }
 
 pub fn decision_from_rust(d: GuardDecision, policy_version: String) -> Decision {
@@ -128,15 +134,13 @@ pub struct PyGuard {
 impl PyGuard {
     #[staticmethod]
     fn from_yaml(yaml: &str) -> PyResult<Self> {
-        let inner = Guard::from_yaml(yaml)
-            .map_err(|e| GuardError::new_err(format!("{e}")))?;
+        let inner = Guard::from_yaml(yaml).map_err(|e| GuardError::new_err(format!("{e}")))?;
         Ok(Self { inner })
     }
 
     #[staticmethod]
     fn from_yaml_file(path: &str) -> PyResult<Self> {
-        let inner = Guard::from_yaml_file(path)
-            .map_err(|e| GuardError::new_err(format!("{e}")))?;
+        let inner = Guard::from_yaml_file(path).map_err(|e| GuardError::new_err(format!("{e}")))?;
         Ok(Self { inner })
     }
 
@@ -146,13 +150,15 @@ impl PyGuard {
         use ed25519_dalek::SigningKey;
         let bytes = hex::decode(hex_key)
             .map_err(|e| GuardError::new_err(format!("Invalid hex key: {e}")))?;
-        let key_array: [u8; 32] = bytes.try_into()
+        let key_array: [u8; 32] = bytes
+            .try_into()
             .map_err(|_| GuardError::new_err("Key must be exactly 32 bytes (64 hex characters)"))?;
         let signing_key = SigningKey::from_bytes(&key_array);
         self.inner.with_signing_key(signing_key);
         Ok(())
     }
 
+    #[allow(clippy::too_many_arguments)]
     #[pyo3(signature = (
         tool,
         payload,
@@ -186,6 +192,7 @@ impl PyGuard {
         Ok(decision_from_rust(decision, self.inner.policy_version()))
     }
 
+    #[allow(clippy::too_many_arguments)]
     #[pyo3(signature = (
         tool,
         payload,
@@ -221,41 +228,47 @@ impl PyGuard {
             context: ctx,
         };
 
-        let result = self.inner.execute_default(&input)
+        let result = self
+            .inner
+            .execute_default(&input)
             .map_err(|e| GuardError::new_err(format!("Execution failed: {e}")))?;
 
         match result {
-            agent_guard_sdk::ExecuteOutcome::Executed { output, policy_version, receipt } => {
-                Ok(ExecuteResult {
-                    status: "executed".to_string(),
-                    output: Some(SandboxOutput {
-                        stdout: output.stdout,
-                        stderr: output.stderr,
-                        exit_code: output.exit_code,
-                    }),
-                    decision: None,
-                    policy_version,
-                    receipt: receipt.map(|r| serde_json::to_string(&r).unwrap_or_default()),
-                })
-            }
-            agent_guard_sdk::ExecuteOutcome::Denied { decision, policy_version } => {
-                Ok(ExecuteResult {
-                    status: "denied".to_string(),
-                    output: None,
-                    decision: Some(decision_from_rust(decision, policy_version.clone())),
-                    policy_version,
-                    receipt: None,
-                })
-            }
-            agent_guard_sdk::ExecuteOutcome::AskRequired { decision, policy_version } => {
-                Ok(ExecuteResult {
-                    status: "ask_required".to_string(),
-                    output: None,
-                    decision: Some(decision_from_rust(decision, policy_version.clone())),
-                    policy_version,
-                    receipt: None,
-                })
-            }
+            agent_guard_sdk::ExecuteOutcome::Executed {
+                output,
+                policy_version,
+                receipt,
+            } => Ok(ExecuteResult {
+                status: "executed".to_string(),
+                output: Some(SandboxOutput {
+                    stdout: output.stdout,
+                    stderr: output.stderr,
+                    exit_code: output.exit_code,
+                }),
+                decision: None,
+                policy_version,
+                receipt: receipt.map(|r| serde_json::to_string(&r).unwrap_or_default()),
+            }),
+            agent_guard_sdk::ExecuteOutcome::Denied {
+                decision,
+                policy_version,
+            } => Ok(ExecuteResult {
+                status: "denied".to_string(),
+                output: None,
+                decision: Some(decision_from_rust(decision, policy_version.clone())),
+                policy_version,
+                receipt: None,
+            }),
+            agent_guard_sdk::ExecuteOutcome::AskRequired {
+                decision,
+                policy_version,
+            } => Ok(ExecuteResult {
+                status: "ask_required".to_string(),
+                output: None,
+                decision: Some(decision_from_rust(decision, policy_version.clone())),
+                policy_version,
+                receipt: None,
+            }),
         }
     }
 

@@ -1,5 +1,5 @@
 use agent_guard_core::{Context, Tool, TrustLevel};
-use agent_guard_sdk::{Guard, ExecuteOutcome, get_metrics, ExecutionReceipt};
+use agent_guard_sdk::{get_metrics, ExecuteOutcome, ExecutionReceipt, Guard};
 use ed25519_dalek::SigningKey;
 use rand::rngs::OsRng;
 use std::fs;
@@ -12,14 +12,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let _ = fs::remove_file(audit_path);
 
     // 1. Setup Policy
-    let yaml = format!(r#"
+    let yaml = format!(
+        r#"
 version: 1
 default_mode: read_only
 audit:
   enabled: true
   output: file
   file_path: {}
-"#, audit_path);
+"#,
+        audit_path
+    );
 
     let guard = Guard::from_yaml(&yaml)?;
     let context = Context {
@@ -61,7 +64,10 @@ audit:
         outcome: "allow".to_string(),
     };
     let count = metrics.decision_total.get_or_create(&labels).get();
-    println!("📊 Metric: agent_guard_decision_total{{outcome='allow', agent_id='happy-agent'}} = {}\n", count);
+    println!(
+        "📊 Metric: agent_guard_decision_total{{outcome='allow', agent_id='happy-agent'}} = {}\n",
+        count
+    );
 
     // 6. Generate Signed Receipt
     let mut csprng = OsRng;

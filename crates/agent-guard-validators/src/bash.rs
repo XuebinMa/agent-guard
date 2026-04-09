@@ -23,10 +23,13 @@ pub enum ValidationResult {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CommandIntent {
-    Read,
+    ReadOnly,
     Write,
     Execute,
-    System,
+    Network,
+    PackageManagement,
+    SystemAdmin,
+    Destructive,
     Unknown,
 }
 
@@ -35,11 +38,18 @@ pub enum CommandIntent {
 const WRITE_COMMANDS: &[&str] = &[
     "rm", "mv", "cp", "touch", "mkdir", "rmdir", "chmod", "chown", "chgrp", "ln", "link", "unlink",
     "dd", "mkfs", "mount", "umount", "tar", "zip", "unzip", "gzip", "gunzip", "bzip2", "bunzip2",
-    "7z", "xz", "unxz", "tee", "git", "apt", "yum", "dnf", "npm", "pip", "pip3", "cargo",
+    "7z", "xz", "unxz", "tee", "apt", "apt-get", "yum", "dnf", "npm", "pip", "pip3", "cargo",
 ];
 
 const STATE_MODIFYING_COMMANDS: &[&str] = &[
-    "kill", "pkill", "killall", "service", "systemctl", "shutdown", "reboot", "sudo", "su",
+    "kill",
+    "pkill",
+    "killall",
+    "service",
+    "systemctl",
+    "shutdown",
+    "reboot",
+    "su",
 ];
 
 const WRITE_REDIRECTIONS: &[&str] = &[">", ">>", ">&", "<", "<<", "<<<"];
@@ -51,19 +61,22 @@ pub fn validate_read_only(command: &str, mode: PermissionMode) -> ValidationResu
     }
 
     // Industrial Standard Mitigation: Detect environment variable injections (CWE-94)
-    if command.contains("LD_PRELOAD") || command.contains("PYTHONPATH") || command.contains("NODE_OPTIONS") {
-         return ValidationResult::Block {
+    if command.contains("LD_PRELOAD")
+        || command.contains("PYTHONPATH")
+        || command.contains("NODE_OPTIONS")
+    {
+        return ValidationResult::Block {
             reason: "Environment variable injection attempt detected".to_string(),
         };
     }
 
     // Industrial Standard Mitigation: Proper shell splitting that respects quotes
     let parts = shell_split(command);
-    
+
     let mut current_cmd_parts = Vec::new();
     for part in parts {
-        if part == "|" || part == ";" || part == "&" || part == "&&" || part == "||" {
-            if let Some(res) = check_command_segment(&current_cmd_parts, mode) {
+        if part == "|" || part == ";" || part == "&&" || part == "||" || part == "&" {
+            if let Some(res) = check_command_segment(&current_cmd_parts) {
                 return res;
             }
             current_cmd_parts.clear();
@@ -71,8 +84,8 @@ pub fn validate_read_only(command: &str, mode: PermissionMode) -> ValidationResu
             current_cmd_parts.push(part);
         }
     }
-    
-    if let Some(res) = check_command_segment(&current_cmd_parts, mode) {
+
+    if let Some(res) = check_command_segment(&current_cmd_parts) {
         return res;
     }
 
@@ -89,11 +102,11 @@ pub fn validate_read_only(command: &str, mode: PermissionMode) -> ValidationResu
     ValidationResult::Allow
 }
 
-fn check_command_segment(parts: &[String], _mode: PermissionMode) -> Option<ValidationResult> {
+fn check_command_segment(parts: &[String]) -> Option<ValidationResult> {
     if parts.is_empty() {
         return None;
     }
-    
+
     let first_command = &parts[0];
 
     // Detect process substitution (CWE-78)
@@ -103,6 +116,33 @@ fn check_command_segment(parts: &[String], _mode: PermissionMode) -> Option<Vali
                 reason: "Shell process substitution is not allowed in read-only mode".to_string(),
             });
         }
+    }
+
+    if first_command == "git" {
+        if parts.len() > 1 {
+            let sub = &parts[1];
+            let write_subs = [
+                "commit", "push", "pull", "merge", "checkout", "add", "rebase", "reset", "init",
+            ];
+            if write_subs.contains(&sub.as_str()) {
+                return Some(ValidationResult::Block {
+                    reason: format!("Git command '{sub}' modifies the repository and is not allowed in read-only mode"),
+                });
+            }
+        }
+        return None;
+    }
+
+    if first_command == "sed" {
+        if parts
+            .iter()
+            .any(|p| p == "-i" || p.starts_with("--in-place"))
+        {
+            return Some(ValidationResult::Block {
+                reason: "Sed in-place editing is not allowed in read-only mode".to_string(),
+            });
+        }
+        return None;
     }
 
     for &write_cmd in WRITE_COMMANDS {
@@ -125,11 +165,9 @@ fn check_command_segment(parts: &[String], _mode: PermissionMode) -> Option<Vali
         }
     }
 
-    if first_command == "sudo" {
-        if parts.len() > 1 {
-            let inner = parts[1..].to_vec();
-            return check_command_segment(&inner, _mode);
-        }
+    if first_command == "sudo" && parts.len() > 1 {
+        let inner = parts[1..].to_vec();
+        return check_command_segment(&inner);
     }
 
     None
@@ -181,14 +219,29 @@ fn shell_split(s: &str) -> Vec<String> {
 // ── Destructive Command Warning ──────────────────────────────────────────────
 
 const DESTRUCTIVE_PATTERNS: &[(&str, &str)] = &[
-    ("rm -rf /", "Recursive forced deletion at root — this will destroy the system"),
+    (
+        "rm -rf /",
+        "Recursive forced deletion at root — this will destroy the system",
+    ),
     ("rm -rf ~", "Recursive forced deletion of home directory"),
-    ("rm -rf *", "Recursive forced deletion of all files in current directory"),
+    (
+        "rm -rf *",
+        "Recursive forced deletion of all files in current directory",
+    ),
     ("rm -rf .", "Recursive forced deletion of current directory"),
-    ("mkfs", "Filesystem creation will destroy existing data on the device"),
-    ("dd if=", "Direct disk write — can overwrite partitions or devices"),
+    (
+        "mkfs",
+        "Filesystem creation will destroy existing data on the device",
+    ),
+    (
+        "dd if=",
+        "Direct disk write — can overwrite partitions or devices",
+    ),
     ("> /dev/sd", "Writing to raw disk device"),
-    ("chmod -R 777", "Recursively setting world-writable permissions"),
+    (
+        "chmod -R 777",
+        "Recursively setting world-writable permissions",
+    ),
     ("chmod -R 000", "Recursively removing all permissions"),
     (":(){ :|:& };:", "Fork bomb — will crash the system"),
 ];
@@ -219,16 +272,13 @@ pub fn check_destructive(command: &str) -> ValidationResult {
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 fn extract_first_command(s: &str) -> String {
-    s.split_whitespace()
-        .next()
-        .unwrap_or("")
-        .to_string()
+    s.split_whitespace().next().unwrap_or("").to_string()
 }
 
 pub fn validate_bash_command(
     command: &str,
     mode: PermissionMode,
-    workspace_path: &Path,
+    _workspace_path: &Path,
 ) -> ValidationResult {
     if mode == PermissionMode::Blocked {
         return ValidationResult::Block {
@@ -247,11 +297,33 @@ pub fn validate_bash_command(
     check_destructive(command)
 }
 
-pub fn classify_intent(_command: &str) -> CommandIntent {
-    CommandIntent::Unknown
+pub fn classify_intent(command: &str) -> CommandIntent {
+    let first = extract_first_command(command);
+    match first.as_str() {
+        "ls" | "cat" | "pwd" | "git" => {
+            if command.contains("push")
+                || command.contains("commit")
+                || command.contains("checkout")
+            {
+                CommandIntent::Write
+            } else {
+                CommandIntent::ReadOnly
+            }
+        }
+        "rm" | "mkfs" | "dd" => CommandIntent::Destructive,
+        "cp" | "mv" | "touch" | "sed" => CommandIntent::Write,
+        "curl" | "wget" | "ping" => CommandIntent::Network,
+        "npm" | "pip" | "apt" | "apt-get" | "yum" => CommandIntent::PackageManagement,
+        "sudo" | "su" | "systemctl" => CommandIntent::SystemAdmin,
+        _ => CommandIntent::Unknown,
+    }
 }
 
-pub fn validate_command(command: &str, mode: PermissionMode, _workspace: &Path) -> ValidationResult {
+pub fn validate_command(
+    command: &str,
+    mode: PermissionMode,
+    _workspace: &Path,
+) -> ValidationResult {
     validate_bash_command(command, mode, _workspace)
 }
 
@@ -259,10 +331,21 @@ pub fn validate_mode(command: &str, mode: PermissionMode) -> ValidationResult {
     validate_read_only(command, mode)
 }
 
-pub fn validate_paths(_command: &str, _mode: PermissionMode, _workspace: &Path) -> ValidationResult {
+pub fn validate_paths(
+    _command: &str,
+    _mode: PermissionMode,
+    _workspace: &Path,
+) -> ValidationResult {
     ValidationResult::Allow
 }
 
-pub fn validate_sed(_command: &str, _mode: PermissionMode) -> ValidationResult {
+pub fn validate_sed(command: &str, mode: PermissionMode) -> ValidationResult {
+    if mode == PermissionMode::ReadOnly
+        && (command.contains("-i") || command.contains("--in-place"))
+    {
+        return ValidationResult::Block {
+            reason: "Sed in-place editing is not allowed in read-only mode".to_string(),
+        };
+    }
     ValidationResult::Allow
 }

@@ -87,11 +87,11 @@ impl Guard {
         let old_state = self.state.load();
         let old_version = old_state.engine.version().to_string();
         let new_version = engine.version().to_string();
-        
+
         let mut new_state = GuardState::new(Arc::new(engine))?;
         new_state.signing_key = old_state.signing_key.clone();
         self.state.store(Arc::new(new_state));
-        
+
         let event = ReloadEvent::success(old_version, new_version);
         self.write_reload_audit(&event, &old_state);
 
@@ -145,14 +145,26 @@ impl Guard {
         self.check_internal(&input, &state, &request_id)
     }
 
-    fn check_internal(&self, input: &GuardInput, state: &GuardState, request_id: &str) -> GuardDecision {
+    fn check_internal(
+        &self,
+        input: &GuardInput,
+        state: &GuardState,
+        request_id: &str,
+    ) -> GuardDecision {
         let metrics = crate::metrics::get_metrics();
-        let agent_id = input.context.agent_id.clone().unwrap_or_else(|| "default".to_string());
-        
-        metrics.policy_checks_total.get_or_create(&crate::metrics::ToolLabels {
-            agent_id: agent_id.clone(),
-            tool: input.tool.name().to_string(),
-        }).inc();
+        let agent_id = input
+            .context
+            .agent_id
+            .clone()
+            .unwrap_or_else(|| "default".to_string());
+
+        metrics
+            .policy_checks_total
+            .get_or_create(&crate::metrics::ToolLabels {
+                agent_id: agent_id.clone(),
+                tool: input.tool.name().to_string(),
+            })
+            .inc();
 
         let actor = input.context.actor.as_deref().unwrap_or("unknown");
         let anomaly_cfg = state.engine.anomaly_config();
@@ -201,34 +213,43 @@ impl Guard {
         request_id: &str,
     ) -> GuardDecision {
         let metrics = crate::metrics::get_metrics();
-        
-        metrics.decision_total.get_or_create(&crate::metrics::DecisionLabels {
-            agent_id: agent_id.to_string(),
-            tool: input.tool.name().to_string(),
-            outcome: outcome.to_string(),
-        }).inc();
 
-        if outcome == "deny" && matches!(decision, GuardDecision::Deny { reason } if reason.code == DecisionCode::AnomalyDetected || reason.code == DecisionCode::AgentLocked) {
-             metrics.anomaly_triggered_total.get_or_create(&crate::metrics::ToolLabels {
+        metrics
+            .decision_total
+            .get_or_create(&crate::metrics::DecisionLabels {
                 agent_id: agent_id.to_string(),
                 tool: input.tool.name().to_string(),
-            }).inc();
-             
-             let event = agent_guard_core::AnomalyEvent {
-                 timestamp: chrono::Utc::now(),
-                 agent_id: Some(agent_id.to_string()),
-                 actor: input.context.actor.clone(),
-                 reason: match decision {
-                     GuardDecision::Deny { reason } => reason.message.clone(),
-                     _ => "anomaly".to_string(),
-                 },
-             };
-             let record = if matches!(decision, GuardDecision::Deny { reason } if reason.code == DecisionCode::AgentLocked) {
-                 agent_guard_core::AuditRecord::AgentLocked(event)
-             } else {
-                 agent_guard_core::AuditRecord::AnomalyTriggered(event)
-             };
-             state.siem_exporter.export(record);
+                outcome: outcome.to_string(),
+            })
+            .inc();
+
+        if outcome == "deny"
+            && matches!(decision, GuardDecision::Deny { reason } if reason.code == DecisionCode::AnomalyDetected || reason.code == DecisionCode::AgentLocked)
+        {
+            metrics
+                .anomaly_triggered_total
+                .get_or_create(&crate::metrics::ToolLabels {
+                    agent_id: agent_id.to_string(),
+                    tool: input.tool.name().to_string(),
+                })
+                .inc();
+
+            let event = agent_guard_core::AnomalyEvent {
+                timestamp: chrono::Utc::now(),
+                agent_id: Some(agent_id.to_string()),
+                actor: input.context.actor.clone(),
+                reason: match decision {
+                    GuardDecision::Deny { reason } => reason.message.clone(),
+                    _ => "anomaly".to_string(),
+                },
+            };
+            let record = if matches!(decision, GuardDecision::Deny { reason } if reason.code == DecisionCode::AgentLocked)
+            {
+                agent_guard_core::AuditRecord::AgentLocked(event)
+            } else {
+                agent_guard_core::AuditRecord::AnomalyTriggered(event)
+            };
+            state.siem_exporter.export(record);
         }
 
         if state.audit_cfg.enabled {
@@ -246,10 +267,16 @@ impl Guard {
         match &decision {
             GuardDecision::Allow => {}
             GuardDecision::Deny { .. } => {
-                return Ok(ExecuteOutcome::Denied { decision, policy_version });
+                return Ok(ExecuteOutcome::Denied {
+                    decision,
+                    policy_version,
+                });
             }
             GuardDecision::AskUser { .. } => {
-                return Ok(ExecuteOutcome::AskRequired { decision, policy_version });
+                return Ok(ExecuteOutcome::AskRequired {
+                    decision,
+                    policy_version,
+                });
             }
         }
 
@@ -277,46 +304,62 @@ impl Guard {
             timeout_ms: None,
         };
 
-        state.siem_exporter.export(agent_guard_core::AuditRecord::ExecutionStarted(agent_guard_core::ExecutionEvent {
-            timestamp: chrono::Utc::now(),
-            request_id: request_id.clone(),
-            agent_id: input.context.agent_id.clone(),
-            tool: input.tool.name().to_string(),
-            sandbox_type: sandbox.sandbox_type().to_string(),
-            duration_ms: None,
-            exit_code: None,
-        }));
-
-        let start = std::time::Instant::now();
-        let execution_res = sandbox.execute(&command, &ctx);
-        let duration = start.elapsed();
-        
-        let output = match execution_res {
-            Ok(out) => out,
-            Err(e) => {
-                state.siem_exporter.export(agent_guard_core::AuditRecord::SandboxFailure(agent_guard_core::SandboxFailureEvent {
+        state
+            .siem_exporter
+            .export(agent_guard_core::AuditRecord::ExecutionStarted(
+                agent_guard_core::ExecutionEvent {
                     timestamp: chrono::Utc::now(),
                     request_id: request_id.clone(),
                     agent_id: input.context.agent_id.clone(),
                     tool: input.tool.name().to_string(),
                     sandbox_type: sandbox.sandbox_type().to_string(),
-                    error: e.to_string(),
-                }));
+                    duration_ms: None,
+                    exit_code: None,
+                },
+            ));
+
+        let start = std::time::Instant::now();
+        let execution_res = sandbox.execute(&command, &ctx);
+        let duration = start.elapsed();
+
+        let output = match execution_res {
+            Ok(out) => out,
+            Err(e) => {
+                state
+                    .siem_exporter
+                    .export(agent_guard_core::AuditRecord::SandboxFailure(
+                        agent_guard_core::SandboxFailureEvent {
+                            timestamp: chrono::Utc::now(),
+                            request_id: request_id.clone(),
+                            agent_id: input.context.agent_id.clone(),
+                            tool: input.tool.name().to_string(),
+                            sandbox_type: sandbox.sandbox_type().to_string(),
+                            error: e.to_string(),
+                        },
+                    ));
                 return Err(e);
             }
         };
 
-        state.siem_exporter.export(agent_guard_core::AuditRecord::ExecutionFinished(agent_guard_core::ExecutionEvent {
-            timestamp: chrono::Utc::now(),
-            request_id: request_id.clone(),
-            agent_id: input.context.agent_id.clone(),
-            tool: input.tool.name().to_string(),
-            sandbox_type: sandbox.sandbox_type().to_string(),
-            duration_ms: Some(duration.as_millis() as u64),
-            exit_code: Some(output.exit_code),
-        }));
+        state
+            .siem_exporter
+            .export(agent_guard_core::AuditRecord::ExecutionFinished(
+                agent_guard_core::ExecutionEvent {
+                    timestamp: chrono::Utc::now(),
+                    request_id: request_id.clone(),
+                    agent_id: input.context.agent_id.clone(),
+                    tool: input.tool.name().to_string(),
+                    sandbox_type: sandbox.sandbox_type().to_string(),
+                    duration_ms: Some(duration.as_millis() as u64),
+                    exit_code: Some(output.exit_code),
+                },
+            ));
 
-        let agent_id = input.context.agent_id.clone().unwrap_or_else(|| "default".to_string());
+        let agent_id = input
+            .context
+            .agent_id
+            .clone()
+            .unwrap_or_else(|| "default".to_string());
         crate::metrics::get_metrics()
             .execution_duration_seconds
             .get_or_create(&crate::metrics::ExecutionLabels {
@@ -338,8 +381,8 @@ impl Guard {
             )
         });
 
-        Ok(ExecuteOutcome::Executed { 
-            output, 
+        Ok(ExecuteOutcome::Executed {
+            output,
             policy_version,
             receipt,
         })
@@ -384,11 +427,21 @@ impl Guard {
 
             let v: serde_json::Value = match serde_json::from_str(&input.payload) {
                 Ok(v) => v,
-                Err(_) => return GuardDecision::deny(DecisionCode::InvalidPayload, "invalid payload JSON"),
+                Err(_) => {
+                    return GuardDecision::deny(
+                        DecisionCode::InvalidPayload,
+                        "invalid payload JSON",
+                    )
+                }
             };
             let command = match v.get("command").and_then(|c| c.as_str()) {
                 Some(s) => s,
-                None => return GuardDecision::deny(DecisionCode::MissingPayloadField, "payload missing 'command' field"),
+                None => {
+                    return GuardDecision::deny(
+                        DecisionCode::MissingPayloadField,
+                        "payload missing 'command' field",
+                    )
+                }
             };
 
             let result = validate_bash_command(command, mode, workspace_path);
@@ -408,10 +461,18 @@ impl Guard {
             }
         }
 
-        state.engine.check(&input.tool, &input.payload, &input.context)
+        state
+            .engine
+            .check(&input.tool, &input.payload, &input.context)
     }
 
-    fn write_audit(&self, input: &GuardInput, decision: &GuardDecision, state: &GuardState, request_id: &str) {
+    fn write_audit(
+        &self,
+        input: &GuardInput,
+        decision: &GuardDecision,
+        state: &GuardState,
+        request_id: &str,
+    ) {
         let event = AuditEvent::from_decision(
             request_id.to_string(),
             &input.tool,
@@ -425,7 +486,9 @@ impl Guard {
         );
         let line = event.to_jsonl();
 
-        state.siem_exporter.export(agent_guard_core::AuditRecord::ToolCall(event));
+        state
+            .siem_exporter
+            .export(agent_guard_core::AuditRecord::ToolCall(event));
 
         if state.audit_cfg.output == "file" {
             if let Some(ref mutex) = state.audit_file {
@@ -448,7 +511,9 @@ impl Guard {
 
     fn write_reload_audit(&self, event: &ReloadEvent, state: &GuardState) {
         let line = event.to_jsonl();
-        state.siem_exporter.export(agent_guard_core::AuditRecord::PolicyReload(event.clone()));
+        state
+            .siem_exporter
+            .export(agent_guard_core::AuditRecord::PolicyReload(event.clone()));
 
         if state.audit_cfg.enabled && state.audit_cfg.output == "file" {
             if let Some(ref mutex) = state.audit_file {

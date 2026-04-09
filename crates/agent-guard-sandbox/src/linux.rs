@@ -1,11 +1,13 @@
 //! Linux seccomp-bpf sandbox.
 
+use crate::{
+    Sandbox, SandboxCapabilities, SandboxContext, SandboxError, SandboxOutput, SandboxResult,
+};
 use std::os::unix::process::CommandExt;
 use std::process::Command;
-use crate::{Sandbox, SandboxContext, SandboxError, SandboxOutput, SandboxResult, SandboxCapabilities};
 
 /// Linux seccomp-bpf sandbox.
-/// 
+///
 /// **PROTOTYPE**: Current implementation is a wrapper around `sh -c`.
 /// Native Seccomp-BPF integration is planned for v0.3.0.
 pub struct SeccompSandbox {
@@ -57,27 +59,25 @@ impl Sandbox for SeccompSandbox {
 fn execute_with_seccomp(command: &str, context: &SandboxContext, _strict: bool) -> SandboxResult {
     #[cfg(target_os = "linux")]
     {
-        use std::time::Duration;
-        use std::thread;
         use std::sync::mpsc;
+        use std::thread;
+        use std::time::Duration;
 
-        // CWE-78: Command Injection Mitigation.
-        // Wrap command in single quotes and escape existing ones.
-        let escaped_command = command.replace("'", "'\\''");
-        
         let mut child = Command::new("sh")
             .arg("-c")
-            .arg(format!("'{}'", escaped_command))
+            .arg(command)
             .current_dir(&context.working_directory)
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped())
             .spawn()
-            .map_err(|e| SandboxError::ExecutionFailed(format!("Failed to spawn process: {}", e)))?;
+            .map_err(|e| {
+                SandboxError::ExecutionFailed(format!("Failed to spawn process: {}", e))
+            })?;
 
         // Handle timeout if specified
         if let Some(timeout_ms) = context.timeout_ms {
             let (tx, rx) = mpsc::channel();
-            
+
             thread::spawn(move || {
                 thread::sleep(Duration::from_millis(timeout_ms));
                 let _ = tx.send(());
@@ -86,7 +86,9 @@ fn execute_with_seccomp(command: &str, context: &SandboxContext, _strict: bool) 
             loop {
                 match child.try_wait() {
                     Ok(Some(status)) => {
-                        let output = child.wait_with_output().map_err(|e| SandboxError::ExecutionFailed(e.to_string()))?;
+                        let output = child
+                            .wait_with_output()
+                            .map_err(|e| SandboxError::ExecutionFailed(e.to_string()))?;
                         return Ok(SandboxOutput {
                             stdout: String::from_utf8_lossy(&output.stdout).to_string(),
                             stderr: String::from_utf8_lossy(&output.stderr).to_string(),
@@ -106,7 +108,8 @@ fn execute_with_seccomp(command: &str, context: &SandboxContext, _strict: bool) 
             }
         }
 
-        let output = child.wait_with_output()
+        let output = child
+            .wait_with_output()
             .map_err(|e| SandboxError::ExecutionFailed(e.to_string()))?;
 
         Ok(SandboxOutput {
@@ -117,6 +120,8 @@ fn execute_with_seccomp(command: &str, context: &SandboxContext, _strict: bool) 
     }
     #[cfg(not(target_os = "linux"))]
     {
-        Err(SandboxError::NotAvailable("Seccomp is only available on Linux".to_string()))
+        Err(SandboxError::NotAvailable(
+            "Seccomp is only available on Linux".to_string(),
+        ))
     }
 }

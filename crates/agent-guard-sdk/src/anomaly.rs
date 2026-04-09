@@ -1,7 +1,7 @@
+use agent_guard_core::AnomalyConfig;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
-use agent_guard_core::AnomalyConfig;
 
 #[derive(Default)]
 pub struct ActorState {
@@ -19,6 +19,12 @@ pub enum AnomalyStatus {
     Normal,
     RateLimited,
     Locked,
+}
+
+impl Default for AnomalyDetector {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl AnomalyDetector {
@@ -48,7 +54,7 @@ impl AnomalyDetector {
         }
 
         let now = Instant::now();
-        
+
         // 1. Check Rate Limit
         let call_window = Duration::from_secs(config.rate_limit.window_seconds);
         let call_cutoff = now - call_window;
@@ -77,7 +83,7 @@ impl AnomalyDetector {
             let fuse_window = Duration::from_secs(config.deny_fuse.window_seconds);
             let fuse_cutoff = now - fuse_window;
             state.denial_history.retain(|&t| t > fuse_cutoff);
-            
+
             if state.denial_history.len() >= config.deny_fuse.threshold {
                 state.is_locked = true;
                 tracing::error!(
@@ -104,7 +110,7 @@ impl AnomalyDetector {
             Err(_) => return, // Silent return on poison for non-critical update
         };
         let state = states.entry(actor.to_string()).or_default();
-        
+
         if state.is_locked {
             return;
         }
@@ -136,15 +142,15 @@ impl AnomalyDetector {
 pub static GLOBAL_DETECTOR: std::sync::OnceLock<Arc<AnomalyDetector>> = std::sync::OnceLock::new();
 
 pub fn get_detector() -> Arc<AnomalyDetector> {
-    GLOBAL_DETECTOR.get_or_init(|| {
-        Arc::new(AnomalyDetector::new())
-    }).clone()
+    GLOBAL_DETECTOR
+        .get_or_init(|| Arc::new(AnomalyDetector::new()))
+        .clone()
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use agent_guard_core::{AnomalyConfig, RateLimitConfig, DenyFuseConfig};
+    use agent_guard_core::{AnomalyConfig, DenyFuseConfig, RateLimitConfig};
 
     #[test]
     fn test_rate_limiting() {
@@ -160,7 +166,10 @@ mod tests {
 
         assert_eq!(detector.check("actor-1", &config), AnomalyStatus::Normal);
         assert_eq!(detector.check("actor-1", &config), AnomalyStatus::Normal);
-        assert_eq!(detector.check("actor-1", &config), AnomalyStatus::RateLimited);
+        assert_eq!(
+            detector.check("actor-1", &config),
+            AnomalyStatus::RateLimited
+        );
     }
 
     #[test]
@@ -184,7 +193,7 @@ mod tests {
         // 2. Report 3rd denial - now locked
         detector.report_denial("actor-1", &config);
         assert_eq!(detector.check("actor-1", &config), AnomalyStatus::Locked);
-        
+
         // 3. Subsequent checks still locked
         assert_eq!(detector.check("actor-1", &config), AnomalyStatus::Locked);
     }

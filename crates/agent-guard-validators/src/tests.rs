@@ -1,11 +1,17 @@
 #[cfg(test)]
 mod bash_read_only_tests {
+    use crate::bash::{validate_command, validate_read_only, PermissionMode, ValidationResult};
     use std::path::Path;
-    use crate::bash::{PermissionMode, ValidationResult, validate_read_only, validate_command};
 
-    fn ro() -> PermissionMode { PermissionMode::ReadOnly }
-    fn ws() -> PermissionMode { PermissionMode::WorkspaceWrite }
-    fn workspace() -> &'static Path { Path::new("/workspace") }
+    fn ro() -> PermissionMode {
+        PermissionMode::ReadOnly
+    }
+    fn ws() -> PermissionMode {
+        PermissionMode::WorkspaceWrite
+    }
+    fn workspace() -> &'static Path {
+        Path::new("/workspace")
+    }
 
     // ── read-only: write commands blocked ────────────────────────────────────
 
@@ -43,7 +49,10 @@ mod bash_read_only_tests {
     fn blocks_tee_in_read_only() {
         // Regression: tee was incorrectly listed as read-only upstream.
         let r = validate_read_only("tee output.txt", ro());
-        assert!(matches!(r, ValidationResult::Block { .. }), "tee must be blocked in read-only mode");
+        assert!(
+            matches!(r, ValidationResult::Block { .. }),
+            "tee must be blocked in read-only mode"
+        );
     }
 
     #[test]
@@ -195,7 +204,7 @@ mod bash_destructive_tests {
 
 #[cfg(test)]
 mod bash_sed_tests {
-    use crate::bash::{PermissionMode, ValidationResult, validate_sed};
+    use crate::bash::{validate_sed, PermissionMode, ValidationResult};
 
     #[test]
     fn sed_inplace_blocked_in_read_only() {
@@ -211,7 +220,10 @@ mod bash_sed_tests {
 
     #[test]
     fn sed_inplace_allowed_in_workspace_write() {
-        let r = validate_sed("sed -i 's/foo/bar/' file.txt", PermissionMode::WorkspaceWrite);
+        let r = validate_sed(
+            "sed -i 's/foo/bar/' file.txt",
+            PermissionMode::WorkspaceWrite,
+        );
         assert_eq!(r, ValidationResult::Allow);
     }
 
@@ -248,17 +260,26 @@ mod bash_classify_tests {
 
     #[test]
     fn curl_is_network() {
-        assert_eq!(classify_intent("curl https://example.com"), CommandIntent::Network);
+        assert_eq!(
+            classify_intent("curl https://example.com"),
+            CommandIntent::Network
+        );
     }
 
     #[test]
     fn npm_is_package_management() {
-        assert_eq!(classify_intent("npm install express"), CommandIntent::PackageManagement);
+        assert_eq!(
+            classify_intent("npm install express"),
+            CommandIntent::PackageManagement
+        );
     }
 
     #[test]
     fn sudo_is_system_admin() {
-        assert_eq!(classify_intent("sudo apt-get update"), CommandIntent::SystemAdmin);
+        assert_eq!(
+            classify_intent("sudo apt-get update"),
+            CommandIntent::SystemAdmin
+        );
     }
 
     #[test]
@@ -268,24 +289,35 @@ mod bash_classify_tests {
 
     #[test]
     fn git_push_is_write() {
-        assert_eq!(classify_intent("git push origin main"), CommandIntent::Write);
+        assert_eq!(
+            classify_intent("git push origin main"),
+            CommandIntent::Write
+        );
     }
 
     #[test]
     fn sed_inplace_is_write() {
-        assert_eq!(classify_intent("sed -i 's/foo/bar/' file"), CommandIntent::Write);
+        assert_eq!(
+            classify_intent("sed -i 's/foo/bar/' file"),
+            CommandIntent::Write
+        );
     }
 }
 
 #[cfg(test)]
 mod path_tests {
-    use crate::path::{detect_trust_prompt, validate_path_access, TrustConfig, TrustDecision, TrustPolicy, TrustResolver};
+    use crate::path::{
+        detect_trust_prompt, validate_path_access, TrustConfig, TrustDecision, TrustPolicy,
+        TrustResolver,
+    };
 
     // ── detect_trust_prompt ──────────────────────────────────────────────────
 
     #[test]
     fn detects_trust_cue_do_you_trust() {
-        assert!(detect_trust_prompt("Do you trust the files in this folder?"));
+        assert!(detect_trust_prompt(
+            "Do you trust the files in this folder?"
+        ));
     }
 
     #[test]
@@ -317,7 +349,8 @@ mod path_tests {
     fn allowlisted_path_auto_trusts() {
         let cfg = TrustConfig::new().with_allowlisted("/workspace");
         let resolver = TrustResolver::new(cfg);
-        let decision = resolver.resolve_with_text("/workspace", "do you trust the files in this folder");
+        let decision =
+            resolver.resolve_with_text("/workspace", "do you trust the files in this folder");
         assert_eq!(decision.policy(), Some(TrustPolicy::AutoTrust));
     }
 
@@ -325,7 +358,8 @@ mod path_tests {
     fn denied_path_returns_deny() {
         let cfg = TrustConfig::new().with_denied("/malicious");
         let resolver = TrustResolver::new(cfg);
-        let decision = resolver.resolve_with_text("/malicious", "do you trust the files in this folder");
+        let decision =
+            resolver.resolve_with_text("/malicious", "do you trust the files in this folder");
         assert_eq!(decision.policy(), Some(TrustPolicy::Deny));
     }
 
@@ -333,7 +367,8 @@ mod path_tests {
     fn unknown_path_requires_approval() {
         let cfg = TrustConfig::new();
         let resolver = TrustResolver::new(cfg);
-        let decision = resolver.resolve_with_text("/unknown", "do you trust the files in this folder");
+        let decision =
+            resolver.resolve_with_text("/unknown", "do you trust the files in this folder");
         assert_eq!(decision.policy(), Some(TrustPolicy::RequireApproval));
     }
 

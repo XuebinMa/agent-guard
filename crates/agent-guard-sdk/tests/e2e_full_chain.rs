@@ -1,6 +1,6 @@
-use agent_guard_core::{Context, Tool, GuardDecision, DecisionCode, TrustLevel};
-use agent_guard_sdk::{Guard, ExecuteOutcome, get_metrics};
+use agent_guard_core::{Context, DecisionCode, GuardDecision, Tool, TrustLevel};
 use agent_guard_sandbox::NoopSandbox;
+use agent_guard_sdk::{get_metrics, ExecuteOutcome, Guard};
 use std::fs;
 use std::path::PathBuf;
 
@@ -9,14 +9,17 @@ fn test_e2e_full_chain_allow() {
     let audit_path = "audit_e2e_allow.jsonl";
     let _ = fs::remove_file(audit_path);
 
-    let yaml = format!(r#"
+    let yaml = format!(
+        r#"
 version: 1
 default_mode: read_only
 audit:
   enabled: true
   output: file
   file_path: {}
-"#, audit_path);
+"#,
+        audit_path
+    );
 
     let guard = Guard::from_yaml(&yaml).unwrap();
     let sandbox = NoopSandbox;
@@ -36,7 +39,7 @@ audit:
 
     // 1. Execute
     let res = guard.execute(&input, &sandbox).unwrap();
-    
+
     // 2. Verify Output
     if let ExecuteOutcome::Executed { output, .. } = res {
         assert_eq!(output.exit_code, 0);
@@ -71,7 +74,8 @@ fn test_e2e_full_chain_deny() {
     let audit_path = "audit_e2e_deny.jsonl";
     let _ = fs::remove_file(audit_path);
 
-    let yaml = format!(r#"
+    let yaml = format!(
+        r#"
 version: 1
 default_mode: read_only
 tools:
@@ -82,7 +86,9 @@ audit:
   enabled: true
   output: file
   file_path: {}
-"#, audit_path);
+"#,
+        audit_path
+    );
 
     let guard = Guard::from_yaml(&yaml).unwrap();
     let sandbox = NoopSandbox;
@@ -102,7 +108,7 @@ audit:
 
     // 1. Execute (Should be denied)
     let res = guard.execute(&input, &sandbox).unwrap();
-    
+
     if let ExecuteOutcome::Denied { decision, .. } = res {
         if let GuardDecision::Deny { reason } = decision {
             assert_eq!(reason.code, DecisionCode::DeniedByRule);
@@ -222,7 +228,7 @@ fn test_e2e_provenance_receipt() {
     };
 
     let decision = guard.check(&input);
-    
+
     // Generate Receipt
     let mut csprng = OsRng;
     let signing_key = SigningKey::generate(&mut csprng);
@@ -240,7 +246,7 @@ fn test_e2e_provenance_receipt() {
 
     assert_eq!(receipt.agent_id, "agent-receipt");
     assert_eq!(receipt.decision, "allow");
-    
+
     // Verify
     assert!(receipt.verify(&public_key.to_bytes()));
 

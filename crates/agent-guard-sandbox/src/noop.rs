@@ -1,4 +1,6 @@
-use super::{Sandbox, SandboxContext, SandboxError, SandboxOutput, SandboxResult, SandboxCapabilities};
+use super::{
+    Sandbox, SandboxCapabilities, SandboxContext, SandboxError, SandboxOutput, SandboxResult,
+};
 
 /// No-op sandbox — passthrough with no OS-level isolation.
 pub struct NoopSandbox;
@@ -28,16 +30,13 @@ impl Sandbox for NoopSandbox {
 
     fn execute(&self, command: &str, context: &SandboxContext) -> SandboxResult {
         use std::process::Command;
-        use std::time::Duration;
-        use std::thread;
         use std::sync::mpsc;
-        
-        // CWE-78: Command Injection Mitigation.
-        let escaped_command = command.replace("'", "'\\''");
+        use std::thread;
+        use std::time::Duration;
 
         let mut child = Command::new("sh")
             .arg("-c")
-            .arg(format!("'{}'", escaped_command))
+            .arg(command)
             .current_dir(&context.working_directory)
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped())
@@ -54,7 +53,9 @@ impl Sandbox for NoopSandbox {
             loop {
                 match child.try_wait() {
                     Ok(Some(status)) => {
-                        let output = child.wait_with_output().map_err(|e| SandboxError::ExecutionFailed(e.to_string()))?;
+                        let output = child
+                            .wait_with_output()
+                            .map_err(|e| SandboxError::ExecutionFailed(e.to_string()))?;
                         return Ok(SandboxOutput {
                             stdout: String::from_utf8_lossy(&output.stdout).to_string(),
                             stderr: String::from_utf8_lossy(&output.stderr).to_string(),
@@ -74,7 +75,8 @@ impl Sandbox for NoopSandbox {
             }
         }
 
-        let output = child.wait_with_output()
+        let output = child
+            .wait_with_output()
             .map_err(|e| SandboxError::ExecutionFailed(e.to_string()))?;
 
         Ok(SandboxOutput {

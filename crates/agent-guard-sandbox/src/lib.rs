@@ -12,11 +12,11 @@ pub mod windows;
 #[cfg(feature = "windows-appcontainer")]
 pub mod windows_appcontainer;
 
-pub use noop::NoopSandbox;
 #[cfg(target_os = "linux")]
 pub use linux::SeccompSandbox;
 #[cfg(feature = "macos-sandbox")]
 pub use macos::SeatbeltSandbox;
+pub use noop::NoopSandbox;
 #[cfg(feature = "windows-sandbox")]
 pub use windows::JobObjectSandbox;
 #[cfg(feature = "windows-appcontainer")]
@@ -154,7 +154,9 @@ impl CapabilityDoctor {
                 };
                 match sb.execute("echo 1", &ctx) {
                     Ok(_) => HealthStatus::Pass,
-                    Err(e) => HealthStatus::Fail { error: e.to_string() },
+                    Err(e) => HealthStatus::Fail {
+                        error: e.to_string(),
+                    },
                 }
             } else {
                 HealthStatus::Skipped

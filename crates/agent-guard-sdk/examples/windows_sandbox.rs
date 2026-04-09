@@ -2,8 +2,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     #[cfg(target_os = "windows")]
     {
         use agent_guard_core::{Context, Tool, TrustLevel};
-        use agent_guard_sdk::{Guard, GuardInput};
         use agent_guard_sandbox::JobObjectSandbox;
+        use agent_guard_sdk::{Guard, GuardInput};
         println!("🛡️ agent-guard Example: Windows Job Object Sandbox");
         println!("==============================================\n");
 
@@ -19,7 +19,10 @@ default_mode: workspace_write
         let caps = agent_guard_sdk::Sandbox::capabilities(&sandbox);
 
         println!("Sandbox Capabilities (UCM):");
-        println!("  - FS Workspace Write: {}", caps.filesystem_write_workspace);
+        println!(
+            "  - FS Workspace Write: {}",
+            caps.filesystem_write_workspace
+        );
         println!("  - FS Global Write:    {}", caps.filesystem_write_global);
         println!("  - Network Any:        {}", caps.network_outbound_any);
         println!();
@@ -53,7 +56,7 @@ default_mode: workspace_write
         let _ = std::fs::remove_dir_all(temp_dir);
         println!("\n==============================================");
     }
-    
+
     #[cfg(not(target_os = "windows"))]
     {
         println!("This example is intended for Windows systems.");

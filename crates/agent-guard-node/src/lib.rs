@@ -3,14 +3,13 @@
 #[macro_use]
 extern crate napi_derive;
 
-use std::path::PathBuf;
 use agent_guard_sdk::{
-    Guard as RustGuard, Context as RustContext, Tool as RustTool, 
-    TrustLevel as RustTrustLevel, GuardDecision, GuardInput,
-    ExecuteOutcome as RustExecuteOutcome
+    Context as RustContext, ExecuteOutcome as RustExecuteOutcome, Guard as RustGuard,
+    GuardDecision, GuardInput, Tool as RustTool, TrustLevel as RustTrustLevel,
 };
 use napi::bindgen_prelude::*;
 use serde::Serialize;
+use std::path::PathBuf;
 
 // ── Enums ─────────────────────────────────────────────────────────────────────
 
@@ -96,7 +95,11 @@ pub struct ExecuteOutcome {
 
 fn execute_outcome_from_rust(o: RustExecuteOutcome, sandbox_type: String) -> ExecuteOutcome {
     match o {
-        RustExecuteOutcome::Executed { output, policy_version, receipt } => ExecuteOutcome {
+        RustExecuteOutcome::Executed {
+            output,
+            policy_version,
+            receipt,
+        } => ExecuteOutcome {
             status: "executed".to_string(),
             output: Some(SandboxOutput {
                 exit_code: output.exit_code,
@@ -108,7 +111,10 @@ fn execute_outcome_from_rust(o: RustExecuteOutcome, sandbox_type: String) -> Exe
             sandbox_type: Some(sandbox_type),
             receipt: receipt.map(|r| serde_json::to_string(&r).unwrap_or_default()),
         },
-        RustExecuteOutcome::Denied { decision, policy_version } => ExecuteOutcome {
+        RustExecuteOutcome::Denied {
+            decision,
+            policy_version,
+        } => ExecuteOutcome {
             status: "denied".to_string(),
             output: None,
             decision: Some(decision_from_rust(decision, policy_version.clone())),
@@ -116,7 +122,10 @@ fn execute_outcome_from_rust(o: RustExecuteOutcome, sandbox_type: String) -> Exe
             sandbox_type: Some(sandbox_type),
             receipt: None,
         },
-        RustExecuteOutcome::AskRequired { decision, policy_version } => ExecuteOutcome {
+        RustExecuteOutcome::AskRequired {
+            decision,
+            policy_version,
+        } => ExecuteOutcome {
             status: "ask_required".to_string(),
             output: None,
             decision: Some(decision_from_rust(decision, policy_version.clone())),
@@ -168,8 +177,12 @@ impl Guard {
         use ed25519_dalek::SigningKey;
         let bytes = hex::decode(hex_key)
             .map_err(|e| Error::new(Status::GenericFailure, format!("Invalid hex key: {e}")))?;
-        let key_array: [u8; 32] = bytes.try_into()
-            .map_err(|_| Error::new(Status::GenericFailure, "Key must be exactly 32 bytes".to_string()))?;
+        let key_array: [u8; 32] = bytes.try_into().map_err(|_| {
+            Error::new(
+                Status::GenericFailure,
+                "Key must be exactly 32 bytes".to_string(),
+            )
+        })?;
         let signing_key = SigningKey::from_bytes(&key_array);
         self.inner.with_signing_key(signing_key);
         Ok(())
@@ -200,7 +213,7 @@ impl Guard {
     ) -> Result<ExecuteOutcome> {
         let rust_tool = parse_tool(&tool)?;
         let rust_ctx = context_from_node(options);
-        
+
         let input = GuardInput {
             tool: rust_tool,
             payload,
@@ -210,9 +223,11 @@ impl Guard {
         let sandbox = RustGuard::default_sandbox();
         let sandbox_type = sandbox.sandbox_type().to_string();
 
-        let result = self.inner.execute(&input, sandbox.as_ref())
+        let result = self
+            .inner
+            .execute(&input, sandbox.as_ref())
             .map_err(|e| Error::new(Status::GenericFailure, format!("execution error: {e}")))?;
-            
+
         Ok(execute_outcome_from_rust(result, sandbox_type))
     }
 
@@ -223,7 +238,8 @@ impl Guard {
 
     #[napi]
     pub fn reload_from_yaml(&self, yaml: String) -> Result<()> {
-        self.inner.reload_from_yaml(&yaml)
+        self.inner
+            .reload_from_yaml(&yaml)
             .map_err(|e| Error::new(Status::GenericFailure, format!("{e}")))
     }
 
@@ -262,8 +278,12 @@ fn parse_tool(tool_str: &str) -> Result<RustTool> {
         "write_file" => Ok(RustTool::WriteFile),
         "http_request" => Ok(RustTool::HttpRequest),
         other => {
-            let id = CustomToolId::new(other)
-                .map_err(|e| Error::new(Status::GenericFailure, format!("invalid tool id {other:?}: {e}")))?;
+            let id = CustomToolId::new(other).map_err(|e| {
+                Error::new(
+                    Status::GenericFailure,
+                    format!("invalid tool id {other:?}: {e}"),
+                )
+            })?;
             Ok(RustTool::Custom(id))
         }
     }

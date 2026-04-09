@@ -33,10 +33,16 @@ pub struct Metrics {
     pub anomaly_triggered_total: Family<ToolLabels, Counter>,
 }
 
+impl Default for Metrics {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Metrics {
     pub fn new() -> Self {
         let mut registry = Registry::default();
-        
+
         let policy_checks_total = Family::<ToolLabels, Counter>::default();
         registry.register(
             "agent_guard_policy_checks_total",
@@ -51,10 +57,11 @@ impl Metrics {
             decision_total.clone(),
         );
 
-        let execution_duration_seconds = Family::<ExecutionLabels, Histogram>::new_with_constructor(|| {
-            // Buckets from 1ms to ~1s
-            Histogram::new(exponential_buckets(0.001, 2.0, 10))
-        });
+        let execution_duration_seconds =
+            Family::<ExecutionLabels, Histogram>::new_with_constructor(|| {
+                // Buckets from 1ms to ~1s
+                Histogram::new(exponential_buckets(0.001, 2.0, 10))
+            });
         registry.register(
             "agent_guard_execution_duration_seconds",
             "Histogram of tool execution duration in seconds",
@@ -81,5 +88,7 @@ impl Metrics {
 pub static GLOBAL_METRICS: OnceLock<Arc<Metrics>> = OnceLock::new();
 
 pub fn get_metrics() -> Arc<Metrics> {
-    GLOBAL_METRICS.get_or_init(|| Arc::new(Metrics::new())).clone()
+    GLOBAL_METRICS
+        .get_or_init(|| Arc::new(Metrics::new()))
+        .clone()
 }

@@ -6,8 +6,13 @@ use serde::{Deserialize, Serialize};
 #[serde(tag = "decision", rename_all = "snake_case")]
 pub enum GuardDecision {
     Allow,
-    Deny { reason: DecisionReason },
-    AskUser { message: String, reason: DecisionReason },
+    Deny {
+        reason: DecisionReason,
+    },
+    AskUser {
+        message: String,
+        reason: DecisionReason,
+    },
 }
 
 impl std::fmt::Display for GuardDecision {

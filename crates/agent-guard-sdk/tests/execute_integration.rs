@@ -5,7 +5,7 @@
 
 use agent_guard_sdk::{
     guard::{ExecuteOutcome, Guard},
-    Context, GuardInput, Tool, TrustLevel, Sandbox,
+    Context, GuardInput, Tool, TrustLevel,
 };
 
 // ── Helper ─────────────────────────────────────────────────────────────────
@@ -110,7 +110,8 @@ fn e2_denied_command_not_executed() {
 fn e3_read_only_blocks_write_command() {
     let guard = Guard::from_yaml(POLICY_READ_ONLY).expect("guard init");
     // `dd` with of= is a raw write command the validator should block in read_only mode.
-    let inp = input(r#"{"command": "dd if=/dev/zero of=/tmp/agent_guard_dd_test.bin bs=1 count=1"}"#);
+    let inp =
+        input(r#"{"command": "dd if=/dev/zero of=/tmp/agent_guard_dd_test.bin bs=1 count=1"}"#);
     match execute_noop(&guard, &inp).expect("no sandbox error") {
         ExecuteOutcome::Denied { .. } | ExecuteOutcome::AskRequired { .. } => {
             // Expected: validator blocked the write via `dd`.
@@ -139,7 +140,10 @@ fn e4_workspace_write_allows_write() {
     let inp = input(&cmd);
     match execute_noop(&guard, &inp).expect("no sandbox error") {
         ExecuteOutcome::Executed { output, .. } => {
-            assert_eq!(output.exit_code, 0, "write should succeed in workspace_write mode");
+            assert_eq!(
+                output.exit_code, 0,
+                "write should succeed in workspace_write mode"
+            );
         }
         other => panic!("expected Executed, got {other:?}"),
     }
@@ -212,7 +216,10 @@ fn e7_untrusted_context_downgrades_mode() {
     // Untrusted cannot access a full_access tool → Denied(InsufficientPermissionMode).
     match execute_noop(&guard, &inp).expect("no sandbox error") {
         ExecuteOutcome::Denied { decision, .. } => {
-            assert!(matches!(decision, agent_guard_sdk::GuardDecision::Deny { .. }));
+            assert!(matches!(
+                decision,
+                agent_guard_sdk::GuardDecision::Deny { .. }
+            ));
         }
         other => panic!("expected Denied for Untrusted+full_access, got {other:?}"),
     }

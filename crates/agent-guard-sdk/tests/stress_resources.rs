@@ -1,6 +1,6 @@
 use agent_guard_core::{Context, Tool, TrustLevel};
-use agent_guard_sdk::{Guard, ExecuteOutcome, GuardInput};
 use agent_guard_sandbox::NoopSandbox;
+use agent_guard_sdk::{ExecuteOutcome, Guard, GuardInput};
 use std::time::{Duration, Instant};
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
@@ -28,7 +28,10 @@ async fn test_stress_resource_spawn_loop() {
     let sandbox = Guard::default_sandbox();
     let count = 100; // Scaled down for CI/Agent environment, 10000 in full soak
 
-    println!("🚀 Starting high-frequency spawn loop ({} iterations)", count);
+    println!(
+        "🚀 Starting high-frequency spawn loop ({} iterations)",
+        count
+    );
     let start = Instant::now();
 
     for _ in 0..count {
@@ -39,7 +42,7 @@ async fn test_stress_resource_spawn_loop() {
     }
 
     println!("✅ Finished spawn loop in {:?}", start.elapsed());
-    
+
     // On Unix, we check for zombie processes (defunct)
     #[cfg(unix)]
     {
@@ -49,7 +52,11 @@ async fn test_stress_resource_spawn_loop() {
             .unwrap();
         let ps_out = String::from_utf8_lossy(&output.stdout);
         let zombie_count = ps_out.lines().filter(|l| l.contains("<defunct>")).count();
-        assert!(zombie_count < 5, "Too many zombie processes detected: {}", zombie_count);
+        assert!(
+            zombie_count < 5,
+            "Too many zombie processes detected: {}",
+            zombie_count
+        );
     }
 }
 
@@ -59,8 +66,10 @@ async fn test_stress_resource_spawn_loop() {
 async fn test_stress_resource_large_output() {
     let guard = Guard::from_yaml("version: 1\ndefault_mode: full_access").unwrap();
     let sandbox = Guard::default_sandbox();
-    
-    if sandbox.sandbox_type() == "none" { return; }
+
+    if sandbox.sandbox_type() == "none" {
+        return;
+    }
 
     // Generate ~100KB of output to both streams
     let cmd = if cfg!(windows) {
@@ -73,7 +82,7 @@ async fn test_stress_resource_large_output() {
     let start = Instant::now();
 
     let res = guard.execute(&input(cmd), sandbox.as_ref()).unwrap();
-    
+
     if let ExecuteOutcome::Executed { output, .. } = res {
         assert_eq!(output.exit_code, 0);
         assert!(output.stdout.contains("STDOUT_LINE_1000"));
@@ -98,13 +107,17 @@ async fn test_stress_resource_slow_webhook() {
         then.status(200).delay(Duration::from_secs(2));
     });
 
-    let yaml = format!(r#"
+    let yaml = format!(
+        r#"
 version: 1
 default_mode: full_access
 audit:
   enabled: true
   webhook_url: "http://{}{}"
-"#, server.address(), unique_path);
+"#,
+        server.address(),
+        unique_path
+    );
 
     let guard = Guard::from_yaml(&yaml).unwrap();
     let sandbox = NoopSandbox;
@@ -121,7 +134,10 @@ audit:
 
     let elapsed = start.elapsed();
     println!("✅ Executed 10 requests with slow webhook in {:?}", elapsed);
-    assert!(elapsed < Duration::from_secs(5), "Main execution chain blocked by slow webhook!");
+    assert!(
+        elapsed < Duration::from_secs(5),
+        "Main execution chain blocked by slow webhook!"
+    );
 
     // Wait a bit for the async threads to finish
     tokio::time::sleep(Duration::from_millis(500)).await;

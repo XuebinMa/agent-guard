@@ -1,6 +1,6 @@
 use agent_guard_core::{Context, DecisionCode, GuardDecision, Tool, TrustLevel};
-use agent_guard_sdk::{ExecuteOutcome, Guard, GuardInput};
 use agent_guard_sandbox::NoopSandbox;
+use agent_guard_sdk::{ExecuteOutcome, Guard, GuardInput};
 use ed25519_dalek::SigningKey;
 use rand::rngs::StdRng;
 use rand::SeedableRng;
@@ -26,7 +26,7 @@ anomaly:
     let _sandbox = NoopSandbox;
 
     let actors = vec!["user-1", "user-1 ", "USER-1", "user-1\n"];
-    
+
     for actor in actors {
         let context = Context {
             actor: Some(actor.to_string()),
@@ -41,14 +41,21 @@ anomaly:
         };
 
         let res1 = guard.execute(&input, &_sandbox).unwrap();
-        assert!(matches!(res1, ExecuteOutcome::Denied { decision: GuardDecision::Deny { reason, .. }, .. } if reason.code == DecisionCode::DeniedByRule));
+        assert!(
+            matches!(res1, ExecuteOutcome::Denied { decision: GuardDecision::Deny { reason, .. }, .. } if reason.code == DecisionCode::DeniedByRule)
+        );
 
         let res2 = guard.execute(&input, &_sandbox).unwrap();
-        assert!(matches!(res2, ExecuteOutcome::Denied { decision: GuardDecision::Deny { reason, .. }, .. } if reason.code == DecisionCode::DeniedByRule));
+        assert!(
+            matches!(res2, ExecuteOutcome::Denied { decision: GuardDecision::Deny { reason, .. }, .. } if reason.code == DecisionCode::DeniedByRule)
+        );
 
         let res3 = guard.execute(&input, &_sandbox).unwrap();
-        assert!(matches!(res3, ExecuteOutcome::Denied { decision: GuardDecision::Deny { reason, .. }, .. } if reason.code == DecisionCode::AgentLocked), 
-            "Actor '{}' should be locked", actor);
+        assert!(
+            matches!(res3, ExecuteOutcome::Denied { decision: GuardDecision::Deny { reason, .. }, .. } if reason.code == DecisionCode::AgentLocked),
+            "Actor '{}' should be locked",
+            actor
+        );
     }
 }
 
@@ -62,13 +69,16 @@ async fn test_stress_security_reload_fuse_race() {
     let reload_handle = tokio::spawn(async move {
         for i in 0..100 {
             // Keep threshold low to ensure lock, but change version
-            let yaml = format!(r#"
+            let yaml = format!(
+                r#"
 version: {}
 default_mode: read_only
 anomaly:
   enabled: true
   deny_fuse: {{ enabled: true, threshold: 2, window_seconds: 60 }}
-"#, i + 100);
+"#,
+                i + 100
+            );
             let _ = g_reload.reload_from_yaml(&yaml);
             tokio::time::sleep(Duration::from_millis(5)).await;
         }
@@ -78,11 +88,22 @@ anomaly:
     let check_handle = tokio::spawn(async move {
         let mut locked_at_version = None;
         for _ in 0..1000 {
-            let context = Context { actor: Some(actor.to_string()), ..Default::default() };
-            let input = GuardInput { tool: Tool::Bash, payload: r#"{"command":"rm"}"#.to_string(), context };
-            
+            let context = Context {
+                actor: Some(actor.to_string()),
+                ..Default::default()
+            };
+            let input = GuardInput {
+                tool: Tool::Bash,
+                payload: r#"{"command":"rm"}"#.to_string(),
+                context,
+            };
+
             let res = g_check.execute(&input, &NoopSandbox).unwrap();
-            if let ExecuteOutcome::Denied { decision, policy_version } = res {
+            if let ExecuteOutcome::Denied {
+                decision,
+                policy_version,
+            } = res
+            {
                 if let GuardDecision::Deny { reason, .. } = decision {
                     if reason.code == DecisionCode::AgentLocked {
                         locked_at_version = Some(policy_version);
@@ -97,7 +118,8 @@ anomaly:
 
     let result = tokio::join!(reload_handle, check_handle);
     let locked_version = result.1.expect("Check handle panicked");
-    let version = locked_version.expect("Actor should eventually be locked under constant reloading");
+    let version =
+        locked_version.expect("Actor should eventually be locked under constant reloading");
     println!("👉 Actor locked under policy version: {}", version);
 }
 
@@ -118,8 +140,15 @@ anomaly:
     let actor = "priority-actor";
     let sandbox = NoopSandbox;
 
-    let context = Context { actor: Some(actor.to_string()), ..Default::default() };
-    let input_restricted = GuardInput { tool: Tool::Bash, payload: r#"{"command":"restricted"}"#.to_string(), context };
+    let context = Context {
+        actor: Some(actor.to_string()),
+        ..Default::default()
+    };
+    let input_restricted = GuardInput {
+        tool: Tool::Bash,
+        payload: r#"{"command":"restricted"}"#.to_string(),
+        context,
+    };
 
     guard.execute(&input_restricted, &sandbox).unwrap();
     guard.execute(&input_restricted, &sandbox).unwrap();
@@ -127,7 +156,11 @@ anomaly:
     let res = guard.execute(&input_restricted, &sandbox).unwrap();
     if let ExecuteOutcome::Denied { decision, .. } = res {
         if let GuardDecision::Deny { reason, .. } = decision {
-            assert_eq!(reason.code, DecisionCode::AgentLocked, "Priority failure: AGENT_LOCKED must come first");
+            assert_eq!(
+                reason.code,
+                DecisionCode::AgentLocked,
+                "Priority failure: AGENT_LOCKED must come first"
+            );
         }
     }
 }
@@ -145,13 +178,27 @@ async fn test_stress_security_consistency_triad() {
         actor: Some("user-triad".to_string()),
         ..Default::default()
     };
-    let input = GuardInput { tool: Tool::Bash, payload: r#"{"command":"ls"}"#.to_string(), context };
+    let input = GuardInput {
+        tool: Tool::Bash,
+        payload: r#"{"command":"ls"}"#.to_string(),
+        context,
+    };
 
     let res = guard.execute(&input, &NoopSandbox).unwrap();
-    let ExecuteOutcome::Executed { policy_version, .. } = res else { panic!("Should allow") };
+    let ExecuteOutcome::Executed { policy_version, .. } = res else {
+        panic!("Should allow")
+    };
 
     let decision = guard.check(&input);
-    let receipt = ExecutionReceipt::sign("agent-triad", "bash", &policy_version, "noop", &decision, "h123", &signing_key);
+    let receipt = ExecutionReceipt::sign(
+        "agent-triad",
+        "bash",
+        &policy_version,
+        "noop",
+        &decision,
+        "h123",
+        &signing_key,
+    );
 
     assert!(!policy_version.is_empty());
     assert_eq!(receipt.policy_version, policy_version);
@@ -164,13 +211,14 @@ async fn test_stress_security_consistency_triad() {
 async fn test_stress_security_webhook_resilience() {
     use httpmock::prelude::*;
     let server = MockServer::start();
-    
+
     server.mock(|when, then| {
         when.method(POST).path("/fail");
         then.status(500);
     });
 
-    let yaml = format!(r#"
+    let yaml = format!(
+        r#"
 version: 1
 default_mode: read_only
 audit:
@@ -179,19 +227,32 @@ audit:
 anomaly:
   enabled: true
   deny_fuse: {{ enabled: true, threshold: 2, window_seconds: 60 }}
-"#, server.address());
+"#,
+        server.address()
+    );
 
     let guard = Guard::from_yaml(&yaml).unwrap();
-    let context = Context { actor: Some("victim".to_string()), ..Default::default() };
-    let input = GuardInput { tool: Tool::Bash, payload: r#"{"command":"rm"}"#.to_string(), context };
+    let context = Context {
+        actor: Some("victim".to_string()),
+        ..Default::default()
+    };
+    let input = GuardInput {
+        tool: Tool::Bash,
+        payload: r#"{"command":"rm"}"#.to_string(),
+        context,
+    };
 
     guard.execute(&input, &NoopSandbox).unwrap();
     guard.execute(&input, &NoopSandbox).unwrap();
-    
+
     let res = guard.execute(&input, &NoopSandbox).unwrap();
     if let ExecuteOutcome::Denied { decision, .. } = res {
         if let GuardDecision::Deny { reason, .. } = decision {
-            assert_eq!(reason.code, DecisionCode::AgentLocked, "Local locking failed due to webhook error?");
+            assert_eq!(
+                reason.code,
+                DecisionCode::AgentLocked,
+                "Local locking failed due to webhook error?"
+            );
         }
     }
 }

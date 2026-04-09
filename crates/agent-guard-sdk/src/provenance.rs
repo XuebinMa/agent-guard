@@ -1,7 +1,7 @@
-use serde::{Deserialize, Serialize};
-use ed25519_dalek::{SigningKey, Signer, Verifier, Signature};
-use std::time::{SystemTime, UNIX_EPOCH};
 use agent_guard_core::GuardDecision;
+use ed25519_dalek::{Signature, Signer, SigningKey, Verifier};
+use serde::{Deserialize, Serialize};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 /// Version of the receipt schema.
 pub const RECEIPT_VERSION: &str = "1.0";
@@ -59,14 +59,14 @@ impl ExecutionReceipt {
         let message = receipt.to_signing_payload();
         let signature = signing_key.sign(message.as_bytes());
         receipt.signature = hex::encode(signature.to_bytes());
-        
+
         receipt
     }
 
     /// Verifies the receipt signature against a public key.
     pub fn verify(&self, public_key_bytes: &[u8; 32]) -> bool {
         use ed25519_dalek::VerifyingKey;
-        
+
         let Ok(verifying_key) = VerifyingKey::from_bytes(public_key_bytes) else {
             return false;
         };
@@ -143,7 +143,7 @@ mod tests {
 
         // Tamper with data
         receipt.decision = "deny".to_string();
-        
+
         assert!(!receipt.verify(&public_key.to_bytes()));
     }
 }
