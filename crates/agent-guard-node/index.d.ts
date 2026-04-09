@@ -14,6 +14,7 @@ export interface Decision {
   code?: string
   matchedRule?: string
   askPrompt?: string
+  policyVersion: string
 }
 export interface SandboxOutput {
   exitCode: number
@@ -21,9 +22,12 @@ export interface SandboxOutput {
   stderr: string
 }
 export interface ExecuteOutcome {
-  outcome: string
+  status: string
   output?: SandboxOutput
   decision?: Decision
+  policyVersion: string
+  sandboxType?: string
+  receipt?: string
 }
 export interface Context {
   trustLevel?: TrustLevel
@@ -35,6 +39,11 @@ export interface Context {
 export declare class Guard {
   static fromYaml(yaml: string): Guard
   static fromYamlFile(path: string): Guard
+  /**
+   * Set the Ed25519 signing key for provenance receipts.
+   * The key must be a 32-byte hex-encoded string.
+   */
+  setSigningKey(hexKey: string): void
   check(tool: string, payload: string, options?: Context | undefined | null): Decision
   /**
    * High-level execution method.

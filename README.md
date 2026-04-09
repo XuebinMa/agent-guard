@@ -17,7 +17,7 @@ Unlike basic "System Prompt" instructions, `agent-guard` enforces security at th
 
 ### 🚀 Key Advantages
 - 🛡️ **Defense in Depth**: Combines a YAML rule engine with multi-platform sandboxing (Linux Prototype, Windows, macOS).
-- 📜 **Verifiable Provenance**: Ed25519 Signed Receipts (Automatic) for cryptographic execution proof.
+- 📜 **Verifiable Provenance**: Ed25519 Signed Receipts (supported) for cryptographic execution proof.
 - 🔒 **Proactive Protection**: Built-in **Deny Fuse** automatically locks out Agents after repeated policy violations to stop active probing.
 - 📊 **Enterprise Observability**: Real-time Prometheus metrics and SIEM-ready Webhooks for instant incident response.
 - 🏥 **Security Transparency**: Built-in `CapabilityDoctor` to verify exactly what your host OS supports—no more black-box security.

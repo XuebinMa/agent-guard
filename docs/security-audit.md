@@ -53,7 +53,7 @@ Manual audit confirms that `CreateProcessAsUserW` is called with `CREATE_SUSPEND
 
 ## 4. 🛡️ Security Baseline (v0.2.0)
 
-- **Linux**: Seccomp-BPF (Syscall filtering).
+- **Linux**: Active Prototype (sh -c wrapper).
 - **macOS**: Seatbelt (Canonical path resolution).
 - **Windows**: Low-IL & AppContainer (Handle inheritance restricted).
-- **All Platforms**: Ed25519 Signed Receipts.
+- **All Platforms**: Ed25519 Signed Receipts (Optional).
