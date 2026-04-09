@@ -42,6 +42,9 @@ fn input(command: &str, working_dir: PathBuf) -> GuardInput {
 #[test]
 fn test_parity_filesystem_write_workspace() {
     let sandbox = get_active_sandbox();
+    if !sandbox.is_available() {
+        return;
+    }
     let caps = sandbox.capabilities();
 
     if !caps.filesystem_write_workspace {
@@ -154,6 +157,9 @@ fn test_parity_filesystem_read_global() {
 #[test]
 fn test_parity_network_outbound() {
     let sandbox = get_active_sandbox();
+    if !sandbox.is_available() {
+        return;
+    }
     let caps = sandbox.capabilities();
 
     if caps.network_outbound_any {

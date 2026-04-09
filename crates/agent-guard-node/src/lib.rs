@@ -288,3 +288,87 @@ fn parse_tool(tool_str: &str) -> Result<RustTool> {
         }
     }
 }
+
+// ── Payload Normalization ─────────────────────────────────────────────────────
+
+/// Normalize a raw input string into the payload format expected by the guard.
+/// Shell tools (bash, shell, terminal) are wrapped as {"command": "..."}.
+/// Other string inputs are wrapped as {"input": "..."}.
+#[napi]
+pub fn normalize_payload(tool: String, raw_input: String) -> String {
+    let shell_tools = ["bash", "shell", "terminal"];
+    if shell_tools.contains(&tool.as_str()) {
+        if let Ok(v) = serde_json::from_str::<serde_json::Value>(&raw_input) {
+            if v.get("command").is_some() {
+                return raw_input;
+            }
+        }
+        return serde_json::json!({"command": raw_input}).to_string();
+    }
+    if serde_json::from_str::<serde_json::Value>(&raw_input).is_ok() {
+        return raw_input;
+    }
+    serde_json::json!({"input": raw_input}).to_string()
+}
+
+// ── Receipt Verification ──────────────────────────────────────────────────────
+
+/// Verify an Ed25519-signed execution receipt.
+/// receipt_json: JSON string of the ExecutionReceipt.
+/// public_key_hex: 64 hex chars (32 bytes) of the Ed25519 public key.
+#[napi]
+pub fn verify_receipt(receipt_json: String, public_key_hex: String) -> Result<bool> {
+    use ed25519_dalek::{Signature, Verifier, VerifyingKey};
+
+    #[derive(serde::Deserialize)]
+    struct Receipt {
+        receipt_version: String,
+        agent_id: String,
+        tool: String,
+        policy_version: String,
+        sandbox_type: String,
+        decision: String,
+        command_hash: String,
+        timestamp: u64,
+        signature: String,
+    }
+
+    let receipt: Receipt = serde_json::from_str(&receipt_json)
+        .map_err(|e| Error::new(Status::InvalidArg, format!("invalid receipt JSON: {e}")))?;
+
+    let key_bytes = hex::decode(&public_key_hex)
+        .map_err(|e| Error::new(Status::InvalidArg, format!("invalid public key hex: {e}")))?;
+    let key_array: [u8; 32] = key_bytes.try_into().map_err(|_| {
+        Error::new(
+            Status::InvalidArg,
+            "public key must be 32 bytes (64 hex chars)",
+        )
+    })?;
+
+    let Ok(verifying_key) = VerifyingKey::from_bytes(&key_array) else {
+        return Ok(false);
+    };
+
+    let payload = format!(
+        "{}:{}:{}:{}:{}:{}:{}:{}",
+        receipt.receipt_version,
+        receipt.agent_id,
+        receipt.tool,
+        receipt.policy_version,
+        receipt.sandbox_type,
+        receipt.decision,
+        receipt.command_hash,
+        receipt.timestamp,
+    );
+
+    let Ok(sig_bytes) = hex::decode(&receipt.signature) else {
+        return Ok(false);
+    };
+    let Ok(signature) = Signature::from_slice(&sig_bytes) else {
+        return Ok(false);
+    };
+
+    Ok(verifying_key
+        .verify(payload.as_bytes(), &signature)
+        .is_ok())
+}

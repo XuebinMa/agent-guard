@@ -46,17 +46,17 @@ fn main() {
         println!(
             "  - FS Global Write:    {}",
             if report.capabilities.filesystem_write_global {
-                "✅ Restricted"
+                "⚠️ Allowed (no OS-level restriction)"
             } else {
-                "❌ Unrestricted"
+                "✅ Blocked by sandbox"
             }
         );
         println!(
             "  - Network Outbound:   {}",
             if report.capabilities.network_outbound_any {
-                "❌ Allowed"
+                "⚠️ Allowed (no OS-level restriction)"
             } else {
-                "✅ Blocked"
+                "✅ Blocked by sandbox"
             }
         );
         println!(

@@ -8,6 +8,8 @@ description = "High-level SDK for agent-guard policy enforcement"
 [features]
 # Enable Linux seccomp-bpf sandbox.
 seccomp = ["agent-guard-sandbox/seccomp"]
+# Enable Linux Landlock filesystem isolation (kernel 5.13+).
+landlock = ["agent-guard-sandbox/landlock"]
 # Enable experimental macOS sandbox using sandbox-exec (Seatbelt).
 macos-sandbox = ["agent-guard-sandbox/macos-sandbox"]
 # Enable experimental Windows sandbox using Job Objects.

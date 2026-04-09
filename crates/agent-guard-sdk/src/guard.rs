@@ -25,6 +25,8 @@ pub enum GuardInitError {
         path: String,
         source: std::io::Error,
     },
+    #[error("signing key load error: {0}")]
+    SigningKeyLoad(String),
 }
 
 // ── Guard ─────────────────────────────────────────────────────────────────────
@@ -80,6 +82,46 @@ impl Guard {
         let mut new_state = (**old_state).clone();
         new_state.signing_key = Some(key);
         self.state.store(Arc::new(new_state));
+    }
+
+    /// Construct a Guard from a YAML string with an Ed25519 signing key for provenance.
+    pub fn from_yaml_with_key(
+        yaml: &str,
+        key: ed25519_dalek::SigningKey,
+    ) -> Result<Self, GuardInitError> {
+        let guard = Self::from_yaml(yaml)?;
+        guard.with_signing_key(key);
+        Ok(guard)
+    }
+
+    /// Load a hex-encoded Ed25519 private key from a file and set it on this Guard.
+    ///
+    /// The file should contain exactly 64 hex characters (32 bytes) representing
+    /// the Ed25519 secret key seed. Whitespace is trimmed.
+    pub fn load_signing_key_file(
+        &self,
+        path: impl AsRef<std::path::Path>,
+    ) -> Result<(), GuardInitError> {
+        let contents = std::fs::read_to_string(path.as_ref()).map_err(|e| {
+            GuardInitError::SigningKeyLoad(format!(
+                "failed to read key file '{}': {}",
+                path.as_ref().display(),
+                e
+            ))
+        })?;
+        let key = parse_hex_signing_key(contents.trim())?;
+        self.with_signing_key(key);
+        Ok(())
+    }
+
+    /// Load a hex-encoded Ed25519 private key from an environment variable.
+    pub fn load_signing_key_env(&self, var_name: &str) -> Result<(), GuardInitError> {
+        let value = std::env::var(var_name).map_err(|_| {
+            GuardInitError::SigningKeyLoad(format!("environment variable '{}' not set", var_name))
+        })?;
+        let key = parse_hex_signing_key(value.trim())?;
+        self.with_signing_key(key);
+        Ok(())
     }
 
     /// Atomically reload the policy engine from a new instance.
@@ -396,6 +438,13 @@ impl Guard {
     pub fn default_sandbox() -> Box<dyn Sandbox> {
         #[cfg(target_os = "linux")]
         {
+            #[cfg(feature = "landlock")]
+            {
+                let ll = agent_guard_sandbox::LandlockSandbox;
+                if ll.is_available() {
+                    return Box::new(ll);
+                }
+            }
             return Box::new(agent_guard_sandbox::SeccompSandbox::new());
         }
         #[cfg(all(target_os = "macos", feature = "macos-sandbox"))]
@@ -623,4 +672,17 @@ fn sha256_hash(data: &str) -> String {
     let mut hasher = Sha256::new();
     hasher.update(data.as_bytes());
     hex::encode(hasher.finalize())
+}
+
+fn parse_hex_signing_key(hex_str: &str) -> Result<ed25519_dalek::SigningKey, GuardInitError> {
+    let bytes = hex::decode(hex_str).map_err(|e| {
+        GuardInitError::SigningKeyLoad(format!("invalid hex: {}", e))
+    })?;
+    let seed: [u8; 32] = bytes.try_into().map_err(|v: Vec<u8>| {
+        GuardInitError::SigningKeyLoad(format!(
+            "expected 32 bytes (64 hex chars), got {} bytes",
+            v.len()
+        ))
+    })?;
+    Ok(ed25519_dalek::SigningKey::from_bytes(&seed))
 }

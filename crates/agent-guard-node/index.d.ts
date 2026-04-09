@@ -55,3 +55,25 @@ export declare class Guard {
   policyVersion(): string
   policyHash(): string
 }
+export interface ExecutionReceipt {
+  receipt_version: string
+  agent_id: string
+  tool: string
+  policy_version: string
+  sandbox_type: string
+  decision: string
+  command_hash: string
+  timestamp: number
+  signature: string
+}
+/**
+ * Normalize a raw input string into the payload format expected by the guard.
+ * Shell tools (bash, shell, terminal) are wrapped as {"command": "..."}.
+ */
+export declare function normalizePayload(tool: string, rawInput: string): string
+/**
+ * Verify an Ed25519-signed execution receipt.
+ * @param receiptJson - JSON string of the ExecutionReceipt.
+ * @param publicKeyHex - 64 hex chars (32 bytes) of the Ed25519 public key.
+ */
+export declare function verifyReceipt(receiptJson: string, publicKeyHex: string): boolean

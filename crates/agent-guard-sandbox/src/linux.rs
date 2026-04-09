@@ -34,14 +34,16 @@ impl Sandbox for SeccompSandbox {
     }
 
     fn capabilities(&self) -> SandboxCapabilities {
+        // PROTOTYPE: Current implementation is plain `sh -c` without seccomp filters.
+        // Capabilities reflect actual enforcement, not planned Seccomp-BPF behavior.
         SandboxCapabilities {
             filesystem_read_workspace: true,
             filesystem_read_global: true,
             filesystem_write_workspace: true,
-            filesystem_write_global: false, // Seccomp blocks global writes
-            network_outbound_any: false,    // Seccomp blocks socket()
-            network_outbound_internet: false,
-            network_outbound_local: false,
+            filesystem_write_global: true,  // No kernel-level write blocking yet
+            network_outbound_any: true,     // No syscall filtering yet
+            network_outbound_internet: true,
+            network_outbound_local: true,
             child_process_spawn: true,
             registry_write: false,
         }

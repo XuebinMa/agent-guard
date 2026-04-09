@@ -3,6 +3,9 @@ pub mod noop;
 #[cfg(target_os = "linux")]
 pub mod linux;
 
+#[cfg(feature = "landlock")]
+pub mod landlock;
+
 #[cfg(feature = "macos-sandbox")]
 pub mod macos;
 
@@ -14,6 +17,8 @@ pub mod windows_appcontainer;
 
 #[cfg(target_os = "linux")]
 pub use linux::SeccompSandbox;
+#[cfg(feature = "landlock")]
+pub use landlock::LandlockSandbox;
 #[cfg(feature = "macos-sandbox")]
 pub use macos::SeatbeltSandbox;
 pub use noop::NoopSandbox;
@@ -134,7 +139,9 @@ impl CapabilityDoctor {
         let sandboxes: Vec<Box<dyn Sandbox>> = vec![
             Box::new(NoopSandbox),
             #[cfg(target_os = "linux")]
-            Box::new(linux::SeccompSandbox),
+            Box::new(linux::SeccompSandbox::new()),
+            #[cfg(feature = "landlock")]
+            Box::new(landlock::LandlockSandbox),
             #[cfg(feature = "macos-sandbox")]
             Box::new(macos::SeatbeltSandbox),
             #[cfg(feature = "windows-sandbox")]

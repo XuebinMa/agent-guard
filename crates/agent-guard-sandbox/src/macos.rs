@@ -30,7 +30,19 @@ impl Sandbox for SeatbeltSandbox {
     }
 
     fn is_available(&self) -> bool {
-        cfg!(target_os = "macos")
+        if !cfg!(target_os = "macos") {
+            return false;
+        }
+        // Industrial Standard: Verify sandbox-exec is actually functional on this host.
+        // On some macOS systems (or in certain CI environments), sandbox-exec may
+        // exist but fail with "Operation not permitted" during apply.
+        Command::new("sandbox-exec")
+            .arg("-p")
+            .arg("(version 1) (allow default)")
+            .arg("true")
+            .output()
+            .map(|o| o.status.success())
+            .unwrap_or(false)
     }
 
     fn execute(&self, command: &str, context: &SandboxContext) -> SandboxResult {

@@ -9,6 +9,8 @@ description = "Sandbox execution layer for agent-guard"
 # Enable Linux seccomp-bpf sandbox. Requires libseccomp C library.
 # Usage: cargo build --features agent-guard-sandbox/seccomp
 seccomp = ["dep:libseccomp"]
+# Enable Linux Landlock filesystem isolation (kernel 5.13+).
+landlock = ["dep:landlock"]
 # Enable experimental macOS sandbox using sandbox-exec (Seatbelt).
 macos-sandbox = []
 # Enable experimental Windows sandbox using Job Objects.
@@ -24,6 +26,7 @@ serde_json.workspace = true
 
 [target.'cfg(target_os = "linux")'.dependencies]
 libseccomp = { version = "0.3", optional = true }
+landlock = { version = "0.4", optional = true }
 libc = "0.2"
 
 [target.'cfg(windows)'.dependencies]
