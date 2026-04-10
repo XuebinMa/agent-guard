@@ -5,12 +5,13 @@ use std::time::{Duration, Instant};
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
-fn input(command: &str) -> GuardInput {
+fn input(command: &str, actor: &str) -> GuardInput {
     GuardInput {
         tool: Tool::Bash,
         payload: serde_json::json!({ "command": command }).to_string(),
         context: Context {
             agent_id: Some("stress-resource-agent".to_string()),
+            actor: Some(actor.to_string()),
             trust_level: TrustLevel::Trusted,
             working_directory: Some(std::env::current_dir().unwrap()),
             ..Default::default()
@@ -33,9 +34,12 @@ async fn test_stress_resource_spawn_loop() {
         count
     );
     let start = Instant::now();
+    let actor = format!("stress-resource-spawn-{}", std::process::id());
 
     for _ in 0..count {
-        let res = guard.execute(&input("echo 1"), sandbox.as_ref()).unwrap();
+        let res = guard
+            .execute(&input("echo 1", &actor), sandbox.as_ref())
+            .unwrap();
         if let ExecuteOutcome::Executed { output, .. } = res {
             assert_eq!(output.exit_code, 0);
         }
@@ -84,8 +88,11 @@ async fn test_stress_resource_large_output() {
 
     println!("🚀 Starting large output deadlock test");
     let start = Instant::now();
+    let actor = format!("stress-resource-output-{}", std::process::id());
 
-    let res = guard.execute(&input(cmd), sandbox.as_ref()).unwrap();
+    let res = guard
+        .execute(&input(cmd, &actor), sandbox.as_ref())
+        .unwrap();
 
     if let ExecuteOutcome::Executed { output, .. } = res {
         assert_eq!(output.exit_code, 0);
@@ -131,6 +138,7 @@ audit:
 
     let guard = Guard::from_yaml(&yaml).unwrap();
     let sandbox = NoopSandbox;
+    let actor = format!("stress-resource-webhook-{}", unique_id);
 
     println!("🚀 Starting slow webhook test (Webhook delay: 2s)");
     let start = Instant::now();
@@ -139,7 +147,7 @@ audit:
     // Each execute() triggers 3 SIEM exports: ToolCall, ExecutionStarted, ExecutionFinished.
     // Total expected hits: 10 * 3 = 30.
     for _ in 0..10 {
-        let _ = guard.execute(&input("echo 1"), &sandbox);
+        let _ = guard.execute(&input("echo 1", &actor), &sandbox);
     }
 
     let elapsed = start.elapsed();
@@ -162,12 +170,13 @@ async fn test_stress_resource_soak_condensed() {
     let sandbox = Guard::default_sandbox();
     let duration = Duration::from_secs(30); // 30s soak for CI environment
     let start = Instant::now();
+    let actor = format!("stress-resource-soak-{}", std::process::id());
 
     println!("🚀 Starting condensed soak test (30s)");
 
     let mut count = 0;
     while start.elapsed() < duration {
-        let _ = guard.execute(&input("echo 1"), sandbox.as_ref());
+        let _ = guard.execute(&input("echo 1", &actor), sandbox.as_ref());
         count += 1;
         if count % 50 == 0 {
             tokio::time::sleep(Duration::from_millis(10)).await;

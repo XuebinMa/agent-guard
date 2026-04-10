@@ -187,10 +187,10 @@ impl Guard {
             })
             .inc();
 
-        let actor = input.context.actor.as_deref().unwrap_or("unknown");
+        let anomaly_subject = anomaly_subject(&input.context);
         let anomaly_cfg = state.engine.anomaly_config();
 
-        match crate::anomaly::get_detector().check(actor, anomaly_cfg) {
+        match crate::anomaly::get_detector().check(&anomaly_subject, anomaly_cfg) {
             crate::anomaly::AnomalyStatus::Normal => {}
             crate::anomaly::AnomalyStatus::RateLimited => {
                 let decision = GuardDecision::deny(
@@ -216,7 +216,7 @@ impl Guard {
         let outcome = match &decision {
             GuardDecision::Allow => "allow",
             GuardDecision::Deny { .. } => {
-                crate::anomaly::get_detector().report_denial(actor, anomaly_cfg);
+                crate::anomaly::get_detector().report_denial(&anomaly_subject, anomaly_cfg);
                 "deny"
             }
             GuardDecision::AskUser { .. } => "ask",
@@ -625,6 +625,15 @@ fn extract_bash_command(payload: &str) -> Result<String, SandboxError> {
         .and_then(|c| c.as_str())
         .map(|s| s.to_string())
         .ok_or_else(|| SandboxError::ExecutionFailed("payload missing 'command' field".to_string()))
+}
+
+fn anomaly_subject(context: &Context) -> String {
+    context
+        .actor
+        .clone()
+        .or_else(|| context.agent_id.clone())
+        .or_else(|| context.session_id.clone())
+        .unwrap_or_else(|| "unknown".to_string())
 }
 
 fn policy_mode_to_permission_mode(mode: &PolicyMode) -> PermissionMode {

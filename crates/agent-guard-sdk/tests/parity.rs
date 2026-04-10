@@ -13,13 +13,17 @@ fn get_active_sandbox() -> Box<dyn Sandbox> {
     #[cfg(target_os = "linux")]
     return Box::new(agent_guard_sandbox::SeccompSandbox::new());
 
-    #[cfg(target_os = "macos")]
+    #[cfg(all(target_os = "macos", feature = "macos-sandbox"))]
     return Box::new(agent_guard_sandbox::SeatbeltSandbox);
 
-    #[cfg(target_os = "windows")]
+    #[cfg(all(target_os = "windows", feature = "windows-sandbox"))]
     return Box::new(agent_guard_sandbox::JobObjectSandbox);
 
-    #[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
+    #[cfg(not(any(
+        target_os = "linux",
+        all(target_os = "macos", feature = "macos-sandbox"),
+        all(target_os = "windows", feature = "windows-sandbox")
+    )))]
     return Box::new(agent_guard_sandbox::NoopSandbox);
 }
 

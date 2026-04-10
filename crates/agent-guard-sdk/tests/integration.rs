@@ -987,3 +987,40 @@ anomaly:
         assert_eq!(g.check(&input), GuardDecision::Allow);
     }
 }
+
+#[test]
+fn anomaly_detection_falls_back_to_agent_id_when_actor_missing() {
+    use agent_guard_sdk::{DecisionCode, GuardInput};
+    let policy = r#"
+version: 1
+default_mode: workspace_write
+anomaly:
+  enabled: true
+  rate_limit:
+    window_seconds: 1
+    max_calls: 1
+"#;
+    let g = Guard::from_yaml(policy).unwrap();
+
+    let input_a = GuardInput::new(Tool::Bash, r#"{"command":"ls"}"#).with_context(Context {
+        agent_id: Some("agent-a".to_string()),
+        ..Default::default()
+    });
+    let input_b = GuardInput::new(Tool::Bash, r#"{"command":"ls"}"#).with_context(Context {
+        agent_id: Some("agent-b".to_string()),
+        ..Default::default()
+    });
+
+    assert_eq!(g.check(&input_a), GuardDecision::Allow);
+    assert_eq!(g.check(&input_b), GuardDecision::Allow);
+
+    let d = g.check(&input_a);
+    if let GuardDecision::Deny { reason } = d {
+        assert_eq!(reason.code, DecisionCode::AnomalyDetected);
+    } else {
+        panic!(
+            "Expected anomaly deny for repeated agent-a traffic, got {:?}",
+            d
+        );
+    }
+}
