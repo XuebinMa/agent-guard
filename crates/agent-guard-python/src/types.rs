@@ -1,6 +1,7 @@
 use std::path::PathBuf;
 
 use pyo3::prelude::*;
+use serde_json::Value;
 
 use agent_guard_sdk::{Context, Guard, GuardDecision, Tool, TrustLevel};
 
@@ -34,6 +35,25 @@ pub struct Decision {
     pub ask_prompt: Option<String>,
     #[pyo3(get)]
     pub policy_version: String,
+}
+
+#[pymethods]
+impl Decision {
+    fn is_allow(&self) -> bool {
+        self.outcome == "allow"
+    }
+
+    fn is_deny(&self) -> bool {
+        self.outcome == "deny"
+    }
+
+    fn is_ask(&self) -> bool {
+        self.outcome == "ask_user"
+    }
+
+    fn __repr__(&self) -> String {
+        format!("Decision(outcome={:?}, code={:?})", self.outcome, self.code)
+    }
 }
 
 #[pyclass(module = "agent_guard", from_py_object)]
@@ -110,6 +130,19 @@ pub fn parse_tool(tool_str: &str) -> PyResult<Tool> {
     }
 }
 
+fn normalize_payload(tool: &Tool, payload: &str) -> String {
+    if matches!(tool, Tool::Bash) {
+        if let Ok(Value::Object(map)) = serde_json::from_str::<Value>(payload) {
+            if map.get("command").is_some() {
+                return payload.to_string();
+            }
+        }
+        return serde_json::json!({ "command": payload }).to_string();
+    }
+
+    payload.to_string()
+}
+
 // ── TrustLevel parsing ────────────────────────────────────────────────────────
 
 pub fn parse_trust(trust_str: &str) -> PyResult<TrustLevel> {
@@ -180,6 +213,7 @@ impl PyGuard {
         working_directory: Option<String>,
     ) -> PyResult<Decision> {
         let tool = parse_tool(tool)?;
+        let payload = normalize_payload(&tool, payload);
         let trust_level = parse_trust(trust_level)?;
         let ctx = Context {
             trust_level,
@@ -188,7 +222,7 @@ impl PyGuard {
             actor,
             working_directory: working_directory.map(PathBuf::from),
         };
-        let decision = self.inner.check_tool(tool, payload, ctx);
+        let decision = self.inner.check_tool(tool, &payload, ctx);
         Ok(decision_from_rust(decision, self.inner.policy_version()))
     }
 
@@ -214,6 +248,7 @@ impl PyGuard {
         working_directory: Option<String>,
     ) -> PyResult<ExecuteResult> {
         let tool = parse_tool(tool)?;
+        let payload = normalize_payload(&tool, payload);
         let trust_level = parse_trust(trust_level)?;
         let ctx = Context {
             trust_level,
@@ -224,7 +259,7 @@ impl PyGuard {
         };
         let input = agent_guard_sdk::GuardInput {
             tool,
-            payload: payload.to_string(),
+            payload,
             context: ctx,
         };
 
@@ -287,6 +322,6 @@ impl PyGuard {
     }
 
     fn __repr__(&self) -> String {
-        format!("Guard(policy_version={:?})", self.inner.policy_version())
+        "Guard(<policy loaded>)".to_string()
     }
 }

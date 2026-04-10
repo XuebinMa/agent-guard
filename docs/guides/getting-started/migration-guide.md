@@ -34,9 +34,9 @@ cargo run --example doctor
 - **Benefit**: Prevents most accidental filesystem writes outside the workspace.
 - **Risk**: Network and advanced syscalls are still accessible on some platforms.
 
-### Phase 3: Seccomp-BPF (Production Ready - Linux Only)
-- **Benefit**: **Maximum security.** Blocks unauthorized syscalls and network stack.
-- **Risk**: Certain CLI tools might break if they require specific syscalls.
+### Phase 3: Linux Host Sandboxing (Current Prototype / Future Hardening)
+- **Benefit**: Uses the strongest Linux backend available on the host today, with Landlock write isolation when supported.
+- **Risk**: Full Seccomp-BPF syscall filtering is not yet shipped in v0.2.0.
 
 ---
 
@@ -46,7 +46,7 @@ cargo run --example doctor
 | :--- | :--- | :--- |
 | **No-op -> Low-IL** | Workspace write isolation on Windows. | Network access is still allowed by default. |
 | **No-op -> Seatbelt**| Mandatory write-protection on macOS. | Global read access is still possible. |
-| **No-op -> Seccomp** | Full kernel-level syscall filtering on Linux. | Fine-grained path-level read restrictions. |
+| **No-op -> Linux Sandbox** | Landlock-backed write isolation when the host supports it. | No Linux Seccomp-BPF filtering yet; fallback hosts may still use the prototype wrapper. |
 
 ---
 

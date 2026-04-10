@@ -73,7 +73,7 @@ anomaly:
 ## 3. 🏗️ Integrating with Your Code
 
 ```rust
-use agent_guard_sdk::{Guard, Context, Tool};
+use agent_guard_sdk::{Context, Guard, GuardInput, Tool};
 
 // 1. Load Guard
 let guard = Guard::from_yaml_file("policy.yaml")?;

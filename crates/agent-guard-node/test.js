@@ -16,12 +16,12 @@ async function runTest() {
 
     // 1. Check
     console.log('\n--- Test: check ---')
-    const d1 = guard.check('bash', JSON.stringify({ command: 'ls -la' }))
+    const d1 = guard.check('bash', 'ls -la')
     console.log('Decision (ls):', d1.outcome)
 
     // 2. Execute (Async)
     console.log('\n--- Test: execute (ls) ---')
-    const e1 = await guard.execute('bash', JSON.stringify({ command: 'ls -la' }))
+    const e1 = await guard.execute('bash', 'ls -la')
     console.log('Execute Status (ls):', e1.status)
     if (e1.output) {
       console.log('Exit Code:', e1.output.exitCode)
@@ -29,7 +29,7 @@ async function runTest() {
     }
 
     console.log('\n--- Test: execute (denied rm) ---')
-    const e2 = await guard.execute('bash', JSON.stringify({ command: 'rm -rf /' }))
+    const e2 = await guard.execute('bash', 'rm -rf /')
     console.log('Execute Status (rm):', e2.status)
     if (e2.decision) {
       console.log('Decision Code:', e2.decision.code)
@@ -43,7 +43,7 @@ version: 1
 default_mode: read_only
 `)
     console.log('New Policy version:', guard.policyVersion())
-    const d2 = guard.check('bash', JSON.stringify({ command: 'ls -la' }))
+    const d2 = guard.check('bash', 'ls -la')
     console.log('Decision after reload (ls in read_only):', d2.outcome)
 
     console.log('\nAll tests passed successfully (Node binding logic verified).')

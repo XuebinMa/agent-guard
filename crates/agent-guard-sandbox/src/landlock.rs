@@ -4,7 +4,11 @@
 //! to the workspace directory only. Network restriction requires Landlock
 //! ABI v4 and is not yet implemented.
 
+#[cfg(target_os = "linux")]
+use crate::SandboxOutput;
 use crate::{Sandbox, SandboxCapabilities, SandboxContext, SandboxError, SandboxResult};
+#[cfg(target_os = "linux")]
+use std::process::Command;
 
 /// Landlock-based sandbox restricting filesystem writes to the workspace directory.
 ///
@@ -61,23 +65,12 @@ impl Sandbox for LandlockSandbox {
 
 #[cfg(target_os = "linux")]
 fn is_landlock_supported() -> bool {
-    use landlock::ABI;
-    // Check if the running kernel supports Landlock ABI v1 (minimum for FS rules)
-    let abi = ABI::V1;
-    // Try to create a minimal ruleset to test support
-    use landlock::{
-        Access, AccessFs, PathBeneath, PathFd, Ruleset, RulesetAttr, RulesetCreatedAttr,
-        RulesetStatus,
-    };
-    match Ruleset::default().handle_access(AccessFs::from_all(abi)) {
-        Ok(ruleset) => {
-            // If we can create the ruleset, Landlock is supported
-            // We don't restrict_self here — just probe.
-            drop(ruleset);
-            true
-        }
-        Err(_) => false,
-    }
+    use landlock::{AccessFs, Ruleset, RulesetAttr, ABI};
+
+    Ruleset::default()
+        .handle_access(AccessFs::from_all(ABI::V1))
+        .and_then(|ruleset| ruleset.create())
+        .is_ok()
 }
 
 #[cfg(target_os = "linux")]
@@ -190,9 +183,6 @@ fn apply_landlock_rules(workspace: &std::path::Path) -> Result<(), String> {
     ruleset = ruleset
         .add_rule(PathBeneath::new(workspace_fd, AccessFs::from_all(abi)))
         .map_err(|e| format!("Failed to add workspace rule: {}", e))?;
-
-    // Rule 3: REMOVED /tmp write permission to align with filesystem_write_global: false
-    // Industrial Standard: Do not allow writes outside the workspace unless explicitly claimed.
 
     // Enforce: restrict this process
     let status = ruleset

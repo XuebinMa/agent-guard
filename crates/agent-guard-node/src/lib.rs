@@ -195,10 +195,13 @@ impl Guard {
         payload: String,
         options: Option<Context>,
     ) -> Result<Decision> {
+        let normalized_payload = normalize_payload(tool.clone(), payload);
         let rust_tool = parse_tool(&tool)?;
         let rust_ctx = context_from_node(options);
 
-        let decision = self.inner.check_tool(rust_tool, payload, rust_ctx);
+        let decision = self
+            .inner
+            .check_tool(rust_tool, normalized_payload, rust_ctx);
         Ok(decision_from_rust(decision, self.inner.policy_version()))
     }
 
@@ -211,12 +214,13 @@ impl Guard {
         payload: String,
         options: Option<Context>,
     ) -> Result<ExecuteOutcome> {
+        let normalized_payload = normalize_payload(tool.clone(), payload);
         let rust_tool = parse_tool(&tool)?;
         let rust_ctx = context_from_node(options);
 
         let input = GuardInput {
             tool: rust_tool,
-            payload,
+            payload: normalized_payload,
             context: rust_ctx,
         };
 
@@ -369,4 +373,34 @@ pub fn verify_receipt(receipt_json: String, public_key_hex: String) -> Result<bo
     };
 
     Ok(verifying_key.verify(payload.as_bytes(), &signature).is_ok())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::normalize_payload;
+
+    #[test]
+    fn normalize_payload_wraps_shell_strings() {
+        assert_eq!(
+            normalize_payload("bash".to_string(), "ls -la".to_string()),
+            r#"{"command":"ls -la"}"#
+        );
+    }
+
+    #[test]
+    fn normalize_payload_preserves_existing_shell_objects() {
+        let payload = r#"{"command":"ls -la"}"#.to_string();
+        assert_eq!(
+            normalize_payload("bash".to_string(), payload.clone()),
+            payload
+        );
+    }
+
+    #[test]
+    fn normalize_payload_wraps_generic_scalars() {
+        assert_eq!(
+            normalize_payload("read_file".to_string(), "/tmp/demo.txt".to_string()),
+            r#"{"input":"/tmp/demo.txt"}"#
+        );
+    }
 }

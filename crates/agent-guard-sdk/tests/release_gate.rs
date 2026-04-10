@@ -79,18 +79,49 @@ fn test_gate_platform_selection_consistency() {
     let s_type = sandbox.sandbox_type();
 
     #[cfg(target_os = "linux")]
-    assert_eq!(s_type, "linux-seccomp");
+    {
+        #[cfg(feature = "landlock")]
+        {
+            let landlock = agent_guard_sandbox::LandlockSandbox;
+            let expected = if landlock.is_available() {
+                "linux-landlock"
+            } else {
+                "linux-seccomp"
+            };
+            assert_eq!(s_type, expected);
+        }
+
+        #[cfg(not(feature = "landlock"))]
+        assert_eq!(s_type, "linux-seccomp");
+    }
 
     #[cfg(all(target_os = "macos", feature = "macos-sandbox"))]
-    assert_eq!(s_type, "macos-seatbelt");
+    {
+        let seatbelt = agent_guard_sandbox::SeatbeltSandbox;
+        let expected = if seatbelt.is_available() {
+            "macos-seatbelt"
+        } else {
+            "none"
+        };
+        assert_eq!(s_type, expected);
+    }
 
-    #[cfg(all(target_os = "windows", feature = "windows-sandbox"))]
-    assert_eq!(s_type, "windows-job-object");
+    #[cfg(target_os = "windows")]
+    {
+        #[cfg(feature = "windows-appcontainer")]
+        assert_eq!(s_type, "windows-appcontainer");
+
+        #[cfg(all(not(feature = "windows-appcontainer"), feature = "windows-sandbox"))]
+        assert_eq!(s_type, "windows-job-object");
+
+        #[cfg(not(any(feature = "windows-appcontainer", feature = "windows-sandbox")))]
+        assert_eq!(s_type, "none");
+    }
 
     #[cfg(not(any(
         target_os = "linux",
         all(target_os = "macos", feature = "macos-sandbox"),
-        all(target_os = "windows", feature = "windows-sandbox")
+        target_os = "windows"
     )))]
     assert_eq!(s_type, "none");
 }

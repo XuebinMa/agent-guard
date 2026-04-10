@@ -34,8 +34,8 @@ Mapping potential entry points and their mitigation strategies:
 | Surface Component | Entry Vector | Potential Impact | Mitigation Strategy |
 | :--- | :--- | :--- | :--- |
 | **Tool Payloads** | Malicious JSON/CLI args | Command Injection, RCE | `evalexpr` Restricted DSL + Regex Validation Patterns. |
-| **Filesystem Access** | Path traversal, Symlinks | Data exfiltration, Overwrite | Glob-based Allow/Deny paths + Sandbox isolation (Seccomp/Seatbelt). |
-| **Network Stack** | Outbound HTTP/Socket | Data exfiltration, SSRF | Seccomp (Linux) / Seatbelt (macOS Prototype). |
+| **Filesystem Access** | Path traversal, Symlinks | Data exfiltration, Overwrite | Glob-based Allow/Deny paths + platform sandbox isolation (Landlock/Seatbelt/Windows token model). |
+| **Network Stack** | Outbound HTTP/Socket | Data exfiltration, SSRF | Policy-level URL/path controls + platform sandboxing where available. |
 | **Process Management** | Fork-bomb, child escape | DoS, Sandbox Escape | Job Objects (Windows) / cgroups (Linux Planned). |
 | **Config Loader** | Malicious YAML config | Engine DoS, Logic Bypass | AOT Validation + Type-safe parsing + Schema enforcement. |
 
@@ -54,7 +54,7 @@ Categorized analysis of threats and implemented defenses:
 
 ### **R**epudiation (Non-repudiability)
 - **Threat**: An attacker claims they did not execute a destructive command.
-- **Mitigation**: Non-repudiable JSONL Audit Logs + Real-time Prometheus Metrics (`agent_guard_decision_total`).
+- **Mitigation**: Structured JSONL audit logs for forensic review, plus optional signed receipts for cryptographic provenance.
 
 ### **I**nformation Disclosure (Confidentiality)
 - **Threat**: An agent reads host secrets (e.g., `.ssh/id_rsa`) via a `read_file` tool call.
@@ -66,17 +66,17 @@ Categorized analysis of threats and implemented defenses:
 
 ### **E**levation of Privilege (Isolation)
 - **Threat**: An agent escapes the sandbox to gain root/Administrator privileges.
-- **Mitigation**: **Seccomp-BPF** (Linux) and **Low-IL Token + Job Object** (Windows).
+- **Mitigation**: **Low-IL Token + Job Object** (Windows), Seatbelt on macOS, and Landlock-backed write isolation on supported Linux hosts.
 
 ---
 
 ## 🛡️ Security Boundaries (Platform Mapping)
 
-| Feature | Linux (Seccomp) | macOS (Seatbelt) | Windows (Job Object) |
+| Feature | Linux (Landlock if available, prototype fallback) | macOS (Seatbelt) | Windows (Job Object) |
 | :--- | :--- | :--- | :--- |
-| **Filesystem Write** | ✅ Restricted | ✅ Restricted (Workspace) | ✅ **Low-IL Enforced** |
-| **Network Blocking** | ✅ Native (Strict) | 🟡 Experimental (Permissive) | ❌ **No** |
-| **Resource Limits** | ✅ Native | ❌ No | ✅ **Enforced (256MB)** |
+| **Filesystem Write** | 🟡 Workspace write isolation on supporting hosts; fallback Linux wrapper is less strict. | ✅ Restricted (Workspace) | ✅ **Low-IL Enforced** |
+| **Network Blocking** | ❌ Not enforced in the current Linux path. | 🟡 Experimental (Permissive) | ❌ **No** |
+| **Resource Limits** | ❌ No native Linux sandbox resource caps in v0.2.0. | ❌ No | ✅ **Enforced (256MB)** |
 
 ---
 

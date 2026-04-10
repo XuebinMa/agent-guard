@@ -19,7 +19,7 @@ STALE_PATTERNS = [
     (r'Python/Node\.js Bindings.*?Coming soon', 'Bindings are already available'),
     
     # Security promise drifts
-    (r'every (tool call|execution) generates (a |an )?signed receipt', 'Receipts are optional and require an explicit signing key'),
+    (r'every (tool call|execution) (automatically )?generates (a |an )?signed receipt', 'Receipts are supported/optional and require an explicit signing key'),
     (r'tamper-evident.*?audit log', 'Only Signed Receipts are tamper-evident, not local JSONL logs'),
     
     # Result schema drifts

@@ -1,10 +1,47 @@
 use crate::{
     Sandbox, SandboxCapabilities, SandboxContext, SandboxError, SandboxOutput, SandboxResult,
 };
-use std::process::Command;
+use std::process::{Command, Stdio};
+use std::sync::OnceLock;
 
 /// macOS Seatbelt sandbox using sandbox-exec.
 pub struct SeatbeltSandbox;
+
+fn unavailable_capabilities() -> SandboxCapabilities {
+    SandboxCapabilities {
+        filesystem_read_workspace: false,
+        filesystem_read_global: false,
+        filesystem_write_workspace: false,
+        filesystem_write_global: false,
+        network_outbound_any: false,
+        network_outbound_internet: false,
+        network_outbound_local: false,
+        child_process_spawn: false,
+        registry_write: false,
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn seatbelt_runtime_available() -> bool {
+    static CACHE: OnceLock<bool> = OnceLock::new();
+
+    *CACHE.get_or_init(|| {
+        Command::new("sandbox-exec")
+            .arg("-p")
+            .arg("(version 1)\n(allow default)")
+            .arg("/usr/bin/true")
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status()
+            .map(|status| status.success())
+            .unwrap_or(false)
+    })
+}
+
+#[cfg(not(target_os = "macos"))]
+fn seatbelt_runtime_available() -> bool {
+    false
+}
 
 impl Sandbox for SeatbeltSandbox {
     fn name(&self) -> &'static str {
@@ -16,6 +53,10 @@ impl Sandbox for SeatbeltSandbox {
     }
 
     fn capabilities(&self) -> SandboxCapabilities {
+        if !seatbelt_runtime_available() {
+            return unavailable_capabilities();
+        }
+
         SandboxCapabilities {
             filesystem_read_workspace: true,
             filesystem_read_global: true, // Seatbelt prototype currently allows global read
@@ -30,24 +71,18 @@ impl Sandbox for SeatbeltSandbox {
     }
 
     fn is_available(&self) -> bool {
-        if !cfg!(target_os = "macos") {
-            return false;
-        }
-        // Industrial Standard: Verify sandbox-exec is actually functional on this host.
-        // On some macOS systems (or in certain CI environments), sandbox-exec may
-        // exist but fail with "Operation not permitted" during apply.
-        Command::new("sandbox-exec")
-            .arg("-p")
-            .arg("(version 1) (allow default)")
-            .arg("true")
-            .output()
-            .map(|o| o.status.success())
-            .unwrap_or(false)
+        seatbelt_runtime_available()
     }
 
     fn execute(&self, command: &str, context: &SandboxContext) -> SandboxResult {
         #[cfg(target_os = "macos")]
         {
+            if !seatbelt_runtime_available() {
+                return Err(SandboxError::NotAvailable(
+                    "sandbox-exec is not functional on this macOS host".to_string(),
+                ));
+            }
+
             let resolved_dir = context.working_directory.canonicalize().map_err(|e| {
                 SandboxError::ExecutionFailed(format!("Failed to resolve workspace path: {}", e))
             })?;

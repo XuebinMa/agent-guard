@@ -160,11 +160,7 @@ fn cmd_inspect(receipt_path: &PathBuf) {
         receipt.timestamp,
         format_timestamp(receipt.timestamp)
     );
-    println!(
-        "Signature:    {}...{}",
-        &receipt.signature[..16],
-        &receipt.signature[receipt.signature.len() - 16..]
-    );
+    println!("Signature:    {}", signature_preview(&receipt.signature));
     println!("---");
     println!("Note: Use 'guard-verify verify' to validate the signature.");
 }
@@ -213,6 +209,24 @@ fn format_timestamp(ts: u64) -> String {
         .unwrap_or_else(|| "invalid timestamp".to_string())
 }
 
+fn signature_preview(signature: &str) -> String {
+    const EDGE_LEN: usize = 16;
+
+    if signature.is_empty() {
+        return "<empty>".to_string();
+    }
+
+    if signature.len() <= EDGE_LEN * 2 {
+        return signature.to_string();
+    }
+
+    format!(
+        "{}...{}",
+        &signature[..EDGE_LEN],
+        &signature[signature.len() - EDGE_LEN..]
+    )
+}
+
 fn main() {
     let cli = Cli::parse();
 
@@ -223,5 +237,29 @@ fn main() {
         } => cmd_verify(receipt, public_key),
         Commands::Inspect { receipt } => cmd_inspect(receipt),
         Commands::Keygen { output } => cmd_keygen(output),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::signature_preview;
+
+    #[test]
+    fn signature_preview_handles_empty_string() {
+        assert_eq!(signature_preview(""), "<empty>");
+    }
+
+    #[test]
+    fn signature_preview_keeps_short_signatures_intact() {
+        assert_eq!(signature_preview("abcd1234"), "abcd1234");
+    }
+
+    #[test]
+    fn signature_preview_truncates_long_signatures() {
+        let sig = "1234567890abcdef1234567890abcdeffeedfacecafebeef0011223344556677";
+        assert_eq!(
+            signature_preview(sig),
+            "1234567890abcdef...0011223344556677"
+        );
     }
 }

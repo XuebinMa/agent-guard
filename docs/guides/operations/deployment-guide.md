@@ -21,7 +21,7 @@ For most enterprise use cases, we recommend the following sidecar or host-agent 
 1. **Host Application**: Your AI Agent framework (e.g., built with LangChain, Autogen, or custom Rust/Node.js).
 2. **agent-guard SDK**: Integrated into the host application to intercept tool calls.
 3. **OS Sandboxes**:
-   - **Linux**: Seccomp-BPF (Production Ready).
+   - **Linux**: Landlock when supported, otherwise a prototype `sh -c` fallback. Full Seccomp-BPF filtering is planned for v0.3.0.
    - **Windows**: Low-IL (Strengthened Prototype - Default) or **AppContainer** (Experimental - Opt-in).
    - **macOS**: Seatbelt (Internal Prototype).
 
@@ -31,7 +31,7 @@ For most enterprise use cases, we recommend the following sidecar or host-agent 
 
 | Platform | What this protects | What this does not protect |
 | :--- | :--- | :--- |
-| **Containers** | Seccomp syscall filtering inside Docker/K8s. | Kernel vulnerabilities (LPE). |
+| **Containers** | Deployment-level isolation you configure separately (e.g. Docker/K8s profiles). | `agent-guard` does not currently add Linux kernel seccomp filtering by itself. |
 | **Permissions** | Prevents agents from writing to host `/etc` or `C:\Windows`. | Global read access on macOS/Windows (Prototype limit). |
 | **Reliability** | Fail-closed: The system stops if the security environment is unstable. | Downtime caused by missing system dependencies (e.g., `libseccomp`). |
 
@@ -45,9 +45,6 @@ Never deploy with `default_mode: full_access`.
 ```yaml
 version: 1
 default_mode: read_only
-
-# Restricted workspace for each agent session
-working_directory: "/var/lib/agent-workspace"
 
 audit:
   enabled: true
@@ -64,6 +61,8 @@ anomaly:
     enabled: true
     threshold: 5
 ```
+
+Set the per-execution workspace in the host `Context` (for example `Context.working_directory` in Rust), not as a top-level policy key.
 
 ---
 

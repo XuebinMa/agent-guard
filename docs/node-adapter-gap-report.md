@@ -2,7 +2,7 @@
 
 | Field | Details |
 | :--- | :--- |
-| **Status** | 🟠 Needs Fixes (v0.3.0 Audit) |
+| **Status** | 🟡 Mostly Aligned (v0.3.0 Audit) |
 | **Target** | `agent-guard-node` |
 | **Auditor** | Code Analyst |
 | **Contract Version** | 1.1 |
@@ -16,18 +16,19 @@
 | `execute()` | ✅ Exported | Async FFI call (N-API async). |
 | `reload()` | ✅ Exported | Atomic reload supported. |
 | `policy_version()`| ✅ Exported | Returns current hash. |
+| `setSigningKey()` | ✅ Exported | Receipt signing key can be configured from JS. |
 
 ---
 
 ## 2. Result Schema
 | Field | Status | Notes |
 | :--- | :--- | :--- |
-| `status` | ❌ Missing | Current `ExecuteOutcome` uses `outcome` instead of `status`. |
-| `decision` | ✅ Partial | Present in `ExecuteOutcome`, but `Decision` object lacks `policy_version`. |
+| `status` | ✅ Present | `ExecuteOutcome` uses `status` (`executed`, `denied`, `ask_required`). |
+| `decision` | ✅ Present | Nested decisions include `policy_version`. |
 | `output` | ✅ Exported | `exit_code`, `stdout`, `stderr` are present. |
-| `policy_version` | ❌ Missing | Not returned inside `ExecuteOutcome` or `Decision`. |
-| `sandbox_type` | ❌ Missing | Not exposed in any result structure. |
-| `receipt` | ❌ Missing | Ed25519 receipts not yet integrated into Node FFI. |
+| `policy_version` | ✅ Present | Returned in both `ExecuteOutcome` and `Decision`. |
+| `sandbox_type` | ✅ Present | Exposed on execution results. |
+| `receipt` | ✅ Present | JSON-encoded signed receipt when signing is enabled. |
 
 ---
 
@@ -39,9 +40,9 @@
 ---
 
 ## 4. Payload Contract
-- **Bare String Support**: ❌ Risk. The FFI expects a JSON string, but there is no helper to normalize inputs.
-- **Auto-wrapping**: ❌ Missing. Unlike the Python adapter, users must manually call `JSON.stringify({"command": "..."})`.
-- **Validation**: 🟡 Relies entirely on Rust-side parsing.
+- **Bare String Support**: ✅ Present. Shell strings are normalized to `{"command":"..."}` automatically.
+- **Auto-wrapping**: ✅ Present in `Guard.check()` / `Guard.execute()` and exposed as `normalizePayload()`.
+- **Validation**: 🟡 Relies primarily on Rust-side parsing after normalization.
 
 ---
 
@@ -58,12 +59,11 @@
 
 ---
 
-## 📊 Audit Conclusion: 🟠 Yellow (Workable with Fixes)
+## 📊 Audit Conclusion: 🟡 Yellow (Raw Binding, Contract Mostly Aligned)
 
-`agent-guard-node` is fundamentally sound in its FFI implementation but suffers from the same **Contract Drift** as the initial Python version. It is currently a "Raw Binding" rather than an "Adapter".
+`agent-guard-node` is fundamentally sound in its FFI implementation and now aligns with the current result schema and payload contract. It is still primarily a "Raw Binding" rather than a high-level framework adapter.
 
 ### 🛠️ Required Fixes (Priority Order):
-1. **Schema Alignment**: Rename `outcome` to `status` in `ExecuteOutcome` and add `policy_version` to all results.
-2. **Expose Sandbox Info**: Add `sandbox_type` to `ExecuteOutcome`.
-3. **Payload Normalization**: Implement a JS-side `wrapTool()` helper similar to the Python version to handle `{"command": "..."}` wrapping automatically.
-4. **Receipt Support**: Add `receipt` field to results and expose verification logic.
+1. **High-level JS Adapter**: Add a first-class LangChain/OpenAI JS wrapper for `check` vs `enforce` flows.
+2. **Error Granularity**: Consider richer JS error classes instead of generic N-API failures.
+3. **Runtime Demos**: Expand JS examples beyond the low-level FFI smoke test.
