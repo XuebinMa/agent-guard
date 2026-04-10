@@ -43,7 +43,7 @@ mod seccomp_tests {
                 stdout, exit_code, ..
             }) => {
                 assert_eq!(exit_code, 0, "echo should exit 0");
-                assert!(stdout.trim() == "hello", "stdout = {stdout:?}");
+                assert_eq!(stdout.trim(), "hello", "stdout = {stdout:?}");
             }
             Err(e) => panic!("expected Ok, got Err: {e}"),
         }
@@ -154,12 +154,15 @@ mod seccomp_tests {
         let result = sandbox.execute("echo strict", &ctx(PolicyMode::ReadOnly));
         // On a system with seccomp support this should succeed (filter loads OK).
         // If it fails it must be FilterSetup, not a silent noop.
-        match result {
-            Ok(_) => {}                                    // filter loaded and command ran
-            Err(SandboxError::FilterSetup(_)) => {}        // acceptable: filter setup failed hard
-            Err(SandboxError::KilledByFilter { .. }) => {} // filter fired: also acceptable
-            Err(e) => panic!("strict mode got unexpected error: {e}"),
-        }
+        assert!(
+            matches!(
+                result,
+                Ok(_)
+                    | Err(SandboxError::FilterSetup(_))
+                    | Err(SandboxError::KilledByFilter { .. })
+            ),
+            "strict mode got unexpected result: {result:?}"
+        );
     }
 
     // ── C6: Timeout ──────────────────────────────────────────────────────
