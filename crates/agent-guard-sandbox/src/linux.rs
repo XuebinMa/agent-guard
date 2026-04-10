@@ -23,6 +23,12 @@ impl SeccompSandbox {
     }
 }
 
+impl Default for SeccompSandbox {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Sandbox for SeccompSandbox {
     fn name(&self) -> &'static str {
         "seccomp"

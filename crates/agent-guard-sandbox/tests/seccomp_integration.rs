@@ -61,30 +61,50 @@ mod seccomp_tests {
         }
     }
 
-    // ── C2: ReadOnly — block write syscalls ───────────────────────────────
+    // ── C2: ReadOnly — write behavior matches declared capabilities ──────
 
     #[test]
-    fn c2_read_only_blocks_file_write() {
+    fn c2_read_only_write_behavior_matches_capabilities() {
         let sandbox = SeccompSandbox::strict();
         let target = tmp_dir().join("seccomp_test_write.txt");
+        let caps = sandbox.capabilities();
         // Use `tee` to write a file — tee calls `open(O_WRONLY)` / `creat` which
-        // is NOT in the ReadOnly allowlist.
+        // should be blocked once native seccomp filtering lands.
         let cmd = format!("echo data | tee {}", target.display());
         let result = sandbox.execute(&cmd, &ctx(PolicyMode::ReadOnly));
-        match result {
-            Err(SandboxError::KilledByFilter { .. }) => {
-                // Expected: seccomp killed the child for attempting a blocked write syscall.
+
+        if caps.filesystem_write_global {
+            match result {
+                Ok(out) => {
+                    assert_eq!(
+                        out.exit_code, 0,
+                        "prototype sandbox declares global writes allowed; got exit {}",
+                        out.exit_code
+                    );
+                    assert!(
+                        target.exists(),
+                        "write should succeed when filesystem_write_global=true"
+                    );
+                }
+                Err(e) => panic!("prototype sandbox should allow write, got Err: {e}"),
             }
-            Ok(out) => {
-                // On some kernels the shell itself may absorb SIGSYS differently;
-                // but at minimum the write must not have succeeded cleanly.
-                assert_ne!(
-                    out.exit_code, 0,
-                    "write should not succeed in read_only mode; got exit 0"
-                );
+        } else {
+            match result {
+                Err(SandboxError::KilledByFilter { .. }) => {
+                    // Expected: seccomp killed the child for attempting a blocked write syscall.
+                }
+                Ok(out) => {
+                    // On some kernels the shell itself may absorb SIGSYS differently;
+                    // but at minimum the write must not have succeeded cleanly.
+                    assert_ne!(
+                        out.exit_code, 0,
+                        "write should not succeed when filesystem_write_global=false; got exit 0"
+                    );
+                }
+                Err(e) => panic!("unexpected error: {e}"),
             }
-            Err(e) => panic!("unexpected error: {e}"),
         }
+
         // Clean up if file was partially created.
         let _ = std::fs::remove_file(&target);
     }
