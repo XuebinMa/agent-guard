@@ -21,10 +21,47 @@ STALE_PATTERNS = [
     # Security promise drifts
     (r'every (tool call|execution) (automatically )?generates (a |an )?signed receipt', 'Receipts are supported/optional and require an explicit signing key'),
     (r'tamper-evident.*?audit log', 'Only Signed Receipts are tamper-evident, not local JSONL logs'),
+    (r'non-repudiab(?:le|ility)\s+(?:JSONL\s+)?audit log', 'Local JSONL logs are forensic records; only signed receipts provide cryptographic provenance'),
+    (r'(?:JSONL\s+)?audit log[s]?\s+(?:are|is)\s+non-repudiab(?:le|ility)', 'Local JSONL logs are forensic records; only signed receipts provide cryptographic provenance'),
+    (r'Seccomp-BPF.*?Production Ready', 'Linux Seccomp-BPF is not production-ready in v0.2.0; current Linux baseline is prototype/fallback'),
+    (r'full kernel-level syscall filtering on Linux', 'Current Linux sandboxing does not provide full Seccomp-BPF syscall filtering'),
     
     # Result schema drifts
     (r'\.outcome', 'Use .status for execution results in Node/Python'),
 ]
+
+FENCED_BLOCK_PATTERN = re.compile(r"```(?P<lang>[A-Za-z0-9_+-]*)\n(?P<body>.*?)```", re.DOTALL)
+
+
+def extract_fenced_blocks(content):
+    for match in FENCED_BLOCK_PATTERN.finditer(content):
+        yield match.group("lang").strip().lower(), match.group("body")
+
+
+def check_yaml_block(block, rel_path):
+    errors = 0
+
+    if re.search(r"(?m)^working_directory:\s*", block):
+        print(f"❌ Invalid policy example in {rel_path}: top-level 'working_directory' is not a policy key")
+        print("   👉 Suggestion: Set working_directory in execution Context, not in policy YAML")
+        errors += 1
+
+    return errors
+
+
+def check_rust_block(block, rel_path):
+    errors = 0
+
+    if "GuardInput {" in block:
+        has_explicit_import = re.search(r"use\s+agent_guard_sdk::GuardInput\s*;", block)
+        has_grouped_import = re.search(r"use\s+agent_guard_sdk::\{[^}]*\bGuardInput\b[^}]*\};", block, re.DOTALL)
+        if not (has_explicit_import or has_grouped_import):
+            print(f"❌ Rust snippet issue in {rel_path}: GuardInput is used but not imported")
+            print("   👉 Suggestion: Add GuardInput to the agent_guard_sdk import list")
+            errors += 1
+
+    return errors
+
 
 def check_md_files():
     root_dir = os.getcwd()
@@ -65,6 +102,13 @@ def check_md_files():
                     print(f"❌ Stale/Misleading content in {rel_path}: matching '{pattern}'")
                     print(f"   👉 Suggestion: {suggestion}")
                     errors += 1
+
+            # 3. Check fenced code blocks for common integration mistakes
+            for lang, block in extract_fenced_blocks(content):
+                if lang in {"yaml", "yml"}:
+                    errors += check_yaml_block(block, rel_path)
+                elif lang == "rust":
+                    errors += check_rust_block(block, rel_path)
 
     if errors > 0:
         print(f"\nTotal documentation errors: {errors}")

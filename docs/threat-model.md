@@ -20,7 +20,7 @@ The following assets are protected by the `agent-guard` security layer:
 | Asset | Importance | Security Requirement |
 | :--- | :--- | :--- |
 | **Policy Files (`policy.yaml`)** | **CRITICAL** | **Integrity**: Unauthorized modification leads to complete bypass. Must be protected by OS-level permissions. |
-| **Audit Logs (JSONL)** | **HIGH** | **Non-repudiability**: Logs must be protected from tampering to maintain the chain of custody for security investigations. |
+| **Audit Logs (JSONL)** | **HIGH** | **Integrity / Availability**: Logs should be preserved for investigations, but local JSONL alone is not cryptographic non-repudiation. |
 | **Host System (Kernel/FS)** | **CRITICAL** | **Isolation**: Prevent local privilege escalation (LPE) and unauthorized writes to critical system paths. |
 | **Secrets (Env/SSH Keys)** | **CRITICAL** | **Confidentiality**: Prevent unauthorized reading or exfiltration of sensitive developer credentials. |
 | **Network (Local/External)** | **HIGH** | **SSRF Prevention**: Prevent internal network scanning and unauthorized command-and-control (C2) communication. |
