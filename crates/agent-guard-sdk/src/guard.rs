@@ -424,24 +424,42 @@ impl Guard {
                     return Box::new(ll);
                 }
             }
-            return Box::new(agent_guard_sandbox::SeccompSandbox::new());
+            Box::new(agent_guard_sandbox::SeccompSandbox::new())
         }
         #[cfg(all(target_os = "macos", feature = "macos-sandbox"))]
         {
             let sb = agent_guard_sandbox::SeatbeltSandbox;
             if sb.is_available() {
-                return Box::new(sb);
+                Box::new(sb)
+            } else {
+                Box::new(agent_guard_sandbox::NoopSandbox)
             }
         }
         #[cfg(all(target_os = "windows", feature = "windows-appcontainer"))]
         {
-            return Box::new(agent_guard_sandbox::AppContainerSandbox);
+            Box::new(agent_guard_sandbox::AppContainerSandbox)
         }
-        #[cfg(all(target_os = "windows", feature = "windows-sandbox"))]
+        #[cfg(all(
+            target_os = "windows",
+            not(feature = "windows-appcontainer"),
+            feature = "windows-sandbox"
+        ))]
         {
-            return Box::new(agent_guard_sandbox::JobObjectSandbox);
+            Box::new(agent_guard_sandbox::JobObjectSandbox)
         }
-        Box::new(agent_guard_sandbox::NoopSandbox)
+        #[cfg(not(any(
+            target_os = "linux",
+            all(target_os = "macos", feature = "macos-sandbox"),
+            all(target_os = "windows", feature = "windows-appcontainer"),
+            all(
+                target_os = "windows",
+                not(feature = "windows-appcontainer"),
+                feature = "windows-sandbox"
+            )
+        )))]
+        {
+            Box::new(agent_guard_sandbox::NoopSandbox)
+        }
     }
 
     fn evaluate(&self, input: &GuardInput, state: &GuardState) -> GuardDecision {
