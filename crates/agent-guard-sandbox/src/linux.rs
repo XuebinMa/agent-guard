@@ -3,7 +3,6 @@
 use crate::{
     Sandbox, SandboxCapabilities, SandboxContext, SandboxError, SandboxOutput, SandboxResult,
 };
-use std::os::unix::process::CommandExt;
 use std::process::Command;
 
 /// Linux seccomp-bpf sandbox.

@@ -1,7 +1,9 @@
-use crate::{
-    Sandbox, SandboxCapabilities, SandboxContext, SandboxError, SandboxOutput, SandboxResult,
-};
+#[cfg(target_os = "macos")]
+use crate::SandboxOutput;
+use crate::{Sandbox, SandboxCapabilities, SandboxContext, SandboxError, SandboxResult};
+#[cfg(target_os = "macos")]
 use std::process::{Command, Stdio};
+#[cfg(target_os = "macos")]
 use std::sync::OnceLock;
 
 /// macOS Seatbelt sandbox using sandbox-exec.
@@ -164,6 +166,8 @@ impl Sandbox for SeatbeltSandbox {
         }
         #[cfg(not(target_os = "macos"))]
         {
+            let _ = command;
+            let _ = context;
             Err(SandboxError::NotAvailable(
                 "Seatbelt is only available on macOS".to_string(),
             ))

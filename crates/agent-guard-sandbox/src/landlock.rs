@@ -65,7 +65,7 @@ impl Sandbox for LandlockSandbox {
 
 #[cfg(target_os = "linux")]
 fn is_landlock_supported() -> bool {
-    use landlock::{AccessFs, Ruleset, RulesetAttr, ABI};
+    use landlock::{Access, AccessFs, Ruleset, RulesetAttr, ABI};
 
     Ruleset::default()
         .handle_access(AccessFs::from_all(ABI::V1))
