@@ -25,6 +25,11 @@ STALE_PATTERNS = [
     (r'(?:JSONL\s+)?audit log[s]?\s+(?:are|is)\s+non-repudiab(?:le|ility)', 'Local JSONL logs are forensic records; only signed receipts provide cryptographic provenance'),
     (r'Seccomp-BPF.*?Production Ready', 'Linux Seccomp-BPF is not production-ready in v0.2.0; current Linux baseline is prototype/fallback'),
     (r'full kernel-level syscall filtering on Linux', 'Current Linux sandboxing does not provide full Seccomp-BPF syscall filtering'),
+    (r'\|\s+\*\*`filesystem_write_global`\*\*\s+\|\s+🛡️ Blocked\s+\|', 'Linux prototype fallback does not block global writes in the capability matrix'),
+    (r'\|\s+\*\*`network_outbound_any`\*\*\s+\|\s+🛡️ Blocked\s+\|', 'Linux prototype fallback does not block outbound network access in the capability matrix'),
+    (r'global filesystem write protection \(Prototype\)', 'Linux prototype fallback does not currently guarantee global write protection'),
+    (r'While Seccomp blocks writes globally', 'Current Linux prototype fallback does not yet block writes globally'),
+    (r'provides OS-level process isolation on Linux using `seccomp-bpf`', 'The Linux sandbox doc should describe the current prototype wrapper, not shipped seccomp-bpf enforcement'),
     
     # Result schema drifts
     (r'\.outcome', 'Use .status for execution results in Node/Python'),

@@ -21,9 +21,9 @@
 | **`filesystem_read_workspace`** | ✅ | ✅ | ✅ | ✅ | ✅ |
 | **`filesystem_read_global`** | ✅ | ✅ | ✅ | 🛡️ Blocked | ✅ |
 | **`filesystem_write_workspace`** | ✅ | ✅ | ✅ | ✅ | ✅ |
-| **`filesystem_write_global`** | 🛡️ Blocked | 🛡️ Blocked | 🛡️ Blocked | 🛡️ Blocked | ❌ Allowed |
-| **`network_outbound_any`** | 🛡️ Blocked | 🛡️ Blocked | ❌ Allowed | 🛡️ Blocked | ❌ Allowed |
-| **`network_outbound_internet`**| 🛡️ Blocked | 🛡️ Blocked | ❌ Allowed | ✅ Allowed | ❌ Allowed |
+| **`filesystem_write_global`** | ❌ Allowed | 🛡️ Blocked | 🛡️ Blocked | 🛡️ Blocked | ❌ Allowed |
+| **`network_outbound_any`** | ❌ Allowed | 🛡️ Blocked | ❌ Allowed | 🛡️ Blocked | ❌ Allowed |
+| **`network_outbound_internet`**| ❌ Allowed | 🛡️ Blocked | ❌ Allowed | ✅ Allowed | ❌ Allowed |
 | **`child_process_spawn`** | ✅ | ✅ | ✅ | ✅ | ✅ |
 | **`registry_write`** | N/A | N/A | 🛡️ Blocked | 🛡️ Blocked | ❌ Allowed |
 
@@ -39,7 +39,7 @@
 
 | Platform | What this protects | What this does not protect |
 | :--- | :--- | :--- |
-| **Linux** | Command execution context, global filesystem write protection (Prototype). | Syscall-level filtering (Seccomp-BPF planned), fine-grained path-level read restriction. |
+| **Linux** | Command execution context only in the prototype fallback, plus stronger write isolation on hosts where Landlock is available. | Seccomp-BPF syscall filtering, guaranteed global write blocking on fallback hosts, fine-grained path-level read restriction. |
 | **macOS** | Workspace write isolation via Seatbelt profiles. | Global read access (Prototype limit). |
 | **Windows** | Integrity-based write protection (Low-IL) or SID-based isolation (AppContainer). | Network access in default Low-IL mode. |
 
@@ -49,4 +49,4 @@
 
 1. **Windows Network Isolation**: Currently, Low-IL does not restrict network access. This is a primary driver for the **AppContainer (M7.1)** implementation.
 2. **macOS Global Read**: The Seatbelt prototype currently allows reading files outside the workspace. Future iterations will tighten this to `(allow file-read* (subpath workspace))`.
-3. **Linux FS Isolation**: While Seccomp blocks writes globally, it does not currently provide a virtualized or restricted view of the filesystem. Integration with **Landlock** or **Mount Namespaces** is planned for v0.3.0.
+3. **Linux FS Isolation**: The prototype fallback does not currently block global writes or network access. Prefer Landlock-capable hosts today; native Seccomp-BPF filtering remains planned for v0.3.0.

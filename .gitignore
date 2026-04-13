@@ -6,6 +6,7 @@ __pycache__/
 *.py[cod]
 *$py.class
 *.so
+*.dSYM/
 .venv
 venv/
 env/

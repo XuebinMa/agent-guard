@@ -43,6 +43,7 @@ struct GuardState {
     audit_cfg: AuditConfig,
     audit_file: Option<Arc<std::sync::Mutex<std::fs::File>>>,
     siem_exporter: Arc<SiemExporter>,
+    anomaly_detector: Arc<crate::anomaly::AnomalyDetector>,
     signing_key: Option<ed25519_dalek::SigningKey>,
 }
 
@@ -110,6 +111,7 @@ impl Guard {
         let new_version = engine.version().to_string();
 
         let mut new_state = GuardState::new(Arc::new(engine))?;
+        new_state.anomaly_detector = old_state.anomaly_detector.clone();
         new_state.signing_key = old_state.signing_key.clone();
         self.state.store(Arc::new(new_state));
 
@@ -190,7 +192,7 @@ impl Guard {
         let anomaly_subject = anomaly_subject(&input.context);
         let anomaly_cfg = state.engine.anomaly_config();
 
-        match crate::anomaly::get_detector().check(&anomaly_subject, anomaly_cfg) {
+        match state.anomaly_detector.check(&anomaly_subject, anomaly_cfg) {
             crate::anomaly::AnomalyStatus::Normal => {}
             crate::anomaly::AnomalyStatus::RateLimited => {
                 let decision = GuardDecision::deny(
@@ -216,7 +218,9 @@ impl Guard {
         let outcome = match &decision {
             GuardDecision::Allow => "allow",
             GuardDecision::Deny { .. } => {
-                crate::anomaly::get_detector().report_denial(&anomaly_subject, anomaly_cfg);
+                state
+                    .anomaly_detector
+                    .report_denial(&anomaly_subject, anomaly_cfg);
                 "deny"
             }
             GuardDecision::AskUser { .. } => "ask",
@@ -603,12 +607,14 @@ impl GuardState {
         };
 
         let siem_exporter = Arc::new(SiemExporter::new(audit_cfg.clone()));
+        let anomaly_detector = Arc::new(crate::anomaly::AnomalyDetector::new());
 
         Ok(Self {
             engine,
             audit_cfg,
             audit_file,
             siem_exporter,
+            anomaly_detector,
             signing_key: None,
         })
     }

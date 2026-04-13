@@ -1,52 +1,56 @@
 # Linux Seccomp Sandbox — agent-guard
 
-> **Note:** Requires `libseccomp` C library and `seccomp` feature flag.
+> **Status:** v0.2.0 Linux Seccomp is still a prototype wrapper. Native Seccomp-BPF enforcement is planned for v0.3.0.
 
 ## Overview
 
-The `SeccompSandbox` (implemented in `crates/agent-guard-sandbox/src/linux.rs`) provides OS-level process isolation on Linux using `seccomp-bpf`. It intercepts system calls before they are executed and blocks any that are not explicitly allowed for the given `PolicyMode`.
+The `SeccompSandbox` in `crates/agent-guard-sandbox/src/linux.rs` currently provides two modes:
+
+- `SeccompSandbox::new()`: prototype wrapper around `sh -c` with timeout handling.
+- `SeccompSandbox::strict()`: fail-closed mode that returns `FilterSetup` until native Seccomp-BPF enforcement is implemented.
+
+This means the current Linux fallback does **not** yet install kernel syscall filters, block global writes, or block outbound network access by itself.
 
 ## Requirements
 
-To build with seccomp support:
+If you enable the optional `seccomp` feature today, Cargo will still pull in `libseccomp`, but the runtime path remains prototype-only in v0.2.0.
 
 - Linux kernel 3.5+
-- `libseccomp` development headers installed:
+- `libseccomp` development headers if building with the `seccomp` feature:
   - Ubuntu/Debian: `sudo apt-get install libseccomp-dev`
   - Fedora/RHEL: `sudo dnf install libseccomp-devel`
   - Alpine: `apk add libseccomp-dev`
 
 ## Feature Flag
 
-Enable the `seccomp` feature in `Cargo.toml`:
-
 ```toml
 [dependencies]
-agent-guard-sandbox = { version = "0.1.0", features = ["seccomp"] }
+agent-guard-sandbox = { version = "0.2.0-rc1", features = ["seccomp"] }
 ```
 
-## Security Modes
+## Current Behavior
 
-The sandbox selects a syscall allowlist based on the `PolicyMode` resolved by the `PolicyEngine`.
-
-| Mode | Syscall Allowlist (BPF filter) |
+| Constructor | Current behavior in v0.2.0 |
 |---|---|
-| `ReadOnly` | `read`, `openat` (O_RDONLY), `stat`, `mmap`, `close`, `exit_group`, etc. **Write is only allowed to stdout/stderr (fd ≤ 2)**. |
-| `WorkspaceWrite` | `ReadOnly` + `write`, `openat` (O_WRONLY/O_RDWR), `creat`, `unlink`, `rename`, `mkdir`, `rmdir`, etc. |
-| `FullAccess` | **No filter applied.** (Danger: full OS access) |
+| `SeccompSandbox::new()` | Executes via `sh -c` in the requested working directory and enforces `timeout_ms` only. |
+| `SeccompSandbox::strict()` | Fails closed with `SandboxError::FilterSetup(...)` instead of silently using the prototype wrapper. |
 
 ## Error Semantics
 
-- `KilledByFilter`: The process attempted a blocked syscall and was killed by the kernel with `SIGSYS`.
-- `FilterSetup`: The sandbox failed to initialize (e.g., `libseccomp` not available).
+- `FilterSetup`: Returned by `strict()` until native Seccomp-BPF enforcement is available.
 - `Timeout`: Execution exceeded `SandboxContext.timeout_ms`.
+- `ExecutionFailed`: Process spawn or shell execution failed.
 
 ## Production Recommendation
 
-Always use `SeccompSandbox::strict()` for production. If the filter fails to load, it will return an `Err` rather than falling back to `NoopSandbox`.
+Do not rely on the current Linux Seccomp fallback for kernel-level isolation. For Linux hosts today:
+
+- Prefer `LandlockSandbox` when the host supports it.
+- Use `SeccompSandbox::strict()` only when you want fail-closed behavior rather than a prototype wrapper.
+- Treat `SeccompSandbox::new()` as a compatibility path, not as a hardened sandbox.
 
 ```rust
-use agent_guard_sandbox::SeccompSandbox;
+use agent_guard_sandbox::linux::SeccompSandbox;
 
-let sandbox = SeccompSandbox::strict(); // Fails-safe on error
+let sandbox = SeccompSandbox::strict(); // Fails closed until native seccomp lands
 ```

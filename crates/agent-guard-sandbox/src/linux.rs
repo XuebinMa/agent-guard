@@ -15,7 +15,7 @@ pub struct SeccompSandbox {
 
 impl SeccompSandbox {
     pub fn new() -> Self {
-        Self { strict: true }
+        Self { strict: false }
     }
 
     pub fn strict() -> Self {
@@ -39,6 +39,20 @@ impl Sandbox for SeccompSandbox {
     }
 
     fn capabilities(&self) -> SandboxCapabilities {
+        if self.strict {
+            return SandboxCapabilities {
+                filesystem_read_workspace: false,
+                filesystem_read_global: false,
+                filesystem_write_workspace: false,
+                filesystem_write_global: false,
+                network_outbound_any: false,
+                network_outbound_internet: false,
+                network_outbound_local: false,
+                child_process_spawn: false,
+                registry_write: false,
+            };
+        }
+
         // PROTOTYPE: Current implementation is plain `sh -c` without seccomp filters.
         // Capabilities reflect actual enforcement, not planned Seccomp-BPF behavior.
         SandboxCapabilities {
@@ -59,13 +73,19 @@ impl Sandbox for SeccompSandbox {
     }
 
     fn is_available(&self) -> bool {
-        cfg!(target_os = "linux")
+        cfg!(target_os = "linux") && !self.strict
     }
 }
 
-fn execute_with_seccomp(command: &str, context: &SandboxContext, _strict: bool) -> SandboxResult {
+fn execute_with_seccomp(command: &str, context: &SandboxContext, strict: bool) -> SandboxResult {
     #[cfg(target_os = "linux")]
     {
+        if strict {
+            return Err(SandboxError::FilterSetup(
+                "native Seccomp-BPF enforcement is not available in the current v0.2.0 prototype; use SeccompSandbox::new() for the wrapper path".to_string(),
+            ));
+        }
+
         use std::sync::mpsc;
         use std::thread;
         use std::time::Duration;

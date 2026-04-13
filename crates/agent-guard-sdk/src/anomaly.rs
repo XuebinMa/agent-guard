@@ -3,16 +3,30 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-#[derive(Default)]
 pub struct ActorState {
     pub call_history: Vec<Instant>,
     pub denial_history: Vec<Instant>,
     pub is_locked: bool,
+    pub last_seen: Instant,
+}
+
+impl Default for ActorState {
+    fn default() -> Self {
+        Self {
+            call_history: Vec::new(),
+            denial_history: Vec::new(),
+            is_locked: false,
+            last_seen: Instant::now(),
+        }
+    }
 }
 
 pub struct AnomalyDetector {
     states: Mutex<HashMap<String, ActorState>>,
 }
+
+const MAX_TRACKED_SUBJECTS: usize = 4096;
+const STALE_SUBJECT_TTL: Duration = Duration::from_secs(60 * 60);
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum AnomalyStatus {
@@ -40,6 +54,7 @@ impl AnomalyDetector {
             return AnomalyStatus::Normal;
         }
 
+        let now = Instant::now();
         let mut states = match self.states.lock() {
             Ok(guard) => guard,
             Err(_) => {
@@ -47,13 +62,13 @@ impl AnomalyDetector {
                 return AnomalyStatus::Locked;
             }
         };
+        compact_states(&mut states, config, now);
         let state = states.entry(actor.to_string()).or_default();
+        state.last_seen = now;
 
         if state.is_locked {
             return AnomalyStatus::Locked;
         }
-
-        let now = Instant::now();
 
         // 1. Check Rate Limit
         let call_window = Duration::from_secs(config.rate_limit.window_seconds);
@@ -105,17 +120,19 @@ impl AnomalyDetector {
             return;
         }
 
+        let now = Instant::now();
         let mut states = match self.states.lock() {
             Ok(guard) => guard,
             Err(_) => return, // Silent return on poison for non-critical update
         };
+        compact_states(&mut states, config, now);
         let state = states.entry(actor.to_string()).or_default();
+        state.last_seen = now;
 
         if state.is_locked {
             return;
         }
 
-        let now = Instant::now();
         state.denial_history.push(now);
 
         // Limit history to prevent OOM
@@ -136,6 +153,38 @@ impl AnomalyDetector {
                 "Anomaly detected: agent locked due to too many denials (Deny Fuse)"
             );
         }
+    }
+}
+
+fn compact_states(states: &mut HashMap<String, ActorState>, config: &AnomalyConfig, now: Instant) {
+    let call_window = Duration::from_secs(config.rate_limit.window_seconds);
+    let fuse_window = Duration::from_secs(config.deny_fuse.window_seconds);
+    let retention = call_window.max(fuse_window).max(STALE_SUBJECT_TTL);
+
+    states.retain(|_, state| {
+        state
+            .call_history
+            .retain(|&t| now.duration_since(t) <= call_window);
+        state
+            .denial_history
+            .retain(|&t| now.duration_since(t) <= fuse_window);
+
+        let recently_seen = now.duration_since(state.last_seen) <= retention;
+        let has_recent_activity =
+            !state.call_history.is_empty() || !state.denial_history.is_empty();
+
+        recently_seen || has_recent_activity || state.is_locked
+    });
+
+    while states.len() > MAX_TRACKED_SUBJECTS {
+        let Some(oldest_key) = states
+            .iter()
+            .min_by_key(|(_, state)| state.last_seen)
+            .map(|(key, _)| key.clone())
+        else {
+            break;
+        };
+        states.remove(&oldest_key);
     }
 }
 

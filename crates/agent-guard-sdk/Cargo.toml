@@ -30,7 +30,7 @@ thiserror.workspace = true
 uuid.workspace = true
 sha2.workspace = true
 # Make SIEM dependencies non-optional to resolve compilation errors in siem.rs
-tokio = { version = "1", features = ["rt", "rt-multi-thread", "macros"] }
+tokio = { version = "1", features = ["rt", "rt-multi-thread", "macros", "time"] }
 arc-swap.workspace = true
 chrono.workspace = true
 ed25519-dalek.workspace = true

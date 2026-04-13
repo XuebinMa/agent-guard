@@ -65,7 +65,7 @@ mod seccomp_tests {
 
     #[test]
     fn c2_read_only_write_behavior_matches_capabilities() {
-        let sandbox = SeccompSandbox::strict();
+        let sandbox = SeccompSandbox::new();
         let target = tmp_dir().join("seccomp_test_write.txt");
         let caps = sandbox.capabilities();
         // Use `tee` to write a file — tee calls `open(O_WRONLY)` / `creat` which
@@ -147,20 +147,11 @@ mod seccomp_tests {
 
     #[test]
     fn c5_strict_read_only_does_not_silently_bypass() {
-        // Strict mode: if seccomp filter fails to load, return FilterSetup error.
-        // This test validates the strict=true path compiles and returns the right variant.
-        // On a real kernel this should succeed; we test the API contract here.
+        // Strict mode must fail closed while native seccomp enforcement is not wired up.
         let sandbox = SeccompSandbox::strict();
         let result = sandbox.execute("echo strict", &ctx(PolicyMode::ReadOnly));
-        // On a system with seccomp support this should succeed (filter loads OK).
-        // If it fails it must be FilterSetup, not a silent noop.
         assert!(
-            matches!(
-                result,
-                Ok(_)
-                    | Err(SandboxError::FilterSetup(_))
-                    | Err(SandboxError::KilledByFilter { .. })
-            ),
+            matches!(result, Err(SandboxError::FilterSetup(_))),
             "strict mode got unexpected result: {result:?}"
         );
     }
