@@ -19,9 +19,11 @@ Version `v0.2.0` marks the transition of `agent-guard` from a core proof-of-conc
 - **Unified Audit Events**: Standardized event model for tool calls, execution lifecycle, and security anomalies.
 - **Webhook SIEM Exporter**: Push security events in real-time to external alerting and logging systems (e.g., Slack, PagerDuty, Grafana Loki).
 - **Per-Agent Metrics**: All Prometheus metrics now include the `agent_id` label for granular monitoring.
+- **Default Sandbox Diagnosis**: The SDK now exposes which sandbox backend `Guard::default_sandbox()` actually selects on the current host and why it may have fallen back to `NoopSandbox`.
 
 ### 🏥 Adoption Suite
 - **Capability Doctor**: A built-in diagnostic tool (`cargo run --example doctor`) to inspect and verify host-level security features.
+- **Transparent Fallback Reporting**: `doctor`, `dashboard`, and the transparency demo now surface runtime-unavailable sandboxes as explicit fail-closed fallback conditions instead of leaving operators to infer them.
 - **Migration Guide**: Clear documentation for moving from `No-op` to `Hardened` production environments.
 
 ## 🛠️ Internal Improvements
@@ -31,6 +33,7 @@ Version `v0.2.0` marks the transition of `agent-guard` from a core proof-of-conc
 
 ## ⚠️ Known Gaps & Non-Goals
 - **Windows Network (Low-IL)**: Standard Low-IL enforcement does not block network access; use the experimental AppContainer backend for network isolation.
+- **Host-Dependent Runtime Availability**: macOS Seatbelt and Windows Low-IL backends can be compiled in but still be unavailable at runtime. In those cases the SDK now reports the fallback explicitly and selects `NoopSandbox` rather than overstating protection.
 - **Remote Attestation**: TPM-backed attestation is planned for v0.3.0. Currently, receipts are signed by the trusted SDK host.
 - **Linux FS Virtualization**: Deep filesystem virtualization (namespaces) is targeted for the next major release.
 

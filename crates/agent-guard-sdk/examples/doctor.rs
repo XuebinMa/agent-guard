@@ -1,7 +1,23 @@
-use agent_guard_sdk::{CapabilityDoctor, HealthStatus};
+use agent_guard_sdk::{CapabilityDoctor, Guard, HealthStatus};
 
 fn main() {
     println!("🛡️ agent-guard doctor — Host Capability Report\n");
+
+    let default = Guard::default_sandbox_diagnosis();
+    println!("Default SDK sandbox:");
+    println!(
+        "  - Selected: {} ({})",
+        default.selected_name, default.selected_sandbox_type
+    );
+    println!(
+        "  - Fallback: {}",
+        if default.fallback_to_noop {
+            "Yes"
+        } else {
+            "No"
+        }
+    );
+    println!("  - Reason:   {}\n", default.reason);
 
     let reports = CapabilityDoctor::report();
 
@@ -26,6 +42,12 @@ fn main() {
             HealthStatus::Skipped => {
                 println!("Health:  ➖ SKIPPED");
             }
+        }
+
+        if report.sandbox_type == default.selected_sandbox_type {
+            println!("Default: ✅ Selected by Guard::default_sandbox()");
+        } else if default.fallback_to_noop && report.sandbox_type == "none" {
+            println!("Default: ✅ Selected as explicit fallback");
         }
 
         println!("Capabilities:");

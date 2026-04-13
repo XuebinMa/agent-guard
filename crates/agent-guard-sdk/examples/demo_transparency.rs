@@ -1,4 +1,4 @@
-use agent_guard_sdk::CapabilityDoctor;
+use agent_guard_sdk::{CapabilityDoctor, Guard};
 
 fn main() {
     println!("🛡️ agent-guard Demo 3: Platform Transparency (UCM Parity)");
@@ -8,6 +8,22 @@ fn main() {
     println!("are platform-agnostic, while mapping them to optimal OS enforcers.\n");
 
     println!("👉 Action: Running CapabilityDoctor to inspect current host\n");
+
+    let default = Guard::default_sandbox_diagnosis();
+    println!("Default SDK sandbox resolution:");
+    println!(
+        "  - Selected: {} ({})",
+        default.selected_name, default.selected_sandbox_type
+    );
+    println!(
+        "  - Fallback: {}",
+        if default.fallback_to_noop {
+            "Yes"
+        } else {
+            "No"
+        }
+    );
+    println!("  - Reason:   {}\n", default.reason);
 
     let reports = CapabilityDoctor::report();
 
@@ -21,6 +37,10 @@ fn main() {
             "❌ NOT AVAILABLE"
         };
         println!("Status:  {}", status);
+
+        if report.sandbox_type == default.selected_sandbox_type {
+            println!("Default: ✅ This is the backend Guard::default_sandbox() will use");
+        }
 
         match &report.health {
             agent_guard_sdk::HealthStatus::Pass => {

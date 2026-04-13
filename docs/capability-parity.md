@@ -5,7 +5,7 @@
 | **Status** | 🟢 Baseline Established (v0.2.0) |
 | **Audience** | DevOps, Security Engineers |
 | **Version** | 1.1 |
-| **Last Reviewed** | 2026-04-08 |
+| **Last Reviewed** | 2026-04-13 |
 | **Related Docs** | [Architecture & Vision](architecture-and-vision.md), [Threat Model](threat-model.md) |
 
 ---
@@ -15,6 +15,9 @@
 > The matrix below reflects static sandbox-level capability metadata. A
 > specific execution can still be stricter than the matrix when the active
 > `PolicyMode` tightens behavior at runtime.
+> Runtime availability is a separate concern: if a backend fails its host checks,
+> `CapabilityDoctor` now reports it as unavailable and the SDK may explicitly
+> fall back to `NoopSandbox`.
 
 ---
 

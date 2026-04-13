@@ -3,18 +3,25 @@
 //! Usage: cargo run -p agent-guard-sdk --example dashboard
 //! Output: agent-guard-report.html
 
-use agent_guard_sdk::{CapabilityDoctor, HealthStatus, SandboxReport};
+use agent_guard_sdk::{
+    CapabilityDoctor, DefaultSandboxDiagnosis, Guard, HealthStatus, SandboxReport,
+};
 
 fn main() {
     let reports = CapabilityDoctor::report();
-    let json = serde_json::to_string_pretty(&reports).unwrap();
-    let html = render_html(&reports, &json);
+    let default = Guard::default_sandbox_diagnosis();
+    let json = serde_json::json!({
+        "default_sandbox": default,
+        "reports": reports,
+    });
+    let json = serde_json::to_string_pretty(&json).unwrap();
+    let html = render_html(&reports, &default, &json);
     let path = "agent-guard-report.html";
     std::fs::write(path, &html).unwrap();
     println!("Security posture report written to: {}", path);
 }
 
-fn render_html(reports: &[SandboxReport], json: &str) -> String {
+fn render_html(reports: &[SandboxReport], default: &DefaultSandboxDiagnosis, json: &str) -> String {
     let timestamp = chrono::Utc::now().format("%Y-%m-%d %H:%M:%S UTC");
     let hostname = std::env::var("HOSTNAME")
         .or_else(|_| std::env::var("HOST"))
@@ -40,6 +47,7 @@ fn render_html(reports: &[SandboxReport], json: &str) -> String {
             r#"<div class="card">
   <h3>{name} <small>({stype})</small></h3>
   <p>{avail} {health}</p>
+  <p><strong>Default Selection:</strong> {selected}</p>
   <table class="cap-table">
     <tr><td>FS Read (Workspace)</td><td>{fs_rw}</td></tr>
     <tr><td>FS Read (Global)</td><td>{fs_rg}</td></tr>
@@ -54,6 +62,11 @@ fn render_html(reports: &[SandboxReport], json: &str) -> String {
             stype = r.sandbox_type,
             avail = avail_badge,
             health = health_badge,
+            selected = if r.sandbox_type == default.selected_sandbox_type {
+                "Yes"
+            } else {
+                "No"
+            },
             fs_rw = cap_icon(cap.filesystem_read_workspace, true),
             fs_rg = cap_icon(cap.filesystem_read_global, true),
             fs_ww = cap_icon(cap.filesystem_write_workspace, true),
@@ -138,6 +151,13 @@ fn render_html(reports: &[SandboxReport], json: &str) -> String {
 <h1>agent-guard Security Posture Report</h1>
 <p class="meta">Generated: {timestamp} | Host: {hostname}</p>
 
+<h2>Default Sandbox Resolution</h2>
+<div class="card">
+  <h3>{default_name} <small>({default_type})</small></h3>
+  <p>{default_badge}</p>
+  <p><strong>Reason:</strong> {default_reason}</p>
+</div>
+
 <h2>Sandbox Overview</h2>
 <div class="cards">
 {cards}
@@ -164,6 +184,14 @@ fn render_html(reports: &[SandboxReport], json: &str) -> String {
 </html>"##,
         timestamp = timestamp,
         hostname = hostname,
+        default_name = default.selected_name,
+        default_type = default.selected_sandbox_type,
+        default_badge = if default.fallback_to_noop {
+            r#"<span class="badge red">Fallback to NoopSandbox</span>"#
+        } else {
+            r#"<span class="badge green">Native backend selected</span>"#
+        },
+        default_reason = default.reason,
         cards = cards,
         headers = headers,
         rows = rows,

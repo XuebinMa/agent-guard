@@ -20,7 +20,7 @@ Unlike basic "System Prompt" instructions, `agent-guard` enforces security at th
 - 📜 **Verifiable Provenance**: Ed25519 Signed Receipts (supported) for cryptographic execution proof.
 - 🔒 **Proactive Protection**: Built-in **Deny Fuse** automatically locks out Agents after repeated policy violations to stop active probing.
 - 📊 **Enterprise Observability**: Real-time Prometheus metrics and SIEM-ready Webhooks for instant incident response.
-- 🏥 **Security Transparency**: Built-in `CapabilityDoctor` to verify exactly what your host OS supports—no more black-box security.
+- 🏥 **Security Transparency**: Built-in `CapabilityDoctor` and default-sandbox diagnostics to verify exactly what your host OS supports and whether the SDK had to fall back to `NoopSandbox`.
 
 ---
 
@@ -41,6 +41,7 @@ Run our standardized demos to see the security layers in real-time:
 - **Malicious Block**: `cargo run --example demo_malicious_block` (See the Deny Fuse lock out an attacker)
 - **The Comparison**: `cargo run --example demo_comparison` (No Guard vs. Full Guard side-by-side)
 - **Host Transparency**: `cargo run --example demo_transparency` (What can your host OS defend against?)
+- **Doctor Report**: `cargo run -p agent-guard-sdk --example doctor` (Which backend will the SDK actually select, and why?)
 
 ---
 

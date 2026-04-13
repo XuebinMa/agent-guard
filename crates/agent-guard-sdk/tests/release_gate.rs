@@ -76,7 +76,9 @@ fn test_gate_fail_closed_robustness() {
 #[test]
 fn test_gate_platform_selection_consistency() {
     let sandbox = Guard::default_sandbox();
+    let diagnosis = Guard::default_sandbox_diagnosis();
     let s_type = sandbox.sandbox_type();
+    assert_eq!(s_type, diagnosis.selected_sandbox_type);
 
     #[cfg(target_os = "linux")]
     {

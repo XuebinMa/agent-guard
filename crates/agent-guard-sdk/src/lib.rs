@@ -5,7 +5,7 @@ pub mod provenance;
 pub mod siem;
 
 pub use anomaly::{get_detector, AnomalyDetector, AnomalyStatus};
-pub use guard::{ExecuteOutcome, ExecuteResult, Guard, GuardInitError};
+pub use guard::{DefaultSandboxDiagnosis, ExecuteOutcome, ExecuteResult, Guard, GuardInitError};
 pub use metrics::{get_metrics, Metrics};
 pub use prometheus_client;
 pub use provenance::{ExecutionReceipt, RECEIPT_VERSION};
