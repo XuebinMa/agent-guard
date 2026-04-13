@@ -108,7 +108,7 @@ fn execute_compat_shell(command: &str, context: &SandboxContext) -> SandboxResul
         .spawn()
         .map_err(|e| SandboxError::ExecutionFailed(format!("Failed to spawn process: {}", e)))?;
 
-    wait_for_child(&mut child, context.timeout_ms)
+    wait_for_child(child, context.timeout_ms)
 }
 
 #[cfg(all(target_os = "linux", feature = "seccomp"))]
@@ -158,11 +158,11 @@ fn execute_with_native_seccomp(
         }
     };
 
-    wait_for_child(&mut child, context.timeout_ms)
+    wait_for_child(child, context.timeout_ms)
 }
 
 #[cfg(target_os = "linux")]
-fn wait_for_child(child: &mut std::process::Child, timeout_ms: Option<u64>) -> SandboxResult {
+fn wait_for_child(mut child: std::process::Child, timeout_ms: Option<u64>) -> SandboxResult {
     use std::sync::mpsc;
     use std::thread;
     use std::time::Duration;

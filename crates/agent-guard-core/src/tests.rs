@@ -8,7 +8,6 @@ fn ctx(level: crate::types::TrustLevel) -> crate::types::Context {
 
 #[cfg(test)]
 mod types_tests {
-    use super::ctx;
     use crate::types::{Context, CustomToolId, GuardInput, Tool, TrustLevel};
 
     #[test]
