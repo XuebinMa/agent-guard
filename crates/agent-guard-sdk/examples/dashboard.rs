@@ -4,7 +4,8 @@
 //! Output: agent-guard-report.html
 
 use agent_guard_sdk::{
-    CapabilityDoctor, DefaultSandboxDiagnosis, Guard, HealthStatus, SandboxReport,
+    CapabilityDoctor, DefaultSandboxDiagnosis, Guard, HealthStatus, RuntimeCheckStatus,
+    SandboxReport,
 };
 
 fn main() {
@@ -41,13 +42,44 @@ fn render_html(reports: &[SandboxReport], default: &DefaultSandboxDiagnosis, jso
             }
             HealthStatus::Skipped => r#"<span class="badge gray">Skipped</span>"#.to_string(),
         };
+        let note = r
+            .availability_note
+            .as_ref()
+            .map(|note| format!(r#"<p><strong>Note:</strong> {}</p>"#, note))
+            .unwrap_or_default();
+        let runtime_checks = if r.runtime_checks.is_empty() {
+            String::new()
+        } else {
+            let items = r
+                .runtime_checks
+                .iter()
+                .map(|check| {
+                    let badge = match check.status {
+                        RuntimeCheckStatus::Pass => "PASS",
+                        RuntimeCheckStatus::Fail => "FAIL",
+                        RuntimeCheckStatus::Skipped => "SKIPPED",
+                    };
+                    format!(
+                        "<li><strong>{}</strong> [{}] - {}</li>",
+                        check.name, badge, check.detail
+                    )
+                })
+                .collect::<Vec<_>>()
+                .join("");
+            format!(
+                r#"<div class="checks"><strong>Runtime checks</strong><ul>{}</ul></div>"#,
+                items
+            )
+        };
 
         let cap = &r.capabilities;
         cards.push_str(&format!(
             r#"<div class="card">
   <h3>{name} <small>({stype})</small></h3>
   <p>{avail} {health}</p>
+  {note}
   <p><strong>Default Selection:</strong> {selected}</p>
+  {runtime_checks}
   <table class="cap-table">
     <tr><td>FS Read (Workspace)</td><td>{fs_rw}</td></tr>
     <tr><td>FS Read (Global)</td><td>{fs_rg}</td></tr>
@@ -62,11 +94,13 @@ fn render_html(reports: &[SandboxReport], default: &DefaultSandboxDiagnosis, jso
             stype = r.sandbox_type,
             avail = avail_badge,
             health = health_badge,
+            note = note,
             selected = if r.sandbox_type == default.selected_sandbox_type {
                 "Yes"
             } else {
                 "No"
             },
+            runtime_checks = runtime_checks,
             fs_rw = cap_icon(cap.filesystem_read_workspace, true),
             fs_rg = cap_icon(cap.filesystem_read_global, true),
             fs_ww = cap_icon(cap.filesystem_write_workspace, true),
@@ -136,6 +170,9 @@ fn render_html(reports: &[SandboxReport], default: &DefaultSandboxDiagnosis, jso
   .badge.green {{ background: #d4edda; color: #155724; }}
   .badge.red {{ background: #f8d7da; color: #721c24; }}
   .badge.gray {{ background: #e2e3e5; color: #383d41; }}
+  .checks {{ margin: 0.75rem 0 0.25rem; }}
+  .checks ul {{ margin: 0.5rem 0 0 1.2rem; }}
+  .checks li {{ margin: 0.2rem 0; }}
   table {{ border-collapse: collapse; width: 100%; margin-top: 1rem; }}
   th, td {{ border: 1px solid #dee2e6; padding: 8px 12px; text-align: left; }}
   th {{ background: #e9ecef; font-weight: 600; }}

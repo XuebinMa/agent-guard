@@ -1,6 +1,8 @@
 #[cfg(target_os = "macos")]
 use crate::SandboxOutput;
-use crate::{Sandbox, SandboxCapabilities, SandboxContext, SandboxError, SandboxResult};
+use crate::{
+    RuntimeCheck, Sandbox, SandboxCapabilities, SandboxContext, SandboxError, SandboxResult,
+};
 #[cfg(target_os = "macos")]
 use std::process::{Command, Stdio};
 #[cfg(target_os = "macos")]
@@ -74,6 +76,28 @@ impl Sandbox for SeatbeltSandbox {
 
     fn is_available(&self) -> bool {
         seatbelt_runtime_available()
+    }
+
+    fn availability_note(&self) -> Option<String> {
+        if seatbelt_runtime_available() {
+            Some("sandbox-exec runtime probe succeeded on this host".to_string())
+        } else {
+            Some("sandbox-exec is not functional on this macOS host".to_string())
+        }
+    }
+
+    fn runtime_checks(&self) -> Vec<RuntimeCheck> {
+        vec![if seatbelt_runtime_available() {
+            RuntimeCheck::pass(
+                "sandbox_exec_probe",
+                "sandbox-exec successfully ran a minimal allow-all profile",
+            )
+        } else {
+            RuntimeCheck::fail(
+                "sandbox_exec_probe",
+                "sandbox-exec could not execute a minimal allow-all profile on this host",
+            )
+        }]
     }
 
     fn execute(&self, command: &str, context: &SandboxContext) -> SandboxResult {

@@ -5,7 +5,7 @@
 | **Status** | 🟢 Operational (v0.2.0) |
 | **Audience** | DevOps, SREs, System Admins |
 | **Version** | 1.1 |
-| **Last Reviewed** | 2026-04-08 |
+| **Last Reviewed** | 2026-04-13 |
 | **Related Docs** | [Observability](observability.md), [Capability Parity](../../capability-parity.md) |
 
 ---
@@ -74,6 +74,11 @@ Before going live, run the `CapabilityDoctor` on your production nodes to ensure
 # Verify available security features
 cargo run --example doctor
 ```
+
+Check for these signals before rollout:
+- The reported `Default SDK sandbox` should match the backend you expect to rely on in production.
+- `Fallback: Yes` means the SDK is explicitly using `NoopSandbox`; treat that as a deployment blocker if you expected OS-level isolation.
+- On Windows, inspect the runtime checks individually to distinguish token creation support, Job Object support, and low-integrity process launch support.
 
 ---
 

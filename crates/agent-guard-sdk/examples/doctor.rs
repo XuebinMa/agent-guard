@@ -1,4 +1,4 @@
-use agent_guard_sdk::{CapabilityDoctor, Guard, HealthStatus};
+use agent_guard_sdk::{CapabilityDoctor, Guard, HealthStatus, RuntimeCheckStatus};
 
 fn main() {
     println!("🛡️ agent-guard doctor — Host Capability Report\n");
@@ -31,6 +31,9 @@ fn main() {
             "❌ NOT AVAILABLE"
         };
         println!("Status:  {}", status);
+        if let Some(note) = &report.availability_note {
+            println!("Note:    {}", note);
+        }
 
         match &report.health {
             HealthStatus::Pass => {
@@ -48,6 +51,18 @@ fn main() {
             println!("Default: ✅ Selected by Guard::default_sandbox()");
         } else if default.fallback_to_noop && report.sandbox_type == "none" {
             println!("Default: ✅ Selected as explicit fallback");
+        }
+
+        if !report.runtime_checks.is_empty() {
+            println!("Runtime checks:");
+            for check in &report.runtime_checks {
+                let badge = match check.status {
+                    RuntimeCheckStatus::Pass => "✅",
+                    RuntimeCheckStatus::Fail => "❌",
+                    RuntimeCheckStatus::Skipped => "➖",
+                };
+                println!("  - {} {}: {}", badge, check.name, check.detail);
+            }
         }
 
         println!("Capabilities:");

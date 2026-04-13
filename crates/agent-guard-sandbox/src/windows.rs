@@ -1,6 +1,6 @@
 #[cfg(windows)]
 use crate::SandboxOutput;
-use crate::{Sandbox, SandboxContext, SandboxError, SandboxResult};
+use crate::{RuntimeCheck, Sandbox, SandboxContext, SandboxError, SandboxResult};
 #[cfg(windows)]
 use std::sync::OnceLock;
 
@@ -10,6 +10,14 @@ use std::sync::OnceLock;
 /// Job Objects and filesystem write protection via Low Integrity Level (Low-IL)
 /// tokens. Fail-closed: if the environment setup fails, execution is blocked.
 pub struct JobObjectSandbox;
+
+#[cfg(windows)]
+#[derive(Clone)]
+struct WindowsRuntimeProbe {
+    available: bool,
+    summary: String,
+    checks: Vec<RuntimeCheck>,
+}
 
 fn unavailable_capabilities() -> crate::SandboxCapabilities {
     crate::SandboxCapabilities {
@@ -26,27 +34,95 @@ fn unavailable_capabilities() -> crate::SandboxCapabilities {
 }
 
 #[cfg(windows)]
-fn job_object_runtime_available() -> bool {
-    static CACHE: OnceLock<bool> = OnceLock::new();
+fn job_object_runtime_probe() -> &'static WindowsRuntimeProbe {
+    static CACHE: OnceLock<WindowsRuntimeProbe> = OnceLock::new();
 
-    *CACHE.get_or_init(|| {
+    CACHE.get_or_init(|| {
         use windows_sys::Win32::System::JobObjects::CreateJobObjectW;
 
+        let mut checks = Vec::new();
+
         let token = match create_low_integrity_token() {
-            Ok(token) => token,
-            Err(_) => return false,
+            Ok(token) => {
+                checks.push(RuntimeCheck::pass(
+                    "low_integrity_token",
+                    "Successfully created a low-integrity primary token",
+                ));
+                token
+            }
+            Err(err) => {
+                checks.push(RuntimeCheck::fail(
+                    "low_integrity_token",
+                    err.to_string(),
+                ));
+                checks.push(RuntimeCheck::skipped(
+                    "job_object_handle",
+                    "Skipped because low-integrity token creation failed",
+                ));
+                checks.push(RuntimeCheck::skipped(
+                    "low_integrity_process_launch",
+                    "Skipped because low-integrity token creation failed",
+                ));
+                return WindowsRuntimeProbe {
+                    available: false,
+                    summary: "Low-integrity token creation failed on this host".to_string(),
+                    checks,
+                };
+            }
         };
         let _token_guard = TokenHandle(token);
 
         let job = unsafe { CreateJobObjectW(std::ptr::null(), std::ptr::null()) };
         if job == 0 {
-            return false;
+            let err = std::io::Error::last_os_error();
+            checks.push(RuntimeCheck::fail("job_object_handle", err.to_string()));
+            checks.push(RuntimeCheck::skipped(
+                "low_integrity_process_launch",
+                "Skipped because Job Object creation failed",
+            ));
+            return WindowsRuntimeProbe {
+                available: false,
+                summary: "Job Object creation failed on this host".to_string(),
+                checks,
+            };
         }
         let _job_guard = SafeHandle(job);
+        checks.push(RuntimeCheck::pass(
+            "job_object_handle",
+            "Successfully created a Job Object handle",
+        ));
 
         let working_dir = std::env::current_dir().unwrap_or_else(|_| ".".into());
-        spawn_low_integrity_process("exit 0", &working_dir, Some(2_000), token, job).is_ok()
+        match spawn_low_integrity_process("exit 0", &working_dir, Some(2_000), token, job) {
+            Ok(_) => {
+                checks.push(RuntimeCheck::pass(
+                    "low_integrity_process_launch",
+                    "Successfully launched and completed a low-integrity child process",
+                ));
+                WindowsRuntimeProbe {
+                    available: true,
+                    summary: "Low-integrity token creation, Job Object creation, and process launch are functional on this host.".to_string(),
+                    checks,
+                }
+            }
+            Err(err) => {
+                checks.push(RuntimeCheck::fail(
+                    "low_integrity_process_launch",
+                    err.to_string(),
+                ));
+                WindowsRuntimeProbe {
+                    available: false,
+                    summary: "Low-integrity process launch failed on this host".to_string(),
+                    checks,
+                }
+            }
+        }
     })
+}
+
+#[cfg(windows)]
+fn job_object_runtime_available() -> bool {
+    job_object_runtime_probe().available
 }
 
 #[cfg(not(windows))]
@@ -167,6 +243,26 @@ impl Sandbox for JobObjectSandbox {
 
     fn is_available(&self) -> bool {
         job_object_runtime_available()
+    }
+
+    #[cfg(windows)]
+    fn availability_note(&self) -> Option<String> {
+        Some(job_object_runtime_probe().summary.clone())
+    }
+
+    #[cfg(not(windows))]
+    fn availability_note(&self) -> Option<String> {
+        Some("JobObjectSandbox requires Windows".to_string())
+    }
+
+    #[cfg(windows)]
+    fn runtime_checks(&self) -> Vec<RuntimeCheck> {
+        job_object_runtime_probe().checks.clone()
+    }
+
+    #[cfg(not(windows))]
+    fn runtime_checks(&self) -> Vec<RuntimeCheck> {
+        Vec::new()
     }
 }
 

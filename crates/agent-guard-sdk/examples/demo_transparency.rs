@@ -1,4 +1,4 @@
-use agent_guard_sdk::{CapabilityDoctor, Guard};
+use agent_guard_sdk::{CapabilityDoctor, Guard, HealthStatus, RuntimeCheckStatus};
 
 fn main() {
     println!("🛡️ agent-guard Demo 3: Platform Transparency (UCM Parity)");
@@ -37,20 +37,35 @@ fn main() {
             "❌ NOT AVAILABLE"
         };
         println!("Status:  {}", status);
+        if let Some(note) = &report.availability_note {
+            println!("Note:    {}", note);
+        }
 
         if report.sandbox_type == default.selected_sandbox_type {
             println!("Default: ✅ This is the backend Guard::default_sandbox() will use");
         }
 
         match &report.health {
-            agent_guard_sdk::HealthStatus::Pass => {
+            HealthStatus::Pass => {
                 println!("Health:  ✅ PASS (Verified by execution check)");
             }
-            agent_guard_sdk::HealthStatus::Fail { error } => {
+            HealthStatus::Fail { error } => {
                 println!("Health:  ❌ FAIL (Error: {})", error);
             }
-            agent_guard_sdk::HealthStatus::Skipped => {
+            HealthStatus::Skipped => {
                 println!("Health:  ➖ SKIPPED");
+            }
+        }
+
+        if !report.runtime_checks.is_empty() {
+            println!("  Runtime checks:");
+            for check in &report.runtime_checks {
+                let badge = match check.status {
+                    RuntimeCheckStatus::Pass => "✅",
+                    RuntimeCheckStatus::Fail => "❌",
+                    RuntimeCheckStatus::Skipped => "➖",
+                };
+                println!("    - {} {}: {}", badge, check.name, check.detail);
             }
         }
 

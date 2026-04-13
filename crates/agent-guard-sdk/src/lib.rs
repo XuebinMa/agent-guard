@@ -20,6 +20,6 @@ pub use agent_guard_core::{
 
 // Re-export sandbox types for direct usage
 pub use agent_guard_sandbox::{
-    CapabilityDoctor, HealthStatus, Sandbox, SandboxCapabilities, SandboxContext, SandboxError,
-    SandboxOutput, SandboxReport,
+    CapabilityDoctor, HealthStatus, RuntimeCheck, RuntimeCheckStatus, Sandbox, SandboxCapabilities,
+    SandboxContext, SandboxError, SandboxOutput, SandboxReport,
 };

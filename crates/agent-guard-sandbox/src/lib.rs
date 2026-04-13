@@ -104,6 +104,16 @@ pub trait Sandbox: Send + Sync {
 
     /// Returns `true` if this sandbox implementation is usable on the current platform.
     fn is_available(&self) -> bool;
+
+    /// Human-readable note describing why this sandbox is or is not available.
+    fn availability_note(&self) -> Option<String> {
+        None
+    }
+
+    /// Fine-grained runtime checks describing host support for this sandbox.
+    fn runtime_checks(&self) -> Vec<RuntimeCheck> {
+        Vec::new()
+    }
 }
 
 // ── SandboxError ──────────────────────────────────────────────────────────────
@@ -129,6 +139,8 @@ pub struct SandboxReport {
     pub sandbox_type: &'static str,
     pub is_available: bool,
     pub capabilities: SandboxCapabilities,
+    pub availability_note: Option<String>,
+    pub runtime_checks: Vec<RuntimeCheck>,
     pub health: HealthStatus,
 }
 
@@ -137,6 +149,47 @@ pub struct SandboxReport {
 pub enum HealthStatus {
     Pass,
     Fail { error: String },
+    Skipped,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct RuntimeCheck {
+    pub name: String,
+    pub status: RuntimeCheckStatus,
+    pub detail: String,
+}
+
+impl RuntimeCheck {
+    pub fn pass(name: impl Into<String>, detail: impl Into<String>) -> Self {
+        Self {
+            name: name.into(),
+            status: RuntimeCheckStatus::Pass,
+            detail: detail.into(),
+        }
+    }
+
+    pub fn fail(name: impl Into<String>, detail: impl Into<String>) -> Self {
+        Self {
+            name: name.into(),
+            status: RuntimeCheckStatus::Fail,
+            detail: detail.into(),
+        }
+    }
+
+    pub fn skipped(name: impl Into<String>, detail: impl Into<String>) -> Self {
+        Self {
+            name: name.into(),
+            status: RuntimeCheckStatus::Skipped,
+            detail: detail.into(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RuntimeCheckStatus {
+    Pass,
+    Fail,
     Skipped,
 }
 
@@ -184,6 +237,8 @@ impl CapabilityDoctor {
                 sandbox_type: sb.sandbox_type(),
                 is_available: available,
                 capabilities: sb.capabilities(),
+                availability_note: sb.availability_note(),
+                runtime_checks: sb.runtime_checks(),
                 health,
             });
         }
