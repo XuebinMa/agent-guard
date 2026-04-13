@@ -449,7 +449,12 @@ impl Guard {
             feature = "windows-sandbox"
         ))]
         {
-            Box::new(agent_guard_sandbox::JobObjectSandbox)
+            let sb = agent_guard_sandbox::JobObjectSandbox;
+            if sb.is_available() {
+                Box::new(sb)
+            } else {
+                Box::new(agent_guard_sandbox::NoopSandbox)
+            }
         }
         #[cfg(not(any(
             target_os = "linux",

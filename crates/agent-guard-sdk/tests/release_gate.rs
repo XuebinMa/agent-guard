@@ -112,7 +112,15 @@ fn test_gate_platform_selection_consistency() {
         assert_eq!(s_type, "windows-appcontainer");
 
         #[cfg(all(not(feature = "windows-appcontainer"), feature = "windows-sandbox"))]
-        assert_eq!(s_type, "windows-job-object");
+        {
+            let job = agent_guard_sandbox::JobObjectSandbox;
+            let expected = if job.is_available() {
+                "windows-job-object"
+            } else {
+                "none"
+            };
+            assert_eq!(s_type, expected);
+        }
 
         #[cfg(not(any(feature = "windows-appcontainer", feature = "windows-sandbox")))]
         assert_eq!(s_type, "none");

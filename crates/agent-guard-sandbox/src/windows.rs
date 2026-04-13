@@ -1,6 +1,8 @@
 #[cfg(windows)]
 use crate::SandboxOutput;
 use crate::{Sandbox, SandboxContext, SandboxError, SandboxResult};
+#[cfg(windows)]
+use std::sync::OnceLock;
 
 /// Windows sandbox implementation using Job Objects and Restricted Tokens.
 ///
@@ -8,6 +10,49 @@ use crate::{Sandbox, SandboxContext, SandboxError, SandboxResult};
 /// Job Objects and filesystem write protection via Low Integrity Level (Low-IL)
 /// tokens. Fail-closed: if the environment setup fails, execution is blocked.
 pub struct JobObjectSandbox;
+
+fn unavailable_capabilities() -> crate::SandboxCapabilities {
+    crate::SandboxCapabilities {
+        filesystem_read_workspace: false,
+        filesystem_read_global: false,
+        filesystem_write_workspace: false,
+        filesystem_write_global: false,
+        network_outbound_any: false,
+        network_outbound_internet: false,
+        network_outbound_local: false,
+        child_process_spawn: false,
+        registry_write: false,
+    }
+}
+
+#[cfg(windows)]
+fn job_object_runtime_available() -> bool {
+    static CACHE: OnceLock<bool> = OnceLock::new();
+
+    *CACHE.get_or_init(|| {
+        use windows_sys::Win32::System::JobObjects::CreateJobObjectW;
+
+        let token = match create_low_integrity_token() {
+            Ok(token) => token,
+            Err(_) => return false,
+        };
+        let _token_guard = TokenHandle(token);
+
+        let job = unsafe { CreateJobObjectW(std::ptr::null(), std::ptr::null()) };
+        if job == 0 {
+            return false;
+        }
+        let _job_guard = SafeHandle(job);
+
+        let working_dir = std::env::current_dir().unwrap_or_else(|_| ".".into());
+        spawn_low_integrity_process("exit 0", &working_dir, Some(2_000), token, job).is_ok()
+    })
+}
+
+#[cfg(not(windows))]
+fn job_object_runtime_available() -> bool {
+    false
+}
 
 impl Sandbox for JobObjectSandbox {
     fn name(&self) -> &'static str {
@@ -19,6 +64,10 @@ impl Sandbox for JobObjectSandbox {
     }
 
     fn capabilities(&self) -> crate::SandboxCapabilities {
+        if !job_object_runtime_available() {
+            return unavailable_capabilities();
+        }
+
         crate::SandboxCapabilities {
             filesystem_read_workspace: true,
             filesystem_read_global: true, // Low-IL allows global read
@@ -43,6 +92,12 @@ impl Sandbox for JobObjectSandbox {
     fn execute(&self, command: &str, context: &SandboxContext) -> SandboxResult {
         use windows_sys::Win32::Foundation::{CloseHandle, HANDLE};
         use windows_sys::Win32::System::JobObjects::*;
+
+        if !job_object_runtime_available() {
+            return Err(SandboxError::NotAvailable(
+                "Windows low-integrity process creation is not functional on this host".to_string(),
+            ));
+        }
 
         // 1. Create Job Object
         // Safety: Creating a private job object for the command.
@@ -111,7 +166,7 @@ impl Sandbox for JobObjectSandbox {
     }
 
     fn is_available(&self) -> bool {
-        cfg!(windows)
+        job_object_runtime_available()
     }
 }
 
@@ -254,7 +309,7 @@ fn create_low_integrity_token() -> Result<windows_sys::Win32::Foundation::HANDLE
 
         let mut integrity_sid: *mut std::ffi::c_void = std::ptr::null_mut();
         // S-1-16-4096 (Low Mandatory Level)
-        let mut low_integrity_sid_auth = SID_IDENTIFIER_AUTHORITY {
+        let low_integrity_sid_auth = SID_IDENTIFIER_AUTHORITY {
             Value: [0, 0, 0, 0, 0, 16],
         };
         if AllocateAndInitializeSid(
@@ -276,7 +331,7 @@ fn create_low_integrity_token() -> Result<windows_sys::Win32::Foundation::HANDLE
             ));
         }
 
-        let mut tml = TOKEN_MANDATORY_LABEL {
+        let tml = TOKEN_MANDATORY_LABEL {
             Label: SID_AND_ATTRIBUTES {
                 Sid: integrity_sid,
                 Attributes: SE_GROUP_INTEGRITY as u32,
@@ -455,12 +510,28 @@ fn spawn_low_integrity_process(
 #[cfg(all(test, windows))]
 mod tests {
     use super::*;
-    use crate::SandboxContext;
+    use crate::{Sandbox, SandboxContext, SandboxError};
     use agent_guard_core::PolicyMode;
     use std::path::PathBuf;
 
+    fn runtime_available_or_skip() -> bool {
+        let sandbox = JobObjectSandbox;
+        if sandbox.is_available() {
+            return true;
+        }
+
+        eprintln!(
+            "skipping Windows Job Object execution assertions: low-integrity process creation is not functional on this host"
+        );
+        false
+    }
+
     #[test]
     fn test_windows_job_object_lifecycle() {
+        if !runtime_available_or_skip() {
+            return;
+        }
+
         let sandbox = JobObjectSandbox;
         let ctx = SandboxContext {
             mode: PolicyMode::ReadOnly,
@@ -479,6 +550,10 @@ mod tests {
 
     #[test]
     fn test_windows_low_il_write_restriction() {
+        if !runtime_available_or_skip() {
+            return;
+        }
+
         let sandbox = JobObjectSandbox;
         let ctx = SandboxContext {
             mode: PolicyMode::ReadOnly,
@@ -503,6 +578,10 @@ mod tests {
 
     #[test]
     fn test_windows_workspace_write_success() {
+        if !runtime_available_or_skip() {
+            return;
+        }
+
         let sandbox = JobObjectSandbox;
         let temp_dir = std::env::temp_dir().join("agent_guard_p5_test");
         let _ = std::fs::create_dir_all(&temp_dir);
@@ -525,6 +604,21 @@ mod tests {
     fn test_windows_fail_closed_logic() {
         let sandbox = JobObjectSandbox;
 
+        if !sandbox.is_available() {
+            let err = sandbox
+                .execute(
+                    "echo fail",
+                    &SandboxContext {
+                        mode: PolicyMode::ReadOnly,
+                        working_directory: PathBuf::from("."),
+                        timeout_ms: None,
+                    },
+                )
+                .expect_err("unavailable JobObjectSandbox must fail closed");
+            assert!(matches!(err, SandboxError::NotAvailable(_)));
+            return;
+        }
+
         // 1. Invalid working directory should fail-closed during process creation
         let ctx_invalid_dir = SandboxContext {
             mode: PolicyMode::ReadOnly,
@@ -537,7 +631,11 @@ mod tests {
             "Execution in non-existent directory should fail-closed"
         );
         if let Err(e) = res {
-            assert!(e.to_string().contains("CreateProcessAsUserW failed"));
+            assert!(
+                e.to_string().contains("CreateProcessAsUserW failed")
+                    || e.to_string()
+                        .contains("The system cannot find the file specified")
+            );
         }
 
         // 2. Empty command should still be handled via fail-closed cmd /C

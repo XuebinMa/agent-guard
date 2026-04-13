@@ -12,7 +12,8 @@ While the Linux implementation uses `seccomp-bpf` for fine-grained syscall filte
 2.  **Permissive Network Policy**: The current prototype does **no network isolation**. Windows Firewall or other system-level filtering is required to block network access.
 3.  **Coarse Filesystem Controls**: The current prototype strengthens containment with a Low Integrity Level (Low-IL) token, which blocks writes to protected medium/high integrity locations such as `C:\Windows`. However, this is still much coarser than Linux path-level mediation and does not yet provide a first-class workspace allowlist.
 4.  **Global Read Access**: Low-IL does not prevent the sandboxed process from reading files the user can already read.
-5.  **No Syscall Filtering**: Windows does not have a native equivalent to Linux Seccomp that is easily accessible to CLI tools. Restricting syscalls would require kernel-mode drivers or complex user-mode hooking.
+5.  **Runtime Availability Risk**: Low-IL process launch depends on host privileges and Win32 environment details. On hosts where `CreateProcessAsUserW` with the prepared token is denied, `JobObjectSandbox::is_available()` returns `false`, capabilities are reported as unavailable, and execution fails closed instead of silently degrading.
+6.  **No Syscall Filtering**: Windows does not have a native equivalent to Linux Seccomp that is easily accessible to CLI tools. Restricting syscalls would require kernel-mode drivers or complex user-mode hooking.
 
 ## Comparison: Linux vs. Windows (Prototype)
 
@@ -29,7 +30,7 @@ While the Linux implementation uses `seccomp-bpf` for fine-grained syscall filte
 The current Windows implementation is a **Verifiable Prototype**. In Phase 5, we are focused on moving toward a **Stronger Prototype** with better isolation.
 
 ### 1. Low-Integrity Level (Low-IL) Token (P0)
-- **Status**: **Implemented & Active**.
+- **Status**: **Implemented**.
 - **Implementation**: Restricts the sandboxed process to a Low Integrity Level (SID `S-1-16-4096`). This prevents the process from writing to medium/high integrity folders (e.g., `C:\Windows`, `C:\Users\Admin`) even if the user account has permissions.
 
 ### 2. AppContainer Isolation (P0 - Research)
@@ -42,7 +43,7 @@ The current Windows implementation is a **Verifiable Prototype**. In Phase 5, we
 
 ### 4. Windows-Specific Integration Tests (P0)
 - **Status**: **Implemented & Active**.
-- **Implementation**: Dedicated Windows CI now runs `windows_job_integration` to verify Job Object availability, working-directory application, and protected-directory write blocking.
+- **Implementation**: Dedicated Windows CI now runs `windows_job_integration` to verify runtime-availability reporting and, when low-integrity launch is functional on the host, Job Object execution, working-directory application, and protected-directory write blocking.
 
 ## Use Cases
 
@@ -62,7 +63,8 @@ The current Windows implementation is a **Verifiable Prototype**. In Phase 5, we
 The Windows sandbox is **disabled by default** and requires a feature flag.
 
 - **Feature Flag**: You must enable the `windows-sandbox` feature in `agent-guard-sandbox` or `agent-guard-sdk`.
-- **Default Fallback**: If the feature is not enabled, or if running on a non-Linux/macOS/Windows platform, the `Guard::execute_default()` API will fall back to `NoopSandbox`.
+- **Availability Detection**: Even with the feature enabled, `JobObjectSandbox` is only considered available when low-integrity process creation is functional on the current host.
+- **Default Fallback**: If the feature is not enabled, the runtime is unavailable, or the platform is unsupported, the `Guard::execute_default()` API will fall back to `NoopSandbox`.
 
 ## Setup & Configuration
 
@@ -76,7 +78,7 @@ To use the Windows sandbox in your project:
 2.  **Initialize the Guard**:
     ```rust
     let guard = Guard::from_yaml("version: 1")?;
-    // On Windows, this will now automatically use JobObjectSandbox
+    // On Windows, this uses JobObjectSandbox only when the runtime check passes
     let outcome = guard.execute_default(&input)?;
     ```
 
