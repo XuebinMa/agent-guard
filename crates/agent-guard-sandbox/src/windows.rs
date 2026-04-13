@@ -279,7 +279,7 @@ fn create_low_integrity_token() -> Result<windows_sys::Win32::Foundation::HANDLE
         let mut tml = TOKEN_MANDATORY_LABEL {
             Label: SID_AND_ATTRIBUTES {
                 Sid: integrity_sid,
-                Attributes: SE_GROUP_INTEGRITY,
+                Attributes: SE_GROUP_INTEGRITY as u32,
             },
         };
 
@@ -336,7 +336,7 @@ fn spawn_low_integrity_process(
             .encode_wide()
             .chain(std::iter::once(0))
             .collect();
-        let mut working_dir_vec: Vec<u16> = working_dir
+        let working_dir_vec: Vec<u16> = working_dir
             .as_os_str()
             .encode_wide()
             .chain(std::iter::once(0))
