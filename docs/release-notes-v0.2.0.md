@@ -9,7 +9,7 @@ Version `v0.2.0` marks the transition of `agent-guard` from a core proof-of-conc
 - **Windows Low-IL Enforcement**: Manual Win32 process spawning via `CreateProcessAsUserW` to enforce Low Integrity Level isolation.
 - **Windows AppContainer (Opt-in)**: A new experimental prototype providing SID-based isolation.
 - **macOS Seatbelt (Active)**: Formal `sandbox-exec` enforcement.
-- **Linux Seccomp (Prototype)**: Current implementation uses `sh -c` wrapper; kernel-level Seccomp-BPF is planned for v0.3.0.
+- **Linux Seccomp**: Native Seccomp-BPF filtering is now wired into restricted Linux executions when built with the `seccomp` feature. Path-aware workspace isolation still relies on validators and/or Landlock.
 
 ### 📜 Verifiable Execution (Provenance)
 - **Signed Receipts**: Every tool execution can now generate an Ed25519-signed receipt containing the policy version, command hash, and sandbox details.

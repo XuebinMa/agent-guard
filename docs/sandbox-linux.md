@@ -1,19 +1,17 @@
 # Linux Seccomp Sandbox — agent-guard
 
-> **Status:** v0.2.0 Linux Seccomp is still a prototype wrapper. Native Seccomp-BPF enforcement is planned for v0.3.0.
+> **Status:** Linux Seccomp now supports native Seccomp-BPF filtering when built with the `seccomp` feature. Path-aware workspace isolation still requires higher-level validators or Landlock.
 
 ## Overview
 
-The `SeccompSandbox` in `crates/agent-guard-sandbox/src/linux.rs` currently provides two modes:
+The `SeccompSandbox` in `crates/agent-guard-sandbox/src/linux.rs` provides two operating styles:
 
-- `SeccompSandbox::new()`: prototype wrapper around `sh -c` with timeout handling.
-- `SeccompSandbox::strict()`: fail-closed mode that returns `FilterSetup` until native Seccomp-BPF enforcement is implemented.
+- `SeccompSandbox::new()`: prefers native Seccomp-BPF when available, but can fall back to the compatibility `sh -c` wrapper if setup fails.
+- `SeccompSandbox::strict()`: requires native Seccomp-BPF and returns `FilterSetup` instead of falling back.
 
-This means the current Linux fallback does **not** yet install kernel syscall filters, block global writes, or block outbound network access by itself.
+With the `seccomp` feature enabled, read-only executions now install a syscall filter in the child process before `exec`, blocking network-oriented syscalls and common write/metadata mutation syscalls.
 
 ## Requirements
-
-If you enable the optional `seccomp` feature today, Cargo will still pull in `libseccomp`, but the runtime path remains prototype-only in v0.2.0.
 
 - Linux kernel 3.5+
 - `libseccomp` development headers if building with the `seccomp` feature:
@@ -32,25 +30,34 @@ agent-guard-sandbox = { version = "0.2.0-rc1", features = ["seccomp"] }
 
 | Constructor | Current behavior in v0.2.0 |
 |---|---|
-| `SeccompSandbox::new()` | Executes via `sh -c` in the requested working directory and enforces `timeout_ms` only. |
-| `SeccompSandbox::strict()` | Fails closed with `SandboxError::FilterSetup(...)` instead of silently using the prototype wrapper. |
+| `SeccompSandbox::new()` | Uses native seccomp on Linux when filter setup succeeds; otherwise falls back to the compatibility shell wrapper. |
+| `SeccompSandbox::strict()` | Uses native seccomp and fails closed with `SandboxError::FilterSetup(...)` if the filter cannot be installed. |
+
+## Mode Semantics
+
+| Policy Mode | Native seccomp behavior |
+|---|---|
+| `ReadOnly` | Blocks common write/mutation syscalls and outbound networking syscalls while still allowing ordinary command execution and pipes. |
+| `WorkspaceWrite` | Allows write syscalls, but still blocks networking and other dangerous kernel interfaces. Path-level workspace enforcement still comes from validators / policy. |
+| `FullAccess` | No seccomp filter is loaded. |
 
 ## Error Semantics
 
-- `FilterSetup`: Returned by `strict()` until native Seccomp-BPF enforcement is available.
+- `FilterSetup`: Returned when native seccomp could not be initialized and `strict()` is used.
+- `KilledByFilter`: Returned if the kernel terminates the process with `SIGSYS`.
 - `Timeout`: Execution exceeded `SandboxContext.timeout_ms`.
 - `ExecutionFailed`: Process spawn or shell execution failed.
 
 ## Production Recommendation
 
-Do not rely on the current Linux Seccomp fallback for kernel-level isolation. For Linux hosts today:
+For Linux hosts today:
 
 - Prefer `LandlockSandbox` when the host supports it.
-- Use `SeccompSandbox::strict()` only when you want fail-closed behavior rather than a prototype wrapper.
-- Treat `SeccompSandbox::new()` as a compatibility path, not as a hardened sandbox.
+- Use `SeccompSandbox::strict()` when you need fail-closed native seccomp instead of compatibility fallback.
+- Treat seccomp as syscall-level defense in depth, not as a replacement for path-aware policy validation.
 
 ```rust
 use agent_guard_sandbox::linux::SeccompSandbox;
 
-let sandbox = SeccompSandbox::strict(); // Fails closed until native seccomp lands
+let sandbox = SeccompSandbox::strict(); // Requires native seccomp filter installation
 ```

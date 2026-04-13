@@ -16,7 +16,7 @@
 
 ## 📊 Parity Matrix (v0.2.0 Baseline)
 
-| **UCM Capability** | **Linux (Prototype)** | **macOS (Seatbelt)** | **Windows (Low-IL)** | **Windows (AppContainer)** | **Noop (None)** |
+| **UCM Capability** | **Linux (Seccomp)** | **macOS (Seatbelt)** | **Windows (Low-IL)** | **Windows (AppContainer)** | **Noop (None)** |
 | :--- | :---: | :---: | :---: | :---: | :---: |
 | **`filesystem_read_workspace`** | ✅ | ✅ | ✅ | ✅ | ✅ |
 | **`filesystem_read_global`** | ✅ | ✅ | ✅ | 🛡️ Blocked | ✅ |
@@ -39,7 +39,7 @@
 
 | Platform | What this protects | What this does not protect |
 | :--- | :--- | :--- |
-| **Linux** | Command execution context only in the prototype fallback, plus stronger write isolation on hosts where Landlock is available. | Seccomp-BPF syscall filtering, guaranteed global write blocking on fallback hosts, fine-grained path-level read restriction. |
+| **Linux** | Native Seccomp-BPF filtering for read-only and workspace-write executions, plus stronger path-aware write isolation on hosts where Landlock is available. | Guaranteed path-aware workspace-only writes from seccomp alone, fine-grained path-level read restriction. |
 | **macOS** | Workspace write isolation via Seatbelt profiles. | Global read access (Prototype limit). |
 | **Windows** | Integrity-based write protection (Low-IL) or SID-based isolation (AppContainer). | Network access in default Low-IL mode. |
 
@@ -49,4 +49,4 @@
 
 1. **Windows Network Isolation**: Currently, Low-IL does not restrict network access. This is a primary driver for the **AppContainer (M7.1)** implementation.
 2. **macOS Global Read**: The Seatbelt prototype currently allows reading files outside the workspace. Future iterations will tighten this to `(allow file-read* (subpath workspace))`.
-3. **Linux FS Isolation**: The prototype fallback does not currently block global writes or network access. Prefer Landlock-capable hosts today; native Seccomp-BPF filtering remains planned for v0.3.0.
+3. **Linux FS Isolation**: Native seccomp now blocks common write and networking syscalls in restricted modes, but it is still path-agnostic. Prefer Landlock-capable hosts when you need OS-level workspace-only write isolation.

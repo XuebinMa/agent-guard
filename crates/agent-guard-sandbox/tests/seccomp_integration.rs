@@ -36,7 +36,7 @@ mod seccomp_tests {
 
     #[test]
     fn c1_read_only_allows_echo() {
-        let sandbox = SeccompSandbox::new();
+        let sandbox = SeccompSandbox::strict();
         let result = sandbox.execute("echo hello", &ctx(PolicyMode::ReadOnly));
         match result {
             Ok(SandboxOutput {
@@ -51,7 +51,7 @@ mod seccomp_tests {
 
     #[test]
     fn c1_read_only_allows_stat() {
-        let sandbox = SeccompSandbox::new();
+        let sandbox = SeccompSandbox::strict();
         let result = sandbox.execute("stat /etc/hostname", &ctx(PolicyMode::ReadOnly));
         match result {
             Ok(SandboxOutput { exit_code, .. }) => {
@@ -64,48 +64,31 @@ mod seccomp_tests {
     // ── C2: ReadOnly — write behavior matches declared capabilities ──────
 
     #[test]
-    fn c2_read_only_write_behavior_matches_capabilities() {
-        let sandbox = SeccompSandbox::new();
+    fn c2_read_only_blocks_file_write() {
+        let sandbox = SeccompSandbox::strict();
         let target = tmp_dir().join("seccomp_test_write.txt");
-        let caps = sandbox.capabilities();
         // Use `tee` to write a file — tee calls `open(O_WRONLY)` / `creat` which
-        // should be blocked once native seccomp filtering lands.
+        // should be blocked by the seccomp filter in read_only mode.
         let cmd = format!("echo data | tee {}", target.display());
         let result = sandbox.execute(&cmd, &ctx(PolicyMode::ReadOnly));
 
-        if caps.filesystem_write_global {
-            match result {
-                Ok(out) => {
-                    assert_eq!(
-                        out.exit_code, 0,
-                        "prototype sandbox declares global writes allowed; got exit {}",
-                        out.exit_code
-                    );
-                    assert!(
-                        target.exists(),
-                        "write should succeed when filesystem_write_global=true"
-                    );
-                }
-                Err(e) => panic!("prototype sandbox should allow write, got Err: {e}"),
+        match result {
+            Err(SandboxError::KilledByFilter { .. }) => {
+                // Expected on kernels that terminate the process for a blocked syscall.
             }
-        } else {
-            match result {
-                Err(SandboxError::KilledByFilter { .. }) => {
-                    // Expected: seccomp killed the child for attempting a blocked write syscall.
-                }
-                Ok(out) => {
-                    // On some kernels the shell itself may absorb SIGSYS differently;
-                    // but at minimum the write must not have succeeded cleanly.
-                    assert_ne!(
-                        out.exit_code, 0,
-                        "write should not succeed when filesystem_write_global=false; got exit 0"
-                    );
-                }
-                Err(e) => panic!("unexpected error: {e}"),
+            Ok(out) => {
+                assert_ne!(
+                    out.exit_code, 0,
+                    "write should not succeed in read_only mode; got exit 0"
+                );
+                assert!(
+                    !target.exists(),
+                    "read_only write should not create the target file"
+                );
             }
+            Err(e) => panic!("unexpected error: {e}"),
         }
 
-        // Clean up if file was partially created.
         let _ = std::fs::remove_file(&target);
     }
 
@@ -113,7 +96,7 @@ mod seccomp_tests {
 
     #[test]
     fn c3_workspace_write_allows_write_in_dir() {
-        let sandbox = SeccompSandbox::new();
+        let sandbox = SeccompSandbox::strict();
         let target = tmp_dir().join("seccomp_test_ws_write.txt");
         let cmd = format!("echo workspace > {}", target.display());
         let result = sandbox.execute(&cmd, &ctx(PolicyMode::WorkspaceWrite));
@@ -132,7 +115,7 @@ mod seccomp_tests {
 
     #[test]
     fn c4_full_access_no_filter() {
-        let sandbox = SeccompSandbox::new();
+        let sandbox = SeccompSandbox::strict();
         // FullAccess should execute without any seccomp restriction.
         let result = sandbox.execute("ls /tmp", &ctx(PolicyMode::FullAccess));
         match result {
@@ -146,21 +129,28 @@ mod seccomp_tests {
     // ── C5: Strict mode — filter setup failure is hard error ─────────────
 
     #[test]
-    fn c5_strict_read_only_does_not_silently_bypass() {
-        // Strict mode must fail closed while native seccomp enforcement is not wired up.
+    fn c5_strict_read_only_executes_with_native_filter() {
         let sandbox = SeccompSandbox::strict();
         let result = sandbox.execute("echo strict", &ctx(PolicyMode::ReadOnly));
-        assert!(
-            matches!(result, Err(SandboxError::FilterSetup(_))),
-            "strict mode got unexpected result: {result:?}"
-        );
+        match result {
+            Ok(SandboxOutput {
+                stdout, exit_code, ..
+            }) => {
+                assert_eq!(
+                    exit_code, 0,
+                    "strict mode should allow safe read-only commands"
+                );
+                assert_eq!(stdout.trim(), "strict");
+            }
+            Err(e) => panic!("strict mode should use native seccomp, got Err: {e}"),
+        }
     }
 
     // ── C6: Timeout ──────────────────────────────────────────────────────
 
     #[test]
     fn c6_timeout_kills_long_running_command() {
-        let sandbox = SeccompSandbox::new();
+        let sandbox = SeccompSandbox::strict();
         let ctx = SandboxContext {
             mode: PolicyMode::ReadOnly,
             working_directory: tmp_dir(),

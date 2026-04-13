@@ -21,7 +21,7 @@ For most enterprise use cases, we recommend the following sidecar or host-agent 
 1. **Host Application**: Your AI Agent framework (e.g., built with LangChain, Autogen, or custom Rust/Node.js).
 2. **agent-guard SDK**: Integrated into the host application to intercept tool calls.
 3. **OS Sandboxes**:
-   - **Linux**: Landlock when supported, otherwise a prototype `sh -c` fallback. Full Seccomp-BPF filtering is planned for v0.3.0.
+   - **Linux**: Native Seccomp-BPF filtering when the `seccomp` feature is enabled; Landlock can add stronger path-aware filesystem isolation where supported.
    - **Windows**: Low-IL (Strengthened Prototype - Default) or **AppContainer** (Experimental - Opt-in).
    - **macOS**: Seatbelt (Internal Prototype).
 
@@ -31,7 +31,7 @@ For most enterprise use cases, we recommend the following sidecar or host-agent 
 
 | Platform | What this protects | What this does not protect |
 | :--- | :--- | :--- |
-| **Containers** | Deployment-level isolation you configure separately (e.g. Docker/K8s profiles). | `agent-guard` does not currently add Linux kernel seccomp filtering by itself. |
+| **Containers** | Deployment-level isolation you configure separately (e.g. Docker/K8s profiles). | `agent-guard` seccomp is syscall-oriented; container profiles are still responsible for broader host isolation. |
 | **Permissions** | Prevents agents from writing to host `/etc` or `C:\Windows`. | Global read access on macOS/Windows (Prototype limit). |
 | **Reliability** | Fail-closed: The system stops if the security environment is unstable. | Downtime caused by missing system dependencies (e.g., `libseccomp`). |
 
