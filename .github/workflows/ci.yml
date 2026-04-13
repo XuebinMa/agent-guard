@@ -42,6 +42,30 @@ jobs:
       - name: Run seccomp integration tests
         run: cargo test -p agent-guard-sandbox --features seccomp --test seccomp_integration -- --nocapture
 
+  macos-seatbelt-integration:
+    name: macOS Seatbelt Integration
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+      - name: Cache Rust
+        uses: Swatinem/rust-cache@v2
+      - name: Run Seatbelt integration tests
+        run: cargo test -p agent-guard-sandbox --features macos-sandbox --test macos_integration -- --nocapture
+
+  windows-job-object-integration:
+    name: Windows Job Object Integration
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+      - name: Cache Rust
+        uses: Swatinem/rust-cache@v2
+      - name: Run Job Object integration tests
+        run: cargo test -p agent-guard-sandbox --features windows-sandbox --test windows_job_integration -- --nocapture
+
   lint:
     name: Linting (Clippy & Fmt)
     runs-on: ubuntu-latest

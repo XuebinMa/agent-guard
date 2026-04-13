@@ -93,7 +93,13 @@ impl Sandbox for JobObjectSandbox {
         // 4. Execute with Restricted Token (CRITICAL ENFORCEMENT)
         // This is the ACTIVE implementation using CreateProcessAsUserW.
         // It ENSURES the restricted token is applied to the child process.
-        let output = spawn_low_integrity_process(command, &context.working_directory, token, job)?;
+        let output = spawn_low_integrity_process(
+            command,
+            &context.working_directory,
+            context.timeout_ms,
+            token,
+            job,
+        )?;
 
         Ok(SandboxOutput {
             stdout: output.stdout,
@@ -298,6 +304,7 @@ fn create_low_integrity_token() -> Result<windows_sys::Win32::Foundation::HANDLE
 fn spawn_low_integrity_process(
     command: &str,
     working_dir: &std::path::Path,
+    timeout_ms: Option<u64>,
     token: windows_sys::Win32::Foundation::HANDLE,
     job: windows_sys::Win32::Foundation::HANDLE,
 ) -> Result<WaitOutput, SandboxError> {
@@ -396,7 +403,7 @@ fn spawn_low_integrity_process(
         }
 
         // 7. Wait for completion with optional timeout
-        let timeout_ms = context.timeout_ms.unwrap_or(u32::MAX as u64); // INFINITE if None
+        let timeout_ms = timeout_ms.unwrap_or(u32::MAX as u64); // INFINITE if None
         let wait_res = WaitForSingleObject(pi.hProcess, timeout_ms as u32);
 
         if wait_res == WAIT_TIMEOUT {
@@ -433,6 +440,7 @@ fn create_low_integrity_token() -> Result<u64, SandboxError> {
 fn spawn_low_integrity_process(
     _command: &str,
     _working_dir: &std::path::Path,
+    _timeout_ms: Option<u64>,
     _token: u64,
     _job: u64,
 ) -> Result<WaitOutput, SandboxError> {
