@@ -99,7 +99,7 @@ fn execute_with_seccomp(command: &str, context: &SandboxContext, strict: bool) -
 
 #[cfg(target_os = "linux")]
 fn execute_compat_shell(command: &str, context: &SandboxContext) -> SandboxResult {
-    let mut child = Command::new("sh")
+    let child = Command::new("sh")
         .arg("-c")
         .arg(command)
         .current_dir(&context.working_directory)
@@ -137,7 +137,7 @@ fn execute_with_native_seccomp(
         });
     }
 
-    let mut child = match child.spawn() {
+    let child = match child.spawn() {
         Ok(child) => child,
         Err(e) => {
             let message = e.to_string();
