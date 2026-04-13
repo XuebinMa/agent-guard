@@ -1,3 +1,5 @@
+#[cfg(windows)]
+use crate::SandboxOutput;
 use crate::{Sandbox, SandboxContext, SandboxError, SandboxResult};
 
 /// Windows sandbox implementation using Job Objects and Restricted Tokens.
@@ -158,7 +160,7 @@ fn create_pipe() -> Result<
     unsafe {
         let mut read_pipe = 0;
         let mut write_pipe = 0;
-        let mut sa = SECURITY_ATTRIBUTES {
+        let sa = SECURITY_ATTRIBUTES {
             nLength: std::mem::size_of::<SECURITY_ATTRIBUTES>() as u32,
             lpSecurityDescriptor: std::ptr::null_mut(),
             bInheritHandle: 1, // Write end should be inheritable
@@ -186,6 +188,7 @@ fn create_pipe() -> Result<
 #[cfg(windows)]
 fn read_handle_to_string(handle: windows_sys::Win32::Foundation::HANDLE) -> String {
     use windows_sys::Win32::Storage::FileSystem::ReadFile;
+    use windows_sys::Win32::System::IO::OVERLAPPED;
     let mut out = Vec::new();
     let mut buffer = [0u8; 4096];
     let mut bytes_read = 0;
@@ -197,7 +200,7 @@ fn read_handle_to_string(handle: windows_sys::Win32::Foundation::HANDLE) -> Stri
                 buffer.as_mut_ptr() as *mut _,
                 buffer.len() as u32,
                 &mut bytes_read,
-                std::ptr::null_mut(),
+                std::ptr::null_mut::<OVERLAPPED>(),
             ) == 0
             {
                 break;
@@ -213,8 +216,9 @@ fn read_handle_to_string(handle: windows_sys::Win32::Foundation::HANDLE) -> Stri
 
 #[cfg(windows)]
 fn create_low_integrity_token() -> Result<windows_sys::Win32::Foundation::HANDLE, SandboxError> {
-    use windows_sys::Win32::Foundation::{CloseHandle, HANDLE};
+    use windows_sys::Win32::Foundation::HANDLE;
     use windows_sys::Win32::Security::*;
+    use windows_sys::Win32::System::SystemServices::SE_GROUP_INTEGRITY;
     use windows_sys::Win32::System::Threading::*;
 
     unsafe {
@@ -309,8 +313,7 @@ fn spawn_low_integrity_process(
     job: windows_sys::Win32::Foundation::HANDLE,
 ) -> Result<WaitOutput, SandboxError> {
     use std::os::windows::ffi::OsStrExt;
-    use windows_sys::Win32::Foundation::{CloseHandle, HANDLE};
-    use windows_sys::Win32::Security::*;
+    use windows_sys::Win32::Foundation::WAIT_TIMEOUT;
     use windows_sys::Win32::System::JobObjects::*;
     use windows_sys::Win32::System::Threading::*;
 
@@ -342,7 +345,7 @@ fn spawn_low_integrity_process(
         let mut si: STARTUPINFOW = std::mem::zeroed();
         si.cb = std::mem::size_of::<STARTUPINFOW>() as u32;
         si.dwFlags = STARTF_USESHOWWINDOW | STARTF_USESTDHANDLES;
-        si.wShowWindow = SW_HIDE as u16;
+        si.wShowWindow = 0;
         si.hStdOutput = stdout_write;
         si.hStdError = stderr_write;
         si.hStdInput = 0;
