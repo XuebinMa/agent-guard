@@ -75,18 +75,18 @@ fn execute_with_seccomp(command: &str, context: &SandboxContext, strict: bool) -
     {
         #[cfg(feature = "seccomp")]
         {
-            return execute_with_native_seccomp(command, context, strict);
+            execute_with_native_seccomp(command, context, strict)
         }
 
         #[cfg(not(feature = "seccomp"))]
         {
             if strict {
-                return Err(SandboxError::FilterSetup(
+                Err(SandboxError::FilterSetup(
                     "native Seccomp-BPF support requires the 'seccomp' Cargo feature and libseccomp at build time".to_string(),
-                ));
+                ))
+            } else {
+                execute_compat_shell(command, context)
             }
-
-            return execute_compat_shell(command, context);
         }
     }
     #[cfg(not(target_os = "linux"))]
@@ -196,10 +196,10 @@ fn wait_for_child(child: &mut std::process::Child, timeout_ms: Option<u64>) -> S
         .map_err(|e| SandboxError::ExecutionFailed(e.to_string()))?;
     let exit_status = output.status;
 
-    if let Some(signal) = exit_status.signal() {
-        if signal == libc::SIGSYS {
-            return Err(SandboxError::KilledByFilter { exit_code: signal });
-        }
+    if exit_status.signal() == Some(libc::SIGSYS) {
+        return Err(SandboxError::KilledByFilter {
+            exit_code: libc::SIGSYS,
+        });
     }
 
     Ok(SandboxOutput {
@@ -330,7 +330,9 @@ fn add_write_flag_denies(
     syscall_name: &str,
     arg_index: u32,
 ) -> Result<(), String> {
-    let syscall = resolve_syscall(syscall_name)?;
+    let Some(syscall) = resolve_syscall(syscall_name)? else {
+        return Ok(());
+    };
     let deny = ScmpAction::Errno(libc::EPERM);
     let access_mode_mask = libc::O_ACCMODE as u64;
 
@@ -377,15 +379,23 @@ fn add_write_flag_denies(
 
 #[cfg(all(target_os = "linux", feature = "seccomp"))]
 fn add_deny_rule(filter: &mut ScmpFilterContext, syscall_name: &str) -> Result<(), String> {
+    let Some(syscall) = resolve_syscall(syscall_name)? else {
+        return Ok(());
+    };
+
     filter
-        .add_rule(
-            ScmpAction::Errno(libc::EPERM),
-            resolve_syscall(syscall_name)?,
-        )
+        .add_rule(ScmpAction::Errno(libc::EPERM), syscall)
         .map_err(|e| format!("failed to add deny rule for {syscall_name}: {e}"))
 }
 
 #[cfg(all(target_os = "linux", feature = "seccomp"))]
-fn resolve_syscall(name: &str) -> Result<ScmpSyscall, String> {
-    ScmpSyscall::from_name(name).map_err(|e| format!("failed to resolve syscall {name}: {e}"))
+fn resolve_syscall(name: &str) -> Result<Option<ScmpSyscall>, String> {
+    match ScmpSyscall::from_name(name) {
+        Ok(syscall) => Ok(Some(syscall)),
+        // Some older libseccomp builds do not recognize every syscall symbol
+        // on every runner architecture. Skip those rules instead of failing the
+        // whole sandbox setup.
+        Err(e) if e.to_string().contains("Could not resolve syscall name") => Ok(None),
+        Err(e) => Err(format!("failed to resolve syscall {name}: {e}")),
+    }
 }
