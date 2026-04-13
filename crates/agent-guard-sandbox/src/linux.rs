@@ -51,9 +51,15 @@ impl Sandbox for SeccompSandbox {
         SandboxCapabilities {
             filesystem_read_workspace: true,
             filesystem_read_global: true,
-            filesystem_write_workspace: true, // permitted in workspace_write / full_access modes
-            filesystem_write_global: true, // seccomp is path-agnostic; validators enforce path policy
-            network_outbound_any: true, // full_access mode intentionally leaves networking available
+            // Static capability metadata is sandbox-wide rather than per-mode:
+            // writes are available in workspace_write / full_access modes.
+            filesystem_write_workspace: true,
+            // Seccomp is path-agnostic, so workspace_write can still write
+            // outside the workspace unless validators or Landlock tighten it.
+            filesystem_write_global: true,
+            // FullAccess intentionally skips the filter, so outbound networking
+            // remains available in at least one supported mode.
+            network_outbound_any: true,
             network_outbound_internet: true,
             network_outbound_local: true,
             child_process_spawn: true,

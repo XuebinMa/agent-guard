@@ -33,6 +33,20 @@ agent-guard-sandbox = { version = "0.2.0-rc1", features = ["seccomp"] }
 | `SeccompSandbox::new()` | Uses native seccomp on Linux when filter setup succeeds; otherwise falls back to the compatibility shell wrapper. |
 | `SeccompSandbox::strict()` | Uses native seccomp and fails closed with `SandboxError::FilterSetup(...)` if the filter cannot be installed. |
 
+## Capability Reporting vs Runtime Enforcement
+
+`Sandbox::capabilities()` reports static sandbox-level metadata, not the exact
+effective permissions of a specific execution.
+
+For Linux seccomp, that means:
+
+- `filesystem_write_global = true` because `workspace_write` remains path-agnostic and `full_access` skips the filter entirely.
+- `network_outbound_any = true` because `full_access` intentionally leaves networking available.
+- `read_only` executions can still be stricter at runtime than the static capability report: the seccomp filter blocks common write and networking syscalls for that mode.
+
+Use the mode semantics below and the seccomp integration tests as the source of
+truth for per-execution behavior.
+
 ## Mode Semantics
 
 | Policy Mode | Native seccomp behavior |

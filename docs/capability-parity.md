@@ -11,6 +11,10 @@
 ---
 
 > This document defines the security baseline for the Unified Capability Model (UCM). It serves as a transparent record of what is enforced vs. what remains as a known gap on each platform.
+>
+> The matrix below reflects static sandbox-level capability metadata. A
+> specific execution can still be stricter than the matrix when the active
+> `PolicyMode` tightens behavior at runtime.
 
 ---
 
@@ -39,7 +43,7 @@
 
 | Platform | What this protects | What this does not protect |
 | :--- | :--- | :--- |
-| **Linux** | Native Seccomp-BPF filtering for read-only and workspace-write executions, plus stronger path-aware write isolation on hosts where Landlock is available. | Guaranteed path-aware workspace-only writes from seccomp alone, fine-grained path-level read restriction. |
+| **Linux** | Native Seccomp-BPF filtering for read-only and workspace-write executions, plus stronger path-aware write isolation on hosts where Landlock is available. | Guaranteed path-aware workspace-only writes from seccomp alone, fine-grained path-level read restriction. Static UCM metadata may still show capabilities that remain available in other modes, such as `full_access`. |
 | **macOS** | Workspace write isolation via Seatbelt profiles. | Global read access (Prototype limit). |
 | **Windows** | Integrity-based write protection (Low-IL) or SID-based isolation (AppContainer). | Network access in default Low-IL mode. |
 

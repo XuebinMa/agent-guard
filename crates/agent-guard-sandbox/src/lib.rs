@@ -58,7 +58,12 @@ pub struct SandboxOutput {
 
 // ── SandboxCapabilities ────────────────────────────────────────────────────────
 
-/// Descriptive metadata about a sandbox's security features based on the Unified Capability Model (UCM).
+/// Descriptive metadata about a sandbox implementation's security features
+/// based on the Unified Capability Model (UCM).
+///
+/// These fields are static sandbox-level metadata, not per-execution effective
+/// permissions. Runtime restrictions can still become stricter for a specific
+/// [`SandboxContext::mode`] during `execute()`.
 #[derive(Debug, Clone, Serialize)]
 pub struct SandboxCapabilities {
     pub filesystem_read_workspace: bool,
@@ -86,7 +91,12 @@ pub trait Sandbox: Send + Sync {
     /// Machine-readable identifier for the sandbox technology (e.g. "macos-seatbelt").
     fn sandbox_type(&self) -> &'static str;
 
-    /// Return detailed security capabilities for this sandbox.
+    /// Return static, sandbox-level capability metadata.
+    ///
+    /// This does not describe mode-specific runtime tightening that may happen
+    /// during [`Sandbox::execute`]. For example, a sandbox may report that
+    /// global writes are possible in some modes while still blocking them in
+    /// stricter modes such as read-only execution.
     fn capabilities(&self) -> SandboxCapabilities;
 
     /// Execute `command` under this sandbox with the given context.

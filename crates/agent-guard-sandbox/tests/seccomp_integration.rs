@@ -32,6 +32,15 @@ mod seccomp_tests {
         }
     }
 
+    #[test]
+    fn c0_capabilities_are_sandbox_wide_metadata() {
+        let caps = SeccompSandbox::strict().capabilities();
+
+        assert!(caps.filesystem_write_workspace);
+        assert!(caps.filesystem_write_global);
+        assert!(caps.network_outbound_any);
+    }
+
     // ── C1: ReadOnly — allow read-only commands ────────────────────────────
 
     #[test]
@@ -61,7 +70,7 @@ mod seccomp_tests {
         }
     }
 
-    // ── C2: ReadOnly — write behavior matches declared capabilities ──────
+    // ── C2: ReadOnly — runtime enforcement is stricter than static metadata ──
 
     #[test]
     fn c2_read_only_blocks_file_write() {

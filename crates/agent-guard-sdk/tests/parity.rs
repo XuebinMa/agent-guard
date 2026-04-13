@@ -1,5 +1,9 @@
 //! Cross-platform parity integration tests.
 //! Verifies UCM (Unified Capability Model) behavior across all platforms.
+//!
+//! These tests operate on sandbox-level capability metadata. Mode-specific
+//! runtime tightening, such as Linux seccomp blocking writes in read_only
+//! mode, is covered by sandbox-specific integration tests.
 
 use agent_guard_sdk::{
     guard::{ExecuteOutcome, Guard},
