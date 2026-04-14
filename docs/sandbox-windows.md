@@ -39,7 +39,8 @@ The current Windows implementation is a **Verifiable Prototype**. In Phase 5, we
 
 ### 3. Fail-Closed behavior for all Win32 API calls (P0)
 - **Goal**: Ensure that if `AssignProcessToJobObject` or any token-restricted call fails, the entire tool execution is aborted.
-- **Status**: Currently implemented for Job Objects. This will be extended to Low-IL token creation.
+- **Status**: Implemented for Job Objects, Low-IL token creation, and low-integrity process launch.
+- **Implementation Note**: The runtime now prefers `CreateProcessAsUserW` and can fall back to `CreateProcessWithTokenW` on hosts where the primary-token launch path is denied but token-based launch is still permitted.
 
 ### 4. Windows-Specific Integration Tests (P0)
 - **Status**: **Implemented & Active**.

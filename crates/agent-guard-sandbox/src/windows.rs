@@ -94,14 +94,20 @@ fn job_object_runtime_probe() -> &'static WindowsRuntimeProbe {
 
         let working_dir = std::env::current_dir().unwrap_or_else(|_| ".".into());
         match spawn_low_integrity_process("exit 0", &working_dir, Some(2_000), token, job) {
-            Ok(_) => {
+            Ok(output) => {
                 checks.push(RuntimeCheck::pass(
                     "low_integrity_process_launch",
-                    "Successfully launched and completed a low-integrity child process",
+                    format!(
+                        "Successfully launched and completed a low-integrity child process via {}",
+                        output.launcher
+                    ),
                 ));
                 WindowsRuntimeProbe {
                     available: true,
-                    summary: "Low-integrity token creation, Job Object creation, and process launch are functional on this host.".to_string(),
+                    summary: format!(
+                        "Low-integrity token creation, Job Object creation, and process launch are functional on this host via {}.",
+                        output.launcher
+                    ),
                     checks,
                 }
             }
@@ -294,6 +300,7 @@ struct WaitOutput {
     stdout: String,
     stderr: String,
     exit_code: i32,
+    launcher: &'static str,
 }
 
 #[cfg(windows)]
@@ -464,7 +471,9 @@ fn spawn_low_integrity_process(
     job: windows_sys::Win32::Foundation::HANDLE,
 ) -> Result<WaitOutput, SandboxError> {
     use std::os::windows::ffi::OsStrExt;
-    use windows_sys::Win32::Foundation::WAIT_TIMEOUT;
+    use windows_sys::Win32::Foundation::{
+        ERROR_ACCESS_DENIED, ERROR_PRIVILEGE_NOT_HELD, WAIT_TIMEOUT,
+    };
     use windows_sys::Win32::System::JobObjects::*;
     use windows_sys::Win32::System::Threading::*;
 
@@ -503,9 +512,10 @@ fn spawn_low_integrity_process(
 
         let mut pi: PROCESS_INFORMATION = std::mem::zeroed();
 
-        // 2. Spawn process suspended to allow job assignment
-        // Set bInheritHandles = 1 (TRUE) so pipes are inherited
-        let success = CreateProcessAsUserW(
+        // 2. Spawn process suspended to allow job assignment.
+        // Prefer CreateProcessAsUserW; fall back to CreateProcessWithTokenW on
+        // hosts where primary-token launch is denied but token-based launch is allowed.
+        let launcher = if CreateProcessAsUserW(
             token,
             std::ptr::null(),
             cmd_vec.as_mut_ptr(),
@@ -517,14 +527,39 @@ fn spawn_low_integrity_process(
             working_dir_vec.as_ptr(),
             &si,
             &mut pi,
-        );
+        ) != 0
+        {
+            "CreateProcessAsUserW"
+        } else {
+            let first_err = std::io::Error::last_os_error();
+            let raw = first_err.raw_os_error().unwrap_or_default() as u32;
 
-        if success == 0 {
-            let err = std::io::Error::last_os_error();
-            return Err(SandboxError::ExecutionFailed(format!(
-                "Windows Sandbox: CreateProcessAsUserW failed: {err}"
-            )));
-        }
+            if raw != ERROR_ACCESS_DENIED && raw != ERROR_PRIVILEGE_NOT_HELD {
+                return Err(SandboxError::ExecutionFailed(format!(
+                    "Windows Sandbox: CreateProcessAsUserW failed: {first_err}"
+                )));
+            }
+
+            if CreateProcessWithTokenW(
+                token,
+                LOGON_WITH_PROFILE,
+                std::ptr::null(),
+                cmd_vec.as_mut_ptr(),
+                CREATE_NO_WINDOW | CREATE_BREAKAWAY_FROM_JOB | CREATE_SUSPENDED,
+                std::ptr::null(),
+                working_dir_vec.as_ptr(),
+                &si,
+                &mut pi,
+            ) == 0
+            {
+                let fallback_err = std::io::Error::last_os_error();
+                return Err(SandboxError::ExecutionFailed(format!(
+                    "Windows Sandbox: CreateProcessAsUserW failed: {first_err}; fallback CreateProcessWithTokenW failed: {fallback_err}"
+                )));
+            }
+
+            "CreateProcessWithTokenW"
+        };
 
         let _process_guard = SafeHandle(pi.hProcess);
         let _thread_guard = SafeHandle(pi.hThread);
@@ -579,6 +614,7 @@ fn spawn_low_integrity_process(
             stdout,
             stderr,
             exit_code: exit_code as i32,
+            launcher,
         })
     }
 }
