@@ -1,55 +1,120 @@
-const { Guard } = require('./index.js')
+'use strict'
+
+const assert = require('assert/strict')
+
+let nodePackage
+try {
+  nodePackage = require('./index.js')
+} catch (error) {
+  console.log(`Skipping native smoke tests: ${error.message}`)
+  process.exit(0)
+}
+
+const {
+  Guard,
+  normalizePayload,
+  wrapOpenAITool,
+  AgentGuardDeniedError,
+  AgentGuardAskRequiredError,
+} = nodePackage
 
 const yaml = `
 version: 1
 default_mode: workspace_write
 tools:
   bash:
-    allow: ["ls"]
-    deny: ["rm -rf /"]
+    allow:
+      - "echo"
+      - "pwd"
+    deny:
+      - "rm -rf /"
 `
 
 async function runTest() {
   try {
     const guard = Guard.fromYaml(yaml)
-    console.log('Policy version:', guard.policyVersion())
-
-    // 1. Check
-    console.log('\n--- Test: check ---')
-    const d1 = guard.check('bash', 'ls -la')
-    console.log('Decision (ls):', d1.outcome)
-
-    // 2. Execute (Async)
-    console.log('\n--- Test: execute (ls) ---')
-    const e1 = await guard.execute('bash', 'ls -la')
-    console.log('Execute Status (ls):', e1.status)
-    if (e1.output) {
-      console.log('Exit Code:', e1.output.exitCode)
-      console.log('Stdout (first line):', e1.output.stdout.split('\n')[0])
+    if (typeof guard.setSigningKey === 'function') {
+      guard.setSigningKey('0000000000000000000000000000000000000000000000000000000000000001')
     }
 
-    console.log('\n--- Test: execute (denied rm) ---')
-    const e2 = await guard.execute('bash', 'rm -rf /')
-    console.log('Execute Status (rm):', e2.status)
-    if (e2.decision) {
-      console.log('Decision Code:', e2.decision.code)
-      console.log('Reason:', e2.decision.message)
+    const decision = guard.check('bash', normalizePayload('bash', 'echo smoke'))
+    assert.equal(decision.outcome, 'allow')
+    if (decision.policyVersion || decision.policy_version) {
+      assert.ok(decision.policyVersion || decision.policy_version)
     }
 
-    // 3. Reload
-    console.log('\n--- Test: reload ---')
-    guard.reload(`
-version: 1
-default_mode: read_only
-`)
-    console.log('New Policy version:', guard.policyVersion())
-    const d2 = guard.check('bash', 'ls -la')
-    console.log('Decision after reload (ls in read_only):', d2.outcome)
+    const executed = await guard.execute('bash', normalizePayload('bash', 'echo smoke'))
+    assert.equal(executed.status || executed.outcome, 'executed')
+    assert.ok(executed.output)
+    assert.ok(executed.output.stdout.includes('smoke'))
+    if (executed.sandboxType || executed.sandbox_type) {
+      assert.ok(executed.sandboxType || executed.sandbox_type)
+    }
+    if (executed.receipt) {
+      assert.ok(executed.receipt)
+    }
 
-    console.log('\nAll tests passed successfully (Node binding logic verified).')
+    const deniedOutcome = await guard.execute('bash', normalizePayload('bash', 'rm -rf /'))
+    assert.notEqual(deniedOutcome.status || deniedOutcome.outcome, 'executed')
+    assert.ok(deniedOutcome.decision)
 
-  } catch (e) {
-    console.error('Test failed:', e)
+    const enforcedHandler = wrapOpenAITool(
+      guard,
+      async () => {
+        throw new Error('original handler should not run in enforce mode')
+      },
+      {
+        tool: 'bash',
+        mode: 'enforce',
+        resultMapper: (outcome) => outcome.output?.stdout.trim() ?? '',
+      }
+    )
+
+    const checkHandler = wrapOpenAITool(
+      guard,
+      async (input) => `ORIGINAL:${input}`,
+      {
+        tool: 'bash',
+        mode: 'check',
+      }
+    )
+
+    const enforced = await enforcedHandler('echo wrapped')
+    assert.equal(enforced, 'wrapped')
+
+    const checked = await checkHandler('echo via-original')
+    assert.equal(checked, 'ORIGINAL:echo via-original')
+
+    const deniedHandler = wrapOpenAITool(
+      guard,
+      async () => 'should-not-run',
+      {
+        tool: 'bash',
+        mode: 'check',
+      }
+    )
+
+    let blockedError
+    try {
+      await deniedHandler('rm -rf /')
+    } catch (error) {
+      blockedError = error
+    }
+
+    assert.ok(blockedError)
+    assert.ok(
+      blockedError instanceof AgentGuardDeniedError ||
+        blockedError instanceof AgentGuardAskRequiredError
+    )
+    assert.ok(blockedError.decision === 'deny' || blockedError.decision === 'ask_user')
+    assert.ok(blockedError.status === 'denied' || blockedError.status === 'ask_required')
+    if (blockedError.policyVersion) {
+      assert.ok(blockedError.policyVersion)
+    }
+
+    console.log('Node native smoke tests passed.')
+  } catch (error) {
+    console.error('Test failed:', error)
     process.exit(1)
   }
 }

@@ -2,7 +2,7 @@
 
 | Field | Details |
 | :--- | :--- |
-| **Status** | 🟡 Mostly Aligned (v0.3.0 Audit) |
+| **Status** | 🟢 Adapter Layer Delivered (v0.3.0 Audit) |
 | **Target** | `agent-guard-node` |
 | **Auditor** | Code Analyst |
 | **Contract Version** | 1.1 |
@@ -35,7 +35,7 @@
 ## 3. Async Semantics
 - **Promise Support**: ✅ `execute()` returns a native JS Promise.
 - **Non-blocking**: ✅ Uses N-API `async worker` pattern.
-- **Consistency**: 🟡 Errors use `napi::Error` (Status: GenericFailure), which is standard but could be more granular.
+- **Consistency**: ✅ High-level adapters now surface typed JS errors (`AgentGuardDeniedError`, `AgentGuardAskRequiredError`, `AgentGuardExecutionError`) instead of exposing only raw N-API failure strings.
 
 ---
 
@@ -47,23 +47,27 @@
 ---
 
 ## 5. Adapter Modes
-- **Strategy**: ❌ No high-level adapter. The package only provides raw FFI bindings.
-- **Check/Enforce**: ❌ No JS-level wrapper to switch between "Authorization-only" and "Enforced" modes.
+- **Strategy**: ✅ High-level JS adapter layer is now shipped from `agent-guard-node`.
+- **Check/Enforce**: ✅ `createGuardedExecutor()`, `wrapLangChainTool()`, and `wrapOpenAITool()` support `check`, `enforce`, and `auto`.
+- **Error Model**: ✅ Decision-aware adapter errors carry `decision`, `policyVersion`, `sandboxType`, `receipt`, and `status`.
 
 ---
 
 ## 6. Demo / Runtime Truth
-- **Demo Path**: `demos/node/basic_usage.js`.
-- **API Realism**: 🟡 Calls real FFI, but manually constructs payloads.
-- **LCEL/Frameworks**: ❌ No LangChain JS or OpenAI JS adapter.
+- **Demo Paths**:
+  - `crates/agent-guard-node/demos/demo_langchain.js`
+  - `crates/agent-guard-node/demos/demo_openai_handler.js`
+  - `crates/agent-guard-node/demos/demo_check_vs_enforce.js`
+- **API Realism**: ✅ Demos use the package-level adapter layer instead of hand-rolled payload plumbing.
+- **LCEL/Frameworks**: ✅ LangChain-style tool objects and OpenAI-style async handlers are both covered at the adapter layer.
 
 ---
 
-## 📊 Audit Conclusion: 🟡 Yellow (Raw Binding, Contract Mostly Aligned)
+## 📊 Audit Conclusion: 🟢 Green (Binding + Official Adapter Layer)
 
-`agent-guard-node` is fundamentally sound in its FFI implementation and now aligns with the current result schema and payload contract. It is still primarily a "Raw Binding" rather than a high-level framework adapter.
+`agent-guard-node` now covers both the raw FFI contract and the first official Node-side adapter layer. The biggest Phase 1 adoption gap is no longer "missing adapters", but follow-up ecosystem work such as broader SDK-specific integrations and deeper end-to-end framework validation.
 
 ### 🛠️ Required Fixes (Priority Order):
-1. **High-level JS Adapter**: Add a first-class LangChain/OpenAI JS wrapper for `check` vs `enforce` flows.
-2. **Error Granularity**: Consider richer JS error classes instead of generic N-API failures.
-3. **Runtime Demos**: Expand JS examples beyond the low-level FFI smoke test.
+1. **Framework Depth**: Add SDK-specific registration helpers once the wrapper-level API settles.
+2. **Compatibility Matrix**: Validate the adapter layer against concrete LangChain/OpenAI package versions in CI.
+3. **Extended Demos**: Expand beyond single-tool examples into multi-tool agent flows.

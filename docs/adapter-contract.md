@@ -4,8 +4,8 @@
 | :--- | :--- |
 | **Status** | 🟢 Baseline Established |
 | **Audience** | FFI Binding maintainers (Python, Node.js, etc.) |
-| **Version** | 1.1 |
-| **Last Reviewed** | 2026-04-08 |
+| **Version** | 1.2 |
+| **Last Reviewed** | 2026-04-14 |
 
 To ensure a consistent security experience across ecosystems, all `agent-guard` language bindings MUST adhere to this contract.
 
@@ -43,7 +43,7 @@ If the tool receives a single scalar value, it SHOULD be wrapped as `{"input": v
 
 ## 3. Adapter Support Scope (v0.3.0)
 
-Adapters currently target two primary modes of operation:
+Adapters currently target three primary modes of operation:
 
 ### 🛡️ Enforcement Mode (`mode="enforce"`)
 - **Primary Target**: Shell tools (`bash`, `shell`, `terminal`).
@@ -54,6 +54,11 @@ Adapters currently target two primary modes of operation:
 - **Primary Target**: General API tools, local Python/JS functions.
 - **Mechanism**: `guard.check()` is called as a gatekeeper. If allowed, the **original** tool logic executes.
 - **Outcome**: Returns the original tool's output.
+
+### 🛡️ Auto Mode (`mode="auto"`)
+- **Primary Target**: High-level framework wrappers that want a simple preflight gate.
+- **Mechanism**: `guard.check()` runs first. `allow` executes the original handler, while `deny` and `ask_user` block execution.
+- **Outcome**: Returns the original handler output only when the preflight decision is `allow`.
 
 ---
 
