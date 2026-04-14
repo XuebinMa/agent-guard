@@ -58,16 +58,16 @@
   - `crates/agent-guard-node/demos/demo_langchain.js`
   - `crates/agent-guard-node/demos/demo_openai_handler.js`
   - `crates/agent-guard-node/demos/demo_check_vs_enforce.js`
-- **API Realism**: ✅ Demos use the package-level adapter layer instead of hand-rolled payload plumbing.
-- **LCEL/Frameworks**: ✅ LangChain-style tool objects and OpenAI-style async handlers are both covered at the adapter layer.
+- **API Realism**: ✅ Demos use the package-level adapter layer with real `@langchain/core` and `@openai/agents` packages instead of hand-rolled payload plumbing.
+- **LCEL/Frameworks**: ✅ LangChain-style tool objects and OpenAI-style async handlers are both covered at the adapter layer and exercised against real framework runtimes.
 
 ---
 
 ## 📊 Audit Conclusion: 🟢 Green (Binding + Official Adapter Layer)
 
-`agent-guard-node` now covers both the raw FFI contract and the first official Node-side adapter layer. The biggest Phase 1 adoption gap is no longer "missing adapters", but follow-up ecosystem work such as broader SDK-specific integrations and deeper end-to-end framework validation.
+`agent-guard-node` now covers both the raw FFI contract and the first official Node-side adapter layer. The adapter entry points are also exercised against real `@langchain/core` and `@openai/agents` runtime objects, reducing the main Phase 1 adoption risk from wrapper semantics to longer-term ecosystem breadth.
 
 ### 🛠️ Required Fixes (Priority Order):
 1. **Framework Depth**: Add SDK-specific registration helpers once the wrapper-level API settles.
-2. **Compatibility Matrix**: Validate the adapter layer against concrete LangChain/OpenAI package versions in CI.
+2. **Compatibility Matrix**: Expand the real-framework validation into an explicit version support matrix in CI/docs.
 3. **Extended Demos**: Expand beyond single-tool examples into multi-tool agent flows.

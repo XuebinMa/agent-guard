@@ -1,6 +1,7 @@
 'use strict'
 
-const { Guard, wrapLangChainTool } = require('../index.js')
+const { DynamicTool } = require('@langchain/core/tools')
+const { Guard, wrapLangChainTool } = require('..')
 
 const policy = `
 version: 1
@@ -14,13 +15,11 @@ tools:
 async function main() {
   const guard = Guard.fromYaml(policy)
 
-  const shellTool = {
+  const shellTool = new DynamicTool({
     name: 'bash',
     description: 'Simple shell-like demo tool',
-    async invoke(input) {
-      return `ORIGINAL:${input}`
-    },
-  }
+    func: async (input) => `ORIGINAL:${input}`,
+  })
 
   wrapLangChainTool(guard, shellTool, {
     mode: 'enforce',

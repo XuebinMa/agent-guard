@@ -4,7 +4,7 @@ const assert = require('assert/strict')
 
 let nodePackage
 try {
-  nodePackage = require('./index.js')
+  nodePackage = require('.')
 } catch (error) {
   console.log(`Skipping native smoke tests: ${error.message}`)
   process.exit(0)

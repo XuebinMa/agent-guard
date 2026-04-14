@@ -7,6 +7,15 @@
 
 This package is aimed at the Phase 1 adoption target in [`docs/architecture-and-vision.md`](../../docs/architecture-and-vision.md): make framework integration feel like a small wrapper, not a custom runtime rewrite.
 
+## Runtime Validation
+
+The adapter layer is now validated against real framework packages in this repository:
+
+- `@langchain/core`
+- `@openai/agents`
+
+The Node test suite exercises real `DynamicTool` objects and real OpenAI Agents `tool()` definitions, not just mocked wrappers.
+
 ## What You Get
 
 - Raw `Guard` APIs: `check()`, `execute()`, `reload()`, `policyVersion()`

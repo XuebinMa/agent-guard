@@ -1,8 +1,8 @@
 {
   "name": "@agent-guard/node",
   "version": "0.2.0-rc1",
-  "main": "index.js",
-  "types": "index.d.ts",
+  "main": "runtime.js",
+  "types": "runtime.d.ts",
   "napi": {
     "name": "agent_guard_node",
     "package": {
@@ -14,10 +14,14 @@
     "build": "napi build --platform --release",
     "build:debug": "napi build --platform",
     "prepublishOnly": "napi prepublish",
-    "test": "node test-adapters.js && node test.js",
+    "test:frameworks": "node test-frameworks.js",
+    "test": "node test-adapters.js && node test-frameworks.js && node test.js",
     "version": "napi version"
   },
   "devDependencies": {
-    "@napi-rs/cli": "^2.18.4"
+    "@langchain/core": "^0.3.75",
+    "@napi-rs/cli": "^2.18.4",
+    "@openai/agents": "^0.8.3",
+    "zod": "^4.3.6"
   }
 }

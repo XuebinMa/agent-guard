@@ -1,6 +1,8 @@
 'use strict'
 
-const { Guard, wrapOpenAITool } = require('../index.js')
+const { tool } = require('@openai/agents')
+const { z } = require('zod')
+const { Guard, wrapOpenAITool } = require('..')
 
 const policy = `
 version: 1
@@ -14,16 +16,16 @@ tools:
 async function main() {
   const guard = Guard.fromYaml(policy)
 
-  const checkHandler = wrapOpenAITool(
+  const checkExecute = wrapOpenAITool(
     guard,
-    async (input) => `ORIGINAL:${input}`,
+    async (input) => `ORIGINAL:${input.command}`,
     {
       tool: 'bash',
       mode: 'check',
     }
   )
 
-  const enforceHandler = wrapOpenAITool(
+  const enforceExecute = wrapOpenAITool(
     guard,
     async () => 'UNUSED',
     {
@@ -33,8 +35,38 @@ async function main() {
     }
   )
 
-  console.log('check ->', await checkHandler('echo from-original'))
-  console.log('enforce ->', (await enforceHandler('echo from-sandbox')).trim())
+  const checkTool = tool({
+    name: 'bash',
+    description: 'Shell tool with check mode',
+    parameters: z.object({
+      command: z.string(),
+    }),
+    execute: checkExecute,
+  })
+
+  const enforceTool = tool({
+    name: 'bash',
+    description: 'Shell tool with enforce mode',
+    parameters: z.object({
+      command: z.string(),
+    }),
+    execute: enforceExecute,
+  })
+
+  console.log(
+    'check ->',
+    await checkTool.invoke(undefined, JSON.stringify({ command: 'echo from-original' }), undefined)
+  )
+  console.log(
+    'enforce ->',
+    (
+      await enforceTool.invoke(
+        undefined,
+        JSON.stringify({ command: 'echo from-sandbox' }),
+        undefined
+      )
+    ).trim()
+  )
 }
 
 main().catch((error) => {

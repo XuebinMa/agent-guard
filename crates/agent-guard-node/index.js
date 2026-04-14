@@ -311,26 +311,8 @@ if (!nativeBinding) {
 }
 
 const { TrustLevel, Guard, normalizePayload, verifyReceipt } = nativeBinding
-const { createAdapterExports, fallbackNormalizePayload } = require('./adapters.js')
 
-const adapterExports = createAdapterExports({
-  TrustLevel,
-  normalizePayload,
-})
-
-const exportedNormalizePayload =
-  typeof normalizePayload === 'function' ? normalizePayload : fallbackNormalizePayload
-const exportedVerifyReceipt =
-  typeof verifyReceipt === 'function'
-    ? verifyReceipt
-    : function missingVerifyReceipt() {
-        throw new Error('verifyReceipt is unavailable in the current native binding')
-      }
-
-module.exports = {
-  TrustLevel,
-  Guard,
-  normalizePayload: exportedNormalizePayload,
-  verifyReceipt: exportedVerifyReceipt,
-  ...adapterExports,
-}
+module.exports.TrustLevel = TrustLevel
+module.exports.Guard = Guard
+module.exports.normalizePayload = normalizePayload
+module.exports.verifyReceipt = verifyReceipt

@@ -1,6 +1,8 @@
 'use strict'
 
-const { Guard, wrapOpenAITool } = require('../index.js')
+const { tool } = require('@openai/agents')
+const { z } = require('zod')
+const { Guard, wrapOpenAITool } = require('..')
 
 const policy = `
 version: 1
@@ -13,7 +15,7 @@ tools:
 async function main() {
   const guard = Guard.fromYaml(policy)
 
-  const handler = wrapOpenAITool(
+  const execute = wrapOpenAITool(
     guard,
     async (input) => ({
       ok: true,
@@ -27,7 +29,20 @@ async function main() {
     }
   )
 
-  const result = await handler({ query: 'agent-guard adapters' })
+  const frameworkTool = tool({
+    name: 'web_search',
+    description: 'Search the web',
+    parameters: z.object({
+      query: z.string(),
+    }),
+    execute,
+  })
+
+  const result = await frameworkTool.invoke(
+    undefined,
+    JSON.stringify({ query: 'agent-guard adapters' }),
+    undefined
+  )
   console.log(result)
 }
 
