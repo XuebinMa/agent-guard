@@ -257,7 +257,7 @@ This makes GPT behavior more understandable and easier to prompt around.
 - Keep the allowlist intentionally small.
 - Start in a development or staging environment.
 - Prefer a dedicated workspace directory instead of unrestricted host paths.
-- Use `demo_transparency` or `doctor` to understand your real sandbox boundary first.
+- Use `cargo run -p guard-verify -- doctor --format text` or `demo_transparency` to understand your real sandbox boundary first.
 
 ---
 

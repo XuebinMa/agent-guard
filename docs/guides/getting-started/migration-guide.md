@@ -5,7 +5,7 @@
 | **Status** | 🟢 Operational (v0.2.0) |
 | **Audience** | Developers, DevOps |
 | **Version** | 1.1 |
-| **Last Reviewed** | 2026-04-08 |
+| **Last Reviewed** | 2026-04-15 |
 | **Related Docs** | [User Manual](user-manual.md), [Capability Parity](../../capability-parity.md) |
 
 ---
@@ -19,7 +19,7 @@ This guide helps you transition from basic `NoopSandbox` execution to the harden
 Before switching sandboxes, verify what your host operating system supports using the **Capability Doctor**.
 
 ```bash
-cargo run --example doctor
+cargo run -p guard-verify -- doctor --format text
 ```
 
 ---
@@ -34,9 +34,9 @@ cargo run --example doctor
 - **Benefit**: Prevents most accidental filesystem writes outside the workspace.
 - **Risk**: Network and advanced syscalls are still accessible on some platforms.
 
-### Phase 3: Linux Host Sandboxing (Current Prototype / Future Hardening)
-- **Benefit**: Uses the strongest Linux backend available on the host today, with Landlock write isolation when supported.
-- **Risk**: Full Seccomp-BPF syscall filtering is not yet shipped in v0.2.0.
+### Phase 3: Linux Host Sandboxing (Current Best Available Path)
+- **Benefit**: Uses the strongest Linux backend available on the host today, with Seccomp-BPF filtering when built with the feature and Landlock write isolation where the host supports it.
+- **Risk**: Path-aware isolation still depends on host capability and feature configuration; fallback hosts may still land on `NoopSandbox`.
 
 ---
 
@@ -46,7 +46,7 @@ cargo run --example doctor
 | :--- | :--- | :--- |
 | **No-op -> Low-IL** | Workspace write isolation on Windows. | Network access is still allowed by default. |
 | **No-op -> Seatbelt**| Mandatory write-protection on macOS. | Global read access is still possible. |
-| **No-op -> Linux Sandbox** | Landlock-backed write isolation when the host supports it. | No Linux Seccomp-BPF filtering yet; fallback hosts may still use the prototype wrapper. |
+| **No-op -> Linux Sandbox** | Seccomp filtering and/or Landlock-backed write isolation when the host and build support them. | Path-aware isolation is still host-dependent, and fallback hosts may still use `NoopSandbox`. |
 
 ---
 

@@ -13,6 +13,12 @@ Welcome to the documentation hub for `agent-guard`, the high-performance securit
 
 If you are arriving from GitHub or social posts, these are the two best entry points before you dive deeper into the docs.
 
+Current boundary note:
+
+- the strongest current `enforce` path is shell / Bash execution
+- non-shell tools primarily use `check` + policy gate unless your host adds its own runtime boundary
+- use `cargo run -p guard-verify -- doctor --format text` to verify the real host boundary on the machine you actually deploy
+
 ---
 
 ## 🎯 Find by Goal (Objective)

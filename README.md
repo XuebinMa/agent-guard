@@ -168,7 +168,7 @@ Run the built-in demos to see the security boundary in practice:
 - **Malicious Block**: `cargo run --example demo_malicious_block` (See the Deny Fuse lock out an attacker)
 - **The Comparison**: `cargo run --example demo_comparison` (No Guard vs. Full Guard side-by-side)
 - **Host Transparency**: `cargo run --example demo_transparency` (What can your host OS defend against?)
-- **Doctor Report**: `cargo run -p agent-guard-sdk --example doctor` (Which backend will the SDK actually select, and why?)
+- **Doctor Report**: `cargo run -p guard-verify -- doctor --format text` (Which backend will the SDK actually select, and why?)
 
 ---
 
@@ -211,7 +211,7 @@ Ready to try or integrate it? Start with the path that matches your goal:
 - [x] **Phase 7**: Production Hardening, Cross-platform Parity, AppContainer Prototype.
 - [x] **Phase 8**: RC Validation & Stress Testing.
 - [~] **Phase 9 (Current)**: v0.3.0 Ecosystem & Trust: LangChain/OpenAI adapters, real framework validation, receipt verification tooling.
-- [ ] **Phase 10 (Future)**: TPM-backed Remote Attestation, Linux Landlock Integration.
+- [ ] **Phase 10 (Future)**: TPM-backed Remote Attestation, Policy Registry, Audit Intelligence.
 
 ---
 

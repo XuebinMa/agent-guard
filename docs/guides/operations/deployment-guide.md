@@ -5,7 +5,7 @@
 | **Status** | 🟢 Operational (v0.2.0) |
 | **Audience** | DevOps, SREs, System Admins |
 | **Version** | 1.1 |
-| **Last Reviewed** | 2026-04-13 |
+| **Last Reviewed** | 2026-04-15 |
 | **Related Docs** | [Observability](observability.md), [Capability Parity](../../capability-parity.md) |
 
 ---
@@ -18,7 +18,7 @@ This guide provides best practices and operational procedures for deploying `age
 
 For most enterprise use cases, we recommend the following sidecar or host-agent architecture:
 
-1. **Host Application**: Your AI Agent framework (e.g., built with LangChain, Autogen, or custom Rust/Node.js).
+1. **Host Application**: Your AI Agent framework (e.g., built with LangChain-style tools, OpenAI-style handlers, or a custom Rust/Node/Python runtime).
 2. **agent-guard SDK**: Integrated into the host application to intercept tool calls.
 3. **OS Sandboxes**:
    - **Linux**: Native Seccomp-BPF filtering when the `seccomp` feature is enabled; Landlock can add stronger path-aware filesystem isolation where supported.
@@ -72,12 +72,13 @@ Before going live, run the `CapabilityDoctor` on your production nodes to ensure
 
 ```bash
 # Verify available security features
-cargo run --example doctor
+cargo run -p guard-verify -- doctor --format text
 ```
 
 Check for these signals before rollout:
 - The reported `Default SDK sandbox` should match the backend you expect to rely on in production.
 - `Fallback: Yes` means the SDK is explicitly using `NoopSandbox`; treat that as a deployment blocker if you expected OS-level isolation.
+- Shell / Bash is the strongest current `enforce` path. For non-shell tools, do not treat a green doctor report as proof that every tool type now has equivalent runtime isolation.
 - On Windows, inspect the runtime checks individually to distinguish token creation support, Job Object support, and low-integrity process launch support.
 
 ---

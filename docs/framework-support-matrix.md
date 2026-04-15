@@ -5,7 +5,7 @@
 | **Status** | 🟢 Active Support Snapshot |
 | **Audience** | Developers, Integrators |
 | **Version** | 1.0 |
-| **Last Reviewed** | 2026-04-14 |
+| **Last Reviewed** | 2026-04-15 |
 | **Related Docs** | [Architecture & Vision](architecture-and-vision.md), [Node README](../crates/agent-guard-node/README.md), [Python README](../crates/agent-guard-python/README.md) |
 
 ---
@@ -142,6 +142,12 @@ Important caveat:
 
 The Python adapter layer is now official, but still below the current Node surface in maturity. The main missing step is real framework-package validation in CI, not basic wrapper availability.
 
+Boundary note:
+
+- Python and Node wrapper layers can guard many tool types at the policy level
+- the strongest current `enforce` path across languages is still shell / Bash execution
+- treat non-shell adapters primarily as `check` + policy gate surfaces unless your host adds a stronger execution boundary
+
 ---
 
 ## 5. Rust SDK Support
@@ -193,7 +199,7 @@ Reference:
 ## 7. Maturity Legend
 
 - ✅ Supported: official and recommended for active use
-- 🟡 Prototype: works and is documented, but should be described with caution
+- 🟡 Beta: works and is documented, but should still be described with caution
 - ⚪ Not shipped: roadmap item, not an official current surface
 
 ---

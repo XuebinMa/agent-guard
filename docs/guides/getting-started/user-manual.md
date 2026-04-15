@@ -5,7 +5,7 @@
 | **Status** | 🟢 Operational (v0.2.0) |
 | **Audience** | Developers, Integrators |
 | **Version** | 1.2 |
-| **Last Reviewed** | 2026-04-08 |
+| **Last Reviewed** | 2026-04-15 |
 | **Related Docs** | [Migration Guide](migration-guide.md), [Threat Model](../../threat-model.md) |
 
 ---
@@ -119,7 +119,7 @@ If you use the Node or Python wrappers, prefer letting the adapter normalize pay
 
 ## 4. 📦 OS Sandboxes (The Final Barrier)
 
-`agent-guard` automatically detects and selects the best sandbox for your platform. Run `cargo run --example demo_transparency` to verify.
+`agent-guard` automatically detects and selects the best sandbox for your platform. Run `cargo run -p guard-verify -- doctor --format text` to verify the host boundary you actually have. If you want a more narrative walkthrough for local exploration, `cargo run --example demo_transparency` is still a useful companion demo.
 
 Important:
 
@@ -140,4 +140,4 @@ Every execution can generate an Ed25519 signed receipt if a signing key is provi
 
 1. **Start with `read_only`**: Always default to the least privilege.
 2. **Monitor the "Fuse"**: Set alerts for `AGENT_LOCKED` events.
-3. **Automate CI/CD**: Run `cargo test --test release_gate` in your pipeline.
+3. **Automate CI/CD**: Run `cargo test --workspace --all-features` and `python3 scripts/check_docs.py` in your pipeline.
