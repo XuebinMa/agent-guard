@@ -145,6 +145,7 @@ const guardedShell = wrapOpenAITool(
 
 ## Demos
 
+- `npm run demo:proof --prefix crates/agent-guard-node`
 - [`demos/demo_langchain.js`](./demos/demo_langchain.js)
 - [`demos/demo_openai_handler.js`](./demos/demo_openai_handler.js)
 - [`demos/demo_check_vs_enforce.js`](./demos/demo_check_vs_enforce.js)

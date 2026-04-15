@@ -14,8 +14,10 @@ From the repository root:
 ```bash
 npm ci --prefix crates/agent-guard-node
 npm run build:debug --prefix crates/agent-guard-node
-npm run demo:attack --prefix crates/agent-guard-node
+npm run demo:proof --prefix crates/agent-guard-node
 ```
+
+`demo:attack` remains available as the explicit alias for the same demo.
 
 ## What It Shows
 

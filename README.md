@@ -19,6 +19,52 @@ this project is meant to give you a safer execution boundary.
 
 ---
 
+## See The Value In 3 Minutes
+
+If you only try one thing, run the proof demo:
+
+```bash
+npm ci --prefix crates/agent-guard-node
+npm run build:debug --prefix crates/agent-guard-node
+npm run demo:proof --prefix crates/agent-guard-node
+```
+
+What you should see:
+
+```text
+=== Safe Command ===
+without guard: UNSAFE_HANDLER_WOULD_RUN:echo hello from attack demo
+with guard: allowed
+
+=== Approval Required Command ===
+without guard: UNSAFE_HANDLER_WOULD_RUN:git push origin main
+with guard: blocked
+
+=== Destructive Command ===
+without guard: UNSAFE_HANDLER_WOULD_RUN:rm -rf /
+with guard: blocked
+```
+
+That path is documented in [Three-Minute Proof](/Users/xuebinma/Projects/agent-guard/docs/guides/getting-started/three-minute-proof.md).
+
+---
+
+## Before vs After
+
+Without `agent-guard`:
+
+- the model reaches your shell or tool handler directly
+- risky commands rely on prompts, regexes, or ad hoc validation
+- operators have weak evidence for what was allowed or blocked
+
+With `agent-guard`:
+
+- every tool call hits a policy gate first
+- risky commands can be denied or escalated before execution
+- execution can run inside an OS-level sandbox with auditable outcomes
+
+---
+
 ## Why It Exists
 
 Without a runtime guard, agent security usually depends on model behavior, prompt instructions, and ad hoc tool validation. That breaks down quickly for shell tools and other high-risk capabilities.
@@ -33,9 +79,9 @@ This moves agent safety from “best effort” to “explicitly enforced at the 
 
 ---
 
-## What You Can Do In 5 Minutes
+## What You Can Do Next In 5 Minutes
 
-Run a minimal Node quickstart that shows one safe command succeeding and one risky command being blocked:
+Run a minimal Node quickstart that shows one safe command succeeding and one risky command being blocked, without the longer before-vs-after framing:
 
 ```bash
 npm ci --prefix crates/agent-guard-node
@@ -122,6 +168,7 @@ Run the built-in demos to see the security boundary in practice:
 
 Ready to try or integrate it? Start with the path that matches your goal:
 
+- ⏱️ **[Three-Minute Proof](docs/guides/getting-started/three-minute-proof.md)**: the fastest path to seeing allowed vs blocked behavior
 - 📘 **[User Manual](docs/guides/getting-started/user-manual.md)**: installation, policy basics, and SDK integration
 - 🔐 **[Secure Shell Tools](docs/guides/getting-started/secure-shell-tools.md)**: the best first integration path for high-risk tool use
 - ⚖️ **[Check vs Enforce](docs/guides/getting-started/check-vs-enforce.md)**: how to choose the right adapter mode

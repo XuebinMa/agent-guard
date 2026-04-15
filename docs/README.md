@@ -5,6 +5,7 @@ Welcome to the documentation hub for `agent-guard`, the high-performance securit
 ---
 
 ## 🎯 Find by Goal (Objective)
+- **I want the fastest proof this works** → [Three-Minute Proof](guides/getting-started/three-minute-proof.md)
 - **I want to integrate quickly** → [User Manual](guides/getting-started/user-manual.md)
 - **I want to secure shell tools first** → [Secure Shell Tools](guides/getting-started/secure-shell-tools.md)
 - **I need to choose `check` vs `enforce`** → [Check vs Enforce](guides/getting-started/check-vs-enforce.md)
@@ -21,6 +22,7 @@ Welcome to the documentation hub for `agent-guard`, the high-performance securit
 ## 🚀 Start Here (Getting Started)
 For developers integrating `agent-guard` into their agent frameworks for the first time.
 
+- ⏱️ **[Three-Minute Proof](guides/getting-started/three-minute-proof.md)**: The fastest path to seeing a risky tool call blocked.
 - 📘 **[User Manual](guides/getting-started/user-manual.md)**: Installation, configuration, and basic integration.
 - 🔐 **[Secure Shell Tools](guides/getting-started/secure-shell-tools.md)**: The best first use case and how to protect it.
 - ⚖️ **[Check vs Enforce](guides/getting-started/check-vs-enforce.md)**: How to choose the right adapter mode.
