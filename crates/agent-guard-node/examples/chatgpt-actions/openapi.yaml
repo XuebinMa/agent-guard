@@ -1,0 +1,61 @@
+openapi: 3.1.0
+info:
+  title: agent-guard shell action demo
+  version: 1.0.0
+  description: Minimal ChatGPT Action example for routing shell commands through agent-guard.
+servers:
+  - url: https://example.com
+paths:
+  /health:
+    get:
+      operationId: getHealth
+      summary: Check whether the action server is healthy
+      responses:
+        '200':
+          description: Server is healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                    example: true
+  /run-shell:
+    post:
+      operationId: runShellCommand
+      summary: Execute a shell-like command through agent-guard
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - command
+              properties:
+                command:
+                  type: string
+                  description: The shell command to evaluate and execute.
+                  example: echo hello from ChatGPT
+      responses:
+        '200':
+          description: Command was handled by the action server
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    enum: [allowed, blocked, error]
+                  result:
+                    type: string
+                  error:
+                    type: string
+                  decision:
+                    type: string
+                  code:
+                    type: string
+                  message:
+                    type: string

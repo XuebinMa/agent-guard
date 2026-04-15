@@ -1,0 +1,23 @@
+version: 1
+default_mode: read_only
+
+tools:
+  bash:
+    allow:
+      - "echo"
+      - "pwd"
+      - "ls"
+    ask:
+      - prefix: "git push"
+    deny:
+      - "rm -rf /"
+    mode: workspace_write
+
+anomaly:
+  enabled: true
+  rate_limit:
+    max_calls: 30
+    window_seconds: 60
+  deny_fuse:
+    enabled: true
+    threshold: 5
