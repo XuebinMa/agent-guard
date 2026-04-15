@@ -10,6 +10,7 @@ name = "guard-verify"
 path = "src/main.rs"
 
 [dependencies]
+agent-guard-sdk = { path = "../agent-guard-sdk" }
 clap.workspace = true
 serde.workspace = true
 serde_json.workspace = true

@@ -11,6 +11,31 @@ use std::sync::OnceLock;
 /// macOS Seatbelt sandbox using sandbox-exec.
 pub struct SeatbeltSandbox;
 
+fn escape_seatbelt_string(value: &str) -> Result<String, SandboxError> {
+    let mut escaped = String::with_capacity(value.len());
+    for ch in value.chars() {
+        match ch {
+            '\\' => escaped.push_str("\\\\"),
+            '"' => escaped.push_str("\\\""),
+            '\0' => {
+                return Err(SandboxError::ExecutionFailed(
+                    "workspace path contains NUL byte, which cannot be encoded in a Seatbelt profile"
+                        .to_string(),
+                ));
+            }
+            ch if ch.is_control() => {
+                return Err(SandboxError::ExecutionFailed(format!(
+                    "workspace path contains unsupported control character U+{:04X}",
+                    ch as u32
+                )));
+            }
+            _ => escaped.push(ch),
+        }
+    }
+
+    Ok(escaped)
+}
+
 fn unavailable_capabilities() -> SandboxCapabilities {
     SandboxCapabilities {
         filesystem_read_workspace: false,
@@ -113,6 +138,8 @@ impl Sandbox for SeatbeltSandbox {
                 SandboxError::ExecutionFailed(format!("Failed to resolve workspace path: {}", e))
             })?;
 
+            let escaped_workspace = escape_seatbelt_string(&resolved_dir.to_string_lossy())?;
+
             let profile = format!(
                 r#"(version 1)
 (deny default)
@@ -121,7 +148,7 @@ impl Sandbox for SeatbeltSandbox {
 (allow process-fork)
 (allow process-exec)
 (deny network*)"#,
-                resolved_dir.display()
+                escaped_workspace
             );
 
             let mut child = Command::new("sandbox-exec")
@@ -196,5 +223,34 @@ impl Sandbox for SeatbeltSandbox {
                 "Seatbelt is only available on macOS".to_string(),
             ))
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::escape_seatbelt_string;
+
+    #[test]
+    fn seatbelt_escape_keeps_normal_paths() {
+        let escaped = escape_seatbelt_string("/tmp/agent-guard/workspace").unwrap();
+        assert_eq!(escaped, "/tmp/agent-guard/workspace");
+    }
+
+    #[test]
+    fn seatbelt_escape_escapes_quotes_and_backslashes() {
+        let escaped = escape_seatbelt_string("/tmp/agent\"guard\\workspace").unwrap();
+        assert_eq!(escaped, "/tmp/agent\\\"guard\\\\workspace");
+    }
+
+    #[test]
+    fn seatbelt_escape_keeps_parentheses_as_plain_text() {
+        let escaped = escape_seatbelt_string("/tmp/agent-guard (sandbox)").unwrap();
+        assert_eq!(escaped, "/tmp/agent-guard (sandbox)");
+    }
+
+    #[test]
+    fn seatbelt_escape_rejects_control_characters() {
+        let error = escape_seatbelt_string("/tmp/agent-guard\nworkspace").unwrap_err();
+        assert!(error.to_string().contains("control character"));
     }
 }

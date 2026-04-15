@@ -1,16 +1,16 @@
-import json
 import asyncio
-from typing import Any, Dict, Optional, List, Union, Callable
-from ._agent_guard import Guard, ExecuteResult
-
-class AgentGuardSecurityError(Exception):
-    """Raised when agent-guard denies an execution."""
-    def __init__(self, decision_data):
-        self.decision = decision_data
-        msg = f"Security Deny: {decision_data.message or 'Policy violation'}"
-        if decision_data.matched_rule:
-            msg += f" (Rule: {decision_data.matched_rule})"
-        super().__init__(msg)
+from typing import Any, Optional
+from ._agent_guard import Guard
+from .adapters import (
+    AgentGuardSecurityError,
+    build_security_error,
+    ensure_verified_policy_for_auto,
+    handle_execute_result,
+    prepare_payload,
+    resolve_mode,
+    run_check_async,
+    run_execute_async,
+)
 
 def wrap_langchain_tool(
     guard: Guard, 
@@ -39,105 +39,70 @@ def wrap_langchain_tool(
 
     original_run = tool._run
     original_arun = getattr(tool, "_arun", None)
-    
-    # Resolve mode
-    is_shell_tool = tool.name in ["bash", "shell", "terminal"]
-    if mode == "auto":
-        resolved_mode = "enforce" if is_shell_tool else "check"
-    else:
-        resolved_mode = mode
+    resolved_mode = resolve_mode(tool.name, mode)
 
-    def _prepare_payload(*args, **kwargs) -> str:
-        """
-        Ensures the payload conforms to the agent-guard SDK expectations.
-        """
-        raw_input = None
+    def _raw_input(*args, **kwargs) -> Any:
         if args and len(args) == 1 and not kwargs:
-            raw_input = args[0]
-        elif kwargs and not args:
-            raw_input = kwargs
-        else:
-            raw_input = {"args": args, "kwargs": kwargs}
+            return args[0]
+        if kwargs and not args:
+            return kwargs
+        return {"args": args, "kwargs": kwargs}
 
-        # CWE-770: Limit payload size to 1MB
-        payload_json = json.dumps(raw_input)
-        if len(payload_json) > 1024 * 1024:
-             raise ValueError("Tool payload too large (max 1MB)")
-
-        if is_shell_tool:
-            if isinstance(raw_input, str):
-                return json.dumps({"command": raw_input})
-            elif isinstance(raw_input, dict) and "command" in raw_input:
-                return json.dumps(raw_input)
-            else:
-                return json.dumps({"command": str(raw_input)})
-        
-        if isinstance(raw_input, (str, bytes, int, float, bool)):
-            return json.dumps({"input": raw_input})
-        return payload_json
+    guard_options = {
+        "agent_id": agent_id,
+        "actor": actor,
+        "trust_level": trust_level,
+    }
 
     def guarded_run(*args, **kwargs) -> Any:
-        payload_str = _prepare_payload(*args, **kwargs)
-        
+        raw_input = _raw_input(*args, **kwargs)
+        payload_str = prepare_payload(tool.name, raw_input)
+
         if resolved_mode == "enforce":
-            result: ExecuteResult = guard.execute(
-                tool=tool.name,
-                payload=payload_str,
-                agent_id=agent_id,
-                actor=actor,
-                trust_level=trust_level
+            result = guard.execute(tool=tool.name, payload=payload_str, **guard_options)
+            return handle_execute_result(
+                result,
+                result_mapper=lambda outcome, _original: outcome.output.stdout if outcome.output else "",
+                original_input=raw_input,
             )
-            
-            if result.status == "executed":
-                return result.output.stdout if result.output else ""
-            else:
-                raise AgentGuardSecurityError(result.decision)
-        else:
-            decision = guard.check(
-                tool=tool.name,
-                payload=payload_str,
-                agent_id=agent_id,
-                actor=actor,
-                trust_level=trust_level
-            )
-            
-            if decision.outcome == "allow":
-                return original_run(*args, **kwargs)
-            else:
-                raise AgentGuardSecurityError(decision)
+
+        decision = guard.check(tool=tool.name, payload=payload_str, **guard_options)
+        if decision.outcome != "allow":
+            raise build_security_error(decision)
+        if mode == "auto":
+            ensure_verified_policy_for_auto(decision)
+        return original_run(*args, **kwargs)
 
     async def guarded_arun(*args, **kwargs) -> Any:
-        payload_str = _prepare_payload(*args, **kwargs)
-        
+        raw_input = _raw_input(*args, **kwargs)
+        payload_str = prepare_payload(tool.name, raw_input)
+
         if resolved_mode == "enforce":
-            result = await asyncio.to_thread(
-                guard.execute,
+            result = await run_execute_async(
+                guard,
                 tool=tool.name,
                 payload=payload_str,
-                agent_id=agent_id,
-                actor=actor,
-                trust_level=trust_level
+                guard_options=guard_options,
             )
-            if result.status == "executed":
-                return result.output.stdout if result.output else ""
-            else:
-                raise AgentGuardSecurityError(result.decision)
-        else:
-            decision = await asyncio.to_thread(
-                guard.check,
-                tool=tool.name,
-                payload=payload_str,
-                agent_id=agent_id,
-                actor=actor,
-                trust_level=trust_level
+            return handle_execute_result(
+                result,
+                result_mapper=lambda outcome, _original: outcome.output.stdout if outcome.output else "",
+                original_input=raw_input,
             )
-            
-            if decision.outcome == "allow":
-                if original_arun:
-                    return await original_arun(*args, **kwargs)
-                return await asyncio.to_thread(original_run, *args, **kwargs)
-            else:
-                raise AgentGuardSecurityError(decision)
+
+        decision = await run_check_async(
+            guard,
+            tool=tool.name,
+            payload=payload_str,
+            guard_options=guard_options,
+        )
+        if decision.outcome != "allow":
+            raise build_security_error(decision)
+        if mode == "auto":
+            ensure_verified_policy_for_auto(decision)
+        if original_arun:
+            return await original_arun(*args, **kwargs)
+        return await asyncio.to_thread(original_run, *args, **kwargs)
 
     # Patch the tool internals.
     try:

@@ -165,6 +165,8 @@ pub enum DecisionCode {
     NotInAllowList,
     #[serde(rename = "POLICY_LOAD_ERROR")]
     PolicyLoadError,
+    #[serde(rename = "POLICY_VERIFICATION_FAILED")]
+    PolicyVerificationFailed,
     #[serde(rename = "INTERNAL_ERROR")]
     InternalError,
     #[serde(rename = "ANOMALY_DETECTED")]

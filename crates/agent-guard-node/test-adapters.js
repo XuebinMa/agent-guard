@@ -255,6 +255,35 @@ async function testCreateGuardedExecutorAutoMode() {
   )
 }
 
+async function testCreateGuardedExecutorAutoFailsClosedOnInvalidPolicyVerification() {
+  let handlerCalls = 0
+  const invalidGuard = createMockGuard({
+    decision: {
+      outcome: 'allow',
+      policyVersion: 'policy-auto-invalid',
+      policyVerificationStatus: 'invalid',
+      policyVerificationError: 'signature verification failed',
+    },
+  })
+
+  const guarded = createGuardedExecutor(invalidGuard, {
+    mode: 'auto',
+    tool: 'web_search',
+  })(async () => {
+    handlerCalls += 1
+    return 'should-not-run'
+  })
+
+  await expectRejects(
+    () => guarded({ query: 'guard' }),
+    AgentGuardDeniedError,
+    (error) => {
+      assert.equal(handlerCalls, 0)
+      assert.equal(error.code, 'PolicyVerificationFailed')
+    }
+  )
+}
+
 async function testLangChainWrapperCompatibility() {
   const payloads = []
   let invokeCalls = 0
@@ -376,6 +405,7 @@ async function main() {
   await testCreateGuardedExecutorEnforceExecutedAndMapped()
   await testCreateGuardedExecutorEnforceFailures()
   await testCreateGuardedExecutorAutoMode()
+  await testCreateGuardedExecutorAutoFailsClosedOnInvalidPolicyVerification()
   await testLangChainWrapperCompatibility()
   await testOpenAIWrapperPayloadMapping()
   await testAdapterExecutionErrorWrapping()

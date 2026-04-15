@@ -172,6 +172,25 @@ function buildExecuteError(error, policyVersion) {
   })
 }
 
+function enforceVerifiedPolicyForAuto(decision) {
+  if (!decision || decision.policyVerificationStatus !== 'invalid') {
+    return
+  }
+
+  const verificationDecision = {
+    outcome: 'deny',
+    message:
+      decision.policyVerificationError ||
+      'policy signature verification failed; auto mode refuses to execute with an invalid policy signature',
+    code: 'PolicyVerificationFailed',
+    policyVersion: decision.policyVersion || decision.policy_version,
+    policyVerificationStatus: decision.policyVerificationStatus,
+    policyVerificationError: decision.policyVerificationError,
+  }
+
+  throw buildDecisionError(verificationDecision)
+}
+
 function handleExecuteOutcome(outcome, originalInput, resultMapper) {
   const status = outcome ? outcome.status || outcome.outcome : undefined
 
@@ -250,6 +269,10 @@ function createAdapterExports(nativeApi = {}) {
 
         if (!decision || decision.outcome !== 'allow') {
           throw buildDecisionError(decision)
+        }
+
+        if (mode === 'auto') {
+          enforceVerifiedPolicyForAuto(decision)
         }
 
         try {

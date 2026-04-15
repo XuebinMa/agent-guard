@@ -35,6 +35,8 @@ With `agent-guard`, the shell tool call must first pass:
 2. optional anomaly checks and deny fuse
 3. sandboxed execution for `enforce` mode
 
+This guide is intentionally shell-first because shell is the strongest current `enforce` path in the project. Other tool types still benefit from policy checks, but should not be described as having identical sandbox coverage today.
+
 ---
 
 ## 2. The Minimum Safe Pattern
@@ -199,8 +201,18 @@ cargo run --example demo_transparency
 and:
 
 ```bash
-cargo run -p agent-guard-sdk --example doctor
+cargo run -p guard-verify -- doctor --format text
 ```
+
+### Mistake 5: Assuming fallback equals isolation
+
+If your backend falls back to `NoopSandbox`, the policy gate still runs, but OS-level isolation is gone.
+
+Treat `Fallback: Yes` in the doctor output as:
+
+- acceptable for local experimentation
+- not equivalent to real `enforce`
+- a deployment blocker for environments that expect host isolation
 
 ---
 

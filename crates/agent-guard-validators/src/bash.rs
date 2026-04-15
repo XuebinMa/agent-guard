@@ -1,6 +1,6 @@
 //! Bash command validation submodules.
 
-use std::path::Path;
+use std::path::{Component, Path, PathBuf};
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -52,7 +52,7 @@ const STATE_MODIFYING_COMMANDS: &[&str] = &[
     "su",
 ];
 
-const WRITE_REDIRECTIONS: &[&str] = &[">", ">>", ">&", "<", "<<", "<<<"];
+const WRITE_REDIRECTIONS: &[&str] = &[">", ">>", ">&"];
 
 #[must_use]
 pub fn validate_read_only(command: &str, mode: PermissionMode) -> ValidationResult {
@@ -180,8 +180,9 @@ fn shell_split(s: &str) -> Vec<String> {
     let mut in_single_quote = false;
     let mut in_double_quote = false;
     let mut escaped = false;
+    let mut chars = s.chars().peekable();
 
-    for c in s.chars() {
+    while let Some(c) = chars.next() {
         if escaped {
             current.push(c);
             escaped = false;
@@ -202,6 +203,11 @@ fn shell_split(s: &str) -> Vec<String> {
                 if !current.is_empty() {
                     parts.push(current.clone());
                     current.clear();
+                }
+                if matches!(c, '&' | '|') && chars.peek() == Some(&c) {
+                    let _ = chars.next();
+                    parts.push(format!("{c}{c}"));
+                    continue;
                 }
                 parts.push(c.to_string());
             }
@@ -278,7 +284,7 @@ fn extract_first_command(s: &str) -> String {
 pub fn validate_bash_command(
     command: &str,
     mode: PermissionMode,
-    _workspace_path: &Path,
+    workspace_path: &Path,
 ) -> ValidationResult {
     if mode == PermissionMode::Blocked {
         return ValidationResult::Block {
@@ -290,6 +296,11 @@ pub fn validate_bash_command(
     }
 
     let res = validate_read_only(command, mode);
+    if res != ValidationResult::Allow {
+        return res;
+    }
+
+    let res = validate_paths(command, mode, workspace_path);
     if res != ValidationResult::Allow {
         return res;
     }
@@ -331,11 +342,41 @@ pub fn validate_mode(command: &str, mode: PermissionMode) -> ValidationResult {
     validate_read_only(command, mode)
 }
 
-pub fn validate_paths(
-    _command: &str,
-    _mode: PermissionMode,
-    _workspace: &Path,
-) -> ValidationResult {
+pub fn validate_paths(command: &str, mode: PermissionMode, workspace: &Path) -> ValidationResult {
+    if !matches!(
+        mode,
+        PermissionMode::ReadOnly | PermissionMode::WorkspaceWrite
+    ) {
+        return ValidationResult::Allow;
+    }
+
+    let workspace = normalize_path(workspace);
+    for target in collect_write_targets(command) {
+        let candidate = target.trim_matches(|c| c == '"' || c == '\'');
+        if candidate.is_empty() || candidate.starts_with('$') || candidate == "/dev/null" {
+            continue;
+        }
+
+        let path = Path::new(candidate);
+        if path.is_absolute() && !path_stays_within_workspace(path, &workspace) {
+            return ValidationResult::Block {
+                reason: format!(
+                    "write target '{}' is outside the configured workspace",
+                    candidate
+                ),
+            };
+        }
+
+        if !path.is_absolute() && has_parent_dir_escape(path) {
+            return ValidationResult::Block {
+                reason: format!(
+                    "write target '{}' escapes the configured workspace",
+                    candidate
+                ),
+            };
+        }
+    }
+
     ValidationResult::Allow
 }
 
@@ -348,4 +389,167 @@ pub fn validate_sed(command: &str, mode: PermissionMode) -> ValidationResult {
         };
     }
     ValidationResult::Allow
+}
+
+fn normalize_path(path: &Path) -> PathBuf {
+    let mut normalized = PathBuf::new();
+    for component in path.components() {
+        match component {
+            Component::ParentDir => {
+                normalized.pop();
+            }
+            Component::CurDir => {}
+            _ => normalized.push(component.as_os_str()),
+        }
+    }
+    normalized
+}
+
+fn has_parent_dir_escape(path: &Path) -> bool {
+    path.components()
+        .any(|component| matches!(component, Component::ParentDir))
+}
+
+fn path_stays_within_workspace(path: &Path, workspace: &Path) -> bool {
+    let normalized_path = normalize_path(path);
+    normalized_path == workspace || normalized_path.starts_with(workspace)
+}
+
+fn collect_write_targets(command: &str) -> Vec<String> {
+    let tokens = shell_split(command);
+    let mut targets = Vec::new();
+    let mut current_segment = Vec::new();
+
+    for token in tokens {
+        if matches!(token.as_str(), "|" | "||" | "&&" | ";" | "&") {
+            targets.extend(write_targets_for_segment(&current_segment));
+            current_segment.clear();
+            continue;
+        }
+        current_segment.push(token);
+    }
+
+    targets.extend(write_targets_for_segment(&current_segment));
+    targets
+}
+
+fn write_targets_for_segment(segment: &[String]) -> Vec<String> {
+    if segment.is_empty() {
+        return Vec::new();
+    }
+
+    let mut targets = Vec::new();
+    let mut command_index = 0;
+    if segment.first().is_some_and(|token| token == "sudo") && segment.len() > 1 {
+        command_index = 1;
+    }
+
+    let command = segment[command_index].as_str();
+    let args = &segment[command_index + 1..];
+
+    let mut expecting_redirection_target = false;
+    for token in args {
+        if WRITE_REDIRECTIONS.contains(&token.as_str()) {
+            expecting_redirection_target = true;
+            continue;
+        }
+
+        if expecting_redirection_target {
+            expecting_redirection_target = false;
+            if !token.starts_with('&') {
+                targets.push(token.clone());
+            }
+        }
+    }
+
+    match command {
+        "touch" | "mkdir" | "rmdir" | "rm" | "chmod" | "chown" | "chgrp" | "unlink" | "tee" => {
+            targets.extend(
+                args.iter()
+                    .filter(|token| {
+                        !token.starts_with('-') && !WRITE_REDIRECTIONS.contains(&token.as_str())
+                    })
+                    .cloned(),
+            );
+        }
+        "mv" | "cp" | "ln" | "link" => {
+            if let Some(last) = args.iter().rev().find(|token| {
+                !token.starts_with('-') && !WRITE_REDIRECTIONS.contains(&token.as_str())
+            }) {
+                targets.push(last.clone());
+            }
+        }
+        _ => {}
+    }
+
+    targets
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        shell_split, validate_paths, validate_read_only, PermissionMode, ValidationResult,
+    };
+    use std::path::Path;
+
+    #[test]
+    fn shell_split_keeps_boolean_operators_together() {
+        let parts = shell_split("echo one && echo two || echo three");
+        assert_eq!(
+            parts,
+            vec!["echo", "one", "&&", "echo", "two", "||", "echo", "three"]
+        );
+    }
+
+    #[test]
+    fn shell_split_respects_quotes_around_operators() {
+        let parts = shell_split(r#"echo "a && b" && echo 'c || d'"#);
+        assert_eq!(parts, vec!["echo", "a && b", "&&", "echo", "c || d"]);
+    }
+
+    #[test]
+    fn read_only_allows_input_redirection() {
+        let result = validate_read_only("cat < input.txt", PermissionMode::ReadOnly);
+        assert_eq!(result, ValidationResult::Allow);
+    }
+
+    #[test]
+    fn validate_paths_allows_workspace_relative_write() {
+        let result = validate_paths(
+            "echo ok > output.txt",
+            PermissionMode::WorkspaceWrite,
+            Path::new("/workspace"),
+        );
+        assert_eq!(result, ValidationResult::Allow);
+    }
+
+    #[test]
+    fn validate_paths_blocks_absolute_path_outside_workspace() {
+        let result = validate_paths(
+            "echo ok > /etc/passwd",
+            PermissionMode::WorkspaceWrite,
+            Path::new("/workspace"),
+        );
+        assert!(matches!(result, ValidationResult::Block { .. }));
+    }
+
+    #[test]
+    fn validate_paths_blocks_parent_dir_escape() {
+        let result = validate_paths(
+            "echo ok > ../outside.txt",
+            PermissionMode::WorkspaceWrite,
+            Path::new("/workspace"),
+        );
+        assert!(matches!(result, ValidationResult::Block { .. }));
+    }
+
+    #[test]
+    fn validate_paths_blocks_common_write_command_outside_workspace() {
+        let result = validate_paths(
+            "tee /etc/passwd",
+            PermissionMode::WorkspaceWrite,
+            Path::new("/workspace"),
+        );
+        assert!(matches!(result, ValidationResult::Block { .. }));
+    }
 }

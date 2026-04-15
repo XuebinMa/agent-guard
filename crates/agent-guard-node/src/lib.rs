@@ -5,7 +5,8 @@ extern crate napi_derive;
 
 use agent_guard_sdk::{
     Context as RustContext, ExecuteOutcome as RustExecuteOutcome, Guard as RustGuard,
-    GuardDecision, GuardInput, Tool as RustTool, TrustLevel as RustTrustLevel,
+    GuardDecision, GuardInput, PolicyVerification as RustPolicyVerification, Tool as RustTool,
+    TrustLevel as RustTrustLevel,
 };
 use napi::bindgen_prelude::*;
 use serde::Serialize;
@@ -41,9 +42,31 @@ pub struct Decision {
     pub matched_rule: Option<String>,
     pub ask_prompt: Option<String>,
     pub policy_version: String,
+    pub policy_verification_status: String,
+    pub policy_verification_error: Option<String>,
 }
 
-fn decision_from_rust(d: GuardDecision, policy_version: String) -> Decision {
+#[napi(object)]
+#[derive(Serialize)]
+pub struct PolicyVerification {
+    pub status: String,
+    pub error: Option<String>,
+}
+
+fn policy_verification_from_rust(value: RustPolicyVerification) -> PolicyVerification {
+    PolicyVerification {
+        status: value.status_label().to_string(),
+        error: value.error,
+    }
+}
+
+fn decision_from_rust(
+    d: GuardDecision,
+    policy_version: String,
+    policy_verification: RustPolicyVerification,
+) -> Decision {
+    let verification_status = policy_verification.status_label().to_string();
+    let verification_error = policy_verification.error.clone();
     match d {
         GuardDecision::Allow => Decision {
             outcome: "allow".to_string(),
@@ -52,6 +75,8 @@ fn decision_from_rust(d: GuardDecision, policy_version: String) -> Decision {
             matched_rule: None,
             ask_prompt: None,
             policy_version,
+            policy_verification_status: verification_status,
+            policy_verification_error: verification_error,
         },
         GuardDecision::Deny { reason } => Decision {
             outcome: "deny".to_string(),
@@ -60,6 +85,8 @@ fn decision_from_rust(d: GuardDecision, policy_version: String) -> Decision {
             matched_rule: reason.matched_rule,
             ask_prompt: None,
             policy_version,
+            policy_verification_status: verification_status,
+            policy_verification_error: verification_error,
         },
         GuardDecision::AskUser { message, reason } => Decision {
             outcome: "ask_user".to_string(),
@@ -68,6 +95,8 @@ fn decision_from_rust(d: GuardDecision, policy_version: String) -> Decision {
             matched_rule: reason.matched_rule,
             ask_prompt: Some(message),
             policy_version,
+            policy_verification_status: verification_status,
+            policy_verification_error: verification_error,
         },
     }
 }
@@ -91,6 +120,8 @@ pub struct ExecuteOutcome {
     pub policy_version: String,
     pub sandbox_type: Option<String>,
     pub receipt: Option<String>, // JSON-encoded receipt
+    pub policy_verification_status: String,
+    pub policy_verification_error: Option<String>,
 }
 
 fn execute_outcome_from_rust(o: RustExecuteOutcome, sandbox_type: String) -> ExecuteOutcome {
@@ -99,6 +130,7 @@ fn execute_outcome_from_rust(o: RustExecuteOutcome, sandbox_type: String) -> Exe
             output,
             policy_version,
             receipt,
+            policy_verification,
         } => ExecuteOutcome {
             status: "executed".to_string(),
             output: Some(SandboxOutput {
@@ -110,28 +142,44 @@ fn execute_outcome_from_rust(o: RustExecuteOutcome, sandbox_type: String) -> Exe
             policy_version,
             sandbox_type: Some(sandbox_type),
             receipt: receipt.map(|r| serde_json::to_string(&r).unwrap_or_default()),
+            policy_verification_status: policy_verification.status_label().to_string(),
+            policy_verification_error: policy_verification.error,
         },
         RustExecuteOutcome::Denied {
             decision,
             policy_version,
+            policy_verification,
         } => ExecuteOutcome {
             status: "denied".to_string(),
             output: None,
-            decision: Some(decision_from_rust(decision, policy_version.clone())),
+            decision: Some(decision_from_rust(
+                decision,
+                policy_version.clone(),
+                policy_verification.clone(),
+            )),
             policy_version,
             sandbox_type: Some(sandbox_type),
             receipt: None,
+            policy_verification_status: policy_verification.status_label().to_string(),
+            policy_verification_error: policy_verification.error,
         },
         RustExecuteOutcome::AskRequired {
             decision,
             policy_version,
+            policy_verification,
         } => ExecuteOutcome {
             status: "ask_required".to_string(),
             output: None,
-            decision: Some(decision_from_rust(decision, policy_version.clone())),
+            decision: Some(decision_from_rust(
+                decision,
+                policy_version.clone(),
+                policy_verification.clone(),
+            )),
             policy_version,
             sandbox_type: Some(sandbox_type),
             receipt: None,
+            policy_verification_status: policy_verification.status_label().to_string(),
+            policy_verification_error: policy_verification.error,
         },
     }
 }
@@ -170,6 +218,28 @@ impl Guard {
         Ok(Guard { inner })
     }
 
+    #[napi(factory)]
+    pub fn from_signed_yaml(
+        yaml: String,
+        public_key_hex: String,
+        signature_hex: String,
+    ) -> Result<Guard> {
+        let inner = RustGuard::from_signed_yaml(&yaml, &public_key_hex, &signature_hex)
+            .map_err(|e| Error::new(Status::GenericFailure, format!("{e}")))?;
+        Ok(Guard { inner })
+    }
+
+    #[napi(factory)]
+    pub fn from_signed_yaml_file(
+        policy_path: String,
+        public_key_path: String,
+        signature_path: String,
+    ) -> Result<Guard> {
+        let inner = RustGuard::from_signed_yaml_file(policy_path, public_key_path, signature_path)
+            .map_err(|e| Error::new(Status::GenericFailure, format!("{e}")))?;
+        Ok(Guard { inner })
+    }
+
     /// Set the Ed25519 signing key for provenance receipts.
     /// The key must be a 32-byte hex-encoded string.
     #[napi]
@@ -202,7 +272,11 @@ impl Guard {
         let decision = self
             .inner
             .check_tool(rust_tool, normalized_payload, rust_ctx);
-        Ok(decision_from_rust(decision, self.inner.policy_version()))
+        Ok(decision_from_rust(
+            decision,
+            self.inner.policy_version(),
+            self.inner.policy_verification(),
+        ))
     }
 
     /// High-level execution method.
@@ -255,6 +329,11 @@ impl Guard {
     #[napi]
     pub fn policy_hash(&self) -> String {
         self.inner.policy_hash()
+    }
+
+    #[napi]
+    pub fn policy_verification(&self) -> PolicyVerification {
+        policy_verification_from_rust(self.inner.policy_verification())
     }
 }
 

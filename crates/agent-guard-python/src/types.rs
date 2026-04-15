@@ -3,7 +3,9 @@ use std::path::PathBuf;
 use pyo3::prelude::*;
 use serde_json::Value;
 
-use agent_guard_sdk::{Context, Guard, GuardDecision, Tool, TrustLevel};
+use agent_guard_sdk::{
+    Context, Guard, GuardDecision, PolicyVerification as RustPolicyVerification, Tool, TrustLevel,
+};
 
 use crate::error::GuardError;
 
@@ -35,6 +37,10 @@ pub struct Decision {
     pub ask_prompt: Option<String>,
     #[pyo3(get)]
     pub policy_version: String,
+    #[pyo3(get)]
+    pub policy_verification_status: String,
+    #[pyo3(get)]
+    pub policy_verification_error: Option<String>,
 }
 
 #[pymethods]
@@ -69,6 +75,12 @@ pub struct ExecuteResult {
     pub policy_version: String,
     #[pyo3(get)]
     pub receipt: Option<String>, // JSON-encoded receipt
+    #[pyo3(get)]
+    pub sandbox_type: Option<String>,
+    #[pyo3(get)]
+    pub policy_verification_status: String,
+    #[pyo3(get)]
+    pub policy_verification_error: Option<String>,
 }
 
 #[pymethods]
@@ -84,7 +96,29 @@ impl ExecuteResult {
     }
 }
 
-pub fn decision_from_rust(d: GuardDecision, policy_version: String) -> Decision {
+#[pyclass(module = "agent_guard", from_py_object)]
+#[derive(Clone)]
+pub struct PolicyVerification {
+    #[pyo3(get)]
+    pub status: String,
+    #[pyo3(get)]
+    pub error: Option<String>,
+}
+
+pub fn policy_verification_from_rust(value: RustPolicyVerification) -> PolicyVerification {
+    PolicyVerification {
+        status: value.status_label().to_string(),
+        error: value.error,
+    }
+}
+
+pub fn decision_from_rust(
+    d: GuardDecision,
+    policy_version: String,
+    policy_verification: RustPolicyVerification,
+) -> Decision {
+    let verification_status = policy_verification.status_label().to_string();
+    let verification_error = policy_verification.error.clone();
     match d {
         GuardDecision::Allow => Decision {
             outcome: "allow".to_string(),
@@ -93,6 +127,8 @@ pub fn decision_from_rust(d: GuardDecision, policy_version: String) -> Decision 
             matched_rule: None,
             ask_prompt: None,
             policy_version,
+            policy_verification_status: verification_status,
+            policy_verification_error: verification_error,
         },
         GuardDecision::Deny { reason } => Decision {
             outcome: "deny".to_string(),
@@ -101,6 +137,8 @@ pub fn decision_from_rust(d: GuardDecision, policy_version: String) -> Decision 
             matched_rule: reason.matched_rule,
             ask_prompt: None,
             policy_version,
+            policy_verification_status: verification_status,
+            policy_verification_error: verification_error,
         },
         GuardDecision::AskUser { message, reason } => Decision {
             outcome: "ask_user".to_string(),
@@ -109,6 +147,8 @@ pub fn decision_from_rust(d: GuardDecision, policy_version: String) -> Decision 
             matched_rule: reason.matched_rule,
             ask_prompt: Some(message),
             policy_version,
+            policy_verification_status: verification_status,
+            policy_verification_error: verification_error,
         },
     }
 }
@@ -177,6 +217,24 @@ impl PyGuard {
         Ok(Self { inner })
     }
 
+    #[staticmethod]
+    fn from_signed_yaml(yaml: &str, public_key_hex: &str, signature_hex: &str) -> PyResult<Self> {
+        let inner = Guard::from_signed_yaml(yaml, public_key_hex, signature_hex)
+            .map_err(|e| GuardError::new_err(format!("{e}")))?;
+        Ok(Self { inner })
+    }
+
+    #[staticmethod]
+    fn from_signed_yaml_file(
+        policy_path: &str,
+        public_key_path: &str,
+        signature_path: &str,
+    ) -> PyResult<Self> {
+        let inner = Guard::from_signed_yaml_file(policy_path, public_key_path, signature_path)
+            .map_err(|e| GuardError::new_err(format!("{e}")))?;
+        Ok(Self { inner })
+    }
+
     /// Set the Ed25519 signing key for provenance receipts.
     /// The key must be a 32-byte hex-encoded string.
     fn set_signing_key(&self, hex_key: &str) -> PyResult<()> {
@@ -223,7 +281,11 @@ impl PyGuard {
             working_directory: working_directory.map(PathBuf::from),
         };
         let decision = self.inner.check_tool(tool, &payload, ctx);
-        Ok(decision_from_rust(decision, self.inner.policy_version()))
+        Ok(decision_from_rust(
+            decision,
+            self.inner.policy_version(),
+            self.inner.policy_verification(),
+        ))
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -273,6 +335,7 @@ impl PyGuard {
                 output,
                 policy_version,
                 receipt,
+                policy_verification,
             } => Ok(ExecuteResult {
                 status: "executed".to_string(),
                 output: Some(SandboxOutput {
@@ -283,26 +346,45 @@ impl PyGuard {
                 decision: None,
                 policy_version,
                 receipt: receipt.map(|r| serde_json::to_string(&r).unwrap_or_default()),
+                sandbox_type: Some(Guard::default_sandbox().sandbox_type().to_string()),
+                policy_verification_status: policy_verification.status_label().to_string(),
+                policy_verification_error: policy_verification.error,
             }),
             agent_guard_sdk::ExecuteOutcome::Denied {
                 decision,
                 policy_version,
+                policy_verification,
             } => Ok(ExecuteResult {
                 status: "denied".to_string(),
                 output: None,
-                decision: Some(decision_from_rust(decision, policy_version.clone())),
+                decision: Some(decision_from_rust(
+                    decision,
+                    policy_version.clone(),
+                    policy_verification.clone(),
+                )),
                 policy_version,
                 receipt: None,
+                sandbox_type: None,
+                policy_verification_status: policy_verification.status_label().to_string(),
+                policy_verification_error: policy_verification.error,
             }),
             agent_guard_sdk::ExecuteOutcome::AskRequired {
                 decision,
                 policy_version,
+                policy_verification,
             } => Ok(ExecuteResult {
                 status: "ask_required".to_string(),
                 output: None,
-                decision: Some(decision_from_rust(decision, policy_version.clone())),
+                decision: Some(decision_from_rust(
+                    decision,
+                    policy_version.clone(),
+                    policy_verification.clone(),
+                )),
                 policy_version,
                 receipt: None,
+                sandbox_type: None,
+                policy_verification_status: policy_verification.status_label().to_string(),
+                policy_verification_error: policy_verification.error,
             }),
         }
     }
@@ -319,6 +401,10 @@ impl PyGuard {
 
     fn policy_hash(&self) -> String {
         self.inner.policy_hash()
+    }
+
+    fn policy_verification(&self) -> PolicyVerification {
+        policy_verification_from_rust(self.inner.policy_verification())
     }
 
     fn __repr__(&self) -> String {

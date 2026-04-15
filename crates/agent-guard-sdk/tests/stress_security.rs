@@ -102,6 +102,7 @@ anomaly:
             if let ExecuteOutcome::Denied {
                 decision,
                 policy_version,
+                ..
             } = res
             {
                 if let GuardDecision::Deny { reason, .. } = decision {

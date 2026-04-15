@@ -1033,6 +1033,7 @@ dependencies = [
 name = "guard-verify"
 version = "0.2.0-rc1"
 dependencies = [
+ "agent-guard-sdk",
  "chrono",
  "clap",
  "ed25519-dalek",

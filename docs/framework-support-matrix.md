@@ -33,8 +33,8 @@ This document describes framework and binding readiness.
 | Node OpenAI-style adapter | ✅ Supported | Real runtime validation with `@openai/agents` | OpenAI Agents style handlers | `wrapOpenAITool()` available. |
 | Node ChatGPT Actions pattern | ✅ Example Available | Local end-to-end example server verified | Custom GPT / Actions prototypes | Uses an HTTP service behind GPT Actions. |
 | Python binding | ✅ Supported | Python tests and demos | Python hosts and wrappers | Build-from-source flow. |
-| Python LangChain adapter | 🟡 Prototype | Repository demos and tests | LangChain Python experiments | Usable, but documented as prototype-level integration. |
-| Python OpenAI Agents adapter | ⚪ Not first-class | No official dedicated adapter surface yet | Custom wrapper work | Python package mentions OpenAI Agents context, but LangChain is the primary documented path today. |
+| Python LangChain adapter | 🟡 Beta | Repository wrappers and tests | LangChain Python experiments | Official wrapper surface is present, but not yet validated against a real framework version matrix in CI. |
+| Python OpenAI-style adapter | 🟡 Beta | Repository wrappers and tests | OpenAI-style handler integration in Python apps | Official wrapper surface is available, but runtime validation is currently wrapper-level rather than package-level. |
 | AutoGen adapter | ⚪ Not shipped | No official adapter | Future ecosystem target | Still part of roadmap, not current official integration surface. |
 
 ---
@@ -123,13 +123,14 @@ Package:
 Current state:
 
 - Python binding available
-- LangChain-oriented onboarding available
+- LangChain and OpenAI-style wrappers available
 - tests and examples available
-- documented as an integration prototype for LangChain compatibility
+- best described as beta rather than parity-complete
 
-Primary documented path:
+Primary documented paths:
 
 - `wrap_langchain_tool()`
+- `wrap_openai_tool()`
 
 Best current fit:
 
@@ -139,7 +140,7 @@ Best current fit:
 
 Important caveat:
 
-The Python README explicitly describes the LangChain adapter as an integration prototype. That is a usable state, but it should not be marketed at the same maturity level as the current Node adapter layer.
+The Python adapter layer is now official, but still below the current Node surface in maturity. The main missing step is real framework-package validation in CI, not basic wrapper availability.
 
 ---
 
@@ -202,7 +203,7 @@ Reference:
 When describing support publicly, use wording like:
 
 - “Node adapters for LangChain-style tools and OpenAI-style handlers are available and validated against real framework packages.”
-- “Python LangChain integration is available as a prototype path.”
+- “Python LangChain and OpenAI-style wrappers are available as beta paths.”
 - “AutoGen remains a roadmap item.”
 
 Avoid wording like:

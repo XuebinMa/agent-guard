@@ -28,6 +28,7 @@ If you are arriving from GitHub or social posts, these are the two best entry po
 - **I want a first-wave external channel post pack** → [External Channel Post Pack](guides/adoption/external-channel-post-pack.md)
 - **I want ready-made replies for new users** → [FAQ For New Users](guides/adoption/faq-for-new-users.md)
 - **I want to connect ChatGPT Actions to agent-guard** → [ChatGPT Actions Integration](guides/getting-started/chatgpt-actions.md)
+- **I want policy signing, receipts, and doctor reports** → [Trust Tooling](guides/getting-started/trust-tooling.md)
 - **I want to deploy safely** → [Deployment Guide](guides/operations/deployment-guide.md)
 - **I want to audit security posture** → [Threat Model](threat-model.md)
 - **I want to know what frameworks are actually supported** → [Framework Support Matrix](framework-support-matrix.md)
@@ -45,6 +46,7 @@ For developers integrating `agent-guard` into their agent frameworks for the fir
 - ⚖️ **[Check vs Enforce](guides/getting-started/check-vs-enforce.md)**: How to choose the right adapter mode.
 - 🎬 **[Attack Demo Playbook](guides/getting-started/attack-demo-playbook.md)**: A short, repeatable “before vs after” demo flow.
 - 🤖 **[ChatGPT Actions Integration](guides/getting-started/chatgpt-actions.md)**: How to place agent-guard behind a Custom GPT Action.
+- 🔏 **[Trust Tooling](guides/getting-started/trust-tooling.md)**: Policy signing, receipt verification, and doctor reports.
 - 🚀 **[Migration Guide](guides/getting-started/migration-guide.md)**: Moving from No-op to Hardened execution.
 
 ---

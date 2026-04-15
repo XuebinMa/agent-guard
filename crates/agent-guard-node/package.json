@@ -15,6 +15,7 @@
     "build:debug": "napi build --platform",
     "demo:attack": "node examples/attack-demo/app.js",
     "demo:chatgpt-actions": "node examples/chatgpt-actions/server.js",
+    "demo:flow": "node demos/demo_multi_tool_flow.js",
     "demo:proof": "node examples/attack-demo/app.js",
     "demo:quickstart": "node examples/quickstart/app.js",
     "prepublishOnly": "napi prepublish",

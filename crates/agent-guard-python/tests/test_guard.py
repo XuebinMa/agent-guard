@@ -75,6 +75,7 @@ def test_allow_safe_bash(guard):
     d = guard.check("bash", "ls -la", trust_level="trusted")
     assert d.is_allow()
     assert d.outcome == "allow"
+    assert d.policy_verification_status == "unsigned"
     assert d.code is None
     assert d.message is None
     assert d.matched_rule is None
@@ -186,3 +187,21 @@ def test_decision_repr_contains_outcome(guard):
     d = guard.check("bash", "ls", trust_level="trusted")
     r = repr(d)
     assert "allow" in r
+
+
+def test_policy_verification_accessor_reports_unsigned(guard):
+    verification = guard.policy_verification()
+    assert verification.status == "unsigned"
+    assert verification.error is None
+
+
+def test_signed_guard_reports_invalid_policy_in_check_mode():
+    guard = agent_guard.Guard.from_signed_yaml(
+        POLICY,
+        "0000000000000000000000000000000000000000000000000000000000000001",
+        "ff" * 64,
+    )
+    decision = guard.check("bash", "ls -la", trust_level="trusted")
+    assert decision.outcome == "allow"
+    assert decision.policy_verification_status == "invalid"
+    assert decision.policy_verification_error is not None

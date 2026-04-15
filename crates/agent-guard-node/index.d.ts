@@ -15,6 +15,12 @@ export interface Decision {
   matchedRule?: string
   askPrompt?: string
   policyVersion: string
+  policyVerificationStatus: string
+  policyVerificationError?: string
+}
+export interface PolicyVerification {
+  status: string
+  error?: string
 }
 export interface SandboxOutput {
   exitCode: number
@@ -28,6 +34,8 @@ export interface ExecuteOutcome {
   policyVersion: string
   sandboxType?: string
   receipt?: string
+  policyVerificationStatus: string
+  policyVerificationError?: string
 }
 export interface Context {
   trustLevel?: TrustLevel
@@ -51,6 +59,8 @@ export declare function verifyReceipt(receiptJson: string, publicKeyHex: string)
 export declare class Guard {
   static fromYaml(yaml: string): Guard
   static fromYamlFile(path: string): Guard
+  static fromSignedYaml(yaml: string, publicKeyHex: string, signatureHex: string): Guard
+  static fromSignedYamlFile(policyPath: string, publicKeyPath: string, signaturePath: string): Guard
   /**
    * Set the Ed25519 signing key for provenance receipts.
    * The key must be a 32-byte hex-encoded string.
@@ -66,4 +76,5 @@ export declare class Guard {
   reloadFromYaml(yaml: string): void
   policyVersion(): string
   policyHash(): string
+  policyVerification(): PolicyVerification
 }

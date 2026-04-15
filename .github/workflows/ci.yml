@@ -127,6 +127,9 @@ jobs:
     name: Node Binding & Framework Tests
     runs-on: ubuntu-latest
     needs: rust-test
+    strategy:
+      matrix:
+        node-version: ['20', '22']
     steps:
       - uses: actions/checkout@v4
       - name: Install Linux sandbox deps
@@ -136,7 +139,7 @@ jobs:
       - name: Set up Node
         uses: actions/setup-node@v4
         with:
-          node-version: '22'
+          node-version: ${{ matrix.node-version }}
           cache: 'npm'
           cache-dependency-path: crates/agent-guard-node/package-lock.json
       - name: Cache Rust
@@ -147,3 +150,7 @@ jobs:
         run: npm run build:debug --prefix crates/agent-guard-node
       - name: Run Node tests
         run: npm test --prefix crates/agent-guard-node
+      - name: Run demo smoke checks
+        run: |
+          npm run demo:quickstart --prefix crates/agent-guard-node
+          npm run demo:flow --prefix crates/agent-guard-node

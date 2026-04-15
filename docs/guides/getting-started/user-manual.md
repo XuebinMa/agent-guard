@@ -10,7 +10,7 @@
 
 ---
 
-Welcome to the official user manual for `agent-guard`. This guide will help you integrate, configure, and operate the ultimate security layer for your AI Agents.
+Welcome to the official user manual for `agent-guard`. This guide will help you integrate, configure, and operate the security boundary around your AI agents.
 
 ---
 
@@ -94,11 +94,39 @@ let result = guard.execute_default(&GuardInput {
 })?;
 ```
 
+### Current Execution Boundary
+
+`agent-guard` supports two different enforcement layers today:
+
+- **Policy gate for all supported tools**: `check()` and the adapter layers evaluate structured payloads against policy.
+- **Sandboxed execution for shell / Bash**: `execute()` and adapter `enforce` mode are strongest on shell execution paths.
+
+For non-shell tools such as `read_file`, `write_file`, `http_request`, and custom tool IDs, the current primary boundary is still `check` + policy evaluation unless your application provides an additional runtime boundary.
+
+### Payload Contract
+
+Use structured payloads consistently:
+
+- `bash`: `{"command":"..."}`
+- `read_file`: `{"path":"..."}`
+- `write_file`: `{"path":"...","content":"..."}`
+- `http_request`: `{"url":"..."}`
+- custom tools: wrapper layers should normalize application input into a stable JSON object rather than relying on ad hoc string parsing
+
+If you use the Node or Python wrappers, prefer letting the adapter normalize payload shape instead of building a separate string-munging layer in your app.
+
 ---
 
 ## 4. 📦 OS Sandboxes (The Final Barrier)
 
 `agent-guard` automatically detects and selects the best sandbox for your platform. Run `cargo run --example demo_transparency` to verify.
+
+Important:
+
+- a native backend can be compiled in but still be unavailable on the current host
+- in those cases the SDK may explicitly fall back to `NoopSandbox`
+- that fallback keeps the logic-layer policy gate, but it is **not** equivalent to OS-level isolation
+- use `cargo run -p guard-verify -- doctor --format text` or the HTML report to confirm the real host boundary
 
 ---
 

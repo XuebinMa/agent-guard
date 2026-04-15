@@ -1,9 +1,12 @@
-use clap::{Parser, Subcommand};
-use ed25519_dalek::{Signature, SigningKey, Verifier, VerifyingKey};
-use serde::{Deserialize, Serialize};
-use std::path::PathBuf;
+use agent_guard_sdk::{
+    collect_doctor_report, load_policy_signature_file, load_public_key_file, parse_hex_signing_key,
+    render_doctor_html, render_doctor_text, sign_policy, verify_policy, ExecutionReceipt,
+};
+use clap::{Parser, Subcommand, ValueEnum};
+use ed25519_dalek::SigningKey;
+use std::path::{Path, PathBuf};
 
-/// CLI tool to verify agent-guard execution receipts.
+/// CLI tool to verify agent-guard execution receipts and trust artifacts.
 #[derive(Parser)]
 #[command(name = "guard-verify", version, about)]
 struct Cli {
@@ -34,49 +37,46 @@ enum Commands {
         #[arg(short, long)]
         output: Option<PathBuf>,
     },
+    /// Sign a policy YAML file with a detached Ed25519 signature.
+    SignPolicy {
+        /// Path to the policy YAML file.
+        #[arg(short, long)]
+        policy: PathBuf,
+        /// Ed25519 private key: 64 hex chars, or path to a file containing hex.
+        #[arg(short = 'k', long)]
+        private_key: String,
+        /// Write the detached signature (hex) to this file. If omitted, prints to stdout.
+        #[arg(short, long)]
+        output: Option<PathBuf>,
+    },
+    /// Verify a detached policy signature.
+    VerifyPolicy {
+        /// Path to the policy YAML file.
+        #[arg(short, long)]
+        policy: PathBuf,
+        /// Detached signature hex, or path to a file containing it.
+        #[arg(short, long)]
+        signature: String,
+        /// Ed25519 public key: 64 hex chars, or path to a file containing it.
+        #[arg(short, long)]
+        public_key: String,
+    },
+    /// Generate a CapabilityDoctor report in text, JSON, or HTML.
+    Doctor {
+        /// Output format for the report.
+        #[arg(short, long, default_value = "text")]
+        format: DoctorFormat,
+        /// Optional output path. When omitted, writes to stdout.
+        #[arg(short, long)]
+        output: Option<PathBuf>,
+    },
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct ExecutionReceipt {
-    pub receipt_version: String,
-    pub agent_id: String,
-    pub tool: String,
-    pub policy_version: String,
-    pub sandbox_type: String,
-    pub decision: String,
-    pub command_hash: String,
-    pub timestamp: u64,
-    pub signature: String,
-}
-
-impl ExecutionReceipt {
-    fn to_signing_payload(&self) -> String {
-        format!(
-            "{}:{}:{}:{}:{}:{}:{}:{}",
-            self.receipt_version,
-            self.agent_id,
-            self.tool,
-            self.policy_version,
-            self.sandbox_type,
-            self.decision,
-            self.command_hash,
-            self.timestamp
-        )
-    }
-
-    fn verify(&self, public_key_bytes: &[u8; 32]) -> bool {
-        let Ok(verifying_key) = VerifyingKey::from_bytes(public_key_bytes) else {
-            return false;
-        };
-        let Ok(signature_bytes) = hex::decode(&self.signature) else {
-            return false;
-        };
-        let Ok(signature) = Signature::from_slice(&signature_bytes) else {
-            return false;
-        };
-        let message = self.to_signing_payload();
-        verifying_key.verify(message.as_bytes(), &signature).is_ok()
-    }
+#[derive(Clone, Debug, ValueEnum)]
+enum DoctorFormat {
+    Text,
+    Json,
+    Html,
 }
 
 fn load_receipt(path: &PathBuf) -> Result<ExecutionReceipt, String> {
@@ -86,12 +86,10 @@ fn load_receipt(path: &PathBuf) -> Result<ExecutionReceipt, String> {
 }
 
 fn load_public_key(input: &str) -> Result<[u8; 32], String> {
-    // Try as a file path first
-    let hex_str = if std::path::Path::new(input).exists() {
-        std::fs::read_to_string(input)
-            .map_err(|e| format!("Failed to read public key file '{}': {}", input, e))?
+    let hex_str = if Path::new(input).exists() {
+        load_public_key_file(input)?
     } else {
-        input.to_string()
+        input.trim().to_string()
     };
 
     let bytes =
@@ -104,21 +102,26 @@ fn load_public_key(input: &str) -> Result<[u8; 32], String> {
     })
 }
 
+fn load_private_key(input: &str) -> Result<SigningKey, String> {
+    let hex_str = if Path::new(input).exists() {
+        std::fs::read_to_string(input)
+            .map_err(|e| format!("Failed to read private key file '{}': {}", input, e))?
+    } else {
+        input.to_string()
+    };
+
+    parse_hex_signing_key(hex_str.trim())
+}
+
 fn cmd_verify(receipt_path: &PathBuf, public_key_input: &str) {
     let receipt = match load_receipt(receipt_path) {
         Ok(r) => r,
-        Err(e) => {
-            eprintln!("ERROR: {}", e);
-            std::process::exit(1);
-        }
+        Err(e) => exit_with_error(&e),
     };
 
     let public_key = match load_public_key(public_key_input) {
         Ok(k) => k,
-        Err(e) => {
-            eprintln!("ERROR: {}", e);
-            std::process::exit(1);
-        }
+        Err(e) => exit_with_error(&e),
     };
 
     println!("Receipt: {}", receipt_path.display());
@@ -141,10 +144,7 @@ fn cmd_verify(receipt_path: &PathBuf, public_key_input: &str) {
 fn cmd_inspect(receipt_path: &PathBuf) {
     let receipt = match load_receipt(receipt_path) {
         Ok(r) => r,
-        Err(e) => {
-            eprintln!("ERROR: {}", e);
-            std::process::exit(1);
-        }
+        Err(e) => exit_with_error(&e),
     };
 
     println!("--- Execution Receipt ---");
@@ -176,12 +176,11 @@ fn cmd_keygen(output: &Option<PathBuf>) {
 
     if let Some(path) = output {
         std::fs::write(path, &private_hex).unwrap_or_else(|e| {
-            eprintln!(
-                "ERROR: Failed to write private key to '{}': {}",
+            exit_with_error(&format!(
+                "Failed to write private key to '{}': {}",
                 path.display(),
                 e
-            );
-            std::process::exit(1);
+            ))
         });
         println!("Private key written to: {}", path.display());
     } else {
@@ -201,6 +200,95 @@ fn cmd_keygen(output: &Option<PathBuf>) {
         "  2. Verify receipts:  guard-verify verify --receipt <file> --public-key {}",
         public_hex
     );
+    println!(
+        "  3. Sign policy:      guard-verify sign-policy --policy policy.yaml --private-key {}",
+        output
+            .as_ref()
+            .map(|p| p.display().to_string())
+            .unwrap_or_else(|| "<key-file>".to_string())
+    );
+}
+
+fn cmd_sign_policy(policy_path: &PathBuf, private_key_input: &str, output: &Option<PathBuf>) {
+    let yaml = std::fs::read_to_string(policy_path).unwrap_or_else(|e| {
+        exit_with_error(&format!(
+            "Failed to read policy file '{}': {}",
+            policy_path.display(),
+            e
+        ))
+    });
+    let signing_key = load_private_key(private_key_input).unwrap_or_else(|e| exit_with_error(&e));
+    let signature = sign_policy(&yaml, &signing_key);
+
+    if let Some(path) = output {
+        std::fs::write(path, &signature).unwrap_or_else(|e| {
+            exit_with_error(&format!(
+                "Failed to write signature to '{}': {}",
+                path.display(),
+                e
+            ))
+        });
+        println!("Policy signature written to: {}", path.display());
+    } else {
+        println!("{}", signature);
+    }
+}
+
+fn cmd_verify_policy(policy_path: &PathBuf, signature_input: &str, public_key_input: &str) {
+    let yaml = std::fs::read_to_string(policy_path).unwrap_or_else(|e| {
+        exit_with_error(&format!(
+            "Failed to read policy file '{}': {}",
+            policy_path.display(),
+            e
+        ))
+    });
+    let signature_hex = if Path::new(signature_input).exists() {
+        load_policy_signature_file(signature_input).unwrap_or_else(|e| exit_with_error(&e))
+    } else {
+        signature_input.trim().to_string()
+    };
+    let public_key_hex = if Path::new(public_key_input).exists() {
+        load_public_key_file(public_key_input).unwrap_or_else(|e| exit_with_error(&e))
+    } else {
+        public_key_input.trim().to_string()
+    };
+
+    let verification = verify_policy(&yaml, &public_key_hex, &signature_hex);
+    println!("Policy: {}", policy_path.display());
+    println!("Status: {}", verification.status_label());
+    if let Some(error) = &verification.error {
+        println!("Error:  {}", error);
+    }
+    if verification.is_verified() {
+        println!("RESULT: PASS - Policy signature is valid.");
+    } else {
+        println!("RESULT: FAIL - Policy signature verification failed.");
+        std::process::exit(1);
+    }
+}
+
+fn cmd_doctor(format: DoctorFormat, output: &Option<PathBuf>) {
+    let report = collect_doctor_report();
+    let rendered = match format {
+        DoctorFormat::Text => render_doctor_text(&report),
+        DoctorFormat::Json => serde_json::to_string_pretty(&report).unwrap_or_else(|e| {
+            exit_with_error(&format!("Failed to serialize doctor report: {e}"))
+        }),
+        DoctorFormat::Html => render_doctor_html(&report),
+    };
+
+    if let Some(path) = output {
+        std::fs::write(path, rendered).unwrap_or_else(|e| {
+            exit_with_error(&format!(
+                "Failed to write doctor report to '{}': {}",
+                path.display(),
+                e
+            ))
+        });
+        println!("Doctor report written to: {}", path.display());
+    } else {
+        println!("{}", rendered);
+    }
 }
 
 fn format_timestamp(ts: u64) -> String {
@@ -227,6 +315,11 @@ fn signature_preview(signature: &str) -> String {
     )
 }
 
+fn exit_with_error(message: &str) -> ! {
+    eprintln!("ERROR: {}", message);
+    std::process::exit(1);
+}
+
 fn main() {
     let cli = Cli::parse();
 
@@ -237,12 +330,26 @@ fn main() {
         } => cmd_verify(receipt, public_key),
         Commands::Inspect { receipt } => cmd_inspect(receipt),
         Commands::Keygen { output } => cmd_keygen(output),
+        Commands::SignPolicy {
+            policy,
+            private_key,
+            output,
+        } => cmd_sign_policy(policy, private_key, output),
+        Commands::VerifyPolicy {
+            policy,
+            signature,
+            public_key,
+        } => cmd_verify_policy(policy, signature, public_key),
+        Commands::Doctor { format, output } => cmd_doctor(format.clone(), output),
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::signature_preview;
+    use super::{load_private_key, signature_preview};
+    use agent_guard_sdk::{sign_policy, verify_policy};
+    use ed25519_dalek::SigningKey;
+    use rand::rngs::OsRng;
 
     #[test]
     fn signature_preview_handles_empty_string() {
@@ -261,5 +368,26 @@ mod tests {
             signature_preview(sig),
             "1234567890abcdef...0011223344556677"
         );
+    }
+
+    #[test]
+    fn load_private_key_accepts_inline_hex() {
+        let signing_key = SigningKey::generate(&mut OsRng);
+        let private_key_hex = hex::encode(signing_key.to_bytes());
+        let parsed = load_private_key(&private_key_hex).expect("key should parse");
+        assert_eq!(parsed.to_bytes(), signing_key.to_bytes());
+    }
+
+    #[test]
+    fn sign_and_verify_policy_round_trip() {
+        let signing_key = SigningKey::generate(&mut OsRng);
+        let policy = "version: 1\ndefault_mode: workspace_write\n";
+        let signature = sign_policy(policy, &signing_key);
+        let verification = verify_policy(
+            policy,
+            &hex::encode(signing_key.verifying_key().to_bytes()),
+            &signature,
+        );
+        assert!(verification.is_verified());
     }
 }

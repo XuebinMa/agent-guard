@@ -6,9 +6,9 @@ This package provides Python bindings for `agent-guard`, enabling you to interce
 
 ---
 
-## 🚀 Quick Start (LangChain)
+## 🚀 Quick Start (Python Adapters)
 
-> **Note**: The LangChain adapter is currently an **Integration Prototype**. It is optimized for shell-like tools and is being validated for broad framework compatibility.
+> **Status**: The Python wrapper layer is now a **beta adapter surface** with official LangChain and OpenAI-style handler wrappers. Node remains the most mature integration path in the repository, but Python no longer stops at a single prototype wrapper.
 
 Integrate `agent-guard` into your existing LangChain tools in just 3 lines of code:
 
@@ -26,14 +26,37 @@ secured_tool = wrap_langchain_tool(guard, bash_tool, agent_id="researcher")
 secured_tool.run("ls -la")
 ```
 
+OpenAI-style handler wrapping is also available:
+
+```python
+from agent_guard import Guard, wrap_openai_tool, AgentGuardDeniedError
+
+guard = Guard.from_yaml_file("policy.yaml")
+
+guarded_handler = wrap_openai_tool(
+    guard,
+    lambda input_data: {"ok": True, "query": input_data["query"]},
+    tool="web_search",
+    mode="check",
+    trust_level="trusted",
+)
+
+try:
+    print(guarded_handler({"query": "agent-guard"}))
+except AgentGuardDeniedError as error:
+    print("blocked", error.code)
+```
+
 ---
 
 ## ✨ Features
 
 - 🛡️ **OS-Level Isolation**: Seamless access to Linux Seccomp, Windows Low-IL, and macOS Seatbelt sandboxes.
 - 📜 **Signed Receipts**: Optional cryptographic proof of execution (requires signing key).
+- 🔏 **Signed Policy Loading**: Optional detached-signature verification for `policy.yaml`.
 - 🔒 **Deny Fuse**: Automatically locks agents that repeatedly violate security rules.
 - 📊 **Real-time Auditing**: Forensic JSONL logs and metrics integration.
+- ⚠️ **Typed Adapter Errors**: Distinct deny, ask-required, and execution failure exceptions.
 
 ---
 

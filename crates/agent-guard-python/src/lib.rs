@@ -4,7 +4,7 @@ mod types;
 use pyo3::prelude::*;
 
 use error::GuardError;
-use types::{Decision, ExecuteResult, PyGuard, SandboxOutput};
+use types::{Decision, ExecuteResult, PolicyVerification, PyGuard, SandboxOutput};
 
 /// agent-guard Python binding.
 ///
@@ -35,6 +35,7 @@ fn _agent_guard(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<PyGuard>()?;
     m.add_class::<Decision>()?;
     m.add_class::<ExecuteResult>()?;
+    m.add_class::<PolicyVerification>()?;
     m.add_class::<SandboxOutput>()?;
     m.add("GuardError", m.py().get_type::<GuardError>())?;
     m.add("__version__", env!("CARGO_PKG_VERSION"))?;

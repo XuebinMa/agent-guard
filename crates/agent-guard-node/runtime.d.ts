@@ -9,6 +9,7 @@ export type {
   Decision,
   ExecuteOutcome,
   ExecutionReceipt,
+  PolicyVerification,
   SandboxOutput,
 } from './index'
 

@@ -7,7 +7,7 @@
 [![Focus](https://img.shields.io/badge/Focus-Ecosystem%20%26%20Trust-green.svg)]()
 [![License](https://img.shields.io/badge/License-MIT-yellow.svg)]()
 
-`agent-guard` is for teams building AI agents that can call tools, especially shell-like or other high-risk tools. Instead of relying on prompts like “please be safe,” it checks each tool call against policy and can execute it inside an OS sandbox.
+`agent-guard` is for teams building AI agents that can call tools, especially shell-like or other high-risk tools. Instead of relying on prompts like “please be safe,” it checks each tool call against policy and can execute the highest-risk shell paths inside an OS sandbox.
 
 If you are building:
 
@@ -72,7 +72,7 @@ With `agent-guard`:
 
 - every tool call hits a policy gate first
 - risky commands can be denied or escalated before execution
-- execution can run inside an OS-level sandbox with auditable outcomes
+- shell execution paths can run inside an OS-level sandbox with auditable outcomes
 
 ---
 
@@ -126,9 +126,16 @@ If you want the shortest path to “does this actually stop risky tool calls?”
 
 - **Protect shell and high-risk tools**: Put policy checks in front of the most dangerous execution paths first.
 - **Integrate without rewriting your app**: Wrap LangChain-style tools or OpenAI-style handlers at the tool boundary.
-- **Move from `check` to `enforce` gradually**: Start with authorization-only gating, then enforce sandboxed execution for sensitive tools.
+- **Move from `check` to `enforce` gradually**: Start with authorization-only gating, then enforce sandboxed execution for shell-sensitive tools first.
 - **Keep proof, not just logs**: Generate signed receipts and auditable events for compliance-sensitive environments.
 - **See the real host boundary**: Use transparency and doctor tooling to understand what your machine can actually enforce.
+- **Verify trust artifacts end-to-end**: Sign policies, verify receipts, and export doctor reports in text, JSON, or HTML.
+
+Current boundary note:
+
+- `enforce` is strongest today on shell / Bash execution paths
+- non-shell tools primarily use `check` + policy enforcement unless your host runtime adds its own execution boundary
+- if the selected backend falls back to `NoopSandbox`, you still have policy checks, but you do not have equivalent OS isolation
 
 ---
 
@@ -148,7 +155,7 @@ That is especially useful when:
 ## Framework Entry Points
 
 - **Node**: high-level adapter layer for LangChain-style tools and OpenAI-style handlers, with real runtime validation against `@langchain/core` and `@openai/agents`
-- **Python**: LangChain-oriented binding and examples
+- **Python**: LangChain and OpenAI-style wrapper layer, with shell enforcement still centered on the Bash execution path
 - **Rust SDK**: direct integration path for host applications and custom runtimes
 
 ---
@@ -191,6 +198,7 @@ Ready to try or integrate it? Start with the path that matches your goal:
 - 🏗️ **[Architecture & Vision](docs/architecture-and-vision.md)**: long-term roadmap and product direction
 - 🧭 **[Framework Support Matrix](docs/framework-support-matrix.md)**: what is supported today across Rust, Node, Python, and framework adapters
 - 🗺️ **[Capability Matrix](docs/capability-parity.md)**: platform-specific protection boundaries
+- 🔏 **[Trust Tooling](docs/guides/getting-started/trust-tooling.md)**: policy signing, receipt verification, and doctor reports
 - 📚 **[Documentation Hub](docs/README.md)**: full docs map
 - 📈 **[Growth & Adoption Plan](docs/growth-and-adoption-plan.md)**: current go-to-market and adoption execution plan
 

@@ -2,8 +2,8 @@ use std::path::Path;
 use std::sync::Arc;
 
 use agent_guard_core::{
-    AuditConfig, AuditEvent, Context, DecisionCode, GuardDecision, GuardInput, PolicyEngine,
-    PolicyMode, ReloadEvent, Tool,
+    AuditConfig, AuditEvent, Context, DecisionCode, DecisionReason, GuardDecision, GuardInput,
+    PolicyEngine, PolicyMode, ReloadEvent, Tool,
 };
 use agent_guard_sandbox::{Sandbox, SandboxContext, SandboxError, SandboxOutput};
 use agent_guard_validators::bash::{validate_bash_command, PermissionMode, ValidationResult};
@@ -12,6 +12,10 @@ use serde::Serialize;
 use thiserror::Error;
 use uuid::Uuid;
 
+use crate::policy_signing::{
+    load_policy_signature_file, load_public_key_file, parse_hex_signing_key, verify_policy,
+    PolicyVerification,
+};
 use crate::siem::SiemExporter;
 
 // ── GuardInitError ────────────────────────────────────────────────────────────
@@ -53,6 +57,7 @@ struct GuardState {
     siem_exporter: Arc<SiemExporter>,
     anomaly_detector: Arc<crate::anomaly::AnomalyDetector>,
     signing_key: Option<ed25519_dalek::SigningKey>,
+    policy_verification: PolicyVerification,
 }
 
 impl std::fmt::Debug for Guard {
@@ -69,7 +74,7 @@ impl std::fmt::Debug for Guard {
 impl Guard {
     /// Create a Guard from an already-parsed PolicyEngine.
     pub fn new(engine: PolicyEngine) -> Result<Self, GuardInitError> {
-        let state = GuardState::new(Arc::new(engine))?;
+        let state = GuardState::new(Arc::new(engine), PolicyVerification::unsigned())?;
         Ok(Self {
             state: ArcSwap::from_pointee(state),
         })
@@ -83,6 +88,41 @@ impl Guard {
     /// Construct a Guard from a YAML file.
     pub fn from_yaml_file(path: impl AsRef<std::path::Path>) -> Result<Self, GuardInitError> {
         Self::new(PolicyEngine::from_yaml_file(path)?)
+    }
+
+    /// Construct a Guard from a YAML string and detached Ed25519 signature.
+    pub fn from_signed_yaml(
+        yaml: &str,
+        public_key_hex: &str,
+        signature_hex: &str,
+    ) -> Result<Self, GuardInitError> {
+        let engine = PolicyEngine::from_yaml_str(yaml)?;
+        Self::new_with_verification(engine, verify_policy(yaml, public_key_hex, signature_hex))
+    }
+
+    /// Construct a Guard from a YAML file and detached Ed25519 signature file.
+    pub fn from_signed_yaml_file(
+        policy_path: impl AsRef<Path>,
+        public_key_path: impl AsRef<Path>,
+        signature_path: impl AsRef<Path>,
+    ) -> Result<Self, GuardInitError> {
+        let yaml = std::fs::read_to_string(policy_path)
+            .map_err(|error| GuardInitError::SigningKeyLoad(error.to_string()))?;
+        let public_key_hex =
+            load_public_key_file(public_key_path).map_err(GuardInitError::SigningKeyLoad)?;
+        let signature_hex =
+            load_policy_signature_file(signature_path).map_err(GuardInitError::SigningKeyLoad)?;
+        Self::from_signed_yaml(&yaml, &public_key_hex, &signature_hex)
+    }
+
+    fn new_with_verification(
+        engine: PolicyEngine,
+        policy_verification: PolicyVerification,
+    ) -> Result<Self, GuardInitError> {
+        let state = GuardState::new(Arc::new(engine), policy_verification)?;
+        Ok(Self {
+            state: ArcSwap::from_pointee(state),
+        })
     }
 
     /// Set the Ed25519 signing key for provenance receipts.
@@ -107,18 +147,26 @@ impl Guard {
     pub fn load_signing_key(&self, path: impl AsRef<Path>) -> Result<(), GuardInitError> {
         let hex_str = std::fs::read_to_string(path)
             .map_err(|e| GuardInitError::SigningKeyLoad(e.to_string()))?;
-        let key = parse_hex_signing_key(hex_str.trim())?;
+        let key = parse_hex_signing_key(hex_str.trim()).map_err(GuardInitError::SigningKeyLoad)?;
         self.with_signing_key(key);
         Ok(())
     }
 
     /// Atomically reload the policy engine from a new instance.
     pub fn reload_engine(&self, engine: PolicyEngine) -> Result<(), GuardInitError> {
+        self.reload_engine_with_verification(engine, PolicyVerification::unsigned())
+    }
+
+    pub fn reload_engine_with_verification(
+        &self,
+        engine: PolicyEngine,
+        policy_verification: PolicyVerification,
+    ) -> Result<(), GuardInitError> {
         let old_state = self.state.load();
         let old_version = old_state.engine.version().to_string();
         let new_version = engine.version().to_string();
 
-        let mut new_state = GuardState::new(Arc::new(engine))?;
+        let mut new_state = GuardState::new(Arc::new(engine), policy_verification)?;
         new_state.anomaly_detector = old_state.anomaly_detector.clone();
         new_state.signing_key = old_state.signing_key.clone();
         self.state.store(Arc::new(new_state));
@@ -144,6 +192,43 @@ impl Guard {
         }
     }
 
+    pub fn reload_from_signed_yaml(
+        &self,
+        yaml: &str,
+        public_key_hex: &str,
+        signature_hex: &str,
+    ) -> Result<(), GuardInitError> {
+        match PolicyEngine::from_yaml_str(yaml) {
+            Ok(engine) => self.reload_engine_with_verification(
+                engine,
+                verify_policy(yaml, public_key_hex, signature_hex),
+            ),
+            Err(e) => {
+                let old_state = self.state.load();
+                let old_version = old_state.engine.version().to_string();
+                let err = GuardInitError::Policy(e);
+                let event = ReloadEvent::failure(old_version, err.to_string());
+                self.write_reload_audit(&event, &old_state);
+                Err(err)
+            }
+        }
+    }
+
+    pub fn reload_from_signed_yaml_file(
+        &self,
+        policy_path: impl AsRef<Path>,
+        public_key_path: impl AsRef<Path>,
+        signature_path: impl AsRef<Path>,
+    ) -> Result<(), GuardInitError> {
+        let yaml = std::fs::read_to_string(policy_path)
+            .map_err(|error| GuardInitError::SigningKeyLoad(error.to_string()))?;
+        let public_key_hex =
+            load_public_key_file(public_key_path).map_err(GuardInitError::SigningKeyLoad)?;
+        let signature_hex =
+            load_policy_signature_file(signature_path).map_err(GuardInitError::SigningKeyLoad)?;
+        self.reload_from_signed_yaml(&yaml, &public_key_hex, &signature_hex)
+    }
+
     /// Return the current policy version (alias for version)
     pub fn policy_version(&self) -> String {
         self.state.load().engine.version().to_string()
@@ -152,6 +237,10 @@ impl Guard {
     /// Return the SHA-256 hash of the currently loaded policy.
     pub fn policy_hash(&self) -> String {
         self.state.load().engine.hash().to_string()
+    }
+
+    pub fn policy_verification(&self) -> PolicyVerification {
+        self.state.load().policy_verification.clone()
     }
 
     pub fn check(&self, input: &GuardInput) -> GuardDecision {
@@ -297,6 +386,30 @@ impl Guard {
         let request_id = Uuid::new_v4().to_string();
         let policy_version = state.engine.version().to_string();
 
+        if state.policy_verification.should_fail_closed() {
+            let mut reason = DecisionReason::new(
+                DecisionCode::PolicyVerificationFailed,
+                "policy signature verification failed; enforce mode is blocked until the policy is verified",
+            );
+            let mut details = serde_json::Map::new();
+            details.insert(
+                "policy_verification_status".to_string(),
+                serde_json::Value::String(state.policy_verification.status_label().to_string()),
+            );
+            if let Some(error) = &state.policy_verification.error {
+                details.insert(
+                    "policy_verification_error".to_string(),
+                    serde_json::Value::String(error.clone()),
+                );
+            }
+            reason.details = Some(serde_json::Value::Object(details));
+            return Ok(ExecuteOutcome::Denied {
+                decision: GuardDecision::Deny { reason },
+                policy_version,
+                policy_verification: state.policy_verification.clone(),
+            });
+        }
+
         let decision = self.check_internal(input, &state, &request_id);
         match &decision {
             GuardDecision::Allow => {}
@@ -304,12 +417,14 @@ impl Guard {
                 return Ok(ExecuteOutcome::Denied {
                     decision,
                     policy_version,
+                    policy_verification: state.policy_verification.clone(),
                 });
             }
             GuardDecision::AskUser { .. } => {
                 return Ok(ExecuteOutcome::AskRequired {
                     decision,
                     policy_version,
+                    policy_verification: state.policy_verification.clone(),
                 });
             }
         }
@@ -418,6 +533,7 @@ impl Guard {
             output,
             policy_version,
             receipt,
+            policy_verification: state.policy_verification.clone(),
         })
     }
 
@@ -610,6 +726,10 @@ impl Guard {
         state: &GuardState,
         request_id: &str,
     ) {
+        if !state.audit_cfg.enabled {
+            return;
+        }
+
         let event = AuditEvent::from_decision(
             request_id.to_string(),
             &input.tool,
@@ -671,7 +791,10 @@ impl Guard {
 }
 
 impl GuardState {
-    fn new(engine: Arc<PolicyEngine>) -> Result<Self, GuardInitError> {
+    fn new(
+        engine: Arc<PolicyEngine>,
+        policy_verification: PolicyVerification,
+    ) -> Result<Self, GuardInitError> {
         let audit_cfg = engine.audit_config().clone();
         let audit_file = if audit_cfg.output == "file" {
             if let Some(ref path) = audit_cfg.file_path {
@@ -701,6 +824,7 @@ impl GuardState {
             siem_exporter,
             anomaly_detector,
             signing_key: None,
+            policy_verification,
         })
     }
 }
@@ -716,14 +840,17 @@ pub enum ExecuteOutcome {
         output: SandboxOutput,
         policy_version: String,
         receipt: Option<crate::provenance::ExecutionReceipt>,
+        policy_verification: PolicyVerification,
     },
     Denied {
         decision: GuardDecision,
         policy_version: String,
+        policy_verification: PolicyVerification,
     },
     AskRequired {
         decision: GuardDecision,
         policy_version: String,
+        policy_verification: PolicyVerification,
     },
 }
 
@@ -771,16 +898,4 @@ fn sha256_hash(data: &str) -> String {
     let mut hasher = Sha256::new();
     hasher.update(data.as_bytes());
     hex::encode(hasher.finalize())
-}
-
-fn parse_hex_signing_key(hex_str: &str) -> Result<ed25519_dalek::SigningKey, GuardInitError> {
-    let bytes = hex::decode(hex_str)
-        .map_err(|e| GuardInitError::SigningKeyLoad(format!("invalid hex: {}", e)))?;
-    let seed: [u8; 32] = bytes.try_into().map_err(|v: Vec<u8>| {
-        GuardInitError::SigningKeyLoad(format!(
-            "expected 32 bytes (64 hex chars), got {} bytes",
-            v.len()
-        ))
-    })?;
-    Ok(ed25519_dalek::SigningKey::from_bytes(&seed))
 }

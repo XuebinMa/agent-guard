@@ -18,6 +18,7 @@
 > Runtime availability is a separate concern: if a backend fails its host checks,
 > `CapabilityDoctor` now reports it as unavailable and the SDK may explicitly
 > fall back to `NoopSandbox`.
+> That fallback preserves the logic-layer policy gate, but it does **not** preserve equivalent OS-level isolation.
 
 ---
 

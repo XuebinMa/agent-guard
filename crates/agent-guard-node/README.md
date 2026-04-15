@@ -7,6 +7,17 @@
 
 This package is aimed at the Phase 1 adoption target in [`docs/architecture-and-vision.md`](../../docs/architecture-and-vision.md): make framework integration feel like a small wrapper, not a custom runtime rewrite.
 
+## Supported Runtime Baseline
+
+The repository CI validates the Node binding and framework wrappers against:
+
+- Node `20`
+- Node `22`
+- `@langchain/core` `^0.3.75`
+- `@openai/agents` `^0.8.3`
+
+That is the published support floor for the current adapter layer.
+
 ## Runtime Validation
 
 The adapter layer is now validated against real framework packages in this repository:
@@ -26,6 +37,13 @@ The Node test suite exercises real `DynamicTool` objects and real OpenAI Agents 
   - `AgentGuardDeniedError`
   - `AgentGuardAskRequiredError`
   - `AgentGuardExecutionError`
+- Signed-policy load path:
+  - `Guard.fromSignedYaml()`
+  - `Guard.fromSignedYamlFile()`
+- Policy verification metadata:
+  - `guard.policyVerification()`
+  - `decision.policyVerificationStatus`
+  - `executeOutcome.policyVerificationStatus`
 
 ## Modes
 
@@ -146,6 +164,8 @@ const guardedShell = wrapOpenAITool(
 ## Demos
 
 - `npm run demo:proof --prefix crates/agent-guard-node`
+- `npm run demo:flow --prefix crates/agent-guard-node`
 - [`demos/demo_langchain.js`](./demos/demo_langchain.js)
 - [`demos/demo_openai_handler.js`](./demos/demo_openai_handler.js)
 - [`demos/demo_check_vs_enforce.js`](./demos/demo_check_vs_enforce.js)
+- [`demos/demo_multi_tool_flow.js`](./demos/demo_multi_tool_flow.js)

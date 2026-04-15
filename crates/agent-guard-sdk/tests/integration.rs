@@ -751,6 +751,43 @@ audit:
     );
 }
 
+#[test]
+fn audit_disabled_file_output_does_not_write_events() {
+    let audit_path = std::env::temp_dir().join(format!(
+        "agent_guard_audit_disabled_{}.log",
+        std::process::id()
+    ));
+    let _ = std::fs::remove_file(&audit_path);
+
+    let yaml = format!(
+        r#"
+version: 1
+default_mode: workspace_write
+tools:
+  bash:
+    deny:
+      - prefix: "rm"
+audit:
+  enabled: false
+  output: file
+  file_path: "{}"
+"#,
+        audit_path.display()
+    );
+
+    let guard = Guard::from_yaml(&yaml).unwrap();
+    let denied = guard.check_tool(Tool::Bash, r#"{"command":"rm blocked"}"#, trusted());
+    assert!(matches!(denied, GuardDecision::Deny { .. }));
+
+    let contents = std::fs::read_to_string(&audit_path).unwrap_or_default();
+    assert!(
+        contents.trim().is_empty(),
+        "audit output should remain empty when audit.enabled=false"
+    );
+
+    let _ = std::fs::remove_file(audit_path);
+}
+
 // ── B3: validator → sdk result code verification ──────────────────────────────
 //
 // These tests confirm that specific DecisionCodes reach the caller when the

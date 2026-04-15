@@ -33,12 +33,18 @@ tools:
 async function runTest() {
   try {
     const guard = Guard.fromYaml(yaml)
+    if (typeof guard.policyVerification === 'function') {
+      assert.equal(guard.policyVerification().status, 'unsigned')
+    }
     if (typeof guard.setSigningKey === 'function') {
       guard.setSigningKey('0000000000000000000000000000000000000000000000000000000000000001')
     }
 
     const decision = guard.check('bash', normalizePayload('bash', 'echo smoke'))
     assert.equal(decision.outcome, 'allow')
+    if (decision.policyVerificationStatus) {
+      assert.equal(decision.policyVerificationStatus, 'unsigned')
+    }
     if (decision.policyVersion || decision.policy_version) {
       assert.ok(decision.policyVersion || decision.policy_version)
     }
@@ -47,6 +53,9 @@ async function runTest() {
     assert.equal(executed.status || executed.outcome, 'executed')
     assert.ok(executed.output)
     assert.ok(executed.output.stdout.includes('smoke'))
+    if (executed.policyVerificationStatus) {
+      assert.equal(executed.policyVerificationStatus, 'unsigned')
+    }
     if (executed.sandboxType || executed.sandbox_type) {
       assert.ok(executed.sandboxType || executed.sandbox_type)
     }
@@ -110,6 +119,29 @@ async function runTest() {
     assert.ok(blockedError.status === 'denied' || blockedError.status === 'ask_required')
     if (blockedError.policyVersion) {
       assert.ok(blockedError.policyVersion)
+    }
+
+    if (typeof Guard.fromSignedYaml === 'function') {
+      const invalidSignedGuard = Guard.fromSignedYaml(
+        yaml,
+        '0000000000000000000000000000000000000000000000000000000000000001',
+        'ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff'
+      )
+      assert.equal(invalidSignedGuard.policyVerification().status, 'invalid')
+
+      const autoHandler = wrapOpenAITool(
+        invalidSignedGuard,
+        async () => 'should-not-run',
+        {
+          tool: 'bash',
+          mode: 'auto',
+        }
+      )
+
+      await assert.rejects(
+        async () => autoHandler('echo signed'),
+        (error) => error instanceof AgentGuardDeniedError && error.code === 'PolicyVerificationFailed'
+      )
     }
 
     console.log('Node native smoke tests passed.')
