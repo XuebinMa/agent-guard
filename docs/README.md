@@ -25,6 +25,7 @@ If you are arriving from GitHub or social posts, these are the two best entry po
 - **I want to refresh screenshots or demo clips** → [Demo Asset Workflow](guides/adoption/demo-asset-workflow.md)
 - **I want a release post or social draft** → [Release Announcement Template](guides/adoption/release-announcement.md)
 - **I want a GitHub Discussions post I can publish now** → [GitHub Discussions Announcement](guides/adoption/discussions-announcement.md)
+- **I want a first-wave external channel post pack** → [External Channel Post Pack](guides/adoption/external-channel-post-pack.md)
 - **I want ready-made replies for new users** → [FAQ For New Users](guides/adoption/faq-for-new-users.md)
 - **I want to connect ChatGPT Actions to agent-guard** → [ChatGPT Actions Integration](guides/getting-started/chatgpt-actions.md)
 - **I want to deploy safely** → [Deployment Guide](guides/operations/deployment-guide.md)
@@ -65,6 +66,7 @@ For maintainers and early adopters who want to explain or share the project clea
 - 🖼️ **[Demo Asset Workflow](guides/adoption/demo-asset-workflow.md)**: How to keep screenshots and short demo clips consistent with the live proof demo.
 - 📢 **[Release Announcement Template](guides/adoption/release-announcement.md)**: A ready-to-adapt GitHub release or project update structure.
 - 🗣️ **[GitHub Discussions Announcement](guides/adoption/discussions-announcement.md)**: A finished announcement draft ready to post in Discussions.
+- 🌐 **[External Channel Post Pack](guides/adoption/external-channel-post-pack.md)**: First-wave post drafts for X, Reddit, LinkedIn, Hacker News, and Chinese dev communities.
 - 💬 **[Social Post Templates](guides/adoption/social-posts.md)**: Short, medium, and long post drafts for community channels.
 - ❓ **[FAQ For New Users](guides/adoption/faq-for-new-users.md)**: Reusable answers to common first-contact questions.
 

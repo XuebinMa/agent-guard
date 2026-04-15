@@ -6,7 +6,7 @@
 | **Audience** | Maintainers, DevRel, Early Adopters |
 | **Version** | 1.0 |
 | **Last Reviewed** | 2026-04-14 |
-| **Related Docs** | [Three-Minute Proof](../getting-started/three-minute-proof.md), [Attack Demo Playbook](../getting-started/attack-demo-playbook.md), [Demo Asset Workflow](demo-asset-workflow.md), [Release Announcement Template](release-announcement.md), [GitHub Discussions Announcement](discussions-announcement.md), [FAQ For New Users](faq-for-new-users.md), [Framework Support Matrix](../../framework-support-matrix.md) |
+| **Related Docs** | [Three-Minute Proof](../getting-started/three-minute-proof.md), [Attack Demo Playbook](../getting-started/attack-demo-playbook.md), [Demo Asset Workflow](demo-asset-workflow.md), [Release Announcement Template](release-announcement.md), [GitHub Discussions Announcement](discussions-announcement.md), [External Channel Post Pack](external-channel-post-pack.md), [FAQ For New Users](faq-for-new-users.md), [Framework Support Matrix](../../framework-support-matrix.md) |
 
 ---
 
