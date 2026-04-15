@@ -11,6 +11,7 @@ Welcome to the documentation hub for `agent-guard`, the high-performance securit
 - **I want to connect ChatGPT Actions to agent-guard** → [ChatGPT Actions Integration](guides/getting-started/chatgpt-actions.md)
 - **I want to deploy safely** → [Deployment Guide](guides/operations/deployment-guide.md)
 - **I want to audit security posture** → [Threat Model](threat-model.md)
+- **I want to know what frameworks are actually supported** → [Framework Support Matrix](framework-support-matrix.md)
 - **I want to compare platform gaps** → [Capability Parity Matrix](capability-parity.md)
 - **I want to see the roadmap** → [Architecture & Vision](architecture-and-vision.md)
 
@@ -24,6 +25,14 @@ For developers integrating `agent-guard` into their agent frameworks for the fir
 - ⚖️ **[Check vs Enforce](guides/getting-started/check-vs-enforce.md)**: How to choose the right adapter mode.
 - 🤖 **[ChatGPT Actions Integration](guides/getting-started/chatgpt-actions.md)**: How to place agent-guard behind a Custom GPT Action.
 - 🚀 **[Migration Guide](guides/getting-started/migration-guide.md)**: Moving from No-op to Hardened execution.
+
+---
+
+## 🧭 Framework Readiness
+
+For developers deciding which binding or adapter path to use today.
+
+- 🧭 **[Framework Support Matrix](framework-support-matrix.md)**: Current support status across Rust, Node, Python, LangChain-style adapters, OpenAI-style adapters, and ChatGPT Actions patterns.
 
 ---
 

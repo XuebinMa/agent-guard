@@ -127,6 +127,7 @@ Ready to try or integrate it? Start with the path that matches your goal:
 - ⚖️ **[Check vs Enforce](docs/guides/getting-started/check-vs-enforce.md)**: how to choose the right adapter mode
 - 🚀 **[Node Quickstart](crates/agent-guard-node/examples/quickstart/README.md)**: fastest path to a first successful run
 - 🏗️ **[Architecture & Vision](docs/architecture-and-vision.md)**: long-term roadmap and product direction
+- 🧭 **[Framework Support Matrix](docs/framework-support-matrix.md)**: what is supported today across Rust, Node, Python, and framework adapters
 - 🗺️ **[Capability Matrix](docs/capability-parity.md)**: platform-specific protection boundaries
 - 📚 **[Documentation Hub](docs/README.md)**: full docs map
 - 📈 **[Growth & Adoption Plan](docs/growth-and-adoption-plan.md)**: current go-to-market and adoption execution plan
