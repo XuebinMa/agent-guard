@@ -13,6 +13,7 @@
     "artifacts": "napi artifacts",
     "build": "napi build --platform --release",
     "build:debug": "napi build --platform",
+    "demo:attack": "node examples/attack-demo/app.js",
     "demo:chatgpt-actions": "node examples/chatgpt-actions/server.js",
     "demo:quickstart": "node examples/quickstart/app.js",
     "prepublishOnly": "napi prepublish",

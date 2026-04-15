@@ -8,6 +8,7 @@ Welcome to the documentation hub for `agent-guard`, the high-performance securit
 - **I want to integrate quickly** → [User Manual](guides/getting-started/user-manual.md)
 - **I want to secure shell tools first** → [Secure Shell Tools](guides/getting-started/secure-shell-tools.md)
 - **I need to choose `check` vs `enforce`** → [Check vs Enforce](guides/getting-started/check-vs-enforce.md)
+- **I want a fast attack demo** → [Attack Demo Playbook](guides/getting-started/attack-demo-playbook.md)
 - **I want to connect ChatGPT Actions to agent-guard** → [ChatGPT Actions Integration](guides/getting-started/chatgpt-actions.md)
 - **I want to deploy safely** → [Deployment Guide](guides/operations/deployment-guide.md)
 - **I want to audit security posture** → [Threat Model](threat-model.md)
@@ -23,6 +24,7 @@ For developers integrating `agent-guard` into their agent frameworks for the fir
 - 📘 **[User Manual](guides/getting-started/user-manual.md)**: Installation, configuration, and basic integration.
 - 🔐 **[Secure Shell Tools](guides/getting-started/secure-shell-tools.md)**: The best first use case and how to protect it.
 - ⚖️ **[Check vs Enforce](guides/getting-started/check-vs-enforce.md)**: How to choose the right adapter mode.
+- 🎬 **[Attack Demo Playbook](guides/getting-started/attack-demo-playbook.md)**: A short, repeatable “before vs after” demo flow.
 - 🤖 **[ChatGPT Actions Integration](guides/getting-started/chatgpt-actions.md)**: How to place agent-guard behind a Custom GPT Action.
 - 🚀 **[Migration Guide](guides/getting-started/migration-guide.md)**: Moving from No-op to Hardened execution.
 

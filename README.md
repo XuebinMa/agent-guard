@@ -125,6 +125,7 @@ Ready to try or integrate it? Start with the path that matches your goal:
 - 📘 **[User Manual](docs/guides/getting-started/user-manual.md)**: installation, policy basics, and SDK integration
 - 🔐 **[Secure Shell Tools](docs/guides/getting-started/secure-shell-tools.md)**: the best first integration path for high-risk tool use
 - ⚖️ **[Check vs Enforce](docs/guides/getting-started/check-vs-enforce.md)**: how to choose the right adapter mode
+- 🎬 **[Attack Demo Playbook](docs/guides/getting-started/attack-demo-playbook.md)**: a fast “without guard vs with guard” demo flow
 - 🚀 **[Node Quickstart](crates/agent-guard-node/examples/quickstart/README.md)**: fastest path to a first successful run
 - 🏗️ **[Architecture & Vision](docs/architecture-and-vision.md)**: long-term roadmap and product direction
 - 🧭 **[Framework Support Matrix](docs/framework-support-matrix.md)**: what is supported today across Rust, Node, Python, and framework adapters
