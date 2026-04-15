@@ -47,7 +47,7 @@ npm run demo:attack --prefix crates/agent-guard-node
 
 This runs the Node attack demo example in:
 
-- [attack-demo](/Users/xuebinma/Projects/agent-guard/crates/agent-guard-node/examples/attack-demo/README.md)
+- [attack-demo](../../../crates/agent-guard-node/examples/attack-demo/README.md)
 
 ---
 

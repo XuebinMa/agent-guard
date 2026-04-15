@@ -10,6 +10,7 @@ Welcome to the documentation hub for `agent-guard`, the high-performance securit
 - **I want to secure shell tools first** → [Secure Shell Tools](guides/getting-started/secure-shell-tools.md)
 - **I need to choose `check` vs `enforce`** → [Check vs Enforce](guides/getting-started/check-vs-enforce.md)
 - **I want a fast attack demo** → [Attack Demo Playbook](guides/getting-started/attack-demo-playbook.md)
+- **I want material I can share publicly** → [Launch Kit](guides/adoption/launch-kit.md)
 - **I want to connect ChatGPT Actions to agent-guard** → [ChatGPT Actions Integration](guides/getting-started/chatgpt-actions.md)
 - **I want to deploy safely** → [Deployment Guide](guides/operations/deployment-guide.md)
 - **I want to audit security posture** → [Threat Model](threat-model.md)
@@ -37,6 +38,15 @@ For developers integrating `agent-guard` into their agent frameworks for the fir
 For developers deciding which binding or adapter path to use today.
 
 - 🧭 **[Framework Support Matrix](framework-support-matrix.md)**: Current support status across Rust, Node, Python, LangChain-style adapters, OpenAI-style adapters, and ChatGPT Actions patterns.
+
+---
+
+## 📣 DevRel & Adoption
+
+For maintainers and early adopters who want to explain or share the project clearly.
+
+- 📣 **[Launch Kit](guides/adoption/launch-kit.md)**: Positioning, short demo scripts, social post templates, and sharing guidance.
+- 🧪 **[Case Study: Protecting a Shell-Enabled Agent](guides/adoption/case-study-shell-agent.md)**: A concrete narrative for the strongest current use case.
 
 ---
 

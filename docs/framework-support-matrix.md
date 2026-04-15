@@ -56,7 +56,7 @@ Why:
 
 Start here:
 
-- [Node quickstart](/Users/xuebinma/Projects/agent-guard/crates/agent-guard-node/examples/quickstart/README.md)
+- [Node quickstart](../crates/agent-guard-node/examples/quickstart/README.md)
 - [Secure shell tools guide](guides/getting-started/secure-shell-tools.md)
 - [Check vs enforce guide](guides/getting-started/check-vs-enforce.md)
 

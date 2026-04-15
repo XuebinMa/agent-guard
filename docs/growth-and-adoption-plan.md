@@ -333,6 +333,8 @@ Track these as the project evolves:
 - Node high-level adapter layer
 - real LangChain/OpenAI runtime validation
 - Node quickstart that demonstrates allowed vs blocked behavior
+- three-minute proof onboarding path
+- launch kit and shell-agent case study for reusable outreach
 
 ### Immediate Next Implementation Step
 

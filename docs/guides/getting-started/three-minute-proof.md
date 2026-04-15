@@ -88,9 +88,9 @@ It does not fully validate:
 
 For those, continue with:
 
-- [Secure Shell Tools](/Users/xuebinma/Projects/agent-guard/docs/guides/getting-started/secure-shell-tools.md)
-- [Check vs Enforce](/Users/xuebinma/Projects/agent-guard/docs/guides/getting-started/check-vs-enforce.md)
-- [Framework Support Matrix](/Users/xuebinma/Projects/agent-guard/docs/framework-support-matrix.md)
+- [Secure Shell Tools](secure-shell-tools.md)
+- [Check vs Enforce](check-vs-enforce.md)
+- [Framework Support Matrix](../../framework-support-matrix.md)
 
 ---
 
@@ -98,6 +98,6 @@ For those, continue with:
 
 Choose the next step that matches what you are trying to do:
 
-- If you want the smallest real integration, go to [Node Quickstart](/Users/xuebinma/Projects/agent-guard/crates/agent-guard-node/examples/quickstart/README.md).
-- If you want to explain the project to teammates, use [Attack Demo Playbook](/Users/xuebinma/Projects/agent-guard/docs/guides/getting-started/attack-demo-playbook.md).
-- If you want to protect a shell tool in your own app, continue with [Secure Shell Tools](/Users/xuebinma/Projects/agent-guard/docs/guides/getting-started/secure-shell-tools.md).
+- If you want the smallest real integration, go to [Node Quickstart](../../../crates/agent-guard-node/examples/quickstart/README.md).
+- If you want to explain the project to teammates, use [Attack Demo Playbook](attack-demo-playbook.md).
+- If you want to protect a shell tool in your own app, continue with [Secure Shell Tools](secure-shell-tools.md).

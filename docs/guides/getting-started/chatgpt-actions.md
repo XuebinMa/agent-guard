@@ -110,10 +110,10 @@ For non-shell Actions such as search, internal RPC, or calculator-like helpers, 
 
 A minimal ChatGPT Actions example is provided here:
 
-- [Example README](/Users/xuebinma/Projects/agent-guard/crates/agent-guard-node/examples/chatgpt-actions/README.md)
-- [Example policy](/Users/xuebinma/Projects/agent-guard/crates/agent-guard-node/examples/chatgpt-actions/policy.yaml)
-- [Example server](/Users/xuebinma/Projects/agent-guard/crates/agent-guard-node/examples/chatgpt-actions/server.js)
-- [Example OpenAPI schema](/Users/xuebinma/Projects/agent-guard/crates/agent-guard-node/examples/chatgpt-actions/openapi.yaml)
+- [Example README](../../../crates/agent-guard-node/examples/chatgpt-actions/README.md)
+- [Example policy](../../../crates/agent-guard-node/examples/chatgpt-actions/policy.yaml)
+- [Example server](../../../crates/agent-guard-node/examples/chatgpt-actions/server.js)
+- [Example OpenAPI schema](../../../crates/agent-guard-node/examples/chatgpt-actions/openapi.yaml)
 
 This example is intentionally small so a new user can see the pattern quickly.
 
@@ -170,7 +170,7 @@ Then:
 
 Use the example schema in:
 
-- [openapi.yaml](/Users/xuebinma/Projects/agent-guard/crates/agent-guard-node/examples/chatgpt-actions/openapi.yaml)
+- [openapi.yaml](../../../crates/agent-guard-node/examples/chatgpt-actions/openapi.yaml)
 
 You can:
 

@@ -45,7 +45,7 @@ without guard: UNSAFE_HANDLER_WOULD_RUN:rm -rf /
 with guard: blocked
 ```
 
-That path is documented in [Three-Minute Proof](/Users/xuebinma/Projects/agent-guard/docs/guides/getting-started/three-minute-proof.md).
+That path is documented in [Three-Minute Proof](docs/guides/getting-started/three-minute-proof.md).
 
 ---
 
@@ -89,7 +89,7 @@ npm run build:debug --prefix crates/agent-guard-node
 npm run demo:quickstart --prefix crates/agent-guard-node
 ```
 
-That quickstart lives in [examples/quickstart](/Users/xuebinma/Projects/agent-guard/crates/agent-guard-node/examples/quickstart/README.md).
+That quickstart lives in [examples/quickstart](crates/agent-guard-node/examples/quickstart/README.md).
 
 If you want the shortest path to “does this actually stop risky tool calls?”, start there.
 
@@ -173,6 +173,7 @@ Ready to try or integrate it? Start with the path that matches your goal:
 - 🔐 **[Secure Shell Tools](docs/guides/getting-started/secure-shell-tools.md)**: the best first integration path for high-risk tool use
 - ⚖️ **[Check vs Enforce](docs/guides/getting-started/check-vs-enforce.md)**: how to choose the right adapter mode
 - 🎬 **[Attack Demo Playbook](docs/guides/getting-started/attack-demo-playbook.md)**: a fast “without guard vs with guard” demo flow
+- 📣 **[Launch Kit](docs/guides/adoption/launch-kit.md)**: shareable positioning, demo script, and outreach templates
 - 🚀 **[Node Quickstart](crates/agent-guard-node/examples/quickstart/README.md)**: fastest path to a first successful run
 - 🏗️ **[Architecture & Vision](docs/architecture-and-vision.md)**: long-term roadmap and product direction
 - 🧭 **[Framework Support Matrix](docs/framework-support-matrix.md)**: what is supported today across Rust, Node, Python, and framework adapters
