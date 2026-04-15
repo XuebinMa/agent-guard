@@ -14,6 +14,8 @@ Welcome to the documentation hub for `agent-guard`, the high-performance securit
 - **I want a fast attack demo** → [Attack Demo Playbook](guides/getting-started/attack-demo-playbook.md)
 - **I want material I can share publicly** → [Launch Kit](guides/adoption/launch-kit.md)
 - **I want to refresh screenshots or demo clips** → [Demo Asset Workflow](guides/adoption/demo-asset-workflow.md)
+- **I want a release post or social draft** → [Release Announcement Template](guides/adoption/release-announcement.md)
+- **I want ready-made replies for new users** → [FAQ For New Users](guides/adoption/faq-for-new-users.md)
 - **I want to connect ChatGPT Actions to agent-guard** → [ChatGPT Actions Integration](guides/getting-started/chatgpt-actions.md)
 - **I want to deploy safely** → [Deployment Guide](guides/operations/deployment-guide.md)
 - **I want to audit security posture** → [Threat Model](threat-model.md)
@@ -51,6 +53,9 @@ For maintainers and early adopters who want to explain or share the project clea
 - 📣 **[Launch Kit](guides/adoption/launch-kit.md)**: Positioning, short demo scripts, social post templates, and sharing guidance.
 - 🧪 **[Case Study: Protecting a Shell-Enabled Agent](guides/adoption/case-study-shell-agent.md)**: A concrete narrative for the strongest current use case.
 - 🖼️ **[Demo Asset Workflow](guides/adoption/demo-asset-workflow.md)**: How to keep screenshots and short demo clips consistent with the live proof demo.
+- 📢 **[Release Announcement Template](guides/adoption/release-announcement.md)**: A ready-to-adapt GitHub release or project update structure.
+- 💬 **[Social Post Templates](guides/adoption/social-posts.md)**: Short, medium, and long post drafts for community channels.
+- ❓ **[FAQ For New Users](guides/adoption/faq-for-new-users.md)**: Reusable answers to common first-contact questions.
 
 ---
 

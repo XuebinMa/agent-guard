@@ -6,7 +6,7 @@
 | **Audience** | Maintainers, DevRel, Early Adopters |
 | **Version** | 1.0 |
 | **Last Reviewed** | 2026-04-14 |
-| **Related Docs** | [Three-Minute Proof](../getting-started/three-minute-proof.md), [Attack Demo Playbook](../getting-started/attack-demo-playbook.md), [Demo Asset Workflow](demo-asset-workflow.md), [Framework Support Matrix](../../framework-support-matrix.md) |
+| **Related Docs** | [Three-Minute Proof](../getting-started/three-minute-proof.md), [Attack Demo Playbook](../getting-started/attack-demo-playbook.md), [Demo Asset Workflow](demo-asset-workflow.md), [Release Announcement Template](release-announcement.md), [FAQ For New Users](faq-for-new-users.md), [Framework Support Matrix](../../framework-support-matrix.md) |
 
 ---
 
@@ -113,6 +113,8 @@ Use this for a slightly more polished clip:
 ---
 
 ## 6. Social Post Templates
+
+If you want a reusable set of platform-specific drafts, use [Social Post Templates](social-posts.md).
 
 ### Post Template A: Product Value
 
