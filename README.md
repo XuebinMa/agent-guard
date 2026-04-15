@@ -19,6 +19,15 @@ this project is meant to give you a safer execution boundary.
 
 ---
 
+## Latest Release
+
+- **Prerelease**: [`v0.2.0-rc1`](https://github.com/XuebinMa/agent-guard/releases/tag/v0.2.0-rc1)
+- **Announcement**: [GitHub Discussions #1](https://github.com/XuebinMa/agent-guard/discussions/1)
+
+If you want the quickest way to understand what changed and where to start, use those two links first.
+
+---
+
 ## See The Value In 3 Minutes
 
 If you only try one thing, run the proof demo:
@@ -170,6 +179,8 @@ Run the built-in demos to see the security boundary in practice:
 
 Ready to try or integrate it? Start with the path that matches your goal:
 
+- 📦 **[Latest Release](https://github.com/XuebinMa/agent-guard/releases/tag/v0.2.0-rc1)**: current prerelease notes and evaluation links
+- 🗣️ **[Join the Discussion](https://github.com/XuebinMa/agent-guard/discussions/1)**: release announcement and community feedback thread
 - ⏱️ **[Three-Minute Proof](docs/guides/getting-started/three-minute-proof.md)**: the fastest path to seeing allowed vs blocked behavior
 - 📘 **[User Manual](docs/guides/getting-started/user-manual.md)**: installation, policy basics, and SDK integration
 - 🔐 **[Secure Shell Tools](docs/guides/getting-started/secure-shell-tools.md)**: the best first integration path for high-risk tool use

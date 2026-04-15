@@ -6,6 +6,15 @@ Welcome to the documentation hub for `agent-guard`, the high-performance securit
 
 ---
 
+## 📣 Latest Activity
+
+- **Latest Release** → [`v0.2.0-rc1`](https://github.com/XuebinMa/agent-guard/releases/tag/v0.2.0-rc1)
+- **Community Thread** → [GitHub Discussions #1](https://github.com/XuebinMa/agent-guard/discussions/1)
+
+If you are arriving from GitHub or social posts, these are the two best entry points before you dive deeper into the docs.
+
+---
+
 ## 🎯 Find by Goal (Objective)
 - **I want the fastest proof this works** → [Three-Minute Proof](guides/getting-started/three-minute-proof.md)
 - **I want to integrate quickly** → [User Manual](guides/getting-started/user-manual.md)
@@ -15,6 +24,7 @@ Welcome to the documentation hub for `agent-guard`, the high-performance securit
 - **I want material I can share publicly** → [Launch Kit](guides/adoption/launch-kit.md)
 - **I want to refresh screenshots or demo clips** → [Demo Asset Workflow](guides/adoption/demo-asset-workflow.md)
 - **I want a release post or social draft** → [Release Announcement Template](guides/adoption/release-announcement.md)
+- **I want a GitHub Discussions post I can publish now** → [GitHub Discussions Announcement](guides/adoption/discussions-announcement.md)
 - **I want ready-made replies for new users** → [FAQ For New Users](guides/adoption/faq-for-new-users.md)
 - **I want to connect ChatGPT Actions to agent-guard** → [ChatGPT Actions Integration](guides/getting-started/chatgpt-actions.md)
 - **I want to deploy safely** → [Deployment Guide](guides/operations/deployment-guide.md)
@@ -54,6 +64,7 @@ For maintainers and early adopters who want to explain or share the project clea
 - 🧪 **[Case Study: Protecting a Shell-Enabled Agent](guides/adoption/case-study-shell-agent.md)**: A concrete narrative for the strongest current use case.
 - 🖼️ **[Demo Asset Workflow](guides/adoption/demo-asset-workflow.md)**: How to keep screenshots and short demo clips consistent with the live proof demo.
 - 📢 **[Release Announcement Template](guides/adoption/release-announcement.md)**: A ready-to-adapt GitHub release or project update structure.
+- 🗣️ **[GitHub Discussions Announcement](guides/adoption/discussions-announcement.md)**: A finished announcement draft ready to post in Discussions.
 - 💬 **[Social Post Templates](guides/adoption/social-posts.md)**: Short, medium, and long post drafts for community channels.
 - ❓ **[FAQ For New Users](guides/adoption/faq-for-new-users.md)**: Reusable answers to common first-contact questions.
 
