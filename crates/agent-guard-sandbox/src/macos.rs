@@ -11,6 +11,7 @@ use std::sync::OnceLock;
 /// macOS Seatbelt sandbox using sandbox-exec.
 pub struct SeatbeltSandbox;
 
+#[cfg(any(target_os = "macos", test))]
 fn escape_seatbelt_string(value: &str) -> Result<String, SandboxError> {
     let mut escaped = String::with_capacity(value.len());
     for ch in value.chars() {
