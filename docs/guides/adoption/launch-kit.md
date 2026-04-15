@@ -6,7 +6,7 @@
 | **Audience** | Maintainers, DevRel, Early Adopters |
 | **Version** | 1.0 |
 | **Last Reviewed** | 2026-04-14 |
-| **Related Docs** | [Three-Minute Proof](../getting-started/three-minute-proof.md), [Attack Demo Playbook](../getting-started/attack-demo-playbook.md), [Framework Support Matrix](../../framework-support-matrix.md) |
+| **Related Docs** | [Three-Minute Proof](../getting-started/three-minute-proof.md), [Attack Demo Playbook](../getting-started/attack-demo-playbook.md), [Demo Asset Workflow](demo-asset-workflow.md), [Framework Support Matrix](../../framework-support-matrix.md) |
 
 ---
 
@@ -183,6 +183,7 @@ Before sharing publicly, make sure you have:
 
 - one short terminal recording of `demo:proof`
 - one static screenshot showing the blocked command output
+- one visual asset process in [Demo Asset Workflow](demo-asset-workflow.md)
 - one link to [Three-Minute Proof](../getting-started/three-minute-proof.md)
 - one link to [Framework Support Matrix](../../framework-support-matrix.md)
 - one sentence that explains the problem before the feature list

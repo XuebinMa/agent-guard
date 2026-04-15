@@ -2,6 +2,8 @@
 
 Welcome to the documentation hub for `agent-guard`, the high-performance security layer for AI Agents. Use the map below to find the right information for your role or objective.
 
+![agent-guard proof demo screenshot](assets/demo-proof-terminal.svg)
+
 ---
 
 ## 🎯 Find by Goal (Objective)
@@ -11,6 +13,7 @@ Welcome to the documentation hub for `agent-guard`, the high-performance securit
 - **I need to choose `check` vs `enforce`** → [Check vs Enforce](guides/getting-started/check-vs-enforce.md)
 - **I want a fast attack demo** → [Attack Demo Playbook](guides/getting-started/attack-demo-playbook.md)
 - **I want material I can share publicly** → [Launch Kit](guides/adoption/launch-kit.md)
+- **I want to refresh screenshots or demo clips** → [Demo Asset Workflow](guides/adoption/demo-asset-workflow.md)
 - **I want to connect ChatGPT Actions to agent-guard** → [ChatGPT Actions Integration](guides/getting-started/chatgpt-actions.md)
 - **I want to deploy safely** → [Deployment Guide](guides/operations/deployment-guide.md)
 - **I want to audit security posture** → [Threat Model](threat-model.md)
@@ -47,6 +50,7 @@ For maintainers and early adopters who want to explain or share the project clea
 
 - 📣 **[Launch Kit](guides/adoption/launch-kit.md)**: Positioning, short demo scripts, social post templates, and sharing guidance.
 - 🧪 **[Case Study: Protecting a Shell-Enabled Agent](guides/adoption/case-study-shell-agent.md)**: A concrete narrative for the strongest current use case.
+- 🖼️ **[Demo Asset Workflow](guides/adoption/demo-asset-workflow.md)**: How to keep screenshots and short demo clips consistent with the live proof demo.
 
 ---
 

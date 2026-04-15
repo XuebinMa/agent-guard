@@ -47,6 +47,8 @@ with guard: blocked
 
 That path is documented in [Three-Minute Proof](docs/guides/getting-started/three-minute-proof.md).
 
+![agent-guard proof demo screenshot](docs/assets/demo-proof-terminal.svg)
+
 ---
 
 ## Before vs After

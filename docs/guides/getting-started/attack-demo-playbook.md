@@ -167,8 +167,9 @@ The goal is clarity, not exhaustiveness.
 
 ## 10. Next Asset To Build
 
-After this playbook, the next strongest public asset would be:
+The next strongest public assets are now:
 
-- a short terminal recording or GIF of the attack demo
+- a reusable screenshot asset: [demo-proof-terminal.svg](../../assets/demo-proof-terminal.svg)
+- a repeatable recording checklist: [Demo Asset Workflow](../adoption/demo-asset-workflow.md)
 
-That would give the project a more visual “proof of value” for README, social posts, and issue discussions.
+The next upgrade after that should be a short terminal recording or GIF built from the same workflow.
