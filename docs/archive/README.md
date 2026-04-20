@@ -1,16 +1,22 @@
 # Document Archive
 
-This directory contains historical design documents, milestone records, and deprecated release notes for `agent-guard`. These documents are preserved for architectural traceability.
+This directory contains historical strategy documents, milestone records, release notes, and implementation research for `agent-guard`. These documents are preserved for traceability without crowding the active developer path.
 
 ---
 
 | Document | Phase | Primary Goal | Status | Superseded By |
 | :--- | :--- | :--- | :--- | :--- |
-| **[Phase 2 Design](phase2-design.md)** | 2 | Core Engine & DSL logic | 🏛️ Archived | [Architecture & Vision](../architecture-and-vision.md) |
+| **[Architecture & Future Directions](architecture-and-vision.md)** | - | Archived roadmap and architecture context | 🏛️ Archived | [Documentation Hub](../README.md) |
+| **[Growth & Adoption Plan](growth-and-adoption-plan.md)** | - | Maintainer adoption planning and messaging execution | 🏛️ Archived | [Launch Kit](../guides/adoption/launch-kit.md) |
+| **[v0.2.0 Release Notes](release-notes-v0.2.0.md)** | - | Historical prerelease release notes | 🏛️ Archived | [Latest Release](https://github.com/XuebinMa/agent-guard/releases/tag/v0.2.0-rc1) |
+| **[M3.1 Support Matrix](m3.1-support-matrix.md)** | M3.1 | Context-aware rule design note | 🏛️ Archived | [Adapter Contract](../adapter-contract.md) |
+| **[Node Adapter Gap Report](node-adapter-gap-report.md)** | - | Node readiness audit and gap report | 🏛️ Archived | [Node Package README](../../crates/agent-guard-node/README.md) |
+| **[Windows AppContainer Research](research-appcontainer.md)** | M6.2 | AppContainer feasibility spike | 🏛️ Archived | [Windows Sandbox Guide](../sandbox-windows.md) |
+| **[Phase 2 Design](phase2-design.md)** | 2 | Core Engine & DSL logic | 🏛️ Archived | [Documentation Hub](../README.md) |
 | **[Phase 3 Design](phase3-design.md)** | 3 | FFI Bindings & Atomic Reload | 🏛️ Archived | [User Manual](../guides/getting-started/user-manual.md) |
 | **[Phase 6 Design](phase6-design.md)** | 6 | Enterprise SIEM & Receipts | 🏛️ Archived | [Observability Guide](../guides/operations/observability.md) |
 | **[Phase 8 Design](phase8-design.md)** | 8 | RC Validation & Stress Tests | 🏛️ Archived | [Security Audit Report](../security-audit.md) |
-| **[v0.1.0 Release Notes](release-notes-v0.1.0.md)** | - | Initial Alpha release | 🏛️ Archived | [v0.2.0 Release Notes](../release-notes-v0.2.0.md) |
+| **[v0.1.0 Release Notes](release-notes-v0.1.0.md)** | - | Initial Alpha release | 🏛️ Archived | [v0.2.0 Release Notes](release-notes-v0.2.0.md) |
 | **[Sales Demo Script](sales-demo-script.md)** | 8 | CISO pitch & demo flow | 🏛️ Archived | [Main README](../../README.md) |
 
 ---

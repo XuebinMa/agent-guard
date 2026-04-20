@@ -1,6 +1,6 @@
 # agent-guard Documentation Hub (v0.2.0-rc1)
 
-`agent-guard` is an execution control layer for agent side effects. This hub is organized around the current developer path first: understand the shell-first proof point, get a real execution boundary in place, then go deeper into reference, operations, and longer-term roadmap material.
+`agent-guard` is an execution control layer for agent side effects. This hub is organized around the current developer path first: understand the shell-first proof point, get a real execution boundary in place, then go deeper into reference, operations, and historical or maintainer-only material when needed.
 
 ![agent-guard proof demo screenshot](assets/demo-proof-terminal.svg)
 
@@ -33,7 +33,7 @@ Current boundary note:
 - **I want to audit security posture** → [Threat Model](threat-model.md)
 - **I want to know what frameworks are actually supported** → [Framework Support Matrix](framework-support-matrix.md)
 - **I want to compare platform gaps** → [Capability Parity Matrix](capability-parity.md)
-- **I want roadmap context, not first-run guidance** → [Architecture & Future Directions](architecture-and-vision.md)
+- **I want historical strategy or release context** → [Document Archive](archive/README.md)
 - **I want material I can share publicly** → [Launch Kit](guides/adoption/launch-kit.md)
 - **I want a release post or social draft** → [Release Announcement Template](guides/adoption/release-announcement.md)
 - **I want ready-made replies for new users** → [FAQ For New Users](guides/adoption/faq-for-new-users.md)
@@ -97,12 +97,7 @@ For security researchers and auditors reviewing the system's defensive posture.
 
 ---
 
-## 🏗️ Architecture & Future Directions
-For maintainers who want longer-term context rather than first-run integration guidance.
-
-- 🏗️ **[Architecture & Future Directions](architecture-and-vision.md)**: Current execution-control architecture notes plus longer-term expansion context.
-
----
-
 ## 📂 Project History
-- 🏛️ **[Document Archive](archive/README.md)**: Historical design documents and milestone records.
+For maintainers and reviewers who need archived strategy, release, or implementation history.
+
+- 🏛️ **[Document Archive](archive/README.md)**: Historical design documents, archived release notes, and past roadmap context.

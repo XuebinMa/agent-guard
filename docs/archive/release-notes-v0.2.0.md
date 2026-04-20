@@ -47,5 +47,5 @@ This release has passed the **v0.2.0 Release Gate**:
 - ✅ 3 Standardized demos implemented and verified.
 
 ---
-**Full Documentation**: [Main Hub](README.md)
-**Parity Matrix**: [Capability Parity Matrix](capability-parity.md)
+**Full Documentation**: [Main Hub](../README.md)
+**Parity Matrix**: [Capability Parity Matrix](../capability-parity.md)

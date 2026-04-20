@@ -6,7 +6,7 @@
 | **Audience** | DevRel, Maintainers, Evaluators |
 | **Version** | 1.0 |
 | **Last Reviewed** | 2026-04-14 |
-| **Related Docs** | [Secure Shell Tools](secure-shell-tools.md), [ChatGPT Actions Integration](chatgpt-actions.md), [Growth & Adoption Plan](../../growth-and-adoption-plan.md) |
+| **Related Docs** | [Secure Shell Tools](secure-shell-tools.md), [ChatGPT Actions Integration](chatgpt-actions.md), [Launch Kit](../adoption/launch-kit.md) |
 
 ---
 

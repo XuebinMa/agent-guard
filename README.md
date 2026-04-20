@@ -132,7 +132,7 @@ Additional references:
 - [Latest Release](https://github.com/XuebinMa/agent-guard/releases/tag/v0.2.0-rc1)
 - [Join the Discussion](https://github.com/XuebinMa/agent-guard/discussions/1)
 - [Trust Tooling](docs/guides/getting-started/trust-tooling.md)
-- [Architecture & Vision](docs/architecture-and-vision.md)
+- [Documentation Archive](docs/archive/README.md)
 - [Documentation Hub](docs/README.md)
 
 ---
