@@ -161,6 +161,20 @@ This section maps reviewed files to recommended structure layers and actions.
 
 This section identifies files that still use the old project narrative.
 
+| Path | Old narrative type | Current layer or prominence | Severity | Reason |
+| :--- | :--- | :--- | :--- | :--- |
+| `docs/README.md` | broad AI security platform framing | Top-level docs hub and first-stop entry path after the repository README | high | The opening sentence still describes `agent-guard` as a high-performance security layer for AI Agents, which is broader than the current execution-control wedge. |
+| `docs/architecture-and-vision.md` | full control plane framing too early | Visible docs-root roadmap document linked from the documentation hub | high | It presents `agent-guard` as an Agent Security Runtime, foregrounds ecosystem and trust phases, and still advertises a Phase 3 control plane roadmap in a current-looking doc. |
+| `docs/growth-and-adoption-plan.md` | ecosystem / trust presented as the main front-page hook | Active docs-root adoption and messaging plan | high | The ICP, funnel, and proof sections still lean on reusable security layer, trust, and cross-team platform language more than the shell-first execution-control proof point. |
+| `docs/release-notes-v0.2.0.md` | broad AI security platform framing | Historical release notes that still sit in the active docs root | medium | The overview now names shell-first enforcement, but the feature framing still sells enterprise observability, SIEM, and provenance as part of a broader platform identity. |
+| `crates/agent-guard-python/README.md` | shell-first not framed as the current proof point | Package README and primary Python user entry path | high | The intro and feature list position the package as a generic Python security execution runtime for AI agents instead of leading with shell-first execution control as the strongest current proof. |
+| `docs/guides/getting-started/trust-tooling.md` | ecosystem / trust presented as the main front-page hook | Supporting guide still located in the Getting Started lane | medium | The content is valid, but keeping policy signing, receipts, and doctor workflows in the newcomer lane keeps trust-forward narrative too close to the first-run path. |
+| `docs/archive/phase2-design.md` | ecosystem / trust presented as the main front-page hook | Archived phase design document | low | It explicitly says the Python binding is highest priority because it unlocks ecosystem integration, which is acceptable as history but still records the earlier adoption story. |
+| `docs/archive/phase2-done.md` | ecosystem / trust presented as the main front-page hook | Archived completion checklist | low | The `Ecosystem Integration` checklist section preserves the older strategy language even though the file is safely archived. |
+| `docs/archive/phase6-design.md` | broad AI security platform framing | Archived enterprise roadmap design | low | It centers an enterprise-grade security layer with receipts, SIEM, and capability modeling, which reflects the wider platform narrative rather than today's narrower proof point. |
+| `docs/archive/phase8-design.md` | ecosystem / trust presented as the main front-page hook | Archived future-phase trust roadmap | low | The roadmap is built around policy signing, execution proofs, hardware root of trust, and SIEM-style expansion rather than a shell-first execution-control story. |
+| `docs/archive/sales-demo-script.md` | ecosystem / trust presented as the main front-page hook | Archived sales and demo narrative asset | low | It leads with zero-trust, signed receipts, compliance, and enterprise-ready messaging, so it captures the prior pitch clearly even though it is historical. |
+
 ## Priority Action List
 
 This section groups the recommended cleanup actions by priority.
