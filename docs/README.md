@@ -1,6 +1,6 @@
 # agent-guard Documentation Hub (v0.2.0-rc1)
 
-Welcome to the documentation hub for `agent-guard`, the high-performance security layer for AI Agents. Use the map below to find the right information for your role or objective.
+`agent-guard` is an execution control layer for agent side effects. This hub is organized around the current developer path first: understand the shell-first proof point, get a real execution boundary in place, then go deeper into reference, operations, and longer-term roadmap material.
 
 ![agent-guard proof demo screenshot](assets/demo-proof-terminal.svg)
 
@@ -27,32 +27,32 @@ Current boundary note:
 - **I want to secure shell tools first** → [Secure Shell Tools](guides/getting-started/secure-shell-tools.md)
 - **I need to choose `check` vs `enforce`** → [Check vs Enforce](guides/getting-started/check-vs-enforce.md)
 - **I want a fast attack demo** → [Attack Demo Playbook](guides/getting-started/attack-demo-playbook.md)
-- **I want material I can share publicly** → [Launch Kit](guides/adoption/launch-kit.md)
-- **I want to refresh screenshots or demo clips** → [Demo Asset Workflow](guides/adoption/demo-asset-workflow.md)
-- **I want a release post or social draft** → [Release Announcement Template](guides/adoption/release-announcement.md)
-- **I want a GitHub Discussions post I can publish now** → [GitHub Discussions Announcement](guides/adoption/discussions-announcement.md)
-- **I want a first-wave external channel post pack** → [External Channel Post Pack](guides/adoption/external-channel-post-pack.md)
-- **I want ready-made replies for new users** → [FAQ For New Users](guides/adoption/faq-for-new-users.md)
 - **I want to connect ChatGPT Actions to agent-guard** → [ChatGPT Actions Integration](guides/getting-started/chatgpt-actions.md)
-- **I want policy signing, receipts, and doctor reports** → [Trust Tooling](guides/getting-started/trust-tooling.md)
+- **I want policy signing, receipts, and doctor reports after first integration** → [Trust Tooling](guides/getting-started/trust-tooling.md)
 - **I want to deploy safely** → [Deployment Guide](guides/operations/deployment-guide.md)
 - **I want to audit security posture** → [Threat Model](threat-model.md)
 - **I want to know what frameworks are actually supported** → [Framework Support Matrix](framework-support-matrix.md)
 - **I want to compare platform gaps** → [Capability Parity Matrix](capability-parity.md)
-- **I want to see the roadmap** → [Architecture & Vision](architecture-and-vision.md)
+- **I want roadmap context, not first-run guidance** → [Architecture & Future Directions](architecture-and-vision.md)
+- **I want material I can share publicly** → [Launch Kit](guides/adoption/launch-kit.md)
+- **I want a release post or social draft** → [Release Announcement Template](guides/adoption/release-announcement.md)
+- **I want ready-made replies for new users** → [FAQ For New Users](guides/adoption/faq-for-new-users.md)
 
 ---
 
 ## 🚀 Start Here (Getting Started)
-For developers integrating `agent-guard` into their agent frameworks for the first time.
+For AI application and agent developers integrating `agent-guard` for the first time.
 
 - ⏱️ **[Three-Minute Proof](guides/getting-started/three-minute-proof.md)**: The fastest path to seeing a risky tool call blocked.
-- 📘 **[User Manual](guides/getting-started/user-manual.md)**: Installation, configuration, and basic integration.
 - 🔐 **[Secure Shell Tools](guides/getting-started/secure-shell-tools.md)**: The best first use case and how to protect it.
 - ⚖️ **[Check vs Enforce](guides/getting-started/check-vs-enforce.md)**: How to choose the right adapter mode.
+- 📘 **[User Manual](guides/getting-started/user-manual.md)**: Installation, configuration, and basic integration after the proof path.
+
+After the first run:
+
 - 🎬 **[Attack Demo Playbook](guides/getting-started/attack-demo-playbook.md)**: A short, repeatable “before vs after” demo flow.
 - 🤖 **[ChatGPT Actions Integration](guides/getting-started/chatgpt-actions.md)**: How to place agent-guard behind a Custom GPT Action.
-- 🔏 **[Trust Tooling](guides/getting-started/trust-tooling.md)**: Policy signing, receipt verification, and doctor reports.
+- 🔏 **[Trust Tooling](guides/getting-started/trust-tooling.md)**: Policy signing, receipt verification, and doctor reports once you need deeper audit and verification workflows.
 - 🚀 **[Migration Guide](guides/getting-started/migration-guide.md)**: Moving from No-op to Hardened execution.
 
 ---
@@ -71,7 +71,7 @@ For maintainers and early adopters who want to explain or share the project clea
 
 - 📣 **[Launch Kit](guides/adoption/launch-kit.md)**: Positioning, short demo scripts, social post templates, and sharing guidance.
 - 🧪 **[Case Study: Protecting a Shell-Enabled Agent](guides/adoption/case-study-shell-agent.md)**: A concrete narrative for the strongest current use case.
-- 🖼️ **[Demo Asset Workflow](guides/adoption/demo-asset-workflow.md)**: How to keep screenshots and short demo clips consistent with the live proof demo.
+- 🖼️ **[Demo Asset Workflow](guides/adoption/demo-asset-workflow.md)**: Maintainer workflow for keeping screenshots and short demo clips consistent with the live proof demo.
 - 📢 **[Release Announcement Template](guides/adoption/release-announcement.md)**: A ready-to-adapt GitHub release or project update structure.
 - 🗣️ **[GitHub Discussions Announcement](guides/adoption/discussions-announcement.md)**: A finished announcement draft ready to post in Discussions.
 - 🌐 **[External Channel Post Pack](guides/adoption/external-channel-post-pack.md)**: First-wave post drafts for X, Reddit, LinkedIn, Hacker News, and Chinese dev communities.
@@ -97,10 +97,10 @@ For security researchers and auditors reviewing the system's defensive posture.
 
 ---
 
-## 🏗️ Architecture & Vision
-For those looking to understand the "Why" and the long-term roadmap.
+## 🏗️ Architecture & Future Directions
+For maintainers who want longer-term context rather than first-run integration guidance.
 
-- 🏗️ **[Architecture & Vision](architecture-and-vision.md)**: The four layers of defense and future v0.3.0+ roadmap.
+- 🏗️ **[Architecture & Future Directions](architecture-and-vision.md)**: Current execution-control architecture notes plus longer-term expansion context.
 
 ---
 

@@ -1,16 +1,16 @@
 # agent-guard-python
 
-> **Python Security Execution Runtime for AI Agents.**
+> **Python bindings for execution control at the agent side-effect boundary.**
 
-This package provides Python bindings for `agent-guard`, enabling you to intercept, validate, and isolate tool calls in frameworks like LangChain and OpenAI Agents.
+This package provides Python bindings for `agent-guard`, giving Python hosts a pre-execution decision layer before agent tool calls turn into shell commands or other side effects.
 
 ---
 
 ## 🚀 Quick Start (Python Adapters)
 
-> **Status**: The Python wrapper layer is now a **beta adapter surface** with official LangChain and OpenAI-style handler wrappers. Node remains the most mature integration path in the repository, but Python no longer stops at a single prototype wrapper.
+> **Status**: The Python wrapper layer is a **beta adapter surface**. The clearest current proof point is still shell-first execution control, and Node remains the most mature integration path in the repository.
 
-Integrate `agent-guard` into your existing LangChain tools in just 3 lines of code:
+Integrate `agent-guard` into your existing LangChain tools with a policy gate in front of the original tool:
 
 ```python
 from agent_guard import Guard, wrap_langchain_tool
@@ -51,12 +51,18 @@ except AgentGuardDeniedError as error:
 
 ## ✨ Features
 
-- 🛡️ **OS-Level Isolation**: Seamless access to Linux Seccomp, Windows Low-IL, and macOS Seatbelt sandboxes.
-- 📜 **Signed Receipts**: Optional cryptographic proof of execution (requires signing key).
-- 🔏 **Signed Policy Loading**: Optional detached-signature verification for `policy.yaml`.
-- 🔒 **Deny Fuse**: Automatically locks agents that repeatedly violate security rules.
-- 📊 **Real-time Auditing**: Forensic JSONL logs and metrics integration.
-- ⚠️ **Typed Adapter Errors**: Distinct deny, ask-required, and execution failure exceptions.
+- 🛡️ **Pre-execution policy decisions**: Put allow/deny/ask checks in front of Python tool handlers.
+- 💻 **Shell-first execution control**: The strongest current execution path is still shell / Bash style tooling.
+- ⚠️ **Typed adapter errors**: Distinct deny, ask-required, and execution failure exceptions.
+- 📜 **Signed receipts**: Optional cryptographic proof of execution when you need deeper verification.
+- 🔏 **Signed policy loading**: Optional detached-signature verification for `policy.yaml`.
+- 📊 **Auditing support**: JSONL logs and metrics integration for operator-visible outcomes.
+
+Current boundary note:
+
+- non-shell tools are most often a `check`-style policy gate first
+- shell-style execution remains the clearest current enforcement proof point
+- Python is an active adapter surface, but still below the current Node path in maturity
 
 ---
 

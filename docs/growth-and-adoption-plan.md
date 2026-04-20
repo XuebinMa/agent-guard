@@ -9,9 +9,11 @@
 
 ---
 
+This is a maintainer-facing planning document. It is not the primary product overview and should not be treated as the first entry point for new developers.
+
 ## 1. Goal
 
-Increase meaningful usage of `agent-guard` by making the project easier to understand, easier to try, and easier to trust.
+Increase meaningful usage of `agent-guard` by making the execution-control wedge easier to understand, easier to try, and easier to verify.
 
 This plan optimizes for:
 
@@ -29,7 +31,7 @@ The project already has substantial technical depth, but adoption is constrained
 1. The primary pain point is not expressed sharply enough.
 2. The project currently presents too many capabilities at once.
 3. New users do not reach a first success quickly enough.
-4. There are not yet enough public “before vs after” trust-building artifacts.
+4. There are not yet enough public “before vs after” proof artifacts.
 
 In practice, many visitors likely leave without answering:
 
@@ -44,18 +46,18 @@ In practice, many visitors likely leave without answering:
 
 ### Primary Product Statement
 
-`agent-guard` puts a policy gate and an OS sandbox in front of AI tool calls, starting with shell and high-risk tools.
+`agent-guard` is an execution control layer for agent side effects. It gives AI application and agent developers a real decision boundary before shell commands and other risky actions become real.
 
 ### Secondary Supporting Statement
 
-It helps teams move from “we hope the model behaves” to “tool execution is checked, auditable, and constrained.”
+It helps teams move from “we hope the model behaves” to “the execution boundary decides what actually runs.”
 
 ### What It Is Not
 
 - not a general-purpose agent framework
 - not a prompt-engineering library
 - not a replacement for app-level authorization
-- not a full cloud control plane yet
+- not a full cloud control plane today
 
 ---
 
@@ -82,13 +84,13 @@ Why they matter:
 
 Primary problem:
 
-- “I need a reusable security layer in front of tool execution across teams or products.”
+- “I need a reusable execution-control layer in front of tool execution across teams or products.”
 
 ### ICP 3: Security/platform teams reviewing agent deployments
 
 Why they matter:
 
-- high trust sensitivity
+- high verification sensitivity
 - care about receipts, logs, parity, and diagnostics
 
 Primary problem:
@@ -101,7 +103,7 @@ Primary problem:
 
 ### For code-agent builders
 
-- Protect shell tools before the model reaches the OS.
+- Put a real decision boundary in front of shell tools before the model reaches the OS.
 - Add security to LangChain/OpenAI-style tools without rewriting your app.
 - Start with `check`, move sensitive tools to `enforce`.
 
@@ -125,7 +127,7 @@ The project should not try to win adoption by marketing every capability equally
 
 ### Chosen Wedge
 
-**Shell and high-risk tool-call protection for AI agents**
+**Shell and high-risk tool-call protection for agent developers**
 
 Why this wedge:
 
@@ -169,7 +171,7 @@ Primary assets:
 - package-level demo scripts
 - 5-minute install instructions
 
-### Stage C: Trust
+### Stage C: Verification
 
 User verifies:
 
@@ -236,7 +238,7 @@ Success metric:
 
 - a new user can run a real demo in under 10 minutes without reading architecture docs first
 
-## Phase 3: Proof & Trust
+## Phase 3: Proof & Verification
 
 Goal:
 
@@ -261,7 +263,7 @@ Goal:
 
 Deliverables:
 
-- publish focused examples for LangChain/OpenAI Agents
+- publish focused examples for LangChain/OpenAI-style tool integrations
 - create 2-3 technical blog posts
 - share short demo clips
 - outreach to code-agent / tool-runtime builders
