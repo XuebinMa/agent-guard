@@ -2,13 +2,13 @@
 
 ## Executive Summary
 
-This review proposes a stable documentation structure for `agent-guard` after the execution-control narrative repositioning.
+This review proposes a stable documentation structure for `agent-guard` after its narrative was refocused around execution control.
 
 ## Review Scope
 
 This review covers tracked files under `docs/` plus tracked crate-level `README.md` files that act as developer-facing documentation.
 
-Tracked file discovery commands used for this review:
+Tracked file discovery command used for this review:
 
     git ls-files 'docs/**' 'crates/**/README.md' | sort
 
