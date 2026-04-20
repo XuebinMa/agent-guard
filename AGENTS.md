@@ -4,7 +4,9 @@ This file provides guidance to Codex when working with this repository.
 
 ## Project Overview
 
-`agent-guard` is a security runtime for AI agents. It intercepts tool calls, evaluates them against policy, applies validator and sandbox controls, and records auditable execution outcomes.
+`agent-guard` is an execution control layer for agent side effects. It sits between agent tool intent and real execution, evaluates calls against policy, applies validator and sandbox controls, and records auditable outcomes.
+
+Today, the clearest proof point is shell-first execution control. The broader direction is side-effect execution control beyond shell, but the current adoption wedge is giving AI application and agent developers a real decision boundary before risky actions become real.
 
 ## Common Commands
 
