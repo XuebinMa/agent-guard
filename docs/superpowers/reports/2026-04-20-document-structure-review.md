@@ -39,22 +39,20 @@ Expected files:
 
 Role:
 
-- help a developer reach first understanding and first success quickly
+- help a developer reach time-to-first-understanding and time-to-first-success quickly
 
-Expected files:
+Typical contents:
 
 - quick proof guides
 - quickstarts
-- first integration guides
-- mode-selection guides
 
 ### 3. Integration / Reference
 
 Role:
 
-- help users choose an integration path and understand support boundaries
+- help users choose an integration path and consult decision/reference material once they are integrating more seriously
 
-Expected files:
+Typical contents:
 
 - support matrices
 - adapter contracts
@@ -67,7 +65,7 @@ Role:
 
 - support operators, security reviewers, and maintainers dealing with real deployment boundaries
 
-Expected files:
+Typical contents:
 
 - threat model
 - deployment
@@ -81,7 +79,7 @@ Role:
 
 - hold reusable public-facing explanation assets without crowding the product entry path
 
-Expected files:
+Typical contents:
 
 - launch kit
 - case studies
@@ -93,9 +91,9 @@ Expected files:
 
 Role:
 
-- retain historical and process context without presenting it as active product guidance
+- retain archived product and history material, plus internal process artifacts, without presenting them as active product guidance
 
-Expected files:
+Typical contents:
 
 - archived phase documents
 - superseded reports
