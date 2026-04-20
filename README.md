@@ -1,21 +1,22 @@
 # agent-guard
 
-> Put a policy gate and OS sandbox in front of AI tool calls.
-> Start with shell tools, high-risk actions, and agent runtimes that need a real execution boundary.
+> The execution control layer for agent side effects.
+> When an agent is about to do something real, `agent-guard` decides whether to allow it, block it, ask for approval, or take over execution.
 
 [![Version](https://img.shields.io/badge/Version-0.2.0--rc1-blue.svg)]()
-[![Focus](https://img.shields.io/badge/Focus-Ecosystem%20%26%20Trust-green.svg)]()
+[![Focus](https://img.shields.io/badge/Focus-Execution%20Control-green.svg)]()
 [![License](https://img.shields.io/badge/License-MIT-yellow.svg)]()
 
-`agent-guard` is for teams building AI agents that can call tools, especially shell-like or other high-risk tools. Instead of relying on prompts like “please be safe,” it checks each tool call against policy and can execute the highest-risk shell paths inside an OS sandbox.
+`agent-guard` is for AI application and agent developers who need a real execution boundary before tool calls turn into shell commands, file mutations, or other side effects. It sits between agent intent and execution so risky actions do not rely only on prompts, regexes, or ad hoc handler code.
 
-If you are building:
+Today, the clearest proof point is shell / Bash execution:
 
-- a code agent with `bash` or terminal access
-- a tool-calling workflow with LangChain or OpenAI-style handlers
-- an internal agent platform that needs auditability and receipts
+- gate risky commands before they reach the real shell
+- deny or ask for approval on dangerous requests
+- move the highest-risk execution path into the SDK's controlled execution flow
+- keep audit records of what was allowed, blocked, or executed
 
-this project is meant to give you a safer execution boundary.
+That shell-first story is the adoption wedge, not the final scope. The project can grow into broader side-effect control over time, but the reason to use it now is simple: it gives your agent a real execution decision point where it matters most.
 
 ---
 
@@ -23,8 +24,6 @@ this project is meant to give you a safer execution boundary.
 
 - **Prerelease**: [`v0.2.0-rc1`](https://github.com/XuebinMa/agent-guard/releases/tag/v0.2.0-rc1)
 - **Announcement**: [GitHub Discussions #1](https://github.com/XuebinMa/agent-guard/discussions/1)
-
-If you want the quickest way to understand what changed and where to start, use those two links first.
 
 ---
 
@@ -60,162 +59,93 @@ That path is documented in [Three-Minute Proof](docs/guides/getting-started/thre
 
 ---
 
-## Before vs After
+## What It Does
 
-Without `agent-guard`:
+The core runtime decision looks like this:
 
-- the model reaches your shell or tool handler directly
-- risky commands rely on prompts, regexes, or ad hoc validation
-- operators have weak evidence for what was allowed or blocked
-
-With `agent-guard`:
-
-- every tool call hits a policy gate first
-- risky commands can be denied or escalated before execution
-- shell execution paths can run inside an OS-level sandbox with auditable outcomes
-
----
-
-## Why It Exists
-
-Without a runtime guard, agent security usually depends on model behavior, prompt instructions, and ad hoc tool validation. That breaks down quickly for shell tools and other high-risk capabilities.
-
-`agent-guard` changes that boundary:
-
-- before tool execution: policy check, anomaly checks, audit hooks
-- during execution: sandbox selection and restricted execution
-- after execution: receipts, logs, and operator-visible diagnostics
-
-This moves agent safety from “best effort” to “explicitly enforced at the tool boundary.”
-
----
-
-## What You Can Do Next In 5 Minutes
-
-Run a minimal Node quickstart that shows one safe command succeeding and one risky command being blocked, without the longer before-vs-after framing:
-
-```bash
-npm ci --prefix crates/agent-guard-node
-npm run build:debug --prefix crates/agent-guard-node
-npm run demo:quickstart --prefix crates/agent-guard-node
+```text
+agent tool call
+  -> agent-guard
+  -> allow | deny | ask for approval | execute through guarded path
+  -> optional sandbox-backed execution
+  -> audit outcome
 ```
 
-That quickstart lives in [examples/quickstart](crates/agent-guard-node/examples/quickstart/README.md).
+This is the difference between:
 
-If you want the shortest path to “does this actually stop risky tool calls?”, start there.
+- hoping the model behaves
+- and putting an explicit execution control layer in front of side effects
 
----
-
-## Who Should Use It
-
-### Best Fit Right Now
-
-- engineers building code agents or shell-enabled agents
-- teams adding safety around tool-calling runtimes
-- platform or security teams that need receipts, policy control, and auditability
-
-### Less Ideal As A First Use Case
-
-- purely chat-only assistants with no tool execution
-- projects looking for a full agent orchestration framework
-- teams that only need prompt-layer filtering
+For shell tools, that boundary is strongest today because `enforce` can move execution into the SDK path instead of leaving the final shell call in your original handler.
 
 ---
 
-## Key Value
+## Why Developers Adopt It
 
-- **Protect shell and high-risk tools**: Put policy checks in front of the most dangerous execution paths first.
-- **Integrate without rewriting your app**: Wrap LangChain-style tools or OpenAI-style handlers at the tool boundary.
-- **Move from `check` to `enforce` gradually**: Start with authorization-only gating, then enforce sandboxed execution for shell-sensitive tools first.
-- **Keep proof, not just logs**: Generate signed receipts and auditable events for compliance-sensitive environments.
-- **See the real host boundary**: Use transparency and doctor tooling to understand what your machine can actually enforce.
-- **Verify trust artifacts end-to-end**: Sign policies, verify receipts, and export doctor reports in text, JSON, or HTML.
-
-Current boundary note:
-
-- `enforce` is strongest today on shell / Bash execution paths
-- non-shell tools primarily use `check` + policy enforcement unless your host runtime adds its own execution boundary
-- if the selected backend falls back to `NoopSandbox`, you still have policy checks, but you do not have equivalent OS isolation
+- **Real boundary, not prompt-only safety**: risky tool calls hit a decision point before execution.
+- **Small integration surface**: wrap existing LangChain-style tools or OpenAI-style handlers instead of rewriting your runtime.
+- **Incremental rollout**: start with shell tools in `enforce`, keep lower-risk tools in `check`, and expand from there.
+- **Auditable outcomes**: keep receipts and logs as support for trust and review, without making enterprise workflow the first thing you have to buy into.
 
 ---
 
-## Why This Is Different
+## Best Fit Right Now
 
-Many agent stacks stop at “the model should not do that.”
-`agent-guard` is built for “the tool call must still pass a policy and execution boundary.”
+- code agents or shell-enabled agents
+- AI applications with high-risk tool calls
+- teams that need a pre-execution decision layer before real side effects happen
 
-That is especially useful when:
+## Not The First Thing To Reach For
 
-- prompt injection reaches a tool-enabled agent
-- a code agent gets overly broad shell access
-- a platform team needs evidence of what was allowed, blocked, or sandboxed
+- chat-only assistants with no tool execution
+- teams looking for a full orchestration framework
+- teams expecting a finished enterprise control plane on day one
+
+---
+
+## Current Scope
+
+What is strong today:
+
+- shell / Bash protection is the main proof point
+- Node is the fastest adoption path
+- policy decisions, approval flows, and auditable outcomes are available now
+
+What to understand before integrating:
+
+- `enforce` is strongest on shell-like execution paths
+- non-shell tools are primarily a `check`-first story today unless your host adds its own execution boundary
+- broader policy workflow and control-plane ideas are future expansion paths, not the phase-one hook
+
+---
+
+## Fastest Paths
+
+- [Node Quickstart](crates/agent-guard-node/examples/quickstart/README.md): shortest end-to-end path for a new developer
+- [Secure Shell Tools](docs/guides/getting-started/secure-shell-tools.md): best first integration when shell is the risk
+- [Check vs Enforce](docs/guides/getting-started/check-vs-enforce.md): when to keep your handler vs when to move execution into `agent-guard`
+- [Framework Support Matrix](docs/framework-support-matrix.md): what is supported today across Node, Python, and Rust
+- [User Manual](docs/guides/getting-started/user-manual.md): install, policy basics, and SDK integration
+
+Additional references:
+
+- [Latest Release](https://github.com/XuebinMa/agent-guard/releases/tag/v0.2.0-rc1)
+- [Join the Discussion](https://github.com/XuebinMa/agent-guard/discussions/1)
+- [Trust Tooling](docs/guides/getting-started/trust-tooling.md)
+- [Architecture & Vision](docs/architecture-and-vision.md)
+- [Documentation Hub](docs/README.md)
 
 ---
 
 ## Framework Entry Points
 
-- **Node**: high-level adapter layer for LangChain-style tools and OpenAI-style handlers, with real runtime validation against `@langchain/core` and `@openai/agents`
-- **Python**: LangChain and OpenAI-style wrapper layer, with shell enforcement still centered on the Bash execution path
-- **Rust SDK**: direct integration path for host applications and custom runtimes
+- **Node**: strongest current adoption surface, with wrappers for LangChain-style tools and OpenAI-style handlers
+- **Python**: wrapper surface is available, with shell enforcement still centered on the Bash path
+- **Rust SDK**: most direct integration path for hosts that want explicit control over the execution pipeline
 
 ---
 
-## 📺 See it in Action
-
-Run the built-in demos to see the security boundary in practice:
-
-- **Happy Path**: `cargo run --example demo_happy_path` (Standard execution + cryptographic receipts)
-- **Malicious Block**: `cargo run --example demo_malicious_block` (See the Deny Fuse lock out an attacker)
-- **The Comparison**: `cargo run --example demo_comparison` (No Guard vs. Full Guard side-by-side)
-- **Host Transparency**: `cargo run --example demo_transparency` (What can your host OS defend against?)
-- **Doctor Report**: `cargo run -p guard-verify -- doctor --format text` (Which backend will the SDK actually select, and why?)
-
----
-
-## 📈 Reliability Signals
-
-`agent-guard` is built for high-scale production environments. Our current release line has been [stress tested](docs/security-audit.md#2-findings--remediations):
-
-- **Zero Resource Leaks**: Passed 60,000+ executions in 30s with zero handle or memory drift.
-- **Concurrent Correctness**: Successfully handled 128+ concurrent agents with 100% decision accuracy.
-- **Fail-Closed Design**: Blocks when the sandbox or environment cannot be safely initialized.
-
----
-
-## 📖 Documentation & Usage
-
-Ready to try or integrate it? Start with the path that matches your goal:
-
-- 📦 **[Latest Release](https://github.com/XuebinMa/agent-guard/releases/tag/v0.2.0-rc1)**: current prerelease notes and evaluation links
-- 🗣️ **[Join the Discussion](https://github.com/XuebinMa/agent-guard/discussions/1)**: release announcement and community feedback thread
-- ⏱️ **[Three-Minute Proof](docs/guides/getting-started/three-minute-proof.md)**: the fastest path to seeing allowed vs blocked behavior
-- 📘 **[User Manual](docs/guides/getting-started/user-manual.md)**: installation, policy basics, and SDK integration
-- 🔐 **[Secure Shell Tools](docs/guides/getting-started/secure-shell-tools.md)**: the best first integration path for high-risk tool use
-- ⚖️ **[Check vs Enforce](docs/guides/getting-started/check-vs-enforce.md)**: how to choose the right adapter mode
-- 🎬 **[Attack Demo Playbook](docs/guides/getting-started/attack-demo-playbook.md)**: a fast “without guard vs with guard” demo flow
-- 📣 **[Launch Kit](docs/guides/adoption/launch-kit.md)**: shareable positioning, demo script, and outreach templates
-- 🚀 **[Node Quickstart](crates/agent-guard-node/examples/quickstart/README.md)**: fastest path to a first successful run
-- 🏗️ **[Architecture & Vision](docs/architecture-and-vision.md)**: long-term roadmap and product direction
-- 🧭 **[Framework Support Matrix](docs/framework-support-matrix.md)**: what is supported today across Rust, Node, Python, and framework adapters
-- 🗺️ **[Capability Matrix](docs/capability-parity.md)**: platform-specific protection boundaries
-- 🔏 **[Trust Tooling](docs/guides/getting-started/trust-tooling.md)**: policy signing, receipt verification, and doctor reports
-- 📚 **[Documentation Hub](docs/README.md)**: full docs map
-- 📈 **[Growth & Adoption Plan](docs/growth-and-adoption-plan.md)**: current go-to-market and adoption execution plan
-
----
-
-## 🗺️ Roadmap
-
-- [x] **Phase 1-4**: Core Engine, Linux Sandbox, Telemetry, Anomaly Detection.
-- [x] **Phase 5-6**: Windows Low-IL, Unified Capability Model (UCM), Signed Receipts (Supported), SIEM.
-- [x] **Phase 7**: Production Hardening, Cross-platform Parity, AppContainer Prototype.
-- [x] **Phase 8**: RC Validation & Stress Testing.
-- [~] **Phase 9 (Current)**: v0.3.0 Ecosystem & Trust: LangChain/OpenAI adapters, real framework validation, receipt verification tooling.
-- [ ] **Phase 10 (Future)**: TPM-backed Remote Attestation, Policy Registry, Audit Intelligence.
-
----
-
-## 🤝 Contributing
+## Contributing
 
 We welcome security research and contributions. Please see `CONTRIBUTING.md` for details.
 

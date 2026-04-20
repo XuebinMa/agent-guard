@@ -6,11 +6,11 @@
 | **Audience** | Developers, Integrators |
 | **Version** | 1.0 |
 | **Last Reviewed** | 2026-04-15 |
-| **Related Docs** | [Architecture & Vision](architecture-and-vision.md), [Node README](../crates/agent-guard-node/README.md), [Python README](../crates/agent-guard-python/README.md) |
+| **Related Docs** | [README](../README.md), [Node README](../crates/agent-guard-node/README.md), [Python README](../crates/agent-guard-python/README.md) |
 
 ---
 
-This matrix answers the practical adoption questions:
+This matrix answers the practical adoption questions for the current execution-control surface:
 
 - which integration surfaces are available today?
 - how mature are they?
@@ -20,6 +20,8 @@ This matrix answers the practical adoption questions:
 This is not the same as the OS sandbox matrix in [capability-parity.md](capability-parity.md).  
 That document describes platform enforcement boundaries.  
 This document describes framework and binding readiness.
+
+It is intentionally narrower than a broad platform map. The goal is to help a developer decide where to start now, not to imply that every language and framework path is equally mature.
 
 ---
 
@@ -52,7 +54,8 @@ Why:
 
 - Node currently has the clearest high-level adapter story
 - Node now has real runtime validation against actual framework packages
-- Node includes the fastest “allowed vs blocked” onboarding loop
+- Node includes the fastest "allowed vs blocked" onboarding loop
+- shell-first execution control is the strongest current proof point in the repository
 
 Start here:
 

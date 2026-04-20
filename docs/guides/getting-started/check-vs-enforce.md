@@ -22,7 +22,7 @@ The fastest way to choose correctly is:
 - use `enforce` for shell-like tools that should run through the sandbox
 - use `auto` when you want a lightweight preflight gate before running your original handler
 
-This guide explains why.
+This guide explains how to choose based on where you want the execution boundary to live.
 
 ---
 
