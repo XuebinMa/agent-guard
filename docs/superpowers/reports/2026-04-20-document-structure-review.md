@@ -2,7 +2,7 @@
 
 ## Executive Summary
 
-The main problem is a combination of structure drift and old narrative residue, with some duplication in supporting material rather than one dominant duplicate-heavy failure mode. The active path is currently too wide, because historical, strategy, and support docs still sit too close to newcomer-facing entry points. The next cleanup should focus on P0 first so the developer path reflects the current execution-control story before secondary reorganization work begins.
+The main problem is a combination of structure drift, active-path crowding, and old narrative residue rather than a primarily duplication-driven issue. The active path is currently too wide because historical, strategy, and support docs still sit too close to newcomer-facing entry points. The next cleanup should focus on P0 first so the developer path reflects the current execution-control story before secondary reorganization begins.
 
 ## Review Scope
 
@@ -185,11 +185,11 @@ This section identifies files that still use the old project narrative.
 ### P1: Reorganize supporting material
 
 - move supporting but secondary docs down from the main path
-- identify merge candidates among support matrices, strategy docs, and package-level references
+- identify support matrices, strategy docs, and package-level references that need clearer boundaries or lighter consolidation
 - separate integration references from adoption assets more clearly
 
 ### P2: Tidy historical and process material
 
 - identify archive candidates that should leave the active path
 - identify process-oriented `docs/superpowers/` material that should remain internal
-- identify low-value duplicate artifacts that may become delete candidates later
+- identify low-value historical or process artifacts that may become delete candidates later
