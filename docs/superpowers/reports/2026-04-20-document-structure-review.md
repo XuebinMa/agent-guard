@@ -20,7 +20,89 @@ Review exclusions:
 
 ## Target Structure Summary
 
-This section defines the recommended long-term documentation layers.
+The documentation set should be evaluated against six stable layers:
+
+### 1. Top-level entry points
+
+Role:
+
+- define what the project is
+- route new users to the next step
+- keep the current narrative crisp
+
+Expected files:
+
+- `README.md`
+- `docs/README.md`
+
+### 2. Getting Started
+
+Role:
+
+- help a developer reach first understanding and first success quickly
+
+Expected files:
+
+- quick proof guides
+- quickstarts
+- first integration guides
+- mode-selection guides
+
+### 3. Integration / Reference
+
+Role:
+
+- help users choose an integration path and understand support boundaries
+
+Expected files:
+
+- support matrices
+- adapter contracts
+- capability references
+- package READMEs used as integration docs
+
+### 4. Operations / Security
+
+Role:
+
+- support operators, security reviewers, and maintainers dealing with real deployment boundaries
+
+Expected files:
+
+- threat model
+- deployment
+- observability
+- security audit
+- platform sandbox docs
+
+### 5. Adoption / Messaging
+
+Role:
+
+- hold reusable public-facing explanation assets without crowding the product entry path
+
+Expected files:
+
+- launch kit
+- case studies
+- release announcement drafts
+- FAQ
+- social and external channel packs
+
+### 6. Archive / Internal Process
+
+Role:
+
+- retain historical and process context without presenting it as active product guidance
+
+Expected files:
+
+- archived phase documents
+- superseded reports
+- archived release support material
+- superpowers process artifacts
+
+In the file mapping table below, `keep` means the file can remain in the active structure, `merge` means it overlaps with another file enough to justify later consolidation, `move down` means it should remain available but at lower prominence, `archive` means it should leave the active path while staying accessible, and `delete candidate` means its value appears weak enough that later removal should be considered.
 
 ## File Mapping Table
 
