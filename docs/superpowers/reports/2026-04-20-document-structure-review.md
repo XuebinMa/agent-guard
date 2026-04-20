@@ -71,7 +71,7 @@ Expected files:
 
 - threat model
 - deployment
-- observability
+- operational monitoring
 - security audit
 - platform sandbox docs
 
@@ -130,6 +130,32 @@ This section maps reviewed files to recommended structure layers and actions.
 | `docs/node-adapter-gap-report.md` | Node readiness audit and gap report | Archive / Internal Process | archive | It is an implementation audit that is largely superseded by active package and support docs. |
 | `crates/agent-guard-node/README.md` | Package-level Node integration guide | Integration / Reference | keep | It is a primary package entry point for a mature integration surface. |
 | `crates/agent-guard-python/README.md` | Package-level Python integration guide | Integration / Reference | keep | It serves as the package entry point for Python users and belongs with the active integration documentation. |
+| `docs/guides/operations/deployment-guide.md` | Production deployment and hardening guide | Operations / Security | keep | It is a direct operator-facing deployment document and belongs in the active operations layer. |
+| `docs/guides/operations/observability.md` | Monitoring, audit, and telemetry operations guide | Operations / Security | keep | It supports real deployment monitoring and should remain part of the active operational documentation. |
+| `docs/research-appcontainer.md` | Windows AppContainer feasibility spike and research record | Archive / Internal Process | archive | It reads as completed implementation research rather than ongoing operator guidance. |
+| `docs/sandbox-linux.md` | Linux sandbox behavior and enforcement boundary reference | Operations / Security | keep | It documents the current Linux runtime boundary and is useful for deployers and security reviewers. |
+| `docs/sandbox-macos.md` | macOS sandbox limitations and usage reference | Operations / Security | keep | It clearly documents the active macOS prototype boundary and should stay available for platform-specific review. |
+| `docs/sandbox-windows.md` | Windows sandbox limitations and usage reference | Operations / Security | keep | It explains the current Windows execution boundary and belongs with the active platform security docs. |
+| `docs/security-audit.md` | Release-era security audit and remediation summary | Operations / Security | keep | It is still a core security review artifact for evaluators even though it is tied to the current release line. |
+| `docs/threat-model.md` | Primary threat and attack-surface reference | Operations / Security | keep | It is the clearest top-level security posture document and should remain active. |
+| `docs/guides/adoption/case-study-shell-agent.md` | Problem-to-value case study for the shell-first wedge | Adoption / Messaging | keep | It helps evaluators recognize the strongest current use case without crowding core onboarding. |
+| `docs/guides/adoption/demo-asset-workflow.md` | Maintainer workflow for consistent demo visuals and clips | Adoption / Messaging | keep | It is a reusable adoption asset for sharing the project consistently across channels. |
+| `docs/guides/adoption/discussions-announcement.md` | Channel-specific GitHub Discussions launch draft | Adoption / Messaging | move down | It is useful as a launch asset, but it is narrower and more time-bound than the main adoption docs. |
+| `docs/guides/adoption/external-channel-post-pack.md` | Multi-channel launch posting pack | Adoption / Messaging | move down | It is a useful outbound bundle, but its first-wave launch focus makes it less evergreen than the core messaging assets. |
+| `docs/guides/adoption/faq-for-new-users.md` | First-wave FAQ for evaluators and new users | Adoption / Messaging | keep | It directly supports adoption questions that arise after a first post, demo, or release note. |
+| `docs/guides/adoption/launch-kit.md` | Central messaging and demo guidance for maintainers | Adoption / Messaging | keep | It functions as the main reusable adoption hub and fits the target structure well. |
+| `docs/guides/adoption/release-announcement.md` | Reusable public release announcement draft | Adoption / Messaging | move down | It should remain available, but it is a campaign asset rather than a primary long-lived doc hub. |
+| `docs/guides/adoption/social-posts.md` | Reusable social and community post templates | Adoption / Messaging | keep | It is an evergreen messaging asset that belongs in the adoption layer. |
+| `docs/archive/README.md` | Index and explanation for archived documentation | Archive / Internal Process | keep | It is the right archive entry point and should remain the navigator for historical material. |
+| `docs/archive/phase2-design.md` | Historical implementation summary for Phase 2 work | Archive / Internal Process | keep | It is clearly historical project history and already belongs in the archive layer. |
+| `docs/archive/phase2-done.md` | Historical completion checklist for Phase 2 | Archive / Internal Process | keep | It has value as implementation history and is already appropriately placed as archive material. |
+| `docs/archive/phase3-design.md` | Historical design document for Phase 3 expansion | Archive / Internal Process | keep | It is archived milestone design material rather than active product guidance. |
+| `docs/archive/phase6-design.md` | Historical enterprise-security roadmap design | Archive / Internal Process | keep | It is roadmap history that should stay available without being treated as current user documentation. |
+| `docs/archive/phase8-design.md` | Historical future-phase design for deeper isolation work | Archive / Internal Process | keep | It is clearly a forward-looking historical design artifact and already sits in the right layer. |
+| `docs/archive/release-notes-v0.1.0.md` | Archived release notes for an older release line | Archive / Internal Process | keep | It serves as retained release history and already belongs in archive. |
+| `docs/archive/sales-demo-script.md` | Historical enterprise sales and demo script | Archive / Internal Process | keep | It is a legacy messaging artifact that is better preserved as history than surfaced as active guidance. |
+| `docs/superpowers/specs/2026-04-20-agent-runtime-control-diagnostic-design.md` | Internal process spec for the product diagnostic report | Archive / Internal Process | keep | It is an internal design artifact and fits the process-material portion of the archive layer. |
+| `docs/superpowers/specs/2026-04-20-document-structure-and-cleanup-design.md` | Internal process spec for the documentation structure review | Archive / Internal Process | keep | It is a process document for maintainers and belongs with internal planning artifacts rather than product docs. |
 
 ## Old Narrative Residue Table
 
