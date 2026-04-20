@@ -41,10 +41,12 @@ Role:
 
 - help a developer reach time-to-first-understanding and time-to-first-success quickly
 
-Typical contents:
+Expected files:
 
 - quick proof guides
 - quickstarts
+- first integration guides
+- mode-selection guides
 
 ### 3. Integration / Reference
 
@@ -52,7 +54,7 @@ Role:
 
 - help users choose an integration path and consult decision/reference material once they are integrating more seriously
 
-Typical contents:
+Expected files:
 
 - support matrices
 - adapter contracts
@@ -65,7 +67,7 @@ Role:
 
 - support operators, security reviewers, and maintainers dealing with real deployment boundaries
 
-Typical contents:
+Expected files:
 
 - threat model
 - deployment
@@ -79,7 +81,7 @@ Role:
 
 - hold reusable public-facing explanation assets without crowding the product entry path
 
-Typical contents:
+Expected files:
 
 - launch kit
 - case studies
@@ -93,12 +95,12 @@ Role:
 
 - retain archived product and history material, plus internal process artifacts, without presenting them as active product guidance
 
-Typical contents:
+Expected files:
 
-- archived phase documents
+- phase documents
+- archived release artifacts
 - superseded reports
-- archived release support material
-- superpowers process artifacts
+- superpowers plans and process files
 
 In the file mapping table below, `keep` means the file can remain in the active structure, `merge` means it overlaps with another file enough to justify later consolidation, `move down` means it should remain available but at lower prominence, `archive` means it should leave the active path while staying accessible, and `delete candidate` means its value appears weak enough that later removal should be considered.
 
