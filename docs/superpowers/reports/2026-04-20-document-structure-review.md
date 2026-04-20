@@ -71,7 +71,7 @@ Expected files:
 
 - threat model
 - deployment
-- operational monitoring
+- observability
 - security audit
 - platform sandbox docs
 
