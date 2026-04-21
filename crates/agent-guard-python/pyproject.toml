@@ -13,6 +13,6 @@ classifiers = [
 ]
 
 [tool.maturin]
-features = ["pyo3/extension-module"]
+features = ["extension-module"]
 python-source = "python"
 module-name = "agent_guard._agent_guard"

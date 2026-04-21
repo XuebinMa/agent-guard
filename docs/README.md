@@ -1,6 +1,6 @@
 # agent-guard Documentation Hub (v0.2.0-rc1)
 
-`agent-guard` is an execution control layer for agent side effects. This hub is organized around the current developer path first: understand the shell-first proof point, get a real execution boundary in place, then go deeper into reference, operations, and historical or maintainer-only material when needed.
+`agent-guard` is an execution control layer for agent side effects. This hub is organized around the current developer path first: understand the short-term wedge, get a real execution boundary in place, then go deeper into reference, operations, and historical or maintainer-only material when needed.
 
 ![agent-guard proof demo screenshot](assets/demo-proof-terminal.svg)
 
@@ -15,9 +15,21 @@ If you are arriving from GitHub or social posts, these are the two best entry po
 
 Current boundary note:
 
-- the strongest current `enforce` path is shell / Bash execution
-- non-shell tools primarily use `check` + policy gate unless your host adds its own runtime boundary
+- the short-term wedge now covers shell / terminal, file write, and outbound mutation HTTP
+- Bash still has the deepest validator path today; file and HTTP paths rely more heavily on policy matching
+- HTTP execution ownership distinguishes mutation methods at runtime, but policy matching is still primarily URL-centric
+- the SDK already contains signing, receipts, metrics, anomaly detection, and SIEM export beyond the narrow wedge
 - use `cargo run -p guard-verify -- doctor --format text` to verify the real host boundary on the machine you actually deploy
+
+---
+
+## 🗂️ How This Docs Tree Is Layered
+
+- **Active product docs**: the top-level files and `docs/guides/` are the current integration, operations, and adoption surfaces
+- **Historical docs**: `docs/archive/` holds older design, release, and strategy material that should not be mistaken for the current product narrative
+- **Internal process docs**: `docs/superpowers/` contains maintainer-facing specs, plans, and reports produced by the superpowers workflow
+
+If you are new to the repo, start with the active docs first and only drop into `archive/` or `superpowers/` when you need historical or maintainer context.
 
 ---
 
@@ -34,6 +46,7 @@ Current boundary note:
 - **I want to know what frameworks are actually supported** → [Framework Support Matrix](framework-support-matrix.md)
 - **I want to compare platform gaps** → [Capability Parity Matrix](capability-parity.md)
 - **I want historical strategy or release context** → [Document Archive](archive/README.md)
+- **I want maintainer-only planning artifacts** → `docs/superpowers/`
 - **I want material I can share publicly** → [Launch Kit](guides/adoption/launch-kit.md)
 - **I want a release post or social draft** → [Launch Kit](guides/adoption/launch-kit.md)
 - **I want ready-made replies for new users** → [FAQ For New Users](guides/adoption/faq-for-new-users.md)
@@ -102,3 +115,4 @@ For security researchers and auditors reviewing the system's defensive posture.
 For maintainers and reviewers who need archived strategy, release, or implementation history.
 
 - 🏛️ **[Document Archive](archive/README.md)**: Historical design documents, archived release notes, and past roadmap context.
+- 🛠️ **`docs/superpowers/`**: Internal specs, implementation plans, and workflow reports used during repository maintenance.

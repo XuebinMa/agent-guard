@@ -11,19 +11,24 @@ Today, the clearest proof point is shell-first execution control. The broader di
 ## Common Commands
 
 ```bash
-cargo build --workspace --all-features
-cargo test --workspace --all-features
-cargo clippy --workspace --all-features -- -D warnings
+./scripts/verify.sh full
+./scripts/verify.sh rust
+./scripts/verify.sh lint
+
+cargo build --workspace --exclude agent-guard-python --all-features
+cargo test --workspace --exclude agent-guard-python --all-features
+cargo clippy --workspace --exclude agent-guard-python --all-features -- -D warnings
+cargo fmt --all -- --check
 cargo fmt --all
 
 cargo run -p agent-guard-sdk --example quickstart
-cd crates/agent-guard-python && maturin develop
+cd crates/agent-guard-python && maturin develop --features extension-module
 cd crates/agent-guard-node && npm run build
 ```
 
 ## Workspace Shape
 
-The workspace is centered on six crates under `crates/`:
+The workspace is centered on seven crates under `crates/`:
 
 - `agent-guard-core`: policy, audit, and foundational types
 - `agent-guard-validators`: command and path validation
@@ -31,8 +36,15 @@ The workspace is centered on six crates under `crates/`:
 - `agent-guard-sdk`: main integration layer
 - `agent-guard-python`: Python bindings
 - `agent-guard-node`: Node bindings
+- `guard-verify`: CLI diagnostics and verification tooling
 
 The main execution path is: policy check -> validator filter -> audit -> sandboxed execution.
+
+Current product reality to preserve in edits:
+
+- the short-term wedge is shell, file write, and outbound mutation HTTP
+- Bash still has the deepest validator path today
+- the SDK already includes policy signing, execution receipts, metrics, anomaly detection, and SIEM export
 
 ## Working Rules
 

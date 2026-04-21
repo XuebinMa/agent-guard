@@ -63,6 +63,8 @@ Current boundary note:
 - non-shell tools are most often a `check`-style policy gate first
 - shell-style execution remains the clearest current enforcement proof point
 - Python is an active adapter surface, but still below the current Node path in maturity
+- `Guard.execute()` currently uses the SDK default sandbox selection internally; the Python binding does not yet expose an explicit sandbox-selection API
+- if the default sandbox diagnosis falls back to `NoopSandbox`, the policy gate still runs, but OS-level isolation is not equivalent
 
 ---
 
@@ -74,6 +76,14 @@ pip install git+https://github.com/XuebinMa/agent-guard.git#subdirectory=crates/
 ```
 
 *Note: Requires Rust toolchain for building from source.*
+
+For local development in this repository:
+
+```bash
+cd crates/agent-guard-python
+maturin develop --features extension-module
+pytest tests -v
+```
 
 ---
 

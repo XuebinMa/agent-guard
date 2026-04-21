@@ -9,11 +9,16 @@ agent-guard is a multi-layered security runtime for AI agents. It intercepts too
 ## Build & Test Commands
 
 ```bash
-# Build
-cargo build --workspace --all-features
+# Canonical local verification entrypoint
+./scripts/verify.sh full
 
-# Test (all)
-cargo test --workspace --all-features
+# Rust-only verification path
+./scripts/verify.sh rust
+./scripts/verify.sh lint
+
+# Build / test the Rust workspace without the PyO3 extension-module feature trap
+cargo build --workspace --exclude agent-guard-python --all-features
+cargo test --workspace --exclude agent-guard-python --all-features
 
 # Test (single crate)
 cargo test --package agent-guard-core
@@ -22,7 +27,7 @@ cargo test --package agent-guard-core
 cargo test --package agent-guard-core --lib tests::test_policy_load
 
 # Lint
-cargo clippy --workspace --all-features -- -D warnings
+cargo clippy --workspace --exclude agent-guard-python --all-features -- -D warnings
 
 # Format check / fix
 cargo fmt --all -- --check
@@ -31,8 +36,8 @@ cargo fmt --all
 # Run an example
 cargo run -p agent-guard-sdk --example quickstart
 
-# Python binding (requires maturin)
-cd crates/agent-guard-python && maturin develop
+# Python binding (requires maturin; extension-module is opt-in)
+cd crates/agent-guard-python && maturin develop --features extension-module
 
 # Node binding
 cd crates/agent-guard-node && npm run build
@@ -40,7 +45,7 @@ cd crates/agent-guard-node && npm run build
 
 ## Workspace Architecture
 
-Six crates under `crates/`, layered bottom-up:
+Seven crates under `crates/`, layered bottom-up:
 
 ```
 agent-guard-core          ← foundational types, YAML policy engine, audit, attestation
@@ -52,7 +57,18 @@ agent-guard-sdk           ← main integration point: Guard struct, anomaly dete
   ↑
 agent-guard-python        ← PyO3 bindings (maturin, abi3-py310)
 agent-guard-node          ← napi-rs bindings
+guard-verify              ← CLI verification and host-boundary diagnostics
 ```
+
+## Current Product Reality
+
+The current adoption wedge is a narrow execution-control runtime for:
+
+- shell / terminal
+- file write
+- outbound mutation HTTP
+
+The broader SDK already includes governance-oriented features such as policy signing, execution receipts, metrics, anomaly detection, and SIEM export. Do not describe the repository as a tiny shell-only layer, but do keep wedge claims narrow and truthful.
 
 ## Core Execution Pipeline
 
@@ -92,4 +108,4 @@ Policies are YAML files parsed into `PolicyFile`. Key sections:
 
 ## CI
 
-GitHub Actions (`.github/workflows/ci.yml`): rust-test, lint (fmt + clippy -D warnings), doc link-check via `scripts/check_docs.py`.
+GitHub Actions (`.github/workflows/ci.yml`) uses `./scripts/verify.sh` as the shared verification entrypoint for Rust, Python, Node, and docs/version checks.
