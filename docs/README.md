@@ -26,9 +26,9 @@ Current boundary note:
 - **I want to integrate quickly** → [User Manual](guides/getting-started/user-manual.md)
 - **I want to secure shell tools first** → [Secure Shell Tools](guides/getting-started/secure-shell-tools.md)
 - **I need to choose `check` vs `enforce`** → [Check vs Enforce](guides/getting-started/check-vs-enforce.md)
-- **I want a fast attack demo** → [Attack Demo Playbook](guides/getting-started/attack-demo-playbook.md)
-- **I want to connect ChatGPT Actions to agent-guard** → [ChatGPT Actions Integration](guides/getting-started/chatgpt-actions.md)
-- **I want policy signing, receipts, and doctor reports after first integration** → [Trust Tooling](guides/getting-started/trust-tooling.md)
+- **I want post-integration verification workflows** → [Trust Tooling](guides/getting-started/trust-tooling.md)
+- **I want a specific ChatGPT Actions path after the core proof** → [ChatGPT Actions Integration](guides/getting-started/chatgpt-actions.md)
+- **I want a fast attack demo for evaluation or sharing** → [Attack Demo Playbook](guides/getting-started/attack-demo-playbook.md)
 - **I want to deploy safely** → [Deployment Guide](guides/operations/deployment-guide.md)
 - **I want to audit security posture** → [Threat Model](threat-model.md)
 - **I want to know what frameworks are actually supported** → [Framework Support Matrix](framework-support-matrix.md)
@@ -50,10 +50,10 @@ For AI application and agent developers integrating `agent-guard` for the first 
 
 After the first run:
 
-- 🎬 **[Attack Demo Playbook](guides/getting-started/attack-demo-playbook.md)**: A short, repeatable “before vs after” demo flow.
-- 🤖 **[ChatGPT Actions Integration](guides/getting-started/chatgpt-actions.md)**: How to place agent-guard behind a Custom GPT Action.
-- 🔏 **[Trust Tooling](guides/getting-started/trust-tooling.md)**: Policy signing, receipt verification, and doctor reports once you need deeper audit and verification workflows.
-- 🚀 **[Migration Guide](guides/getting-started/migration-guide.md)**: Moving from No-op to Hardened execution.
+- 🎬 **[Attack Demo Playbook](guides/getting-started/attack-demo-playbook.md)**: A short, repeatable “before vs after” demo flow for evaluators, talks, and maintainers.
+- 🤖 **[ChatGPT Actions Integration](guides/getting-started/chatgpt-actions.md)**: A specific downstream integration path once the shell-first proof is already clear.
+- 🔏 **[Trust Tooling](guides/getting-started/trust-tooling.md)**: Policy signing, receipt verification, and doctor reports for deeper audit and verification workflows.
+- 🚀 **[Migration Guide](guides/getting-started/migration-guide.md)**: Moving from No-op to Hardened execution once you are tightening a real deployment.
 
 ---
 
@@ -93,7 +93,7 @@ For security researchers and auditors reviewing the system's defensive posture.
 
 - 🏹 **[Threat Model](threat-model.md)**: Formal asset analysis and attack surface matrix.
 - 🗺️ **[Capability Parity Matrix](capability-parity.md)**: Feature alignment across Linux, macOS, and Windows.
-- 🔍 **[Security Audit Report](security-audit.md)**: Latest pre-release self-audit findings.
+- 🔍 **[Security Audit Report](security-audit.md)**: Release-era self-audit checkpoint, useful after the primary threat-model review.
 
 ---
 

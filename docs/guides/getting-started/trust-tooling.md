@@ -1,5 +1,9 @@
 # Trust Tooling
 
+This guide is for post-integration verification workflows. It is most useful after you already understand the shell-first execution boundary and want stronger proof, signing, or operator-visible diagnostics.
+
+---
+
 `agent-guard` now ships a small trust workflow around three artifacts:
 
 - **policy**: the YAML rules the guard enforces

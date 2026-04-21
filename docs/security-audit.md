@@ -2,15 +2,15 @@
 
 | Field | Details |
 | :--- | :--- |
-| **Status** | 🟢 Finalized (v0.2.0) |
-| **Audience** | Security Researchers, Risk Officers |
+| **Status** | 🟠 Release Checkpoint (v0.2.0) |
+| **Audience** | Security Researchers, Risk Officers, Maintainers |
 | **Version** | 1.1 |
 | **Last Reviewed** | 2026-04-08 |
 | **Related Docs** | [Threat Model](threat-model.md), [Capability Parity](capability-parity.md) |
 
 ---
 
-> This report summarizes the findings of the final security self-audit before the v0.2.0 release.
+> This report summarizes the final security self-audit before the v0.2.0 release. Treat it as a release-era checkpoint rather than the primary security entry point; start with the threat model for the current defensive posture.
 
 ---
 

@@ -10,6 +10,10 @@
 
 ---
 
+This guide is for teams tightening a real deployment after the first proof or integration path is already working. It is not the best entry point for a first evaluation.
+
+---
+
 This guide helps you transition from basic `NoopSandbox` execution to the hardened, OS-level sandboxes provided by `agent-guard`.
 
 ---

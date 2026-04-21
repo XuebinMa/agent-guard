@@ -10,6 +10,10 @@
 
 ---
 
+This is a specific downstream integration guide, not the primary first-run path. Start with the shell-first proof and core tool boundary docs before using this ChatGPT-specific route.
+
+---
+
 This guide shows the most practical way to try `agent-guard` with ChatGPT today:
 
 `Custom GPT` -> `GPT Action` -> `your HTTP API` -> `agent-guard` -> `real tool`
