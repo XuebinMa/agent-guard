@@ -342,3 +342,21 @@ fn e11_write_file_append_mode_appends() {
         other => panic!("expected Executed, got {other:?}"),
     }
 }
+
+#[test]
+fn e12_bash_execute_denies_payloads_larger_than_one_megabyte() {
+    let guard = Guard::from_yaml(POLICY_FULL_ACCESS).expect("guard init");
+    let huge_command = "x".repeat((1024 * 1024) + 32);
+    let inp = input(&format!(r#"{{"command":"{}"}}"#, huge_command));
+
+    match execute_noop(&guard, &inp) {
+        Ok(ExecuteOutcome::Denied { decision, .. }) => {
+            assert!(
+                matches!(decision, agent_guard_sdk::GuardDecision::Deny { .. }),
+                "expected deny decision for oversized payload"
+            );
+        }
+        Ok(other) => panic!("expected deny outcome for oversized payload, got {other:?}"),
+        Err(other) => panic!("unexpected sandbox error: {other}"),
+    }
+}

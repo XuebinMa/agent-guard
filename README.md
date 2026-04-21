@@ -25,6 +25,23 @@ That narrow wedge is the adoption point, not the final scope. The project can gr
 - **Prerelease**: [`v0.2.0-rc1`](https://github.com/XuebinMa/agent-guard/releases/tag/v0.2.0-rc1)
 - **Announcement**: [GitHub Discussions #1](https://github.com/XuebinMa/agent-guard/discussions/1)
 
+## Verify Locally
+
+If you are touching the repository itself, use the shared verification entrypoint:
+
+```bash
+./scripts/verify.sh full
+```
+
+Useful narrower paths:
+
+- `./scripts/verify.sh rust`
+- `./scripts/verify.sh lint`
+- `./scripts/verify.sh python`
+- `./scripts/verify.sh node`
+
+The verification script uses temporary directories for Python build/test work so routine verification does not leave `venv_*` style residue in the repository root.
+
 ---
 
 ## See The Wedge
@@ -109,11 +126,15 @@ What is strong today:
 - shell / terminal, file write, and outbound mutation HTTP are the main proof surfaces
 - Node is the fastest adoption path
 - normalized runtime decisions, approval flows, and auditable outcomes are available now
+- the SDK already includes policy signing, execution receipts, metrics, anomaly detection, and SIEM export beyond the narrow wedge
 
 What to understand before integrating:
 
 - the raw runtime APIs now expose `execute | deny | ask_for_approval | handoff`
 - adapter `enforce` is still strongest on shell-like execution paths today
+- Bash still has the deepest validator path; file and HTTP paths rely more heavily on policy matching today
+- HTTP execution ownership distinguishes mutation methods at runtime, but policy matching is still primarily URL-centric
+- Python and Node bindings currently use the SDK's default sandbox selection; explicit sandbox-selection APIs are not exposed yet
 - broader capability coverage is intentionally narrow, not generic
 - broader policy workflow and control-plane ideas are future expansion paths, not the phase-one hook
 
@@ -141,7 +162,7 @@ Additional references:
 ## Framework Entry Points
 
 - **Node**: strongest current adoption surface, with wrappers for LangChain-style tools and OpenAI-style handlers
-- **Python**: wrapper surface is available, with broader runtime semantics not yet brought to parity
+- **Python**: wrapper surface is available, but broader runtime semantics and explicit sandbox selection are not yet brought to parity
 - **Rust SDK**: most direct integration path for hosts that want explicit control over side-effect decisioning and execution
 
 ---

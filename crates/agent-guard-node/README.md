@@ -187,6 +187,9 @@ The Node test suite exercises real `DynamicTool` objects and real OpenAI Agents 
 - the raw runtime can now own execution for shell, file write, and outbound mutation HTTP
 - adapter `enforce` remains the strongest shell-first path in the higher-level wrappers
 - if your host runtime adds its own execution boundary, you can combine that with `agent-guard` policy decisions
+- the binding currently uses the SDK default sandbox selection internally; it does not yet expose an explicit sandbox-selection API
+- if the default sandbox falls back to `NoopSandbox`, the policy gate still runs but OS-level isolation is not equivalent
+- Bash still has the deepest validator path today; file and HTTP controls remain more policy-centric than Bash validation
 
 ## Demos
 
