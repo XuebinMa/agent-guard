@@ -17,7 +17,7 @@ pub use policy_signing::{
 };
 pub use prometheus_client;
 pub use provenance::{ExecutionReceipt, RECEIPT_VERSION};
-pub use runtime::{RuntimeOutcome, RuntimeResult};
+pub use runtime::{HandoffResult, RuntimeOutcome, RuntimeResult};
 pub use siem::SiemExporter;
 
 // Re-export core types so SDK users don't need to depend on agent-guard-core

@@ -49,6 +49,7 @@ export interface ExecuteOutcome {
 }
 export interface RuntimeOutcome {
   status: string
+  requestId: string
   output?: SandboxOutput
   decision?: RuntimeDecision
   policyVersion: string
@@ -56,6 +57,11 @@ export interface RuntimeOutcome {
   receipt?: string
   policyVerificationStatus: string
   policyVerificationError?: string
+}
+export interface HandoffResult {
+  exitCode: number
+  durationMs: number
+  stderr?: string
 }
 export interface Context {
   trustLevel?: TrustLevel
@@ -94,6 +100,14 @@ export declare class Guard {
    */
   execute(tool: string, payload: string, options?: Context | undefined | null): Promise<ExecuteOutcome>
   run(tool: string, payload: string, options?: Context | undefined | null): Promise<RuntimeOutcome>
+  /**
+   * Report the outcome of a host-executed handoff back into the audit stream.
+   *
+   * Call this after executing a handoff returned by `run()` to emit a
+   * matching `ExecutionFinished` audit record (closing the audit loop).
+   * The `requestId` must be the value from the originating `RuntimeOutcome`.
+   */
+  reportHandoffResult(requestId: string, result: HandoffResult): void
   reload(yaml: string): void
   reloadFromYaml(yaml: string): void
   policyVersion(): string

@@ -5,9 +5,9 @@ extern crate napi_derive;
 
 use agent_guard_sdk::{
     Context as RustContext, ExecuteOutcome as RustExecuteOutcome, Guard as RustGuard,
-    GuardDecision, GuardInput, PolicyVerification as RustPolicyVerification,
-    RuntimeDecision as RustRuntimeDecision, RuntimeOutcome as RustRuntimeOutcome, Tool as RustTool,
-    TrustLevel as RustTrustLevel,
+    GuardDecision, GuardInput, HandoffResult as RustHandoffResult,
+    PolicyVerification as RustPolicyVerification, RuntimeDecision as RustRuntimeDecision,
+    RuntimeOutcome as RustRuntimeOutcome, Tool as RustTool, TrustLevel as RustTrustLevel,
 };
 use napi::bindgen_prelude::*;
 use serde::Serialize;
@@ -193,6 +193,7 @@ pub struct ExecuteOutcome {
 #[derive(Serialize)]
 pub struct RuntimeOutcome {
     pub status: String,
+    pub request_id: String,
     pub output: Option<SandboxOutput>,
     pub decision: Option<RuntimeDecision>,
     pub policy_version: String,
@@ -200,6 +201,13 @@ pub struct RuntimeOutcome {
     pub receipt: Option<String>,
     pub policy_verification_status: String,
     pub policy_verification_error: Option<String>,
+}
+
+#[napi(object)]
+pub struct HandoffResult {
+    pub exit_code: i32,
+    pub duration_ms: i64,
+    pub stderr: Option<String>,
 }
 
 fn execute_outcome_from_rust(o: RustExecuteOutcome, sandbox_type: String) -> ExecuteOutcome {
@@ -268,12 +276,14 @@ fn runtime_outcome_from_rust(
 ) -> RuntimeOutcome {
     match o {
         RustRuntimeOutcome::Executed {
+            request_id,
             output,
             policy_version,
             receipt,
             policy_verification,
         } => RuntimeOutcome {
             status: "executed".to_string(),
+            request_id,
             output: Some(SandboxOutput {
                 exit_code: output.exit_code,
                 stdout: output.stdout,
@@ -287,11 +297,13 @@ fn runtime_outcome_from_rust(
             policy_verification_error: policy_verification.error,
         },
         RustRuntimeOutcome::Handoff {
+            request_id,
             decision,
             policy_version,
             policy_verification,
         } => RuntimeOutcome {
             status: "handoff".to_string(),
+            request_id,
             output: None,
             decision: Some(runtime_decision_from_rust(
                 decision,
@@ -305,11 +317,13 @@ fn runtime_outcome_from_rust(
             policy_verification_error: policy_verification.error,
         },
         RustRuntimeOutcome::Denied {
+            request_id,
             decision,
             policy_version,
             policy_verification,
         } => RuntimeOutcome {
             status: "denied".to_string(),
+            request_id,
             output: None,
             decision: Some(runtime_decision_from_rust(
                 decision,
@@ -323,11 +337,13 @@ fn runtime_outcome_from_rust(
             policy_verification_error: policy_verification.error,
         },
         RustRuntimeOutcome::AskForApproval {
+            request_id,
             decision,
             policy_version,
             policy_verification,
         } => RuntimeOutcome {
             status: "ask_for_approval".to_string(),
+            request_id,
             output: None,
             decision: Some(runtime_decision_from_rust(
                 decision,
@@ -515,6 +531,21 @@ impl Guard {
             .map_err(|e| Error::new(Status::GenericFailure, format!("runtime error: {e}")))?;
 
         Ok(runtime_outcome_from_rust(result, Some(sandbox_type)))
+    }
+
+    /// Report the outcome of a host-executed handoff back into the audit stream.
+    ///
+    /// Call this after executing a handoff returned by `run()` to emit a
+    /// matching `ExecutionFinished` audit record (closing the audit loop).
+    /// The `requestId` must be the value from the originating `RuntimeOutcome`.
+    #[napi]
+    pub fn report_handoff_result(&self, request_id: String, result: HandoffResult) {
+        let rust_result = RustHandoffResult {
+            exit_code: result.exit_code,
+            duration_ms: result.duration_ms.max(0) as u64,
+            stderr: result.stderr,
+        };
+        self.inner.report_handoff_result(&request_id, rust_result);
     }
 
     #[napi]

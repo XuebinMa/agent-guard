@@ -23,7 +23,7 @@ use crate::policy_signing::{
     load_policy_signature_file, load_public_key_file, parse_hex_signing_key, verify_policy,
     PolicyVerification,
 };
-pub use crate::runtime::{RuntimeOutcome, RuntimeResult};
+pub use crate::runtime::{HandoffResult, RuntimeOutcome, RuntimeResult};
 use crate::siem::SiemExporter;
 
 // ── GuardInitError ────────────────────────────────────────────────────────────
@@ -410,9 +410,18 @@ impl Guard {
     }
 
     pub fn execute(&self, input: &GuardInput, sandbox: &dyn Sandbox) -> ExecuteResult {
+        let request_id = Uuid::new_v4().to_string();
+        self.execute_with_request_id(input, sandbox, &request_id)
+    }
+
+    fn execute_with_request_id(
+        &self,
+        input: &GuardInput,
+        sandbox: &dyn Sandbox,
+        request_id: &str,
+    ) -> ExecuteResult {
         // Industrial Standard: Single-snapshot isolation.
         let state = self.state.load();
-        let request_id = Uuid::new_v4().to_string();
         let policy_version = state.engine.version().to_string();
 
         if state.policy_verification.should_fail_closed() {
@@ -439,7 +448,7 @@ impl Guard {
             });
         }
 
-        let decision = self.check_internal(input, &state, &request_id);
+        let decision = self.check_internal(input, &state, request_id);
         match &decision {
             GuardDecision::Allow => {}
             GuardDecision::Deny { .. } => {
@@ -488,7 +497,7 @@ impl Guard {
             .export(agent_guard_core::AuditRecord::ExecutionStarted(
                 agent_guard_core::ExecutionEvent {
                     timestamp: chrono::Utc::now(),
-                    request_id: request_id.clone(),
+                    request_id: request_id.to_string(),
                     agent_id: input.context.agent_id.clone(),
                     tool: input.tool.name().to_string(),
                     sandbox_type: execution_backend.clone(),
@@ -519,7 +528,7 @@ impl Guard {
                     .export(agent_guard_core::AuditRecord::SandboxFailure(
                         agent_guard_core::SandboxFailureEvent {
                             timestamp: chrono::Utc::now(),
-                            request_id: request_id.clone(),
+                            request_id: request_id.to_string(),
                             agent_id: input.context.agent_id.clone(),
                             tool: input.tool.name().to_string(),
                             sandbox_type: execution_backend.clone(),
@@ -535,7 +544,7 @@ impl Guard {
             .export(agent_guard_core::AuditRecord::ExecutionFinished(
                 agent_guard_core::ExecutionEvent {
                     timestamp: chrono::Utc::now(),
-                    request_id: request_id.clone(),
+                    request_id: request_id.to_string(),
                     agent_id: input.context.agent_id.clone(),
                     tool: input.tool.name().to_string(),
                     sandbox_type: execution_backend.clone(),
@@ -584,6 +593,7 @@ impl Guard {
     }
 
     pub fn run(&self, input: &GuardInput, sandbox: &dyn Sandbox) -> RuntimeResult {
+        let request_id = Uuid::new_v4().to_string();
         let state = self.state.load();
         let policy_version = state.engine.version().to_string();
 
@@ -605,6 +615,7 @@ impl Guard {
             }
             reason.details = Some(serde_json::Value::Object(details));
             return Ok(RuntimeOutcome::Denied {
+                request_id,
                 decision: RuntimeDecision::Deny { reason },
                 policy_version,
                 policy_verification: state.policy_verification.clone(),
@@ -613,48 +624,56 @@ impl Guard {
 
         let decision = self.decide(input);
         match decision.clone() {
-            RuntimeDecision::Execute => match self.execute(input, sandbox)? {
-                ExecuteOutcome::Executed {
-                    output,
-                    policy_version,
-                    receipt,
-                    policy_verification,
-                } => Ok(RuntimeOutcome::Executed {
-                    output,
-                    policy_version,
-                    receipt,
-                    policy_verification,
-                }),
-                ExecuteOutcome::Denied {
-                    decision,
-                    policy_version,
-                    policy_verification,
-                } => Ok(RuntimeOutcome::Denied {
-                    decision: runtime_decision_for_input(input, decision),
-                    policy_version,
-                    policy_verification,
-                }),
-                ExecuteOutcome::AskRequired {
-                    decision,
-                    policy_version,
-                    policy_verification,
-                } => Ok(RuntimeOutcome::AskForApproval {
-                    decision: runtime_decision_for_input(input, decision),
-                    policy_version,
-                    policy_verification,
-                }),
-            },
+            RuntimeDecision::Execute => {
+                match self.execute_with_request_id(input, sandbox, &request_id)? {
+                    ExecuteOutcome::Executed {
+                        output,
+                        policy_version,
+                        receipt,
+                        policy_verification,
+                    } => Ok(RuntimeOutcome::Executed {
+                        request_id,
+                        output,
+                        policy_version,
+                        receipt,
+                        policy_verification,
+                    }),
+                    ExecuteOutcome::Denied {
+                        decision,
+                        policy_version,
+                        policy_verification,
+                    } => Ok(RuntimeOutcome::Denied {
+                        request_id,
+                        decision: runtime_decision_for_input(input, decision),
+                        policy_version,
+                        policy_verification,
+                    }),
+                    ExecuteOutcome::AskRequired {
+                        decision,
+                        policy_version,
+                        policy_verification,
+                    } => Ok(RuntimeOutcome::AskForApproval {
+                        request_id,
+                        decision: runtime_decision_for_input(input, decision),
+                        policy_version,
+                        policy_verification,
+                    }),
+                }
+            }
             RuntimeDecision::Handoff => Ok(RuntimeOutcome::Handoff {
+                request_id,
                 decision,
                 policy_version,
                 policy_verification: state.policy_verification.clone(),
             }),
             RuntimeDecision::Deny { .. } => Ok(RuntimeOutcome::Denied {
+                request_id,
                 decision,
                 policy_version,
                 policy_verification: state.policy_verification.clone(),
             }),
             RuntimeDecision::AskForApproval { .. } => Ok(RuntimeOutcome::AskForApproval {
+                request_id,
                 decision,
                 policy_version,
                 policy_verification: state.policy_verification.clone(),
@@ -665,6 +684,67 @@ impl Guard {
     pub fn run_default(&self, input: &GuardInput) -> RuntimeResult {
         let sandbox = Self::default_sandbox();
         self.run(input, sandbox.as_ref())
+    }
+
+    /// Report the outcome of a host-executed handoff action back into the
+    /// audit stream.
+    ///
+    /// When `Guard::run` returns `RuntimeOutcome::Handoff`, the host executes
+    /// the action itself; the SDK therefore does not emit an
+    /// `ExecutionFinished` audit record for that path. Hosts call this method
+    /// after the handoff executes to close the audit loop with a matching
+    /// record. `request_id` must be the one returned by the prior `run` call
+    /// so that the `ExecutionStarted` intent (if any) and this finish event
+    /// can be correlated downstream.
+    ///
+    /// The emitted `ExecutionEvent` reuses the existing `SiemExporter` and
+    /// (when configured) JSONL audit file pipelines, with `tool = "handoff"`
+    /// and `sandbox_type = "host-handoff"` so consumers can tell these apart
+    /// from in-SDK executions.
+    pub fn report_handoff_result(&self, request_id: &str, result: HandoffResult) {
+        let state = self.state.load();
+        let stderr_present = result.stderr.is_some();
+        let event = agent_guard_core::ExecutionEvent {
+            timestamp: chrono::Utc::now(),
+            request_id: request_id.to_string(),
+            agent_id: None,
+            tool: "handoff".to_string(),
+            sandbox_type: "host-handoff".to_string(),
+            duration_ms: Some(result.duration_ms),
+            exit_code: Some(result.exit_code),
+        };
+
+        state
+            .siem_exporter
+            .export(agent_guard_core::AuditRecord::ExecutionFinished(
+                event.clone(),
+            ));
+
+        if state.audit_cfg.enabled && state.audit_cfg.output == "file" {
+            if let Some(ref mutex) = state.audit_file {
+                let record = agent_guard_core::AuditRecord::ExecutionFinished(event);
+                let line = serde_json::to_string(&record).unwrap_or_else(|e| {
+                    format!("{{\"error\":\"audit serialization failed: {e}\"}}")
+                });
+                match mutex.lock() {
+                    Ok(mut file) => {
+                        use std::io::Write;
+                        if let Err(e) = writeln!(file, "{}", line) {
+                            tracing::error!("Failed to write handoff result to audit file: {}", e);
+                        }
+                    }
+                    Err(_) => {
+                        tracing::error!("Audit file mutex poisoned on handoff report");
+                    }
+                }
+            }
+        }
+
+        // `stderr` is captured in the HandoffResult type for future surface
+        // expansion (e.g. SIEM details), but is intentionally not part of the
+        // core ExecutionEvent schema today; flagging presence keeps this
+        // signal from being silently dropped.
+        let _ = stderr_present;
     }
 
     pub fn default_sandbox() -> Box<dyn Sandbox> {

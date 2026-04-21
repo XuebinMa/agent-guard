@@ -104,6 +104,23 @@ tools:
     )
     assert.equal(runtimeHandoff.status || runtimeHandoff.outcome, 'handoff')
     assert.ok(runtimeHandoff.decision)
+    assert.ok(
+      typeof runtimeHandoff.requestId === 'string' && runtimeHandoff.requestId.length > 0,
+      'handoff outcome should expose a non-empty requestId'
+    )
+
+    // Round-trip the handoff result back into the audit stream. This does
+    // not throw and is exercised here mainly for type-surface compatibility;
+    // deeper audit-content assertions live in the Rust integration tests.
+    guard.reportHandoffResult(runtimeHandoff.requestId, {
+      exitCode: 0,
+      durationMs: 12,
+    })
+    guard.reportHandoffResult(runtimeHandoff.requestId, {
+      exitCode: 1,
+      durationMs: 5,
+      stderr: 'handoff stderr',
+    })
 
     const writeOutcome = await writeGuard.run(
       'write_file',
