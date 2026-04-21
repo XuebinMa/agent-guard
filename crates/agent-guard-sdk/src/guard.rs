@@ -4,6 +4,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use agent_guard_core::{
+    payload::{extract_bash_command as extract_core_bash_command, ExtractedPayload},
     AuditConfig, AuditEvent, Context, DecisionCode, DecisionReason, GuardDecision, GuardInput,
     PolicyEngine, PolicyMode, ReloadEvent, RuntimeDecision, Tool,
 };
@@ -496,7 +497,7 @@ impl Guard {
         let start = std::time::Instant::now();
         let execution_res = match input.tool {
             Tool::Bash => {
-                let command = extract_bash_command(&input.payload)?;
+                let command = extract_bash_command_for_execution(&input.payload)?;
                 sandbox.execute(&command, &ctx)
             }
             Tool::WriteFile => execute_write_file(&input.payload),
@@ -797,26 +798,13 @@ impl Guard {
                 .as_deref()
                 .unwrap_or_else(|| Path::new("."));
 
-            let v: serde_json::Value = match serde_json::from_str(&input.payload) {
-                Ok(v) => v,
-                Err(_) => {
-                    return GuardDecision::deny(
-                        DecisionCode::InvalidPayload,
-                        "invalid payload JSON",
-                    )
-                }
-            };
-            let command = match v.get("command").and_then(|c| c.as_str()) {
-                Some(s) => s,
-                None => {
-                    return GuardDecision::deny(
-                        DecisionCode::MissingPayloadField,
-                        "payload missing 'command' field",
-                    )
-                }
+            let command = match extract_core_bash_command(&input.payload) {
+                Ok(ExtractedPayload::Command(command)) => command,
+                Ok(_) => unreachable!("core bash extractor returned a non-command payload"),
+                Err(decision) => return decision,
             };
 
-            let result = validate_bash_command(command, mode, workspace_path);
+            let result = validate_bash_command(&command, mode, workspace_path);
             match result {
                 ValidationResult::Block { reason } => {
                     let code = classify_block_reason(&reason);
@@ -973,13 +961,19 @@ pub enum ExecuteOutcome {
     },
 }
 
-fn extract_bash_command(payload: &str) -> Result<String, SandboxError> {
-    let v: serde_json::Value = serde_json::from_str(payload)
-        .map_err(|_| SandboxError::ExecutionFailed("invalid payload JSON".to_string()))?;
-    v.get("command")
-        .and_then(|c| c.as_str())
-        .map(|s| s.to_string())
-        .ok_or_else(|| SandboxError::ExecutionFailed("payload missing 'command' field".to_string()))
+fn extract_bash_command_for_execution(payload: &str) -> Result<String, SandboxError> {
+    match extract_core_bash_command(payload) {
+        Ok(ExtractedPayload::Command(command)) => Ok(command),
+        Ok(_) => Err(SandboxError::ExecutionFailed(
+            "unexpected payload variant while extracting bash command".to_string(),
+        )),
+        // Execution reuses the core payload parser, then adapts decision-shaped errors
+        // into execution errors for the call sites that need a concrete command string.
+        Err(GuardDecision::Deny { reason }) | Err(GuardDecision::AskUser { reason, .. }) => {
+            Err(SandboxError::ExecutionFailed(reason.message))
+        }
+        Err(GuardDecision::Allow) => unreachable!("core bash extractor cannot return Allow"),
+    }
 }
 
 #[derive(Debug, Deserialize)]
