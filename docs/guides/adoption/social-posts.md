@@ -6,7 +6,7 @@
 | **Audience** | Maintainers, DevRel, Community Posts |
 | **Version** | 1.0 |
 | **Last Reviewed** | 2026-04-14 |
-| **Related Docs** | [Launch Kit](launch-kit.md), [Release Announcement Template](release-announcement.md), [Three-Minute Proof](../getting-started/three-minute-proof.md) |
+| **Related Docs** | [Launch Kit](launch-kit.md), [Three-Minute Proof](../getting-started/three-minute-proof.md) |
 
 ---
 

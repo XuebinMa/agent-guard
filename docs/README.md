@@ -35,7 +35,7 @@ Current boundary note:
 - **I want to compare platform gaps** → [Capability Parity Matrix](capability-parity.md)
 - **I want historical strategy or release context** → [Document Archive](archive/README.md)
 - **I want material I can share publicly** → [Launch Kit](guides/adoption/launch-kit.md)
-- **I want a release post or social draft** → [Release Announcement Template](guides/adoption/release-announcement.md)
+- **I want a release post or social draft** → [Launch Kit](guides/adoption/launch-kit.md)
 - **I want ready-made replies for new users** → [FAQ For New Users](guides/adoption/faq-for-new-users.md)
 
 ---
@@ -77,9 +77,7 @@ For maintainers and early adopters who want to explain or share the project clea
 Campaign and maintainer workflow assets:
 
 - 🖼️ **[Demo Asset Workflow](guides/adoption/demo-asset-workflow.md)**: Maintainer workflow for keeping screenshots and short demo clips consistent with the live proof demo.
-- 📢 **[Release Announcement Template](guides/adoption/release-announcement.md)**: Reusable release copy when you are publishing an update.
-- 🗣️ **[GitHub Discussions Announcement](guides/adoption/discussions-announcement.md)**: Channel-specific discussion draft for GitHub Discussions.
-- 🌐 **[External Channel Post Pack](guides/adoption/external-channel-post-pack.md)**: First-wave external posting pack for outreach bursts.
+- 📣 **[Launch Kit](guides/adoption/launch-kit.md)**: Includes release copy starters, discussion openers, and first-wave posting sequence.
 
 ---
 

@@ -6,7 +6,7 @@
 | **Audience** | Maintainers, DevRel, Early Adopters |
 | **Version** | 1.0 |
 | **Last Reviewed** | 2026-04-14 |
-| **Related Docs** | [Three-Minute Proof](../getting-started/three-minute-proof.md), [Attack Demo Playbook](../getting-started/attack-demo-playbook.md), [Demo Asset Workflow](demo-asset-workflow.md), [Release Announcement Template](release-announcement.md), [GitHub Discussions Announcement](discussions-announcement.md), [External Channel Post Pack](external-channel-post-pack.md), [FAQ For New Users](faq-for-new-users.md), [Framework Support Matrix](../../framework-support-matrix.md) |
+| **Related Docs** | [Three-Minute Proof](../getting-started/three-minute-proof.md), [Attack Demo Playbook](../getting-started/attack-demo-playbook.md), [Demo Asset Workflow](demo-asset-workflow.md), [Social Post Templates](social-posts.md), [FAQ For New Users](faq-for-new-users.md), [Framework Support Matrix](../../framework-support-matrix.md) |
 
 ---
 
@@ -216,3 +216,89 @@ Use this order:
 4. Link to [Framework Support Matrix](../../framework-support-matrix.md) for people evaluating fit.
 
 That sequence is much more effective than linking straight to architecture docs first.
+
+---
+
+## 11. Release Copy Starter
+
+Use one of these titles when you need a release post or project update:
+
+- `agent-guard`: execution control for agent side effects
+- New in `agent-guard`: proof-driven shell-first execution control
+- `agent-guard` update: run a 3-minute proof of blocked risky tool calls
+
+Short release copy:
+
+```md
+## Why this project exists
+
+Shell-enabled agents should not rely on prompt trust alone.
+
+`agent-guard` gives agent developers a real execution boundary before shell commands and other risky side effects become real.
+
+## What you can verify right now
+
+Run the proof demo:
+
+    npm ci --prefix crates/agent-guard-node
+    npm run build:debug --prefix crates/agent-guard-node
+    npm run demo:proof --prefix crates/agent-guard-node
+
+What you will see:
+
+- a safe command that is allowed
+- a risky command that is blocked or moved to approval
+- a destructive command that is stopped before execution
+
+## Start here
+
+- [Three-Minute Proof](../getting-started/three-minute-proof.md)
+- [Node Quickstart](../../../crates/agent-guard-node/examples/quickstart/README.md)
+- [Framework Support Matrix](../../framework-support-matrix.md)
+```
+
+---
+
+## 12. Discussion Starter
+
+If you want a GitHub Discussions post, use this opener:
+
+```md
+# `agent-guard`: execution control for agent side effects
+
+Shell-enabled agents should not rely on prompt trust alone.
+
+`agent-guard` gives agent developers a real execution boundary before shell commands and other risky side effects become real.
+
+The fastest way to evaluate it is the proof demo:
+
+    npm ci --prefix crates/agent-guard-node
+    npm run build:debug --prefix crates/agent-guard-node
+    npm run demo:proof --prefix crates/agent-guard-node
+```
+
+Discussion prompts:
+
+1. Where is your current shell or tool boundary?
+2. Are you relying mostly on prompts, custom validation, or host-level isolation today?
+3. Which tool category feels riskiest in your stack?
+
+---
+
+## 13. First-Wave Channel Pack
+
+Shared links:
+
+- Release: `https://github.com/XuebinMa/agent-guard/releases/tag/v0.2.0-rc1`
+- Discussion: `https://github.com/XuebinMa/agent-guard/discussions/1`
+- Three-Minute Proof: `https://github.com/XuebinMa/agent-guard/blob/main/docs/guides/getting-started/three-minute-proof.md`
+- Node Quickstart: `https://github.com/XuebinMa/agent-guard/blob/main/crates/agent-guard-node/examples/quickstart/README.md`
+
+Recommended posting order:
+
+1. GitHub Release or project update
+2. GitHub Discussions
+3. X or short-form channels
+4. Reddit or Hacker News
+5. LinkedIn
+6. Chinese dev communities
