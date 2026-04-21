@@ -71,12 +71,15 @@ For maintainers and early adopters who want to explain or share the project clea
 
 - 📣 **[Launch Kit](guides/adoption/launch-kit.md)**: Positioning, short demo scripts, social post templates, and sharing guidance.
 - 🧪 **[Case Study: Protecting a Shell-Enabled Agent](guides/adoption/case-study-shell-agent.md)**: A concrete narrative for the strongest current use case.
-- 🖼️ **[Demo Asset Workflow](guides/adoption/demo-asset-workflow.md)**: Maintainer workflow for keeping screenshots and short demo clips consistent with the live proof demo.
-- 📢 **[Release Announcement Template](guides/adoption/release-announcement.md)**: A ready-to-adapt GitHub release or project update structure.
-- 🗣️ **[GitHub Discussions Announcement](guides/adoption/discussions-announcement.md)**: A finished announcement draft ready to post in Discussions.
-- 🌐 **[External Channel Post Pack](guides/adoption/external-channel-post-pack.md)**: First-wave post drafts for X, Reddit, LinkedIn, Hacker News, and Chinese dev communities.
 - 💬 **[Social Post Templates](guides/adoption/social-posts.md)**: Short, medium, and long post drafts for community channels.
 - ❓ **[FAQ For New Users](guides/adoption/faq-for-new-users.md)**: Reusable answers to common first-contact questions.
+
+Campaign and maintainer workflow assets:
+
+- 🖼️ **[Demo Asset Workflow](guides/adoption/demo-asset-workflow.md)**: Maintainer workflow for keeping screenshots and short demo clips consistent with the live proof demo.
+- 📢 **[Release Announcement Template](guides/adoption/release-announcement.md)**: Reusable release copy when you are publishing an update.
+- 🗣️ **[GitHub Discussions Announcement](guides/adoption/discussions-announcement.md)**: Channel-specific discussion draft for GitHub Discussions.
+- 🌐 **[External Channel Post Pack](guides/adoption/external-channel-post-pack.md)**: First-wave external posting pack for outreach bursts.
 
 ---
 

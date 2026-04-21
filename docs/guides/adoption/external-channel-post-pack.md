@@ -10,6 +10,10 @@
 
 ---
 
+This is a first-wave outreach pack for maintainers and DevRel. It is a publishing convenience document, not a core product or onboarding guide.
+
+---
+
 This pack is the first outbound wave for `agent-guard`.
 
 It is designed to help you publish quickly across multiple channels without rewriting the same message each time.

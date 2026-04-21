@@ -10,6 +10,10 @@
 
 ---
 
+This is a channel-specific campaign asset. Use it when you are ready to post on GitHub Discussions, not as a primary explanation of the project itself.
+
+---
+
 This is a finished GitHub Discussions announcement draft. You can post it as-is or make light edits for tone.
 
 Recommended category:

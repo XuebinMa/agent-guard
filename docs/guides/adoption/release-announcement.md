@@ -10,6 +10,10 @@
 
 ---
 
+This is a campaign asset for publishing releases or project updates. It is most useful after the core positioning and proof path are already clear.
+
+---
+
 This template is for GitHub Releases, project updates, and announcement posts that need to convert curiosity into a first run.
 
 The job of this announcement is not to describe everything in the repository.

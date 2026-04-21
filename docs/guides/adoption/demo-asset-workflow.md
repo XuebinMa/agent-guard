@@ -10,6 +10,10 @@
 
 ---
 
+This is a maintainer workflow document, not a general product entry point. Use it when you are refreshing screenshots or recording clips after the core proof and messaging are already settled.
+
+---
+
 This guide explains how to create stable visual assets for `agent-guard` demos without improvising each time.
 
 Use it when you need:
