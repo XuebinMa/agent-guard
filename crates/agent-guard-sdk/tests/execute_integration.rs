@@ -8,6 +8,20 @@ use agent_guard_sdk::{
     Context, GuardInput, Tool, TrustLevel,
 };
 
+#[cfg(unix)]
+fn symlink_path(target: &std::path::Path, link: &std::path::Path) {
+    std::os::unix::fs::symlink(target, link).expect("create symlink");
+}
+
+#[cfg(windows)]
+fn symlink_path(target: &std::path::Path, link: &std::path::Path) {
+    if target.is_dir() {
+        std::os::windows::fs::symlink_dir(target, link).expect("create dir symlink");
+    } else {
+        std::os::windows::fs::symlink_file(target, link).expect("create file symlink");
+    }
+}
+
 // ── Helper ─────────────────────────────────────────────────────────────────
 
 fn execute_noop(guard: &Guard, inp: &GuardInput) -> agent_guard_sdk::ExecuteResult {
@@ -344,6 +358,32 @@ fn e11_write_file_append_mode_appends() {
 }
 
 #[test]
+fn e11b_write_file_resolves_relative_path_from_working_directory() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let guard = Guard::from_yaml(&write_file_policy(dir.path())).expect("guard init");
+    let target = dir.path().join("nested/output.txt");
+    std::fs::create_dir_all(target.parent().expect("parent")).expect("nested dir");
+
+    let inp = GuardInput {
+        tool: Tool::WriteFile,
+        payload: r#"{"path":"./nested/output.txt","content":"hello relative path"}"#.to_string(),
+        context: Context {
+            trust_level: TrustLevel::Trusted,
+            working_directory: Some(dir.path().to_path_buf()),
+            ..Default::default()
+        },
+    };
+
+    match execute_noop(&guard, &inp).expect("no sandbox error") {
+        ExecuteOutcome::Executed { .. } => {
+            let contents = std::fs::read_to_string(&target).expect("read target");
+            assert_eq!(contents, "hello relative path");
+        }
+        other => panic!("expected Executed, got {other:?}"),
+    }
+}
+
+#[test]
 fn e12_bash_execute_denies_payloads_larger_than_one_megabyte() {
     let guard = Guard::from_yaml(POLICY_FULL_ACCESS).expect("guard init");
     let huge_command = "x".repeat((1024 * 1024) + 32);
@@ -359,4 +399,49 @@ fn e12_bash_execute_denies_payloads_larger_than_one_megabyte() {
         Ok(other) => panic!("expected deny outcome for oversized payload, got {other:?}"),
         Err(other) => panic!("unexpected sandbox error: {other}"),
     }
+}
+
+#[test]
+fn e13_write_file_symlink_escape_is_denied() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let workspace = dir.path().join("workspace");
+    let outside = dir.path().join("outside");
+    std::fs::create_dir_all(&workspace).expect("workspace");
+    std::fs::create_dir_all(&outside).expect("outside");
+
+    let outside_file = outside.join("escaped.txt");
+    std::fs::write(&outside_file, "before").expect("seed outside file");
+    let symlink = workspace.join("escape.txt");
+    symlink_path(&outside_file, &symlink);
+
+    let policy = format!(
+        r#"
+version: 1
+default_mode: workspace_write
+tools:
+  write_file:
+    mode: workspace_write
+    allow_paths:
+      - "{}/**"
+"#,
+        workspace.display()
+    );
+    let guard = Guard::from_yaml(&policy).expect("guard init");
+    let inp = GuardInput {
+        tool: Tool::WriteFile,
+        payload: format!(r#"{{"path":"{}","content":"after"}}"#, symlink.display()),
+        context: Context {
+            trust_level: TrustLevel::Trusted,
+            working_directory: Some(workspace.clone()),
+            ..Default::default()
+        },
+    };
+
+    match execute_noop(&guard, &inp).expect("no sandbox error") {
+        ExecuteOutcome::Denied { .. } | ExecuteOutcome::AskRequired { .. } => {}
+        ExecuteOutcome::Executed { .. } => panic!("symlinked write should not execute"),
+    }
+
+    let contents = std::fs::read_to_string(&outside_file).expect("read outside file");
+    assert_eq!(contents, "before", "outside file should remain unchanged");
 }

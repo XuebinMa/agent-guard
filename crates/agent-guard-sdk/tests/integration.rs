@@ -1,5 +1,19 @@
 use agent_guard_sdk::{Context, Guard, GuardDecision, Tool, TrustLevel};
 
+#[cfg(unix)]
+fn symlink_path(target: &std::path::Path, link: &std::path::Path) {
+    std::os::unix::fs::symlink(target, link).expect("create symlink");
+}
+
+#[cfg(windows)]
+fn symlink_path(target: &std::path::Path, link: &std::path::Path) {
+    if target.is_dir() {
+        std::os::windows::fs::symlink_dir(target, link).expect("create dir symlink");
+    } else {
+        std::os::windows::fs::symlink_file(target, link).expect("create file symlink");
+    }
+}
+
 const POLICY: &str = r#"
 version: 1
 default_mode: workspace_write
@@ -202,6 +216,47 @@ fn read_file_missing_path_field_is_denied() {
     } else {
         panic!("expected Deny(MissingPayloadField)");
     }
+}
+
+#[test]
+fn read_file_symlink_escape_is_denied() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let workspace = dir.path().join("workspace");
+    let outside = dir.path().join("outside");
+    std::fs::create_dir_all(&workspace).expect("workspace");
+    std::fs::create_dir_all(&outside).expect("outside");
+
+    let outside_file = outside.join("secret.txt");
+    std::fs::write(&outside_file, "shh").expect("seed outside file");
+    let symlink = workspace.join("linked-secret.txt");
+    symlink_path(&outside_file, &symlink);
+
+    let policy = format!(
+        r#"
+version: 1
+tools:
+  read_file:
+    allow_paths:
+      - "{}/**"
+"#,
+        workspace.display()
+    );
+    let guard = Guard::from_yaml(&policy).expect("guard");
+
+    let d = guard.check_tool(
+        Tool::ReadFile,
+        &format!(r#"{{"path":"{}"}}"#, symlink.display()),
+        Context {
+            trust_level: TrustLevel::Trusted,
+            working_directory: Some(workspace.clone()),
+            ..Default::default()
+        },
+    );
+
+    assert!(
+        matches!(d, GuardDecision::Deny { .. }),
+        "symlinked read should be denied, got {d:?}"
+    );
 }
 
 // ── A1: structured payload for write_file ───────────────────────────────────

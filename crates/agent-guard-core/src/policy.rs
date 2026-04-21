@@ -8,6 +8,7 @@ use sha2::{Digest, Sha256};
 use thiserror::Error;
 
 use crate::decision::{DecisionCode, DecisionReason, GuardDecision};
+use crate::file_paths::{resolve_path_glob_pattern, resolve_tool_path};
 use crate::payload::{extract_bash_command, extract_path, extract_url, ExtractedPayload};
 use crate::types::{Context, Tool, TrustLevel};
 
@@ -398,7 +399,15 @@ impl PolicyEngine {
 
         let extracted = match tool {
             Tool::ReadFile | Tool::WriteFile => match extract_path(payload) {
-                Ok(ep) => ep,
+                Ok(ExtractedPayload::Path(path)) => {
+                    match resolve_tool_path(&path, context.working_directory.as_deref()) {
+                        Ok(resolved) => {
+                            ExtractedPayload::Path(resolved.to_string_lossy().into_owned())
+                        }
+                        Err(deny) => return deny,
+                    }
+                }
+                Ok(_) => unreachable!("path extractor returned a non-path payload"),
                 Err(deny) => return deny,
             },
             Tool::HttpRequest => match extract_url(payload) {
@@ -432,7 +441,11 @@ impl PolicyEngine {
             }
 
             for (i, glob_pattern) in tp.deny_paths.iter().enumerate() {
-                if path_glob_matches(glob_pattern, match_value) {
+                if path_glob_matches(
+                    glob_pattern,
+                    match_value,
+                    context.working_directory.as_deref(),
+                ) {
                     let rule_ref = format!("tools.{}.deny_paths[{}]", tool_name, i);
                     let reason = DecisionReason::new(
                         DecisionCode::PathOutsideWorkspace,
@@ -467,10 +480,9 @@ impl PolicyEngine {
             }
 
             if !tp.allow_paths.is_empty() {
-                let in_allowlist = tp
-                    .allow_paths
-                    .iter()
-                    .any(|p| path_glob_matches(p, match_value));
+                let in_allowlist = tp.allow_paths.iter().any(|p| {
+                    path_glob_matches(p, match_value, context.working_directory.as_deref())
+                });
                 if !in_allowlist {
                     let reason = DecisionReason::new(
                         DecisionCode::NotInAllowList,
@@ -631,8 +643,9 @@ fn pattern_display(rule: &RulePattern) -> String {
     }
 }
 
-fn path_glob_matches(pattern: &str, path: &str) -> bool {
-    if let Ok(glob) = glob::Pattern::new(pattern) {
+fn path_glob_matches(pattern: &str, path: &str, working_directory: Option<&Path>) -> bool {
+    let resolved_pattern = resolve_path_glob_pattern(pattern, working_directory);
+    if let Ok(glob) = glob::Pattern::new(&resolved_pattern) {
         glob.matches(path)
     } else {
         false
