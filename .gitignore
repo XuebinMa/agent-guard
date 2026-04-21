@@ -30,6 +30,7 @@ Cargo.lock
 *.swo
 
 # Project specific
+.worktrees/
 *.jsonl
 *.log
 .env
