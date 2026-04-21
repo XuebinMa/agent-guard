@@ -298,15 +298,19 @@ fn runtime_outcome_from_rust(
         },
         RustRuntimeOutcome::Handoff {
             request_id,
-            decision,
             policy_version,
             policy_verification,
         } => RuntimeOutcome {
             status: "handoff".to_string(),
             request_id,
             output: None,
+            // The Rust Handoff variant no longer carries a RuntimeDecision
+            // payload (handoff has no reason/message to surface). Preserve
+            // the Node-side `decision` field with the "handoff" outcome so
+            // existing consumers that branch on `decision.outcome` keep
+            // working.
             decision: Some(runtime_decision_from_rust(
-                decision,
+                RustRuntimeDecision::Handoff,
                 policy_version.clone(),
                 policy_verification.clone(),
             )),
@@ -318,7 +322,7 @@ fn runtime_outcome_from_rust(
         },
         RustRuntimeOutcome::Denied {
             request_id,
-            decision,
+            reason,
             policy_version,
             policy_verification,
         } => RuntimeOutcome {
@@ -326,7 +330,7 @@ fn runtime_outcome_from_rust(
             request_id,
             output: None,
             decision: Some(runtime_decision_from_rust(
-                decision,
+                RustRuntimeDecision::Deny { reason },
                 policy_version.clone(),
                 policy_verification.clone(),
             )),
@@ -338,7 +342,8 @@ fn runtime_outcome_from_rust(
         },
         RustRuntimeOutcome::AskForApproval {
             request_id,
-            decision,
+            message,
+            reason,
             policy_version,
             policy_verification,
         } => RuntimeOutcome {
@@ -346,7 +351,7 @@ fn runtime_outcome_from_rust(
             request_id,
             output: None,
             decision: Some(runtime_decision_from_rust(
-                decision,
+                RustRuntimeDecision::AskForApproval { message, reason },
                 policy_version.clone(),
                 policy_verification.clone(),
             )),

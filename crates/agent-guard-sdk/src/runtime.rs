@@ -1,4 +1,4 @@
-use agent_guard_core::RuntimeDecision;
+use agent_guard_core::DecisionReason;
 use agent_guard_sandbox::{SandboxError, SandboxOutput};
 use serde::{Deserialize, Serialize};
 
@@ -18,19 +18,19 @@ pub enum RuntimeOutcome {
     },
     Handoff {
         request_id: String,
-        decision: RuntimeDecision,
         policy_version: String,
         policy_verification: PolicyVerification,
     },
     Denied {
         request_id: String,
-        decision: RuntimeDecision,
+        reason: DecisionReason,
         policy_version: String,
         policy_verification: PolicyVerification,
     },
     AskForApproval {
         request_id: String,
-        decision: RuntimeDecision,
+        message: String,
+        reason: DecisionReason,
         policy_version: String,
         policy_verification: PolicyVerification,
     },
