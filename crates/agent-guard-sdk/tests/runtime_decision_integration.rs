@@ -186,3 +186,87 @@ fn run_executes_allowed_mutation_http_request() {
         other => panic!("expected Executed, got {other:?}"),
     }
 }
+
+// Policy without URL-regex deny, so the only thing that can block the
+// metadata endpoint is the DNS-level unconditional deny-list in the
+// executor. Validates that baseline protection survives even when the
+// user's policy forgets the well-known regex.
+const POLICY_WITHOUT_URL_DENY: &str = r#"
+version: 1
+default_mode: workspace_write
+audit:
+  enabled: false
+anomaly:
+  enabled: false
+"#;
+
+#[test]
+fn run_blocks_mutation_http_to_link_local_metadata_ip() {
+    let g = Guard::from_yaml(POLICY_WITHOUT_URL_DENY).expect("guard init");
+    let sandbox = agent_guard_sandbox::NoopSandbox;
+    let input = agent_guard_sdk::GuardInput {
+        tool: Tool::HttpRequest,
+        payload: r#"{"method":"POST","url":"http://169.254.169.254/latest/meta-data","body":"x"}"#
+            .to_string(),
+        context: trusted(),
+    };
+
+    let err = g
+        .run(&input, &sandbox)
+        .expect_err("expected SSRF block, not execution");
+    let msg = err.to_string();
+    assert!(
+        msg.contains("blocked address") && msg.contains("169.254"),
+        "unexpected error: {msg}"
+    );
+}
+
+#[test]
+fn run_blocks_mutation_http_to_unspecified_ip() {
+    let g = Guard::from_yaml(POLICY_WITHOUT_URL_DENY).expect("guard init");
+    let sandbox = agent_guard_sandbox::NoopSandbox;
+    let input = agent_guard_sdk::GuardInput {
+        tool: Tool::HttpRequest,
+        payload: r#"{"method":"POST","url":"http://0.0.0.0/","body":"x"}"#.to_string(),
+        context: trusted(),
+    };
+
+    let err = g
+        .run(&input, &sandbox)
+        .expect_err("expected SSRF block, not execution");
+    assert!(
+        err.to_string().contains("blocked address"),
+        "unexpected error: {err}"
+    );
+}
+
+#[test]
+fn run_does_not_follow_redirect_on_mutation_http() {
+    let server = MockServer::start();
+    let redirect_mock = server.mock(|when, then| {
+        when.method(POST).path("/publish");
+        then.status(302)
+            .header("Location", "http://example.com/elsewhere")
+            .body("");
+    });
+
+    let sandbox = agent_guard_sandbox::NoopSandbox;
+    let input = agent_guard_sdk::GuardInput {
+        tool: Tool::HttpRequest,
+        payload: format!(
+            r#"{{"method":"POST","url":"{}","body":"x"}}"#,
+            server.url("/publish")
+        ),
+        context: trusted(),
+    };
+
+    match guard().run(&input, &sandbox).expect("runtime run") {
+        RuntimeOutcome::Executed { output, .. } => {
+            // 302 is non-2xx, so exit_code reflects the redirect response
+            // itself rather than success at the final URL.
+            assert_ne!(output.exit_code, 0);
+            redirect_mock.assert();
+        }
+        other => panic!("expected Executed (with 302), got {other:?}"),
+    }
+}

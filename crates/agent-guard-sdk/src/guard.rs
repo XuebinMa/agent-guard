@@ -1,7 +1,9 @@
 use std::collections::HashMap;
 use std::io::Write;
+use std::net::{IpAddr, Ipv6Addr, SocketAddr, ToSocketAddrs};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
+use std::time::Duration;
 
 use agent_guard_core::{
     payload::{extract_bash_command as extract_core_bash_command, ExtractedPayload},
@@ -1018,34 +1020,49 @@ struct HttpRequestExecution {
     body: Option<String>,
 }
 
+const HTTP_REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
+const HTTP_CONNECT_TIMEOUT: Duration = Duration::from_secs(5);
+
 fn execute_http_request(payload: &str) -> Result<SandboxOutput, SandboxError> {
     let request: HttpRequestExecution = serde_json::from_str(payload)
         .map_err(|_| SandboxError::ExecutionFailed("invalid payload JSON".to_string()))?;
 
+    let url = reqwest::Url::parse(&request.url)
+        .map_err(|e| SandboxError::ExecutionFailed(format!("invalid URL: {e}")))?;
+    let (pin_host, pin_addr) = resolve_url_to_safe_addr(&url)?;
+
+    let method = request
+        .method
+        .as_deref()
+        .unwrap_or("GET")
+        .parse::<reqwest::Method>()
+        .map_err(|e| SandboxError::ExecutionFailed(format!("invalid HTTP method: {e}")))?;
+
+    if !is_mutation_method(&method) {
+        return Err(SandboxError::ExecutionFailed(format!(
+            "HTTP method '{method}' is not supported for owned execution; use mutation methods only"
+        )));
+    }
+
+    let headers = request.headers;
+    let body = request.body;
+
     let handle = std::thread::spawn(move || {
-        let method = request
-            .method
-            .as_deref()
-            .unwrap_or("GET")
-            .parse::<reqwest::Method>()
-            .map_err(|e| SandboxError::ExecutionFailed(format!("invalid HTTP method: {e}")))?;
+        let client = reqwest::blocking::Client::builder()
+            .timeout(HTTP_REQUEST_TIMEOUT)
+            .connect_timeout(HTTP_CONNECT_TIMEOUT)
+            .redirect(reqwest::redirect::Policy::none())
+            .resolve(&pin_host, pin_addr)
+            .build()
+            .map_err(|e| {
+                SandboxError::ExecutionFailed(format!("failed to build HTTP client: {e}"))
+            })?;
 
-        if !is_mutation_method(&method) {
-            return Err(SandboxError::ExecutionFailed(format!(
-                "HTTP method '{}' is not supported for owned execution; use mutation methods only",
-                method
-            )));
-        }
-
-        let client = reqwest::blocking::Client::builder().build().map_err(|e| {
-            SandboxError::ExecutionFailed(format!("failed to build HTTP client: {e}"))
-        })?;
-
-        let mut builder = client.request(method, &request.url);
-        for (name, value) in request.headers {
+        let mut builder = client.request(method, url);
+        for (name, value) in headers {
             builder = builder.header(name, value);
         }
-        if let Some(body) = request.body {
+        if let Some(body) = body {
             builder = builder.body(body);
         }
 
@@ -1053,13 +1070,13 @@ fn execute_http_request(payload: &str) -> Result<SandboxOutput, SandboxError> {
             .send()
             .map_err(|e| SandboxError::ExecutionFailed(format!("HTTP request failed: {e}")))?;
         let status = response.status();
-        let body = response.text().map_err(|e| {
+        let resp_body = response.text().map_err(|e| {
             SandboxError::ExecutionFailed(format!("failed to read HTTP response body: {e}"))
         })?;
 
         Ok(SandboxOutput {
             exit_code: if status.is_success() { 0 } else { 1 },
-            stdout: body,
+            stdout: resp_body,
             stderr: String::new(),
         })
     });
@@ -1067,6 +1084,62 @@ fn execute_http_request(payload: &str) -> Result<SandboxOutput, SandboxError> {
     handle
         .join()
         .map_err(|_| SandboxError::ExecutionFailed("HTTP execution thread panicked".to_string()))?
+}
+
+/// Unconditional deny-list for resolved destination IPs. Covers categories
+/// a URL regex cannot reliably catch after DNS, including the link-local
+/// range that hosts cloud-provider metadata services. Loopback and RFC1918
+/// private ranges are intentionally not blocked here — those are policy
+/// decisions the user expresses through `http_request.deny` URL patterns.
+fn is_always_blocked_ip(ip: &IpAddr) -> bool {
+    match ip {
+        IpAddr::V4(v4) => {
+            v4.is_link_local() || v4.is_unspecified() || v4.is_broadcast() || v4.is_multicast()
+        }
+        IpAddr::V6(v6) => v6.is_unspecified() || v6.is_multicast() || is_ipv6_link_local(v6),
+    }
+}
+
+fn is_ipv6_link_local(ip: &Ipv6Addr) -> bool {
+    (ip.segments()[0] & 0xffc0) == 0xfe80
+}
+
+/// Resolve a URL's host once at policy time and return a host/address pair
+/// suitable for pinning the reqwest client via `ClientBuilder::resolve`.
+/// Rejects if any resolved address falls in the unconditional deny-list,
+/// which closes the DNS-rebinding TOCTOU window by forcing reqwest to
+/// connect to the vetted address.
+fn resolve_url_to_safe_addr(url: &reqwest::Url) -> Result<(String, SocketAddr), SandboxError> {
+    let host = url
+        .host_str()
+        .ok_or_else(|| SandboxError::ExecutionFailed("URL has no host".to_string()))?;
+    let port = url.port_or_known_default().ok_or_else(|| {
+        SandboxError::ExecutionFailed(format!("URL '{url}' has no port and no known default"))
+    })?;
+
+    let addrs: Vec<SocketAddr> = (host, port)
+        .to_socket_addrs()
+        .map_err(|e| {
+            SandboxError::ExecutionFailed(format!("DNS resolution failed for '{host}': {e}"))
+        })?
+        .collect();
+
+    if addrs.is_empty() {
+        return Err(SandboxError::ExecutionFailed(format!(
+            "DNS resolution returned no addresses for '{host}'"
+        )));
+    }
+
+    for addr in &addrs {
+        if is_always_blocked_ip(&addr.ip()) {
+            return Err(SandboxError::ExecutionFailed(format!(
+                "URL host '{host}' resolves to blocked address {}",
+                addr.ip()
+            )));
+        }
+    }
+
+    Ok((host.to_string(), addrs[0]))
 }
 
 fn runtime_decision_for_input(input: &GuardInput, decision: GuardDecision) -> RuntimeDecision {
