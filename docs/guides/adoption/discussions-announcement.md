@@ -22,20 +22,20 @@ Recommended category:
 
 Recommended title:
 
-- `agent-guard` v0.2.0-rc1: a safer execution boundary for AI tool calls
+- `agent-guard` v0.2.0-rc1: execution control for agent side effects
 
 ---
 
 ## Final Draft
 
 ```md
-# `agent-guard` v0.2.0-rc1: a safer execution boundary for AI tool calls
+# `agent-guard` v0.2.0-rc1: execution control for agent side effects
 
 AI agents that can call tools, especially shell-like tools, should not rely on prompt trust alone.
 
 That is the problem `agent-guard` is focused on solving.
 
-The project puts a policy gate and OS sandbox in front of AI tool calls so risky commands do not silently flow into execution.
+The project gives agent developers a real execution boundary before shell commands and other risky side effects become real.
 
 ## Why this matters
 
@@ -82,7 +82,7 @@ With `agent-guard`, the same call must pass a decision boundary first.
 
 - engineers building code agents with shell access
 - teams exposing tool-calling runtimes to LLMs
-- platform or security teams that need auditable tool execution
+- platform or security teams that need auditable execution outcomes
 
 ## Start here
 

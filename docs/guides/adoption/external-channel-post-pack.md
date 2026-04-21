@@ -50,9 +50,9 @@ Use these links across channels:
 ## 1. X Post
 
 ```text
-AI agents with shell tools should not rely on “please be safe” prompts.
+Shell-enabled agents should not rely on “please be safe” prompts.
 
-We built `agent-guard` to put a policy gate and OS sandbox in front of AI tool calls.
+We built `agent-guard` to put a real execution boundary in front of shell commands and other risky side effects.
 
 Fastest proof:
 - safe command: allowed
@@ -74,7 +74,7 @@ Optional reply thread follow-up:
 Best-fit users right now:
 - code agents with bash or shell access
 - tool-calling runtimes exposed to LLMs
-- platform/security teams that want an auditable tool boundary
+- platform/security teams that want auditable execution outcomes
 
 Quick links:
 Three-Minute Proof:
@@ -97,7 +97,7 @@ Suggested communities:
 
 Suggested title:
 
-`We built agent-guard to put a policy and sandbox boundary in front of AI tool calls`
+`We built agent-guard to put a real execution boundary in front of risky agent side effects`
 
 Body:
 
@@ -106,12 +106,12 @@ Most AI agent stacks still rely too heavily on a fragile assumption: if the prom
 
 That breaks down quickly when the runtime can call shell tools, file-capable tools, or other high-risk handlers.
 
-We built `agent-guard` to put a real decision boundary in front of AI tool calls.
+We built `agent-guard` to put a real decision boundary in front of shell commands and other risky side effects.
 
 What it does:
 - checks tool calls against policy before execution
 - can route execution through an OS sandbox path
-- supports auditable outcomes and deeper trust workflows
+- supports auditable outcomes and deeper verification workflows
 
 The easiest way to evaluate it is the proof demo:
 
@@ -140,7 +140,7 @@ If you are building code agents or tool-calling runtimes, I would especially lov
 AI agents are getting more useful as they gain access to tools, but that also means the execution boundary matters much more than it used to.
 
 We have been building `agent-guard` around a simple idea:
-put a policy gate and OS sandbox in front of AI tool calls so shell and other high-risk tools do not execute on prompt trust alone.
+put a real execution boundary in front of shell commands and other risky side effects so they do not execute on prompt trust alone.
 
 What makes the project easy to evaluate now:
 - a 3-minute proof demo
@@ -167,14 +167,14 @@ https://github.com/XuebinMa/agent-guard/discussions/1
 
 Suggested title:
 
-`Show HN: agent-guard, a policy and sandbox boundary for AI tool calls`
+`Show HN: agent-guard, execution control for agent side effects`
 
 Body:
 
 ```text
 We built agent-guard for a narrow but important problem: AI agents that can call tools, especially shell-like tools, should not rely on prompt trust alone.
 
-The project puts a policy gate in front of tool calls and can route execution through an OS sandbox path.
+The project puts a real execution boundary in front of tool calls and can route execution through an OS sandbox path.
 
 What is available today:
 - Node adapters for LangChain-style tools and OpenAI-style handlers
@@ -199,7 +199,7 @@ Links:
 
 建议标题：
 
-`agent-guard：给 AI Agent 的工具调用加上一层策略与沙箱边界`
+`agent-guard：给 AI Agent 的真实副作用加上一层执行控制边界`
 
 正文：
 
@@ -208,7 +208,7 @@ Links:
 
 我们最近把 `agent-guard` 整理成了一个更容易试用的版本，核心思路很简单：
 
-给 AI 工具调用前面加一层 policy gate，并在可用时把执行放进 OS sandbox 路径里，这样高风险命令就不会只靠 prompt 来约束。
+在 AI 即将产生真实副作用之前加一层执行控制边界，并在可用时把执行放进 OS sandbox 路径里，这样高风险命令就不会只靠 prompt 来约束。
 
 现在最容易理解项目价值的方式是直接跑 proof demo：
 
@@ -245,7 +245,7 @@ npm run demo:proof --prefix crates/agent-guard-node
 ```text
 如果一个 AI Agent 已经能调用 bash、文件系统或者其他高风险工具，那么真正需要控制的地方，其实是工具执行边界。
 
-我们做了一个项目叫 `agent-guard`，核心目标不是做新的 Agent 框架，而是在 AI 工具调用前加一层 policy gate，并在可用时走 OS sandbox 路径。
+我们做了一个项目叫 `agent-guard`，核心目标不是做新的 Agent 框架，而是在 AI 即将产生真实副作用前加一层执行控制边界，并在可用时走 OS sandbox 路径。
 
 这样一来，风险命令不会直接从模型流进宿主机执行。
 

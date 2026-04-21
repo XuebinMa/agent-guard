@@ -14,7 +14,7 @@ This page gives you reusable post drafts for X, GitHub Discussions, Reddit, Link
 
 The goal is to keep the message consistent:
 
-**AI tool calls should not rely on prompt trust alone.**
+**High-risk agent side effects should not rely on prompt trust alone.**
 
 ---
 
@@ -23,9 +23,9 @@ The goal is to keep the message consistent:
 Use this for X or short project updates.
 
 ```text
-AI agents with shell tools should not rely on “please be safe” prompts.
+Shell-enabled agents should not rely on “please be safe” prompts.
 
-`agent-guard` puts a policy gate and OS sandbox in front of AI tool calls.
+`agent-guard` puts a real execution boundary in front of shell commands and other high-risk side effects.
 
 Fastest proof:
 npm ci --prefix crates/agent-guard-node
@@ -44,7 +44,7 @@ One practical way to improve agent security is to move control from prompt text 
 
 We have been building `agent-guard` for that exact problem.
 
-It puts a policy gate and OS sandbox in front of AI tool calls, starting with shell and other high-risk tools.
+It puts a real execution boundary in front of shell commands and other high-risk side effects, starting with the shell-first path.
 
 The quickest way to see the value is the proof demo:
 - safe command: allowed
@@ -73,12 +73,12 @@ Most AI agent stacks still rely too heavily on a fragile assumption: if the prom
 
 That breaks down quickly when the runtime can call shell tools, file-capable tools, or other high-risk handlers.
 
-We built `agent-guard` to put a real decision boundary in front of AI tool calls.
+We built `agent-guard` to put a real decision boundary in front of shell commands and other risky side effects.
 
 What it does:
 - checks tool calls against policy before execution
 - can route execution through an OS sandbox path
-- supports auditable outcomes and deeper trust workflows
+- supports auditable outcomes and deeper verification workflows
 
 What makes it easy to evaluate:
 - a 3-minute proof demo

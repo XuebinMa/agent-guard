@@ -37,7 +37,7 @@ It is intentionally narrower than a broad platform map. The goal is to help a de
 | Python binding | ✅ Supported | Python tests and demos | Python hosts and wrappers | Build-from-source flow. |
 | Python LangChain adapter | 🟡 Beta | Repository wrappers and tests | LangChain Python experiments | Official wrapper surface is present, but not yet validated against a real framework version matrix in CI. |
 | Python OpenAI-style adapter | 🟡 Beta | Repository wrappers and tests | OpenAI-style handler integration in Python apps | Official wrapper surface is available, but runtime validation is currently wrapper-level rather than package-level. |
-| AutoGen adapter | ⚪ Not shipped | No official adapter | Future ecosystem target | Still part of roadmap, not current official integration surface. |
+| AutoGen adapter | ⚪ Not shipped | No official adapter | No official adapter today | Still part of roadmap, not current official integration surface. |
 
 ---
 

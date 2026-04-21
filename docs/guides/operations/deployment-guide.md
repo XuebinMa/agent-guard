@@ -16,7 +16,7 @@ This guide provides best practices and operational procedures for deploying `age
 
 ## 1. 🏗️ Recommended Deployment Architecture
 
-For most enterprise use cases, we recommend the following sidecar or host-agent architecture:
+For most production deployments with real side effects, we recommend the following sidecar or host-agent architecture:
 
 1. **Host Application**: Your AI Agent framework (e.g., built with LangChain-style tools, OpenAI-style handlers, or a custom Rust/Node/Python runtime).
 2. **agent-guard SDK**: Integrated into the host application to intercept tool calls.

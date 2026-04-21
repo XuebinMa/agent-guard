@@ -2,7 +2,7 @@
 
 This is the fastest way to answer one question:
 
-**Will `agent-guard` actually stop risky AI tool calls before they execute?**
+**Will `agent-guard` actually stop risky side effects before they execute?**
 
 If you are evaluating the project for the first time, start here.
 

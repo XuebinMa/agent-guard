@@ -10,12 +10,12 @@
 
 ---
 
-> This document serves as the primary security audit entry point for `agent-guard`. It outlines the assets, attack surfaces, and defensive posture of the SDK across all supported platforms.
+> This document serves as the primary security posture entry point for `agent-guard`. It outlines the assets, attack surfaces, and current defensive posture of the execution-control runtime across supported platforms.
 
 ---
 
 ## 1. 🏗️ Asset Inventory
-The following assets are protected by the `agent-guard` security layer:
+The following assets are protected by the `agent-guard` execution control layer:
 
 | Asset | Importance | Security Requirement |
 | :--- | :--- | :--- |

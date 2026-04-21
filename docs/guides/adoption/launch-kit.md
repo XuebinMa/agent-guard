@@ -31,11 +31,11 @@ Do not lead with architecture diagrams, parity tables, or future roadmap items.
 
 Use this sentence first:
 
-> `agent-guard` puts a policy gate and OS sandbox in front of AI tool calls, so shell and other high-risk tools do not execute on prompt trust alone.
+> `agent-guard` gives agent developers a real execution boundary before shell commands and other high-risk side effects become real.
 
 Shorter variant:
 
-> `agent-guard` is a safety boundary for AI tool execution.
+> `agent-guard` is an execution control layer for agent side effects.
 
 ---
 
@@ -45,7 +45,7 @@ The strongest-fit audience today is:
 
 - engineers building code agents with shell access
 - teams exposing tool-calling runtimes to LLMs
-- platform or security teams that need auditable tool execution
+- platform or security teams that need auditable execution outcomes
 
 If the audience has no tool execution, the message will feel less urgent.
 
@@ -119,9 +119,9 @@ If you want a reusable set of platform-specific drafts, use [Social Post Templat
 ### Post Template A: Product Value
 
 ```text
-AI agents with shell tools should not rely on “please be safe” prompts.
+Shell-enabled agents should not rely on “please be safe” prompts.
 
-We built `agent-guard` to put a policy gate and OS sandbox in front of tool calls.
+We built `agent-guard` to put a real execution boundary in front of shell commands and other high-risk side effects.
 
 The fastest proof:
 - safe command: allowed
@@ -152,7 +152,7 @@ Node quickstart and proof demo are live in the repo.
 ```text
 One practical way to improve agent security: move control from prompt text to the tool boundary.
 
-`agent-guard` checks high-risk tool calls before execution and can enforce sandboxed execution paths, with receipts and audit hooks available for deeper trust workflows.
+`agent-guard` checks high-risk tool calls before execution and can enforce sandboxed execution paths, with receipts and audit hooks available for deeper verification workflows.
 ```
 
 ---

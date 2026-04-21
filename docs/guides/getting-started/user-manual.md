@@ -10,7 +10,7 @@
 
 ---
 
-Welcome to the official user manual for `agent-guard`. This guide will help you integrate, configure, and operate the security boundary around your AI agents.
+Welcome to the official user manual for `agent-guard`. This guide will help you integrate, configure, and operate the execution control layer around agent side effects.
 
 ---
 
@@ -30,7 +30,7 @@ Available now in `crates/agent-guard-python` and `crates/agent-guard-node`. Buil
 
 ---
 
-## 2. 🛡️ Configuring Your Security Policy
+## 2. 🛡️ Configuring Your Execution Policy
 
 The heart of `agent-guard` is the `policy.yaml` file.
 

@@ -16,7 +16,7 @@ This FAQ is meant for the first round of user questions, especially from people 
 
 ## What problem does `agent-guard` solve?
 
-It adds a policy and execution boundary in front of AI tool calls.
+It adds an execution control layer in front of agent side effects.
 
 The strongest current use case is shell and other high-risk tools, where prompt instructions alone are not a reliable safety boundary.
 
@@ -46,7 +46,7 @@ The best-fit early users are:
 
 - engineers building code agents with `bash` or shell access
 - teams exposing tool-calling runtimes to LLMs
-- platform or security teams that need auditable tool execution
+- platform or security teams that need auditable execution outcomes
 
 If your assistant never calls tools, this project will feel less urgent.
 
@@ -86,7 +86,7 @@ The point is to prove that the tool boundary is now explicit.
 
 No.
 
-`agent-guard` is a security and control layer for tool execution. It is not trying to replace your orchestration framework or become the whole agent runtime.
+`agent-guard` is an execution control layer for agent side effects. It is not trying to replace your orchestration framework or become the whole agent runtime.
 
 ---
 

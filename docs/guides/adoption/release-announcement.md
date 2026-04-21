@@ -32,8 +32,8 @@ Pick a title with a clear value statement.
 
 Good options:
 
-- `agent-guard`: a safer execution boundary for AI tool calls
-- New in `agent-guard`: proof-driven shell tool protection for AI agents
+- `agent-guard`: execution control for agent side effects
+- New in `agent-guard`: proof-driven shell-first execution control
 - `agent-guard` update: run a 3-minute proof of blocked risky tool calls
 
 Avoid titles that are too internal, such as:
@@ -53,7 +53,7 @@ Use this when you want a compact GitHub release or project update.
 
 AI agents that can call tools, especially shell-like tools, should not rely on prompt trust alone.
 
-`agent-guard` puts a policy gate and OS sandbox in front of AI tool calls so risky commands do not silently flow into execution.
+`agent-guard` gives agent developers a real execution boundary before shell commands and other risky side effects become real.
 
 ## What you can verify right now
 
@@ -73,8 +73,8 @@ What you will see:
 
 ## Why this is useful
 
-- protect shell and other high-risk tools at the tool boundary
-- add guardrails to LangChain-style tools and OpenAI-style handlers
+- protect shell and other high-risk tools at the execution boundary
+- add an execution-control layer to LangChain-style tools and OpenAI-style handlers
 - move from `check` to `enforce` without rewriting your runtime
 - keep an auditable path for what was allowed or blocked
 
@@ -92,13 +92,13 @@ What you will see:
 Use this when you want a more complete public post.
 
 ```md
-## `agent-guard`: a safer execution boundary for AI tool calls
+## `agent-guard`: execution control for agent side effects
 
 Most AI agent demos still rely on a fragile assumption: if the prompt says “be safe,” the tool call will probably be safe too.
 
 That assumption breaks down quickly for shell tools, file-capable tools, and high-risk runtimes.
 
-`agent-guard` is built to move control from prompt trust to the tool boundary. It places a policy gate in front of tool calls and can execute them through an OS sandbox path, with auditability and proof-oriented workflows available for teams that need deeper trust.
+`agent-guard` is built to move control from prompt trust to the execution boundary. It places a real decision point in front of tool calls and can execute them through an OS sandbox path, with auditability and proof-oriented workflows available for teams that need deeper verification.
 
 ## The fastest way to understand it
 
@@ -132,7 +132,7 @@ With `agent-guard`, the same call must pass a decision boundary first.
 
 - engineers building code agents with shell access
 - teams exposing tool-calling runtimes to LLMs
-- platform or security teams that need auditability around tool execution
+- platform or security teams that need auditability around execution outcomes
 
 ## Start here
 

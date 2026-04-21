@@ -7,7 +7,7 @@
 | **Version** | 1.2 |
 | **Last Reviewed** | 2026-04-14 |
 
-To ensure a consistent security experience across ecosystems, all `agent-guard` language bindings MUST adhere to this contract.
+To ensure a consistent execution-control experience across bindings, all `agent-guard` language integrations MUST adhere to this contract.
 
 ---
 
