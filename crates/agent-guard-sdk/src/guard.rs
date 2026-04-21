@@ -1078,11 +1078,11 @@ fn execute_http_request(payload: &str) -> Result<SandboxOutput, SandboxError> {
 fn runtime_decision_for_input(input: &GuardInput, decision: GuardDecision) -> RuntimeDecision {
     match decision {
         GuardDecision::Allow => {
-            if matches!(input.tool, Tool::Bash | Tool::WriteFile) {
-                RuntimeDecision::Execute
-            } else if matches!(input.tool, Tool::HttpRequest)
-                && payload_declares_mutation_http(&input.payload)
-            {
+            let guard_owns_execution = matches!(input.tool, Tool::Bash | Tool::WriteFile)
+                || (matches!(input.tool, Tool::HttpRequest)
+                    && payload_declares_mutation_http(&input.payload));
+
+            if guard_owns_execution {
                 RuntimeDecision::Execute
             } else {
                 RuntimeDecision::Handoff
