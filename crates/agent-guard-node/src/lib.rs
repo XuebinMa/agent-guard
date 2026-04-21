@@ -6,8 +6,8 @@ extern crate napi_derive;
 use agent_guard_sdk::{
     Context as RustContext, ExecuteOutcome as RustExecuteOutcome, Guard as RustGuard,
     GuardDecision, GuardInput, PolicyVerification as RustPolicyVerification,
-    RuntimeDecision as RustRuntimeDecision, RuntimeOutcome as RustRuntimeOutcome,
-    Tool as RustTool, TrustLevel as RustTrustLevel,
+    RuntimeDecision as RustRuntimeDecision, RuntimeOutcome as RustRuntimeOutcome, Tool as RustTool,
+    TrustLevel as RustTrustLevel,
 };
 use napi::bindgen_prelude::*;
 use serde::Serialize;
@@ -262,7 +262,10 @@ fn execute_outcome_from_rust(o: RustExecuteOutcome, sandbox_type: String) -> Exe
     }
 }
 
-fn runtime_outcome_from_rust(o: RustRuntimeOutcome, sandbox_type: Option<String>) -> RuntimeOutcome {
+fn runtime_outcome_from_rust(
+    o: RustRuntimeOutcome,
+    sandbox_type: Option<String>,
+) -> RuntimeOutcome {
     match o {
         RustRuntimeOutcome::Executed {
             output,

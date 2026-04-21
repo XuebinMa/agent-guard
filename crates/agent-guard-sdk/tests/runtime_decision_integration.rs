@@ -91,7 +91,7 @@ fn decide_returns_handoff_for_non_mutation_http_request() {
 
 #[test]
 fn decide_maps_deny_and_ask_to_runtime_terms() {
-    let denied = guard().decide_tool(Tool::Bash, r#"{"command":"rm -rf /tmp/demo"}"#, trusted());
+    let denied = guard().decide_tool(Tool::ReadFile, r#"{"path":"/etc/passwd"}"#, trusted());
     assert!(matches!(denied, RuntimeDecision::Deny { .. }));
 
     let ask = guard().decide_tool(

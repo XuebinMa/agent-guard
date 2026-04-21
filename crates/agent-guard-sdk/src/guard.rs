@@ -1002,9 +1002,9 @@ fn execute_write_file(payload: &str) -> Result<SandboxOutput, SandboxError> {
         options.truncate(true);
     }
 
-    let mut file = options
-        .open(&request.path)
-        .map_err(|e| SandboxError::ExecutionFailed(format!("failed to open file for write: {e}")))?;
+    let mut file = options.open(&request.path).map_err(|e| {
+        SandboxError::ExecutionFailed(format!("failed to open file for write: {e}"))
+    })?;
     file.write_all(request.content.as_bytes())
         .map_err(|e| SandboxError::ExecutionFailed(format!("failed to write file content: {e}")))?;
 
