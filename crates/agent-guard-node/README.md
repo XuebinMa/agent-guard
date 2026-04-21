@@ -4,12 +4,18 @@
 
 Use it when your agent is about to cause a real side effect and you want a decision at the execution boundary:
 
-- allow the call
-- block it
+- execute it through `agent-guard`
+- deny it
 - ask for approval
-- or move execution into `agent-guard` itself
+- or hand it back to the host runtime
 
-Today, the strongest proof point is shell / terminal tooling. That makes this package a good fit for code agents, shell-enabled assistants, and other Node runtimes where risky commands should not flow straight from model output into the real host environment.
+Today, the strongest short-term wedge is a narrow multi-side-effect runtime:
+
+- shell / terminal
+- file write
+- outbound mutation HTTP
+
+That makes this package a good fit for code agents and other Node runtimes where risky actions should not flow straight from model output into the real host environment.
 
 ## What Ships In This Package
 
@@ -23,12 +29,13 @@ You can adopt it incrementally:
 - use `check` to put a policy gate in front of an existing tool handler
 - use `enforce` for shell-like tools when you want `agent-guard` to own the execution path
 - use `auto` as a migration bridge when you want a light preflight gate first
+- or use raw `decide()` / `run()` when you want the normalized runtime decisions directly
 
 ## Why Start Here
 
 - Node currently has the clearest quickstart and demo path in the repository
 - Node adapters are validated against real `@langchain/core` and `@openai/agents` packages
-- the shell-first story is easiest to understand and prove from this package
+- the side-effect wedge demo is easiest to understand and prove from this package
 
 ## Supported Runtime Baseline
 
@@ -43,7 +50,7 @@ That is the published support floor for the current adapter layer.
 
 ## What You Get
 
-- Raw `Guard` APIs: `check()`, `execute()`, `reload()`, `policyVersion()`
+- Raw `Guard` APIs: `check()`, `execute()`, `decide()`, `run()`, `reload()`, `policyVersion()`
 - Adapter factory: `createGuardedExecutor()`
 - LangChain-style object wrapper: `wrapLangChainTool()`
 - OpenAI handler wrapper: `wrapOpenAITool()`
@@ -65,7 +72,7 @@ That is the published support floor for the current adapter layer.
 - `enforce`: call `guard.execute()` and return the execution outcome instead of running the original handler
 - `auto`: preflight with `guard.check()`; if the decision is `allow`, run the original handler, otherwise throw
 
-If the tool is really a shell tool, start by evaluating `enforce` first. That is where the package most clearly acts as an execution control layer instead of a policy-only wrapper.
+If you want the normalized wedge vocabulary directly, start with `decide()` and `run()`. If you are integrating through existing handler wrappers, `enforce` is still strongest on shell-like tools today.
 
 ## Quick Start
 
@@ -97,6 +104,31 @@ const guardedShell = wrapOpenAITool(
 ```
 
 For the shortest runnable example, see [examples/quickstart](./examples/quickstart/README.md).
+
+## Runtime Wedge Example
+
+This example uses the raw runtime APIs and crosses shell, file write, and outbound mutation HTTP in one flow.
+
+```js
+const { Guard } = require('@agent-guard/node')
+
+const guard = Guard.fromYaml(policyYaml)
+
+const shellDecision = guard.decide('bash', JSON.stringify({ command: 'echo summary:ready' }))
+const shellOutcome = await guard.run('bash', JSON.stringify({ command: 'echo summary:ready' }))
+
+const fileDecision = guard.decide(
+  'write_file',
+  JSON.stringify({ path: '/workspace/summary.txt', content: shellOutcome.output.stdout.trim() })
+)
+
+const httpDecision = guard.decide(
+  'http_request',
+  JSON.stringify({ method: 'POST', url: 'http://127.0.0.1:3000/publish', body: 'summary:ready' })
+)
+```
+
+For the clearest runnable version, see [`demos/demo_side_effect_wedge.js`](./demos/demo_side_effect_wedge.js).
 
 ## API-Like Tool Example
 
@@ -152,15 +184,17 @@ The Node test suite exercises real `DynamicTool` objects and real OpenAI Agents 
 
 ## Practical Boundary Notes
 
-- the strongest current `enforce` path is shell / Bash execution
-- many non-shell tools are best treated as `check` surfaces first
+- the raw runtime can now own execution for shell, file write, and outbound mutation HTTP
+- adapter `enforce` remains the strongest shell-first path in the higher-level wrappers
 - if your host runtime adds its own execution boundary, you can combine that with `agent-guard` policy decisions
 
 ## Demos
 
 - `npm run demo:quickstart --prefix crates/agent-guard-node`
+- `npm run demo:wedge --prefix crates/agent-guard-node`
 - `npm run demo:proof --prefix crates/agent-guard-node`
 - `npm run demo:flow --prefix crates/agent-guard-node`
+- [`demos/demo_side_effect_wedge.js`](./demos/demo_side_effect_wedge.js)
 - [`demos/demo_langchain.js`](./demos/demo_langchain.js)
 - [`demos/demo_openai_handler.js`](./demos/demo_openai_handler.js)
 - [`demos/demo_check_vs_enforce.js`](./demos/demo_check_vs_enforce.js)

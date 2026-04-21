@@ -1,7 +1,7 @@
 # agent-guard
 
 > The execution control layer for agent side effects.
-> When an agent is about to do something real, `agent-guard` decides whether to allow it, block it, ask for approval, or take over execution.
+> When an agent is about to do something real, `agent-guard` decides whether to execute it, deny it, ask for approval, or hand it back to the host.
 
 [![Version](https://img.shields.io/badge/Version-0.2.0--rc1-blue.svg)]()
 [![Focus](https://img.shields.io/badge/Focus-Execution%20Control-green.svg)]()
@@ -9,14 +9,14 @@
 
 `agent-guard` is for AI application and agent developers who need a real execution boundary before tool calls turn into shell commands, file mutations, or other side effects. It sits between agent intent and execution so risky actions do not rely only on prompts, regexes, or ad hoc handler code.
 
-Today, the clearest proof point is shell / Bash execution:
+Today, the clearest short-term wedge is side-effect execution control across a very small set of high-risk actions:
 
-- gate risky commands before they reach the real shell
-- deny or ask for approval on dangerous requests
-- move the highest-risk execution path into the SDK's controlled execution flow
-- keep audit records of what was allowed, blocked, or executed
+- shell / terminal
+- file write
+- outbound mutation HTTP
+- one runtime decision surface for `execute | deny | ask_for_approval | handoff`
 
-That shell-first story is the adoption wedge, not the final scope. The project can grow into broader side-effect control over time, but the reason to use it now is simple: it gives your agent a real execution decision point where it matters most.
+That narrow wedge is the adoption point, not the final scope. The project can grow into broader side-effect control over time, but the reason to use it now is simple: it gives your agent a real execution decision point where side effects become real.
 
 ---
 
@@ -27,47 +27,42 @@ That shell-first story is the adoption wedge, not the final scope. The project c
 
 ---
 
-## See The Value In 3 Minutes
+## See The Wedge
 
-If you only try one thing, run the proof demo:
+If you only try one thing, run the side-effect wedge demo:
 
 ```bash
 npm ci --prefix crates/agent-guard-node
 npm run build:debug --prefix crates/agent-guard-node
-npm run demo:proof --prefix crates/agent-guard-node
+npm run demo:wedge --prefix crates/agent-guard-node
 ```
 
 What you should see:
 
 ```text
-=== Safe Command ===
-without guard: UNSAFE_HANDLER_WOULD_RUN:echo hello from attack demo
-with guard: allowed
+=== agent-guard side-effect wedge ===
 
-=== Approval Required Command ===
-without guard: UNSAFE_HANDLER_WOULD_RUN:git push origin main
-with guard: blocked
-
-=== Destructive Command ===
-without guard: UNSAFE_HANDLER_WOULD_RUN:rm -rf /
-with guard: blocked
+[1] shell decision: execute
+[2] file decision: execute
+[3] http decision: execute
+[4] remote publish decision: ask_for_approval
 ```
 
-That path is documented in [Three-Minute Proof](docs/guides/getting-started/three-minute-proof.md).
+That path is documented in [Side-Effect Wedge Demo](docs/guides/getting-started/side-effect-wedge-demo.md).
 
-![agent-guard proof demo screenshot](docs/assets/demo-proof-terminal.svg)
+If you want the fastest shell-only proof instead, use [Three-Minute Proof](docs/guides/getting-started/three-minute-proof.md).
 
 ---
 
 ## What It Does
 
-The core runtime decision looks like this:
+The core runtime decision now looks like this:
 
 ```text
-agent tool call
+agent action
   -> agent-guard
-  -> allow | deny | ask for approval | execute through guarded path
-  -> optional sandbox-backed execution
+  -> execute | deny | ask_for_approval | handoff
+  -> optional guard-owned execution
   -> audit outcome
 ```
 
@@ -76,7 +71,11 @@ This is the difference between:
 - hoping the model behaves
 - and putting an explicit execution control layer in front of side effects
 
-For shell tools, that boundary is strongest today because `enforce` can move execution into the SDK path instead of leaving the final shell call in your original handler.
+Today, the runtime can already own execution for:
+
+- shell / terminal
+- file write
+- outbound mutation HTTP
 
 ---
 
@@ -84,7 +83,7 @@ For shell tools, that boundary is strongest today because `enforce` can move exe
 
 - **Real boundary, not prompt-only safety**: risky tool calls hit a decision point before execution.
 - **Small integration surface**: wrap existing LangChain-style tools or OpenAI-style handlers instead of rewriting your runtime.
-- **Incremental rollout**: start with shell tools in `enforce`, keep lower-risk tools in `check`, and expand from there.
+- **Incremental rollout**: start with the raw runtime APIs for the highest-risk side effects, then layer adapters on top where they fit.
 - **Auditable outcomes**: keep receipts and logs as support for trust and review, without making enterprise workflow the first thing you have to buy into.
 
 ---
@@ -107,14 +106,15 @@ For shell tools, that boundary is strongest today because `enforce` can move exe
 
 What is strong today:
 
-- shell / Bash protection is the main proof point
+- shell / terminal, file write, and outbound mutation HTTP are the main proof surfaces
 - Node is the fastest adoption path
-- policy decisions, approval flows, and auditable outcomes are available now
+- normalized runtime decisions, approval flows, and auditable outcomes are available now
 
 What to understand before integrating:
 
-- `enforce` is strongest on shell-like execution paths
-- non-shell tools are primarily a `check`-first story today unless your host adds its own execution boundary
+- the raw runtime APIs now expose `execute | deny | ask_for_approval | handoff`
+- adapter `enforce` is still strongest on shell-like execution paths today
+- broader capability coverage is intentionally narrow, not generic
 - broader policy workflow and control-plane ideas are future expansion paths, not the phase-one hook
 
 ---
@@ -122,6 +122,7 @@ What to understand before integrating:
 ## Fastest Paths
 
 - [Node Quickstart](crates/agent-guard-node/examples/quickstart/README.md): shortest end-to-end path for a new developer
+- [Side-Effect Wedge Demo](docs/guides/getting-started/side-effect-wedge-demo.md): best current proof of the multi-side-effect runtime
 - [Secure Shell Tools](docs/guides/getting-started/secure-shell-tools.md): best first integration when shell is the risk
 - [Check vs Enforce](docs/guides/getting-started/check-vs-enforce.md): when to keep your handler vs when to move execution into `agent-guard`
 - [Framework Support Matrix](docs/framework-support-matrix.md): what is supported today across Node, Python, and Rust
@@ -140,8 +141,8 @@ Additional references:
 ## Framework Entry Points
 
 - **Node**: strongest current adoption surface, with wrappers for LangChain-style tools and OpenAI-style handlers
-- **Python**: wrapper surface is available, with shell enforcement still centered on the Bash path
-- **Rust SDK**: most direct integration path for hosts that want explicit control over the execution pipeline
+- **Python**: wrapper surface is available, with broader runtime semantics not yet brought to parity
+- **Rust SDK**: most direct integration path for hosts that want explicit control over side-effect decisioning and execution
 
 ---
 
