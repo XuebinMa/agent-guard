@@ -1,13 +1,16 @@
-use std::path::Path;
+use std::collections::HashMap;
+use std::io::Write;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use agent_guard_core::{
     AuditConfig, AuditEvent, Context, DecisionCode, DecisionReason, GuardDecision, GuardInput,
-    PolicyEngine, PolicyMode, ReloadEvent, Tool,
+    PolicyEngine, PolicyMode, ReloadEvent, RuntimeDecision, Tool,
 };
 use agent_guard_sandbox::{Sandbox, SandboxContext, SandboxError, SandboxOutput};
 use agent_guard_validators::bash::{validate_bash_command, PermissionMode, ValidationResult};
 use arc_swap::ArcSwap;
+use serde::Deserialize;
 use serde::Serialize;
 use thiserror::Error;
 use uuid::Uuid;
@@ -16,6 +19,7 @@ use crate::policy_signing::{
     load_policy_signature_file, load_public_key_file, parse_hex_signing_key, verify_policy,
     PolicyVerification,
 };
+pub use crate::runtime::{RuntimeOutcome, RuntimeResult};
 use crate::siem::SiemExporter;
 
 // ── GuardInitError ────────────────────────────────────────────────────────────
@@ -265,6 +269,27 @@ impl Guard {
         self.check_internal(&input, &state, &request_id)
     }
 
+    pub fn decide(&self, input: &GuardInput) -> RuntimeDecision {
+        let state = self.state.load();
+        let request_id = Uuid::new_v4().to_string();
+        let decision = self.check_internal(input, &state, &request_id);
+        runtime_decision_for_input(input, decision)
+    }
+
+    pub fn decide_tool(
+        &self,
+        tool: Tool,
+        payload: impl Into<String>,
+        context: Context,
+    ) -> RuntimeDecision {
+        let input = GuardInput {
+            tool,
+            payload: payload.into(),
+            context,
+        };
+        self.decide(&input)
+    }
+
     fn check_internal(
         &self,
         input: &GuardInput,
@@ -429,27 +454,29 @@ impl Guard {
             }
         }
 
-        // Enforcement mode (sandbox execution) is currently optimized for shell tools.
-        let command = if let Tool::Bash = input.tool {
-            extract_bash_command(&input.payload)?
-        } else {
-            return Err(SandboxError::ExecutionFailed(format!(
-                "Enforcement mode (sandbox) is not supported for tool '{}'. Use check mode instead.",
-                input.tool.name()
-            )));
-        };
-
         let mode = state.engine.effective_mode(&input.tool, &input.context);
         let working_directory = input
             .context
             .working_directory
             .clone()
-            .unwrap_or_else(|| std::path::PathBuf::from("."));
+            .unwrap_or_else(|| PathBuf::from("."));
 
         let ctx = SandboxContext {
             mode,
             working_directory,
             timeout_ms: None,
+        };
+
+        let execution_backend = match input.tool {
+            Tool::Bash => sandbox.sandbox_type().to_string(),
+            Tool::WriteFile => "builtin-file-write".to_string(),
+            Tool::HttpRequest => "builtin-http-request".to_string(),
+            _ => {
+                return Err(SandboxError::ExecutionFailed(format!(
+                    "Enforcement mode (sandbox) is not supported for tool '{}'. Use check mode instead.",
+                    input.tool.name()
+                )));
+            }
         };
 
         state
@@ -460,14 +487,22 @@ impl Guard {
                     request_id: request_id.clone(),
                     agent_id: input.context.agent_id.clone(),
                     tool: input.tool.name().to_string(),
-                    sandbox_type: sandbox.sandbox_type().to_string(),
+                    sandbox_type: execution_backend.clone(),
                     duration_ms: None,
                     exit_code: None,
                 },
             ));
 
         let start = std::time::Instant::now();
-        let execution_res = sandbox.execute(&command, &ctx);
+        let execution_res = match input.tool {
+            Tool::Bash => {
+                let command = extract_bash_command(&input.payload)?;
+                sandbox.execute(&command, &ctx)
+            }
+            Tool::WriteFile => execute_write_file(&input.payload),
+            Tool::HttpRequest => execute_http_request(&input.payload),
+            _ => unreachable!("unsupported tool already returned above"),
+        };
         let duration = start.elapsed();
 
         let output = match execution_res {
@@ -481,7 +516,7 @@ impl Guard {
                             request_id: request_id.clone(),
                             agent_id: input.context.agent_id.clone(),
                             tool: input.tool.name().to_string(),
-                            sandbox_type: sandbox.sandbox_type().to_string(),
+                            sandbox_type: execution_backend.clone(),
                             error: e.to_string(),
                         },
                     ));
@@ -497,7 +532,7 @@ impl Guard {
                     request_id: request_id.clone(),
                     agent_id: input.context.agent_id.clone(),
                     tool: input.tool.name().to_string(),
-                    sandbox_type: sandbox.sandbox_type().to_string(),
+                    sandbox_type: execution_backend.clone(),
                     duration_ms: Some(duration.as_millis() as u64),
                     exit_code: Some(output.exit_code),
                 },
@@ -513,7 +548,7 @@ impl Guard {
             .get_or_create(&crate::metrics::ExecutionLabels {
                 agent_id: agent_id.clone(),
                 tool: input.tool.name().to_string(),
-                sandbox_type: sandbox.sandbox_type().to_string(),
+                sandbox_type: execution_backend.clone(),
             })
             .observe(duration.as_secs_f64());
 
@@ -522,7 +557,7 @@ impl Guard {
                 &agent_id,
                 input.tool.name(),
                 &policy_version,
-                sandbox.sandbox_type(),
+                &execution_backend,
                 &decision,
                 &sha256_hash(&input.payload),
                 key,
@@ -540,6 +575,90 @@ impl Guard {
     pub fn execute_default(&self, input: &GuardInput) -> ExecuteResult {
         let sandbox = Self::default_sandbox();
         self.execute(input, sandbox.as_ref())
+    }
+
+    pub fn run(&self, input: &GuardInput, sandbox: &dyn Sandbox) -> RuntimeResult {
+        let state = self.state.load();
+        let policy_version = state.engine.version().to_string();
+
+        if state.policy_verification.should_fail_closed() {
+            let mut reason = DecisionReason::new(
+                DecisionCode::PolicyVerificationFailed,
+                "policy signature verification failed; runtime execution is blocked until the policy is verified",
+            );
+            let mut details = serde_json::Map::new();
+            details.insert(
+                "policy_verification_status".to_string(),
+                serde_json::Value::String(state.policy_verification.status_label().to_string()),
+            );
+            if let Some(error) = &state.policy_verification.error {
+                details.insert(
+                    "policy_verification_error".to_string(),
+                    serde_json::Value::String(error.clone()),
+                );
+            }
+            reason.details = Some(serde_json::Value::Object(details));
+            return Ok(RuntimeOutcome::Denied {
+                decision: RuntimeDecision::Deny { reason },
+                policy_version,
+                policy_verification: state.policy_verification.clone(),
+            });
+        }
+
+        let decision = self.decide(input);
+        match decision.clone() {
+            RuntimeDecision::Execute => match self.execute(input, sandbox)? {
+                ExecuteOutcome::Executed {
+                    output,
+                    policy_version,
+                    receipt,
+                    policy_verification,
+                } => Ok(RuntimeOutcome::Executed {
+                    output,
+                    policy_version,
+                    receipt,
+                    policy_verification,
+                }),
+                ExecuteOutcome::Denied {
+                    decision,
+                    policy_version,
+                    policy_verification,
+                } => Ok(RuntimeOutcome::Denied {
+                    decision: runtime_decision_for_input(input, decision),
+                    policy_version,
+                    policy_verification,
+                }),
+                ExecuteOutcome::AskRequired {
+                    decision,
+                    policy_version,
+                    policy_verification,
+                } => Ok(RuntimeOutcome::AskForApproval {
+                    decision: runtime_decision_for_input(input, decision),
+                    policy_version,
+                    policy_verification,
+                }),
+            },
+            RuntimeDecision::Handoff => Ok(RuntimeOutcome::Handoff {
+                decision,
+                policy_version,
+                policy_verification: state.policy_verification.clone(),
+            }),
+            RuntimeDecision::Deny { .. } => Ok(RuntimeOutcome::Denied {
+                decision,
+                policy_version,
+                policy_verification: state.policy_verification.clone(),
+            }),
+            RuntimeDecision::AskForApproval { .. } => Ok(RuntimeOutcome::AskForApproval {
+                decision,
+                policy_version,
+                policy_verification: state.policy_verification.clone(),
+            }),
+        }
+    }
+
+    pub fn run_default(&self, input: &GuardInput) -> RuntimeResult {
+        let sandbox = Self::default_sandbox();
+        self.run(input, sandbox.as_ref())
     }
 
     pub fn default_sandbox() -> Box<dyn Sandbox> {
@@ -861,6 +980,141 @@ fn extract_bash_command(payload: &str) -> Result<String, SandboxError> {
         .and_then(|c| c.as_str())
         .map(|s| s.to_string())
         .ok_or_else(|| SandboxError::ExecutionFailed("payload missing 'command' field".to_string()))
+}
+
+#[derive(Debug, Deserialize)]
+struct WriteFileRequest {
+    path: String,
+    content: String,
+    #[serde(default)]
+    append: bool,
+}
+
+fn execute_write_file(payload: &str) -> Result<SandboxOutput, SandboxError> {
+    let request: WriteFileRequest = serde_json::from_str(payload)
+        .map_err(|_| SandboxError::ExecutionFailed("invalid payload JSON".to_string()))?;
+
+    let mut options = std::fs::OpenOptions::new();
+    options.create(true).write(true);
+    if request.append {
+        options.append(true);
+    } else {
+        options.truncate(true);
+    }
+
+    let mut file = options
+        .open(&request.path)
+        .map_err(|e| SandboxError::ExecutionFailed(format!("failed to open file for write: {e}")))?;
+    file.write_all(request.content.as_bytes())
+        .map_err(|e| SandboxError::ExecutionFailed(format!("failed to write file content: {e}")))?;
+
+    Ok(SandboxOutput {
+        exit_code: 0,
+        stdout: String::new(),
+        stderr: String::new(),
+    })
+}
+
+#[derive(Debug, Deserialize)]
+struct HttpRequestExecution {
+    method: Option<String>,
+    url: String,
+    #[serde(default)]
+    headers: HashMap<String, String>,
+    body: Option<String>,
+}
+
+fn execute_http_request(payload: &str) -> Result<SandboxOutput, SandboxError> {
+    let request: HttpRequestExecution = serde_json::from_str(payload)
+        .map_err(|_| SandboxError::ExecutionFailed("invalid payload JSON".to_string()))?;
+
+    let handle = std::thread::spawn(move || {
+        let method = request
+            .method
+            .as_deref()
+            .unwrap_or("GET")
+            .parse::<reqwest::Method>()
+            .map_err(|e| SandboxError::ExecutionFailed(format!("invalid HTTP method: {e}")))?;
+
+        if !is_mutation_method(&method) {
+            return Err(SandboxError::ExecutionFailed(format!(
+                "HTTP method '{}' is not supported for owned execution; use mutation methods only",
+                method
+            )));
+        }
+
+        let client = reqwest::blocking::Client::builder().build().map_err(|e| {
+            SandboxError::ExecutionFailed(format!("failed to build HTTP client: {e}"))
+        })?;
+
+        let mut builder = client.request(method, &request.url);
+        for (name, value) in request.headers {
+            builder = builder.header(name, value);
+        }
+        if let Some(body) = request.body {
+            builder = builder.body(body);
+        }
+
+        let response = builder
+            .send()
+            .map_err(|e| SandboxError::ExecutionFailed(format!("HTTP request failed: {e}")))?;
+        let status = response.status();
+        let body = response.text().map_err(|e| {
+            SandboxError::ExecutionFailed(format!("failed to read HTTP response body: {e}"))
+        })?;
+
+        Ok(SandboxOutput {
+            exit_code: if status.is_success() { 0 } else { 1 },
+            stdout: body,
+            stderr: String::new(),
+        })
+    });
+
+    handle
+        .join()
+        .map_err(|_| SandboxError::ExecutionFailed("HTTP execution thread panicked".to_string()))?
+}
+
+fn runtime_decision_for_input(input: &GuardInput, decision: GuardDecision) -> RuntimeDecision {
+    match decision {
+        GuardDecision::Allow => {
+            if matches!(input.tool, Tool::Bash | Tool::WriteFile) {
+                RuntimeDecision::Execute
+            } else if matches!(input.tool, Tool::HttpRequest)
+                && payload_declares_mutation_http(&input.payload)
+            {
+                RuntimeDecision::Execute
+            } else {
+                RuntimeDecision::Handoff
+            }
+        }
+        GuardDecision::Deny { reason } => RuntimeDecision::Deny { reason },
+        GuardDecision::AskUser { message, reason } => {
+            RuntimeDecision::AskForApproval { message, reason }
+        }
+    }
+}
+
+fn payload_declares_mutation_http(payload: &str) -> bool {
+    serde_json::from_str::<serde_json::Value>(payload)
+        .ok()
+        .and_then(|v| {
+            v.get("method")
+                .and_then(|m| m.as_str())
+                .map(|s| s.to_ascii_uppercase())
+        })
+        .map(|method| matches!(method.as_str(), "POST" | "PUT" | "PATCH" | "DELETE"))
+        .unwrap_or(false)
+}
+
+fn is_mutation_method(method: &reqwest::Method) -> bool {
+    matches!(
+        *method,
+        reqwest::Method::POST
+            | reqwest::Method::PUT
+            | reqwest::Method::PATCH
+            | reqwest::Method::DELETE
+    )
 }
 
 fn anomaly_subject(context: &Context) -> String {

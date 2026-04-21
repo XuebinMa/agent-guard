@@ -13,7 +13,7 @@ pub use audit::{
     AnomalyEvent, AuditDecision, AuditEvent, AuditRecord, ExecutionEvent, ReloadEvent,
     ReloadStatus, SandboxFailureEvent,
 };
-pub use decision::{DecisionCode, DecisionReason, GuardDecision};
+pub use decision::{DecisionCode, DecisionReason, GuardDecision, RuntimeDecision};
 pub use policy::{
     AnomalyConfig, AuditConfig, DenyFuseConfig, PolicyEngine, PolicyError, PolicyMode,
     RateLimitConfig,

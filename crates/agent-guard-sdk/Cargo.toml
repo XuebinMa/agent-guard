@@ -35,8 +35,9 @@ arc-swap.workspace = true
 chrono.workspace = true
 ed25519-dalek.workspace = true
 hex.workspace = true
-reqwest = { workspace = true, features = ["json", "rustls-tls"] }
+reqwest = { workspace = true, features = ["json", "rustls-tls", "blocking"] }
 
 [dev-dependencies]
 rand = "0.8"
 httpmock = "0.7"
+tempfile = "3"

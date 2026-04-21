@@ -68,7 +68,7 @@ mod types_tests {
 
 #[cfg(test)]
 mod decision_tests {
-    use crate::decision::{DecisionCode, GuardDecision};
+    use crate::decision::{DecisionCode, GuardDecision, RuntimeDecision};
 
     #[test]
     fn allow_is_allow() {
@@ -125,6 +125,45 @@ mod decision_tests {
                 assert_eq!(reason.matched_rule.as_deref(), Some("tools.bash.ask[0]"));
             }
             _ => panic!("expected AskUser"),
+        }
+    }
+
+    #[test]
+    fn runtime_execute_is_execute() {
+        assert!(matches!(RuntimeDecision::Execute, RuntimeDecision::Execute));
+    }
+
+    #[test]
+    fn runtime_handoff_is_handoff() {
+        assert!(matches!(RuntimeDecision::Handoff, RuntimeDecision::Handoff));
+    }
+
+    #[test]
+    fn runtime_deny_carries_reason() {
+        let d = RuntimeDecision::deny(DecisionCode::DeniedByRule, "blocked");
+        match d {
+            RuntimeDecision::Deny { reason } => {
+                assert_eq!(reason.code, DecisionCode::DeniedByRule);
+                assert_eq!(reason.message, "blocked");
+            }
+            _ => panic!("expected RuntimeDecision::Deny"),
+        }
+    }
+
+    #[test]
+    fn runtime_ask_carries_prompt_and_reason() {
+        let d = RuntimeDecision::ask_for_approval(
+            "approve?",
+            DecisionCode::AskRequired,
+            "approval required",
+        );
+        match d {
+            RuntimeDecision::AskForApproval { message, reason } => {
+                assert_eq!(message, "approve?");
+                assert_eq!(reason.code, DecisionCode::AskRequired);
+                assert_eq!(reason.message, "approval required");
+            }
+            _ => panic!("expected RuntimeDecision::AskForApproval"),
         }
     }
 }

@@ -5,8 +5,9 @@ extern crate napi_derive;
 
 use agent_guard_sdk::{
     Context as RustContext, ExecuteOutcome as RustExecuteOutcome, Guard as RustGuard,
-    GuardDecision, GuardInput, PolicyVerification as RustPolicyVerification, Tool as RustTool,
-    TrustLevel as RustTrustLevel,
+    GuardDecision, GuardInput, PolicyVerification as RustPolicyVerification,
+    RuntimeDecision as RustRuntimeDecision, RuntimeOutcome as RustRuntimeOutcome,
+    Tool as RustTool, TrustLevel as RustTrustLevel,
 };
 use napi::bindgen_prelude::*;
 use serde::Serialize;
@@ -36,6 +37,19 @@ impl From<TrustLevel> for RustTrustLevel {
 #[napi(object)]
 #[derive(Serialize)]
 pub struct Decision {
+    pub outcome: String,
+    pub message: Option<String>,
+    pub code: Option<String>,
+    pub matched_rule: Option<String>,
+    pub ask_prompt: Option<String>,
+    pub policy_version: String,
+    pub policy_verification_status: String,
+    pub policy_verification_error: Option<String>,
+}
+
+#[napi(object)]
+#[derive(Serialize)]
+pub struct RuntimeDecision {
     pub outcome: String,
     pub message: Option<String>,
     pub code: Option<String>,
@@ -101,6 +115,57 @@ fn decision_from_rust(
     }
 }
 
+fn runtime_decision_from_rust(
+    d: RustRuntimeDecision,
+    policy_version: String,
+    policy_verification: RustPolicyVerification,
+) -> RuntimeDecision {
+    let verification_status = policy_verification.status_label().to_string();
+    let verification_error = policy_verification.error.clone();
+    match d {
+        RustRuntimeDecision::Execute => RuntimeDecision {
+            outcome: "execute".to_string(),
+            message: None,
+            code: None,
+            matched_rule: None,
+            ask_prompt: None,
+            policy_version,
+            policy_verification_status: verification_status,
+            policy_verification_error: verification_error,
+        },
+        RustRuntimeDecision::Handoff => RuntimeDecision {
+            outcome: "handoff".to_string(),
+            message: None,
+            code: None,
+            matched_rule: None,
+            ask_prompt: None,
+            policy_version,
+            policy_verification_status: verification_status,
+            policy_verification_error: verification_error,
+        },
+        RustRuntimeDecision::Deny { reason } => RuntimeDecision {
+            outcome: "deny".to_string(),
+            message: Some(reason.message),
+            code: Some(format!("{:?}", reason.code)),
+            matched_rule: reason.matched_rule,
+            ask_prompt: None,
+            policy_version,
+            policy_verification_status: verification_status,
+            policy_verification_error: verification_error,
+        },
+        RustRuntimeDecision::AskForApproval { message, reason } => RuntimeDecision {
+            outcome: "ask_for_approval".to_string(),
+            message: Some(reason.message),
+            code: Some(format!("{:?}", reason.code)),
+            matched_rule: reason.matched_rule,
+            ask_prompt: Some(message),
+            policy_version,
+            policy_verification_status: verification_status,
+            policy_verification_error: verification_error,
+        },
+    }
+}
+
 // ── Execution Outcome ─────────────────────────────────────────────────────────
 
 #[napi(object)]
@@ -120,6 +185,19 @@ pub struct ExecuteOutcome {
     pub policy_version: String,
     pub sandbox_type: Option<String>,
     pub receipt: Option<String>, // JSON-encoded receipt
+    pub policy_verification_status: String,
+    pub policy_verification_error: Option<String>,
+}
+
+#[napi(object)]
+#[derive(Serialize)]
+pub struct RuntimeOutcome {
+    pub status: String,
+    pub output: Option<SandboxOutput>,
+    pub decision: Option<RuntimeDecision>,
+    pub policy_version: String,
+    pub sandbox_type: Option<String>,
+    pub receipt: Option<String>,
     pub policy_verification_status: String,
     pub policy_verification_error: Option<String>,
 }
@@ -177,6 +255,84 @@ fn execute_outcome_from_rust(o: RustExecuteOutcome, sandbox_type: String) -> Exe
             )),
             policy_version,
             sandbox_type: Some(sandbox_type),
+            receipt: None,
+            policy_verification_status: policy_verification.status_label().to_string(),
+            policy_verification_error: policy_verification.error,
+        },
+    }
+}
+
+fn runtime_outcome_from_rust(o: RustRuntimeOutcome, sandbox_type: Option<String>) -> RuntimeOutcome {
+    match o {
+        RustRuntimeOutcome::Executed {
+            output,
+            policy_version,
+            receipt,
+            policy_verification,
+        } => RuntimeOutcome {
+            status: "executed".to_string(),
+            output: Some(SandboxOutput {
+                exit_code: output.exit_code,
+                stdout: output.stdout,
+                stderr: output.stderr,
+            }),
+            decision: None,
+            policy_version,
+            sandbox_type,
+            receipt: receipt.map(|r| serde_json::to_string(&r).unwrap_or_default()),
+            policy_verification_status: policy_verification.status_label().to_string(),
+            policy_verification_error: policy_verification.error,
+        },
+        RustRuntimeOutcome::Handoff {
+            decision,
+            policy_version,
+            policy_verification,
+        } => RuntimeOutcome {
+            status: "handoff".to_string(),
+            output: None,
+            decision: Some(runtime_decision_from_rust(
+                decision,
+                policy_version.clone(),
+                policy_verification.clone(),
+            )),
+            policy_version,
+            sandbox_type: None,
+            receipt: None,
+            policy_verification_status: policy_verification.status_label().to_string(),
+            policy_verification_error: policy_verification.error,
+        },
+        RustRuntimeOutcome::Denied {
+            decision,
+            policy_version,
+            policy_verification,
+        } => RuntimeOutcome {
+            status: "denied".to_string(),
+            output: None,
+            decision: Some(runtime_decision_from_rust(
+                decision,
+                policy_version.clone(),
+                policy_verification.clone(),
+            )),
+            policy_version,
+            sandbox_type,
+            receipt: None,
+            policy_verification_status: policy_verification.status_label().to_string(),
+            policy_verification_error: policy_verification.error,
+        },
+        RustRuntimeOutcome::AskForApproval {
+            decision,
+            policy_version,
+            policy_verification,
+        } => RuntimeOutcome {
+            status: "ask_for_approval".to_string(),
+            output: None,
+            decision: Some(runtime_decision_from_rust(
+                decision,
+                policy_version.clone(),
+                policy_verification.clone(),
+            )),
+            policy_version,
+            sandbox_type,
             receipt: None,
             policy_verification_status: policy_verification.status_label().to_string(),
             policy_verification_error: policy_verification.error,
@@ -279,6 +435,27 @@ impl Guard {
         ))
     }
 
+    #[napi]
+    pub fn decide(
+        &self,
+        tool: String,
+        payload: String,
+        options: Option<Context>,
+    ) -> Result<RuntimeDecision> {
+        let normalized_payload = normalize_payload(tool.clone(), payload);
+        let rust_tool = parse_tool(&tool)?;
+        let rust_ctx = context_from_node(options);
+
+        let decision = self
+            .inner
+            .decide_tool(rust_tool, normalized_payload, rust_ctx);
+        Ok(runtime_decision_from_rust(
+            decision,
+            self.inner.policy_version(),
+            self.inner.policy_verification(),
+        ))
+    }
+
     /// High-level execution method.
     /// Uses the default sandbox implementation.
     #[napi]
@@ -307,6 +484,34 @@ impl Guard {
             .map_err(|e| Error::new(Status::GenericFailure, format!("execution error: {e}")))?;
 
         Ok(execute_outcome_from_rust(result, sandbox_type))
+    }
+
+    #[napi]
+    pub async fn run(
+        &self,
+        tool: String,
+        payload: String,
+        options: Option<Context>,
+    ) -> Result<RuntimeOutcome> {
+        let normalized_payload = normalize_payload(tool.clone(), payload);
+        let rust_tool = parse_tool(&tool)?;
+        let rust_ctx = context_from_node(options);
+
+        let input = GuardInput {
+            tool: rust_tool,
+            payload: normalized_payload,
+            context: rust_ctx,
+        };
+
+        let sandbox = RustGuard::default_sandbox();
+        let sandbox_type = sandbox.sandbox_type().to_string();
+
+        let result = self
+            .inner
+            .run(&input, sandbox.as_ref())
+            .map_err(|e| Error::new(Status::GenericFailure, format!("runtime error: {e}")))?;
+
+        Ok(runtime_outcome_from_rust(result, Some(sandbox_type)))
     }
 
     #[napi]

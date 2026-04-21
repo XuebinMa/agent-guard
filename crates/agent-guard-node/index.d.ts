@@ -18,6 +18,16 @@ export interface Decision {
   policyVerificationStatus: string
   policyVerificationError?: string
 }
+export interface RuntimeDecision {
+  outcome: string
+  message?: string
+  code?: string
+  matchedRule?: string
+  askPrompt?: string
+  policyVersion: string
+  policyVerificationStatus: string
+  policyVerificationError?: string
+}
 export interface PolicyVerification {
   status: string
   error?: string
@@ -31,6 +41,16 @@ export interface ExecuteOutcome {
   status: string
   output?: SandboxOutput
   decision?: Decision
+  policyVersion: string
+  sandboxType?: string
+  receipt?: string
+  policyVerificationStatus: string
+  policyVerificationError?: string
+}
+export interface RuntimeOutcome {
+  status: string
+  output?: SandboxOutput
+  decision?: RuntimeDecision
   policyVersion: string
   sandboxType?: string
   receipt?: string
@@ -67,11 +87,13 @@ export declare class Guard {
    */
   setSigningKey(hexKey: string): void
   check(tool: string, payload: string, options?: Context | undefined | null): Decision
+  decide(tool: string, payload: string, options?: Context | undefined | null): RuntimeDecision
   /**
    * High-level execution method.
    * Uses the default sandbox implementation.
    */
   execute(tool: string, payload: string, options?: Context | undefined | null): Promise<ExecuteOutcome>
+  run(tool: string, payload: string, options?: Context | undefined | null): Promise<RuntimeOutcome>
   reload(yaml: string): void
   reloadFromYaml(yaml: string): void
   policyVersion(): string
