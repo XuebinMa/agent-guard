@@ -616,14 +616,14 @@ impl Guard {
             reason.details = Some(serde_json::Value::Object(details));
             return Ok(RuntimeOutcome::Denied {
                 request_id,
-                decision: RuntimeDecision::Deny { reason },
+                reason,
                 policy_version,
                 policy_verification: state.policy_verification.clone(),
             });
         }
 
         let decision = self.decide(input);
-        match decision.clone() {
+        match decision {
             RuntimeDecision::Execute => {
                 match self.execute_with_request_id(input, sandbox, &request_id)? {
                     ExecuteOutcome::Executed {
@@ -642,42 +642,63 @@ impl Guard {
                         decision,
                         policy_version,
                         policy_verification,
-                    } => Ok(RuntimeOutcome::Denied {
-                        request_id,
-                        decision: runtime_decision_for_input(input, decision),
-                        policy_version,
-                        policy_verification,
-                    }),
+                    } => {
+                        let reason = match decision {
+                            GuardDecision::Deny { reason } => reason,
+                            // Execute path only returns Denied for GuardDecision::Deny.
+                            other => unreachable!(
+                                "ExecuteOutcome::Denied should carry GuardDecision::Deny, got {other:?}"
+                            ),
+                        };
+                        Ok(RuntimeOutcome::Denied {
+                            request_id,
+                            reason,
+                            policy_version,
+                            policy_verification,
+                        })
+                    }
                     ExecuteOutcome::AskRequired {
                         decision,
                         policy_version,
                         policy_verification,
-                    } => Ok(RuntimeOutcome::AskForApproval {
-                        request_id,
-                        decision: runtime_decision_for_input(input, decision),
-                        policy_version,
-                        policy_verification,
-                    }),
+                    } => {
+                        let (message, reason) = match decision {
+                            GuardDecision::AskUser { message, reason } => (message, reason),
+                            // Execute path only returns AskRequired for GuardDecision::AskUser.
+                            other => unreachable!(
+                                "ExecuteOutcome::AskRequired should carry GuardDecision::AskUser, got {other:?}"
+                            ),
+                        };
+                        Ok(RuntimeOutcome::AskForApproval {
+                            request_id,
+                            message,
+                            reason,
+                            policy_version,
+                            policy_verification,
+                        })
+                    }
                 }
             }
             RuntimeDecision::Handoff => Ok(RuntimeOutcome::Handoff {
                 request_id,
-                decision,
                 policy_version,
                 policy_verification: state.policy_verification.clone(),
             }),
-            RuntimeDecision::Deny { .. } => Ok(RuntimeOutcome::Denied {
+            RuntimeDecision::Deny { reason } => Ok(RuntimeOutcome::Denied {
                 request_id,
-                decision,
+                reason,
                 policy_version,
                 policy_verification: state.policy_verification.clone(),
             }),
-            RuntimeDecision::AskForApproval { .. } => Ok(RuntimeOutcome::AskForApproval {
-                request_id,
-                decision,
-                policy_version,
-                policy_verification: state.policy_verification.clone(),
-            }),
+            RuntimeDecision::AskForApproval { message, reason } => {
+                Ok(RuntimeOutcome::AskForApproval {
+                    request_id,
+                    message,
+                    reason,
+                    policy_version,
+                    policy_verification: state.policy_verification.clone(),
+                })
+            }
         }
     }
 

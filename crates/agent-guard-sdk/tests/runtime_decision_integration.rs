@@ -1,6 +1,6 @@
 use agent_guard_sdk::{
     guard::{Guard, RuntimeOutcome},
-    Context, HandoffResult, RuntimeDecision, Tool, TrustLevel,
+    Context, DecisionCode, HandoffResult, RuntimeDecision, Tool, TrustLevel,
 };
 use httpmock::Method::POST;
 use httpmock::MockServer;
@@ -131,11 +131,11 @@ fn run_handoffs_allowed_non_shell_tool() {
 
     match guard().run(&input, &sandbox).expect("runtime run") {
         RuntimeOutcome::Handoff {
-            decision,
+            request_id,
             policy_version,
             ..
         } => {
-            assert_eq!(decision, RuntimeDecision::Handoff);
+            assert!(!request_id.is_empty());
             assert!(!policy_version.is_empty());
         }
         other => panic!("expected Handoff, got {other:?}"),
@@ -152,8 +152,11 @@ fn run_maps_ask_to_ask_for_approval() {
     };
 
     match guard().run(&input, &sandbox).expect("runtime run") {
-        RuntimeOutcome::AskForApproval { decision, .. } => {
-            assert!(matches!(decision, RuntimeDecision::AskForApproval { .. }));
+        RuntimeOutcome::AskForApproval {
+            message, reason, ..
+        } => {
+            assert!(!message.is_empty(), "ask message should be set");
+            assert!(!reason.message.is_empty(), "reason message should be set");
         }
         other => panic!("expected AskForApproval, got {other:?}"),
     }
@@ -285,6 +288,35 @@ fn run_handoff_exposes_request_id() {
             assert!(!request_id.is_empty(), "handoff request_id should be set");
         }
         other => panic!("expected Handoff, got {other:?}"),
+    }
+}
+
+#[test]
+fn run_denied_exposes_reason_directly() {
+    // Policy denies any http_request to the EC2 metadata link-local IP via regex.
+    // The check-path returns GuardDecision::Deny, which Guard::run now surfaces
+    // as RuntimeOutcome::Denied carrying the DecisionReason directly (no wrapping
+    // RuntimeDecision). The reason code is DENIED_BY_RULE for policy-rule denies.
+    let sandbox = agent_guard_sandbox::NoopSandbox;
+    let input = agent_guard_sdk::GuardInput {
+        tool: Tool::HttpRequest,
+        payload: r#"{"method":"POST","url":"http://169.254.169.254/latest/meta-data","body":"x"}"#
+            .to_string(),
+        context: trusted(),
+    };
+
+    match guard().run(&input, &sandbox).expect("runtime run") {
+        RuntimeOutcome::Denied {
+            request_id, reason, ..
+        } => {
+            assert!(!request_id.is_empty());
+            assert_eq!(reason.code, DecisionCode::DeniedByRule);
+            assert!(
+                !reason.message.is_empty(),
+                "denied reason should carry a message"
+            );
+        }
+        other => panic!("expected Denied, got {other:?}"),
     }
 }
 
