@@ -6,6 +6,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use agent_guard_core::{
+    file_paths::resolve_tool_path,
     payload::{extract_bash_command as extract_core_bash_command, ExtractedPayload},
     AuditConfig, AuditEvent, Context, DecisionCode, DecisionReason, GuardDecision, GuardInput,
     PolicyEngine, PolicyMode, ReloadEvent, RuntimeDecision, Tool,
@@ -502,7 +503,9 @@ impl Guard {
                 let command = extract_bash_command_for_execution(&input.payload)?;
                 sandbox.execute(&command, &ctx)
             }
-            Tool::WriteFile => execute_write_file(&input.payload),
+            Tool::WriteFile => {
+                execute_write_file(&input.payload, input.context.working_directory.as_deref())
+            }
             Tool::HttpRequest => execute_http_request(&input.payload),
             _ => unreachable!("unsupported tool already returned above"),
         };
@@ -986,9 +989,14 @@ struct WriteFileRequest {
     append: bool,
 }
 
-fn execute_write_file(payload: &str) -> Result<SandboxOutput, SandboxError> {
+fn execute_write_file(
+    payload: &str,
+    working_directory: Option<&Path>,
+) -> Result<SandboxOutput, SandboxError> {
     let request: WriteFileRequest = serde_json::from_str(payload)
         .map_err(|_| SandboxError::ExecutionFailed("invalid payload JSON".to_string()))?;
+    let resolved_path = resolve_tool_path(&request.path, working_directory)
+        .map_err(|decision| SandboxError::ExecutionFailed(decision.to_string()))?;
 
     let mut options = std::fs::OpenOptions::new();
     options.create(true).write(true);
@@ -998,7 +1006,7 @@ fn execute_write_file(payload: &str) -> Result<SandboxOutput, SandboxError> {
         options.truncate(true);
     }
 
-    let mut file = options.open(&request.path).map_err(|e| {
+    let mut file = options.open(&resolved_path).map_err(|e| {
         SandboxError::ExecutionFailed(format!("failed to open file for write: {e}"))
     })?;
     file.write_all(request.content.as_bytes())
