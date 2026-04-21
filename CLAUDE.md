@@ -4,7 +4,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-agent-guard is a multi-layered security runtime for AI agents. It intercepts tool calls (bash, file I/O, HTTP, custom tools), evaluates them against zero-trust YAML policies, executes in hardened OS sandboxes, and provides cryptographic proof of policy-compliant execution. Current version: 0.2.0-rc1.
+`agent-guard` is an execution control layer for agent side effects. It sits between agent tool intent and real execution, evaluates calls against policy, applies validator and sandbox controls, and records auditable outcomes.
+
+Today, the clearest proof point is shell-first execution control. The broader direction is side-effect execution control beyond shell, but the current adoption wedge is giving AI application and agent developers a real decision boundary before risky actions become real. Current version: 0.2.0-rc1.
 
 ## Build & Test Commands
 
@@ -109,3 +111,11 @@ Policies are YAML files parsed into `PolicyFile`. Key sections:
 ## CI
 
 GitHub Actions (`.github/workflows/ci.yml`) uses `./scripts/verify.sh` as the shared verification entrypoint for Rust, Python, Node, and docs/version checks.
+
+## Working Rules
+
+- State assumptions when they matter. If multiple interpretations exist, surface them instead of choosing silently.
+- Prefer the simplest implementation that satisfies the request. Avoid speculative abstractions, extra configurability, or unused flexibility.
+- Keep changes surgical. Do not refactor unrelated code, reformat adjacent files, or remove pre-existing dead code unless asked.
+- Clean up only what your change makes obsolete, such as unused imports or variables introduced by your edit.
+- Define success in verifiable terms. When changing behavior, prefer tests or another concrete check before claiming completion.
