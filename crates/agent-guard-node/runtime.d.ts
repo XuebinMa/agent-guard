@@ -8,6 +8,7 @@ export type {
   Context,
   Decision,
   ExecuteOutcome,
+  HandoffResult,
   RuntimeDecision,
   RuntimeOutcome,
   ExecutionReceipt,

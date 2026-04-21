@@ -1,6 +1,6 @@
 use agent_guard_sdk::{
     guard::{Guard, RuntimeOutcome},
-    Context, RuntimeDecision, Tool, TrustLevel,
+    Context, HandoffResult, RuntimeDecision, Tool, TrustLevel,
 };
 use httpmock::Method::POST;
 use httpmock::MockServer;
@@ -269,4 +269,83 @@ fn run_does_not_follow_redirect_on_mutation_http() {
         }
         other => panic!("expected Executed (with 302), got {other:?}"),
     }
+}
+
+#[test]
+fn run_handoff_exposes_request_id() {
+    let sandbox = agent_guard_sandbox::NoopSandbox;
+    let input = agent_guard_sdk::GuardInput {
+        tool: Tool::ReadFile,
+        payload: r#"{"path":"/workspace/README.md"}"#.to_string(),
+        context: trusted(),
+    };
+
+    match guard().run(&input, &sandbox).expect("runtime run") {
+        RuntimeOutcome::Handoff { request_id, .. } => {
+            assert!(!request_id.is_empty(), "handoff request_id should be set");
+        }
+        other => panic!("expected Handoff, got {other:?}"),
+    }
+}
+
+#[test]
+fn report_handoff_result_emits_execution_finished() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let audit_path = dir.path().join("audit.jsonl");
+    let policy = format!(
+        r#"
+version: 1
+default_mode: workspace_write
+tools:
+  read_file: {{}}
+audit:
+  enabled: true
+  output: file
+  file_path: "{}"
+anomaly:
+  enabled: false
+"#,
+        audit_path.display()
+    );
+
+    let guard = Guard::from_yaml(&policy).expect("guard init");
+    let sandbox = agent_guard_sandbox::NoopSandbox;
+    let input = agent_guard_sdk::GuardInput {
+        tool: Tool::ReadFile,
+        payload: r#"{"path":"/workspace/README.md"}"#.to_string(),
+        context: trusted(),
+    };
+
+    let request_id = match guard.run(&input, &sandbox).expect("runtime run") {
+        RuntimeOutcome::Handoff { request_id, .. } => request_id,
+        other => panic!("expected Handoff, got {other:?}"),
+    };
+
+    guard.report_handoff_result(
+        &request_id,
+        HandoffResult {
+            exit_code: 0,
+            duration_ms: 42,
+            stderr: None,
+        },
+    );
+
+    let contents = std::fs::read_to_string(&audit_path).expect("read audit file");
+    let execution_finished: Vec<serde_json::Value> = contents
+        .lines()
+        .filter_map(|line| serde_json::from_str::<serde_json::Value>(line).ok())
+        .filter(|v| v.get("type").and_then(|t| t.as_str()) == Some("execution_finished"))
+        .collect();
+
+    assert_eq!(
+        execution_finished.len(),
+        1,
+        "expected one execution_finished record, got audit file:\n{contents}"
+    );
+    let record = &execution_finished[0];
+    assert_eq!(record["request_id"].as_str(), Some(request_id.as_str()));
+    assert_eq!(record["exit_code"].as_i64(), Some(0));
+    assert_eq!(record["duration_ms"].as_i64(), Some(42));
+    assert_eq!(record["sandbox_type"].as_str(), Some("host-handoff"));
+    assert_eq!(record["tool"].as_str(), Some("handoff"));
 }
