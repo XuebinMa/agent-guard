@@ -8,6 +8,8 @@ export type {
   Context,
   Decision,
   ExecuteOutcome,
+  RuntimeDecision,
+  RuntimeOutcome,
   ExecutionReceipt,
   PolicyVerification,
   SandboxOutput,

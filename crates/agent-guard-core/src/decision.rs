@@ -89,6 +89,52 @@ impl GuardDecision {
     }
 }
 
+// ── RuntimeDecision ──────────────────────────────────────────────────────────
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "decision", rename_all = "snake_case")]
+pub enum RuntimeDecision {
+    Execute,
+    Handoff,
+    Deny {
+        reason: DecisionReason,
+    },
+    AskForApproval {
+        message: String,
+        reason: DecisionReason,
+    },
+}
+
+impl std::fmt::Display for RuntimeDecision {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Execute => write!(f, "execute"),
+            Self::Handoff => write!(f, "handoff"),
+            Self::Deny { reason } => write!(f, "deny ({:?}: {})", reason.code, reason.message),
+            Self::AskForApproval { message, .. } => write!(f, "ask_for_approval ({message})"),
+        }
+    }
+}
+
+impl RuntimeDecision {
+    pub fn deny(code: DecisionCode, message: impl Into<String>) -> Self {
+        Self::Deny {
+            reason: DecisionReason::new(code, message),
+        }
+    }
+
+    pub fn ask_for_approval(
+        message: impl Into<String>,
+        code: DecisionCode,
+        reason_msg: impl Into<String>,
+    ) -> Self {
+        Self::AskForApproval {
+            message: message.into(),
+            reason: DecisionReason::new(code, reason_msg),
+        }
+    }
+}
+
 // ── DecisionReason ────────────────────────────────────────────────────────────
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

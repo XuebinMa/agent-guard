@@ -1,6 +1,10 @@
 'use strict'
 
 const assert = require('assert/strict')
+const http = require('http')
+const { mkdtempSync, readFileSync } = require('fs')
+const { tmpdir } = require('os')
+const { join } = require('path')
 
 let nodePackage
 try {
@@ -49,6 +53,32 @@ async function runTest() {
       assert.ok(decision.policyVersion || decision.policy_version)
     }
 
+    const runtimeDecision = guard.decide('bash', normalizePayload('bash', 'echo smoke'))
+    assert.equal(runtimeDecision.outcome, 'execute')
+
+    const runtimeHandoffDecision = guard.decide(
+      'read_file',
+      JSON.stringify({ path: '/workspace/README.md' })
+    )
+    assert.equal(runtimeHandoffDecision.outcome, 'handoff')
+
+    const writeRoot = mkdtempSync(join(tmpdir(), 'agent-guard-node-'))
+    const writeTarget = join(writeRoot, 'runtime-write.txt')
+    const writePolicy = `
+version: 1
+default_mode: workspace_write
+tools:
+  write_file:
+    allow_paths:
+      - "${writeRoot}/**"
+`
+    const writeGuard = Guard.fromYaml(writePolicy)
+    const writeDecision = writeGuard.decide(
+      'write_file',
+      JSON.stringify({ path: writeTarget, content: 'hello from node' })
+    )
+    assert.equal(writeDecision.outcome, 'execute')
+
     const executed = await guard.execute('bash', normalizePayload('bash', 'echo smoke'))
     assert.equal(executed.status || executed.outcome, 'executed')
     assert.ok(executed.output)
@@ -62,6 +92,63 @@ async function runTest() {
     if (executed.receipt) {
       assert.ok(executed.receipt)
     }
+
+    const runtimeExecuted = await guard.run('bash', normalizePayload('bash', 'echo smoke'))
+    assert.equal(runtimeExecuted.status || runtimeExecuted.outcome, 'executed')
+    assert.ok(runtimeExecuted.output)
+    assert.ok(runtimeExecuted.output.stdout.includes('smoke'))
+
+    const runtimeHandoff = await guard.run(
+      'read_file',
+      JSON.stringify({ path: '/workspace/README.md' })
+    )
+    assert.equal(runtimeHandoff.status || runtimeHandoff.outcome, 'handoff')
+    assert.ok(runtimeHandoff.decision)
+
+    const writeOutcome = await writeGuard.run(
+      'write_file',
+      JSON.stringify({ path: writeTarget, content: 'hello from node' })
+    )
+    assert.equal(writeOutcome.status || writeOutcome.outcome, 'executed')
+    assert.equal(readFileSync(writeTarget, 'utf8'), 'hello from node')
+
+    let receivedBody = ''
+    const server = http.createServer((req, res) => {
+      let chunks = ''
+      req.on('data', (chunk) => {
+        chunks += chunk
+      })
+      req.on('end', () => {
+        receivedBody = chunks
+        res.statusCode = 202
+        res.end('accepted')
+      })
+    })
+    await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve))
+    const address = server.address()
+    const httpUrl = `http://127.0.0.1:${address.port}/publish`
+    const httpDecision = guard.decide(
+      'http_request',
+      JSON.stringify({ method: 'POST', url: httpUrl, body: 'payload' })
+    )
+    assert.equal(httpDecision.outcome, 'execute')
+
+    const httpReadDecision = guard.decide(
+      'http_request',
+      JSON.stringify({ method: 'GET', url: httpUrl })
+    )
+    assert.equal(httpReadDecision.outcome, 'handoff')
+
+    const httpOutcome = await guard.run(
+      'http_request',
+      JSON.stringify({ method: 'POST', url: httpUrl, body: 'payload' })
+    )
+    assert.equal(httpOutcome.status || httpOutcome.outcome, 'executed')
+    assert.equal(httpOutcome.output.stdout, 'accepted')
+    assert.equal(receivedBody, 'payload')
+    await new Promise((resolve, reject) =>
+      server.close((error) => (error ? reject(error) : resolve()))
+    )
 
     const deniedOutcome = await guard.execute('bash', normalizePayload('bash', 'rm -rf /'))
     assert.notEqual(deniedOutcome.status || deniedOutcome.outcome, 'executed')

@@ -18,6 +18,7 @@
     "demo:flow": "node demos/demo_multi_tool_flow.js",
     "demo:proof": "node examples/attack-demo/app.js",
     "demo:quickstart": "node examples/quickstart/app.js",
+    "demo:wedge": "node demos/demo_side_effect_wedge.js",
     "prepublishOnly": "napi prepublish",
     "test:frameworks": "node test-frameworks.js",
     "test": "node test-adapters.js && node test-frameworks.js && node test.js",

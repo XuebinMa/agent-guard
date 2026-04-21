@@ -271,3 +271,74 @@ fn e9_non_bash_tool_denied_or_allowed_by_policy() {
         Ok(_) | Err(_) => {} // any result is fine
     }
 }
+
+fn write_file_policy(allowed_root: &std::path::Path) -> String {
+    format!(
+        r#"
+version: 1
+default_mode: workspace_write
+tools:
+  write_file:
+    mode: workspace_write
+    allow_paths:
+      - "{}/**"
+"#,
+        allowed_root.display()
+    )
+}
+
+#[test]
+fn e10_write_file_executes_and_writes_contents() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let guard = Guard::from_yaml(&write_file_policy(dir.path())).expect("guard init");
+    let target = dir.path().join("output.txt");
+    let inp = GuardInput {
+        tool: Tool::WriteFile,
+        payload: format!(
+            r#"{{"path":"{}","content":"hello write path"}}"#,
+            target.display()
+        ),
+        context: Context {
+            trust_level: TrustLevel::Trusted,
+            working_directory: Some(dir.path().to_path_buf()),
+            ..Default::default()
+        },
+    };
+
+    match execute_noop(&guard, &inp).expect("no sandbox error") {
+        ExecuteOutcome::Executed { .. } => {
+            let contents = std::fs::read_to_string(&target).expect("read target");
+            assert_eq!(contents, "hello write path");
+        }
+        other => panic!("expected Executed, got {other:?}"),
+    }
+}
+
+#[test]
+fn e11_write_file_append_mode_appends() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let guard = Guard::from_yaml(&write_file_policy(dir.path())).expect("guard init");
+    let target = dir.path().join("append.txt");
+    std::fs::write(&target, "hello").expect("seed");
+
+    let inp = GuardInput {
+        tool: Tool::WriteFile,
+        payload: format!(
+            r#"{{"path":"{}","content":" world","append":true}}"#,
+            target.display()
+        ),
+        context: Context {
+            trust_level: TrustLevel::Trusted,
+            working_directory: Some(dir.path().to_path_buf()),
+            ..Default::default()
+        },
+    };
+
+    match execute_noop(&guard, &inp).expect("no sandbox error") {
+        ExecuteOutcome::Executed { .. } => {
+            let contents = std::fs::read_to_string(&target).expect("read target");
+            assert_eq!(contents, "hello world");
+        }
+        other => panic!("expected Executed, got {other:?}"),
+    }
+}
