@@ -13,6 +13,7 @@ use serde::Serialize;
 use thiserror::Error;
 use uuid::Uuid;
 
+use crate::audit_writer::AuditFileWriter;
 use crate::executors::{
     execute_http_request, execute_write_file, extract_bash_command_for_execution,
     payload_declares_mutation_http,
@@ -59,7 +60,7 @@ pub struct Guard {
 struct GuardState {
     engine: Arc<PolicyEngine>,
     audit_cfg: AuditConfig,
-    audit_file: Option<Arc<std::sync::Mutex<std::fs::File>>>,
+    audit_file_writer: Option<Arc<AuditFileWriter>>,
     siem_exporter: Arc<SiemExporter>,
     anomaly_detector: Arc<crate::anomaly::AnomalyDetector>,
     signing_key: Option<ed25519_dalek::SigningKey>,
@@ -740,22 +741,12 @@ impl Guard {
             ));
 
         if state.audit_cfg.enabled && state.audit_cfg.output == "file" {
-            if let Some(ref mutex) = state.audit_file {
+            if let Some(ref writer) = state.audit_file_writer {
                 let record = agent_guard_core::AuditRecord::ExecutionFinished(event);
                 let line = serde_json::to_string(&record).unwrap_or_else(|e| {
                     format!("{{\"error\":\"audit serialization failed: {e}\"}}")
                 });
-                match mutex.lock() {
-                    Ok(mut file) => {
-                        use std::io::Write;
-                        if let Err(e) = writeln!(file, "{}", line) {
-                            tracing::error!("Failed to write handoff result to audit file: {}", e);
-                        }
-                    }
-                    Err(_) => {
-                        tracing::error!("Audit file mutex poisoned on handoff report");
-                    }
-                }
+                writer.send(line);
             }
         }
 
@@ -959,18 +950,8 @@ impl Guard {
             .export(agent_guard_core::AuditRecord::ToolCall(event));
 
         if state.audit_cfg.output == "file" {
-            if let Some(ref mutex) = state.audit_file {
-                match mutex.lock() {
-                    Ok(mut file) => {
-                        use std::io::Write;
-                        if let Err(e) = writeln!(file, "{}", line) {
-                            tracing::error!("Failed to write to audit file: {}", e);
-                        }
-                    }
-                    Err(_) => {
-                        tracing::error!("Audit file mutex poisoned");
-                    }
-                }
+            if let Some(ref writer) = state.audit_file_writer {
+                writer.send(line);
             }
         } else {
             println!("{}", line);
@@ -984,18 +965,8 @@ impl Guard {
             .export(agent_guard_core::AuditRecord::PolicyReload(event.clone()));
 
         if state.audit_cfg.enabled && state.audit_cfg.output == "file" {
-            if let Some(ref mutex) = state.audit_file {
-                match mutex.lock() {
-                    Ok(mut file) => {
-                        use std::io::Write;
-                        if let Err(e) = writeln!(file, "{}", line) {
-                            tracing::error!("Failed to write reload event to audit file: {}", e);
-                        }
-                    }
-                    Err(_) => {
-                        tracing::error!("Audit file mutex poisoned during reload");
-                    }
-                }
+            if let Some(ref writer) = state.audit_file_writer {
+                writer.send(line);
             }
         }
     }
@@ -1007,17 +978,15 @@ impl GuardState {
         policy_verification: PolicyVerification,
     ) -> Result<Self, GuardInitError> {
         let audit_cfg = engine.audit_config().clone();
-        let audit_file = if audit_cfg.output == "file" {
+        let audit_file_writer = if audit_cfg.output == "file" {
             if let Some(ref path) = audit_cfg.file_path {
-                let f = std::fs::OpenOptions::new()
-                    .create(true)
-                    .append(true)
-                    .open(path)
-                    .map_err(|e| GuardInitError::AuditFileOpen {
+                let writer = AuditFileWriter::open(Path::new(path)).map_err(|e| {
+                    GuardInitError::AuditFileOpen {
                         path: path.clone(),
                         source: e,
-                    })?;
-                Some(Arc::new(std::sync::Mutex::new(f)))
+                    }
+                })?;
+                Some(Arc::new(writer))
             } else {
                 None
             }
@@ -1031,7 +1000,7 @@ impl GuardState {
         Ok(Self {
             engine,
             audit_cfg,
-            audit_file,
+            audit_file_writer,
             siem_exporter,
             anomaly_detector,
             signing_key: None,

@@ -49,6 +49,9 @@ audit:
     }
 
     // 3. Verify Audit
+    // Audit file writes are async; drop the Guard to join the writer
+    // thread and flush pending lines before reading.
+    drop(guard);
     let audit_content = fs::read_to_string(audit_path).unwrap();
     assert!(audit_content.contains("\"decision\":\"allow\""));
     assert!(audit_content.contains("\"agent_id\":\"agent-allow\""));
@@ -120,6 +123,9 @@ audit:
     }
 
     // 2. Verify Audit
+    // Audit file writes are async; drop the Guard to join the writer
+    // thread and flush pending lines before reading.
+    drop(guard);
     let audit_content = fs::read_to_string(audit_path).unwrap();
     assert!(audit_content.contains("\"decision\":\"deny\""));
     assert!(audit_content.contains("DENIED_BY_RULE"));

@@ -67,3 +67,9 @@ audit:
 - [ ] Expose `/metrics` endpoint using `agent_guard_sdk::get_metrics()`.
 - [ ] Initialize `tracing-subscriber` with at least `INFO` level.
 - [ ] **Verify platform-specific sandbox selection (execute_default) in startup logs.**
+
+---
+
+## 5. ⚙️ Audit File Backpressure
+
+When `audit.output: file` is set, the SDK writes JSONL audit lines from a dedicated background thread fed by a bounded channel (capacity 1024). This keeps `writeln!` off the request hot path so concurrent tool calls do not serialize on a per-call file lock. Under sustained burst load that exceeds the channel capacity, the producer **drops the oldest excess events and emits a `tracing::warn!`** rather than blocking the request. This is a deliberate trade-off for an execution-control layer: blocking real tool calls so an audit line can flush would defeat the purpose. **The SIEM webhook is the durable export path; the local JSONL file is best-effort under sustained burst >1024 events.** Configure `audit.webhook_url` if you need lossless audit retention.

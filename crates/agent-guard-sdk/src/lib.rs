@@ -1,4 +1,6 @@
 pub mod anomaly;
+#[doc(hidden)]
+pub mod audit_writer;
 pub mod doctor;
 mod executors;
 pub mod guard;
