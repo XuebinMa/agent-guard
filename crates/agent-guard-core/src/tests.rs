@@ -914,3 +914,83 @@ mod effective_mode_tests {
         );
     }
 }
+
+// ── Regex precompile guardrail ────────────────────────────────────────────────
+//
+// Lightweight regression check. This is NOT a microbenchmark; it just asserts
+// the per-call cost stays in a sane range so a future regression that
+// reintroduces per-call regex compilation gets caught. The criterion-based
+// bench harness lands separately in S2-4.
+#[cfg(test)]
+mod regex_precompile_tests {
+    use super::ctx;
+    use crate::policy::{PolicyEngine, PolicyError};
+    use crate::types::{Tool, TrustLevel};
+
+    const REGEX_HEAVY_POLICY: &str = r#"
+version: 1
+default_mode: workspace_write
+tools:
+  bash:
+    deny:
+      - regex: "curl\\s+.*\\|\\s*bash"
+      - regex: "wget\\s+.*\\|\\s*sh"
+      - regex: "rm\\s+-rf\\s+/"
+      - regex: ":\\(\\)\\{\\s+:\\|:&\\s*\\};:"
+      - regex: "(?i)dd\\s+if=/dev/(zero|random)"
+      - regex: "(?i)mkfs\\.(ext\\d|xfs|btrfs)"
+      - regex: "shred\\s+-[a-z]+\\s+/dev/"
+      - regex: "echo\\s+\\$\\(.*curl.*\\)"
+    ask:
+      - regex: "git\\s+push\\s+--force"
+      - regex: "kubectl\\s+delete\\s+(ns|namespace)"
+"#;
+
+    #[test]
+    fn malformed_regex_fails_at_load_time() {
+        // Invalid regex: unclosed group. Pre-precompile this would silently
+        // never match at check time; now it must error at load.
+        let yaml = r#"
+version: 1
+tools:
+  bash:
+    deny:
+      - regex: "("
+"#;
+        let res = PolicyEngine::from_yaml_str(yaml);
+        assert!(res.is_err(), "expected load-time error for invalid regex");
+        match res.err().unwrap() {
+            PolicyError::ParseError(msg) => {
+                assert!(
+                    msg.contains("Invalid regex"),
+                    "expected 'Invalid regex' in error, got '{}'",
+                    msg
+                );
+            }
+            other => panic!("expected ParseError, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn check_loop_under_threshold_with_regex_heavy_policy() {
+        let engine = PolicyEngine::from_yaml_str(REGEX_HEAVY_POLICY).unwrap();
+        let context = ctx(TrustLevel::Trusted);
+        let payload = r#"{"command":"ls -la /tmp"}"#;
+
+        const ITERATIONS: u32 = 10_000;
+        let start = std::time::Instant::now();
+        for _ in 0..ITERATIONS {
+            let _ = engine.check(&Tool::Bash, payload, &context);
+        }
+        let elapsed = start.elapsed();
+
+        // Loose ceiling: with regex precompile, 10k checks should comfortably
+        // fit under 200ms on CI hardware. If this trips, suspect a regression
+        // that reintroduced per-call `Regex::new`.
+        assert!(
+            elapsed.as_millis() < 200,
+            "10k checks took {:?}; expected < 200ms (possible regex precompile regression)",
+            elapsed
+        );
+    }
+}
