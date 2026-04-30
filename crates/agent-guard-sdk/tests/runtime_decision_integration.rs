@@ -362,6 +362,11 @@ anomaly:
         },
     );
 
+    // Audit-file writes are now asynchronous; dropping the Guard joins the
+    // background writer thread so all pending lines are flushed to disk
+    // before we inspect the file.
+    drop(guard);
+
     let contents = std::fs::read_to_string(&audit_path).expect("read audit file");
     let execution_finished: Vec<serde_json::Value> = contents
         .lines()
