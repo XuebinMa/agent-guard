@@ -1108,7 +1108,10 @@ fn classify_block_reason(reason: &str) -> DecisionCode {
         DecisionCode::WriteInReadOnlyMode
     } else if reason.contains("destructive") {
         DecisionCode::DestructiveCommand
-    } else if reason.contains("outside workspace") {
+    } else if reason.contains("outside the configured workspace")
+        || reason.contains("escapes the configured workspace")
+        || reason.contains("outside workspace")
+    {
         DecisionCode::PathOutsideWorkspace
     } else {
         DecisionCode::DeniedByRule
