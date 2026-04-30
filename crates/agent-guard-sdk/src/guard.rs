@@ -4,10 +4,10 @@ use std::sync::Arc;
 use agent_guard_core::{
     payload::{extract_bash_command as extract_core_bash_command, ExtractedPayload},
     AuditConfig, AuditEvent, Context, DecisionCode, DecisionReason, GuardDecision, GuardInput,
-    PolicyEngine, PolicyMode, ReloadEvent, RuntimeDecision, Tool,
+    PolicyEngine, ReloadEvent, RuntimeDecision, Tool,
 };
 use agent_guard_sandbox::{Sandbox, SandboxContext, SandboxError, SandboxOutput};
-use agent_guard_validators::bash::{validate_bash_command, PermissionMode, ValidationResult};
+use agent_guard_validators::bash::{validate_bash_command, ValidationResult};
 use arc_swap::ArcSwap;
 use serde::Serialize;
 use thiserror::Error;
@@ -16,13 +16,18 @@ use uuid::Uuid;
 use crate::audit_writer::AuditFileWriter;
 use crate::executors::{
     execute_http_request, execute_write_file, extract_bash_command_for_execution,
-    payload_declares_mutation_http,
+};
+use crate::guard_helpers::{
+    anomaly_subject, classify_block_reason, policy_mode_to_permission_mode,
+    runtime_decision_for_input, sha256_hash,
 };
 use crate::policy_signing::{
     load_policy_signature_file, load_public_key_file, parse_hex_signing_key, verify_policy,
     PolicyVerification,
 };
 pub use crate::runtime::{HandoffResult, RuntimeOutcome, RuntimeResult};
+use crate::sandbox_resolution::resolve_default_sandbox;
+pub use crate::sandbox_resolution::DefaultSandboxDiagnosis;
 use crate::siem::SiemExporter;
 
 // ── GuardInitError ────────────────────────────────────────────────────────────
@@ -38,14 +43,6 @@ pub enum GuardInitError {
     },
     #[error("signing key load error: {0}")]
     SigningKeyLoad(String),
-}
-
-#[derive(Debug, Clone, Serialize)]
-pub struct DefaultSandboxDiagnosis {
-    pub selected_name: &'static str,
-    pub selected_sandbox_type: &'static str,
-    pub fallback_to_noop: bool,
-    pub reason: String,
 }
 
 // ── Guard ─────────────────────────────────────────────────────────────────────
@@ -402,9 +399,8 @@ impl Guard {
             state.siem_exporter.export(record);
         }
 
-        if state.audit_cfg.enabled {
-            self.write_audit(input, decision, state, request_id);
-        }
+        // `write_audit` is the single place that gates on `audit_cfg.enabled`.
+        self.write_audit(input, decision, state, request_id);
         decision.clone()
     }
 
@@ -758,128 +754,11 @@ impl Guard {
     }
 
     pub fn default_sandbox() -> Box<dyn Sandbox> {
-        Self::resolve_default_sandbox().0
+        resolve_default_sandbox().0
     }
 
     pub fn default_sandbox_diagnosis() -> DefaultSandboxDiagnosis {
-        Self::resolve_default_sandbox().1
-    }
-
-    fn resolve_default_sandbox() -> (Box<dyn Sandbox>, DefaultSandboxDiagnosis) {
-        #[cfg(target_os = "linux")]
-        {
-            #[cfg(feature = "landlock")]
-            {
-                let ll = agent_guard_sandbox::LandlockSandbox;
-                if ll.is_available() {
-                    return (
-                        Box::new(ll),
-                        DefaultSandboxDiagnosis {
-                            selected_name: "landlock",
-                            selected_sandbox_type: "linux-landlock",
-                            fallback_to_noop: false,
-                            reason: "Landlock is functional on this Linux host, so the SDK selects the stricter workspace-write backend.".to_string(),
-                        },
-                    );
-                }
-            }
-            (
-                Box::new(agent_guard_sandbox::SeccompSandbox::new()),
-                DefaultSandboxDiagnosis {
-                    selected_name: "seccomp",
-                    selected_sandbox_type: "linux-seccomp",
-                    fallback_to_noop: false,
-                    reason: "Linux defaults to seccomp; Landlock is either disabled or unavailable on this host.".to_string(),
-                },
-            )
-        }
-        #[cfg(all(target_os = "macos", feature = "macos-sandbox"))]
-        {
-            let sb = agent_guard_sandbox::SeatbeltSandbox;
-            if sb.is_available() {
-                (
-                    Box::new(sb),
-                    DefaultSandboxDiagnosis {
-                        selected_name: "seatbelt",
-                        selected_sandbox_type: "macos-seatbelt",
-                        fallback_to_noop: false,
-                        reason: "Seatbelt runtime checks passed, so macOS execution uses the native sandbox backend.".to_string(),
-                    },
-                )
-            } else {
-                (
-                    Box::new(agent_guard_sandbox::NoopSandbox),
-                    DefaultSandboxDiagnosis {
-                        selected_name: "none",
-                        selected_sandbox_type: "none",
-                        fallback_to_noop: true,
-                        reason: "Seatbelt support is enabled, but sandbox-exec is not functional on this host, so the SDK falls back to NoopSandbox.".to_string(),
-                    },
-                )
-            }
-        }
-        #[cfg(all(target_os = "windows", feature = "windows-appcontainer"))]
-        {
-            (
-                Box::new(agent_guard_sandbox::AppContainerSandbox),
-                DefaultSandboxDiagnosis {
-                    selected_name: "AppContainer",
-                    selected_sandbox_type: "windows-appcontainer",
-                    fallback_to_noop: false,
-                    reason: "The windows-appcontainer feature is enabled, so the SDK prefers AppContainer as the default Windows backend.".to_string(),
-                },
-            )
-        }
-        #[cfg(all(
-            target_os = "windows",
-            not(feature = "windows-appcontainer"),
-            feature = "windows-sandbox"
-        ))]
-        {
-            let sb = agent_guard_sandbox::JobObjectSandbox;
-            if sb.is_available() {
-                (
-                    Box::new(sb),
-                    DefaultSandboxDiagnosis {
-                        selected_name: "JobObject",
-                        selected_sandbox_type: "windows-job-object",
-                        fallback_to_noop: false,
-                        reason: "Low-integrity process creation is functional on this Windows host, so the SDK uses the Job Object backend.".to_string(),
-                    },
-                )
-            } else {
-                (
-                    Box::new(agent_guard_sandbox::NoopSandbox),
-                    DefaultSandboxDiagnosis {
-                        selected_name: "none",
-                        selected_sandbox_type: "none",
-                        fallback_to_noop: true,
-                        reason: "The Windows low-integrity runtime is unavailable on this host, so the SDK falls back to NoopSandbox instead of pretending enforcement is active.".to_string(),
-                    },
-                )
-            }
-        }
-        #[cfg(not(any(
-            target_os = "linux",
-            all(target_os = "macos", feature = "macos-sandbox"),
-            all(target_os = "windows", feature = "windows-appcontainer"),
-            all(
-                target_os = "windows",
-                not(feature = "windows-appcontainer"),
-                feature = "windows-sandbox"
-            )
-        )))]
-        {
-            (
-                Box::new(agent_guard_sandbox::NoopSandbox),
-                DefaultSandboxDiagnosis {
-                    selected_name: "none",
-                    selected_sandbox_type: "none",
-                    fallback_to_noop: true,
-                    reason: "No OS-level sandbox backend is enabled for this platform/build, so the SDK uses NoopSandbox.".to_string(),
-                },
-            )
-        }
+        resolve_default_sandbox().1
     }
 
     fn evaluate(&self, input: &GuardInput, state: &GuardState) -> GuardDecision {
@@ -1032,64 +911,4 @@ pub enum ExecuteOutcome {
         policy_version: String,
         policy_verification: PolicyVerification,
     },
-}
-
-fn runtime_decision_for_input(input: &GuardInput, decision: GuardDecision) -> RuntimeDecision {
-    match decision {
-        GuardDecision::Allow => {
-            let guard_owns_execution = matches!(input.tool, Tool::Bash | Tool::WriteFile)
-                || (matches!(input.tool, Tool::HttpRequest)
-                    && payload_declares_mutation_http(&input.payload));
-
-            if guard_owns_execution {
-                RuntimeDecision::Execute
-            } else {
-                RuntimeDecision::Handoff
-            }
-        }
-        GuardDecision::Deny { reason } => RuntimeDecision::Deny { reason },
-        GuardDecision::AskUser { message, reason } => {
-            RuntimeDecision::AskForApproval { message, reason }
-        }
-    }
-}
-
-fn anomaly_subject(context: &Context) -> String {
-    context
-        .actor
-        .clone()
-        .or_else(|| context.agent_id.clone())
-        .or_else(|| context.session_id.clone())
-        .unwrap_or_else(|| "unknown".to_string())
-}
-
-fn policy_mode_to_permission_mode(mode: &PolicyMode) -> PermissionMode {
-    match mode {
-        PolicyMode::ReadOnly => PermissionMode::ReadOnly,
-        PolicyMode::WorkspaceWrite => PermissionMode::WorkspaceWrite,
-        PolicyMode::FullAccess => PermissionMode::DangerFullAccess,
-        PolicyMode::Blocked => PermissionMode::Blocked,
-    }
-}
-
-fn classify_block_reason(reason: &str) -> DecisionCode {
-    if reason.contains("read-only mode") {
-        DecisionCode::WriteInReadOnlyMode
-    } else if reason.contains("destructive") {
-        DecisionCode::DestructiveCommand
-    } else if reason.contains("outside the configured workspace")
-        || reason.contains("escapes the configured workspace")
-        || reason.contains("outside workspace")
-    {
-        DecisionCode::PathOutsideWorkspace
-    } else {
-        DecisionCode::DeniedByRule
-    }
-}
-
-fn sha256_hash(data: &str) -> String {
-    use sha2::{Digest, Sha256};
-    let mut hasher = Sha256::new();
-    hasher.update(data.as_bytes());
-    hex::encode(hasher.finalize())
 }

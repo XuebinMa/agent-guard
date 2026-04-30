@@ -4,10 +4,12 @@ pub mod audit_writer;
 pub mod doctor;
 mod executors;
 pub mod guard;
+mod guard_helpers;
 pub mod metrics;
 pub mod policy_signing;
 pub mod provenance;
 pub mod runtime;
+mod sandbox_resolution;
 pub mod siem;
 
 pub use anomaly::{get_detector, AnomalyDetector, AnomalyStatus};
