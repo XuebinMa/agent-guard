@@ -54,6 +54,18 @@ const STATE_MODIFYING_COMMANDS: &[&str] = &[
 
 const WRITE_REDIRECTIONS: &[&str] = &[">", ">>", ">&"];
 
+/// Redirections that consume the next token as a filesystem path.
+const READ_PATH_REDIRECTIONS: &[&str] = &["<"];
+
+/// Read-side redirections whose target is data, not a path. Listed here
+/// only so the tokenizer doesn't misclassify them; they do not yield
+/// path-validation targets.
+///
+/// `<<`  — here-doc; the next token is a delimiter word, not a file.
+/// `<<<` — here-string; the next token is the literal string content.
+#[allow(dead_code)]
+const READ_DATA_REDIRECTIONS: &[&str] = &["<<", "<<<"];
+
 #[must_use]
 pub fn validate_read_only(command: &str, mode: PermissionMode) -> ValidationResult {
     if mode != PermissionMode::ReadOnly {
@@ -377,6 +389,32 @@ pub fn validate_paths(command: &str, mode: PermissionMode, workspace: &Path) -> 
         }
     }
 
+    for target in collect_read_targets(command) {
+        let candidate = target.trim_matches(|c| c == '"' || c == '\'');
+        if candidate.is_empty() || candidate.starts_with('$') || candidate == "/dev/null" {
+            continue;
+        }
+
+        let path = Path::new(candidate);
+        if path.is_absolute() && !path_stays_within_workspace(path, &workspace) {
+            return ValidationResult::Block {
+                reason: format!(
+                    "read target '{}' is outside the configured workspace",
+                    candidate
+                ),
+            };
+        }
+
+        if !path.is_absolute() && has_parent_dir_escape(path) {
+            return ValidationResult::Block {
+                reason: format!(
+                    "read target '{}' escapes the configured workspace",
+                    candidate
+                ),
+            };
+        }
+    }
+
     ValidationResult::Allow
 }
 
@@ -480,6 +518,61 @@ fn write_targets_for_segment(segment: &[String]) -> Vec<String> {
             }
         }
         _ => {}
+    }
+
+    targets
+}
+
+fn collect_read_targets(command: &str) -> Vec<String> {
+    let tokens = shell_split(command);
+    let mut targets = Vec::new();
+    let mut current_segment = Vec::new();
+
+    for token in tokens {
+        if matches!(token.as_str(), "|" | "||" | "&&" | ";" | "&") {
+            targets.extend(read_targets_for_segment(&current_segment));
+            current_segment.clear();
+            continue;
+        }
+        current_segment.push(token);
+    }
+
+    targets.extend(read_targets_for_segment(&current_segment));
+    targets
+}
+
+fn read_targets_for_segment(segment: &[String]) -> Vec<String> {
+    if segment.is_empty() {
+        return Vec::new();
+    }
+
+    let mut targets = Vec::new();
+    let mut command_index = 0;
+    if segment.first().is_some_and(|token| token == "sudo") && segment.len() > 1 {
+        command_index = 1;
+    }
+
+    let args = &segment[command_index + 1..];
+
+    // Only explicit `<` redirections are treated as path targets.
+    // `<<` (here-doc) and `<<<` (here-string) are tokenized as single tokens
+    // by `shell_split` (which doesn't split on `<`/`>`), so an exact-match on
+    // `READ_PATH_REDIRECTIONS` (just `<`) naturally excludes them. We do not
+    // infer read targets from positional args (e.g. `cat /etc/shadow`) — that
+    // is out of scope and covered by the `read_file` tool path with deny lists.
+    let mut expecting_redirection_target = false;
+    for token in args {
+        if READ_PATH_REDIRECTIONS.contains(&token.as_str()) {
+            expecting_redirection_target = true;
+            continue;
+        }
+
+        if expecting_redirection_target {
+            expecting_redirection_target = false;
+            if !token.starts_with('&') {
+                targets.push(token.clone());
+            }
+        }
     }
 
     targets
