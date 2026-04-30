@@ -287,11 +287,113 @@ fn audit_hash_default() -> bool {
     true
 }
 
+// ── Compiled rule shapes ──────────────────────────────────────────────────────
+//
+// `RulePattern` / `RulePatternMap` mirror the YAML schema and only hold the
+// regex source string. To avoid recompiling regex on every check, we build a
+// parallel `CompiledRulePattern` graph at load time that owns a `regex::Regex`
+// next to the originating rule. The YAML structs are kept intact so the schema
+// surface and deserialization path don't change.
+
+#[derive(Debug, Clone)]
+enum CompiledRulePattern {
+    Plain(String),
+    Map(CompiledRulePatternMap),
+}
+
+#[derive(Debug, Clone)]
+struct CompiledRulePatternMap {
+    prefix: Option<String>,
+    regex_src: Option<String>,
+    regex: Option<Regex>,
+    plain: Option<String>,
+    condition: Option<Condition>,
+}
+
+#[derive(Debug, Clone, Default)]
+struct CompiledToolPolicy {
+    deny: Vec<CompiledRulePattern>,
+    allow: Vec<CompiledRulePattern>,
+    ask: Vec<CompiledRulePattern>,
+}
+
+#[derive(Debug, Clone, Default)]
+struct CompiledTools {
+    bash: Option<CompiledToolPolicy>,
+    read_file: Option<CompiledToolPolicy>,
+    write_file: Option<CompiledToolPolicy>,
+    http_request: Option<CompiledToolPolicy>,
+    custom: HashMap<String, CompiledToolPolicy>,
+}
+
+fn compile_rule(rule: &RulePattern) -> Result<CompiledRulePattern, PolicyError> {
+    match rule {
+        RulePattern::Plain(s) => Ok(CompiledRulePattern::Plain(s.clone())),
+        RulePattern::Map(m) => {
+            let regex = match m.regex.as_ref() {
+                Some(src) => Some(Regex::new(src).map_err(|e| {
+                    PolicyError::ParseError(format!("Invalid regex '{}': {}", src, e))
+                })?),
+                None => None,
+            };
+            Ok(CompiledRulePattern::Map(CompiledRulePatternMap {
+                prefix: m.prefix.clone(),
+                regex_src: m.regex.clone(),
+                regex,
+                plain: m.plain.clone(),
+                condition: m.condition.clone(),
+            }))
+        }
+    }
+}
+
+fn compile_tool_policy(p: &ToolPolicy) -> Result<CompiledToolPolicy, PolicyError> {
+    let deny = p.deny.iter().map(compile_rule).collect::<Result<_, _>>()?;
+    let allow = p.allow.iter().map(compile_rule).collect::<Result<_, _>>()?;
+    let ask = p.ask.iter().map(compile_rule).collect::<Result<_, _>>()?;
+    for glob_pat in p.deny_paths.iter().chain(p.allow_paths.iter()) {
+        glob::Pattern::new(glob_pat)
+            .map_err(|e| PolicyError::ParseError(format!("Invalid glob '{}': {}", glob_pat, e)))?;
+    }
+    Ok(CompiledToolPolicy { deny, allow, ask })
+}
+
+fn compile_tools(tools: &ToolsConfig) -> Result<CompiledTools, PolicyError> {
+    let bash = tools.bash.as_ref().map(compile_tool_policy).transpose()?;
+    let read_file = tools
+        .read_file
+        .as_ref()
+        .map(compile_tool_policy)
+        .transpose()?;
+    let write_file = tools
+        .write_file
+        .as_ref()
+        .map(compile_tool_policy)
+        .transpose()?;
+    let http_request = tools
+        .http_request
+        .as_ref()
+        .map(compile_tool_policy)
+        .transpose()?;
+    let mut custom = HashMap::with_capacity(tools.custom.len());
+    for (k, v) in &tools.custom {
+        custom.insert(k.clone(), compile_tool_policy(v)?);
+    }
+    Ok(CompiledTools {
+        bash,
+        read_file,
+        write_file,
+        http_request,
+        custom,
+    })
+}
+
 // ── PolicyEngine ──────────────────────────────────────────────────────────────
 
 #[derive(Debug, Clone)]
 pub struct PolicyEngine {
     policy: PolicyFile,
+    compiled: CompiledTools,
     hash: String,
 }
 
@@ -307,46 +409,17 @@ impl PolicyEngine {
         hasher.update(yaml.as_bytes());
         let hash = hex::encode(hasher.finalize());
 
-        let engine = Self { policy, hash };
-        engine.validate_patterns()?;
-        Ok(engine)
-    }
+        // Compile regex patterns at load time. Invalid regex surfaces here as a
+        // `PolicyError::ParseError` rather than being silently ignored at check
+        // time. Glob patterns under `deny_paths` / `allow_paths` are validated
+        // here as well (they are still re-compiled per-check by `path_glob_matches`).
+        let compiled = compile_tools(&policy.tools)?;
 
-    fn validate_patterns(&self) -> Result<(), PolicyError> {
-        let policies = vec![
-            self.policy.tools.bash.as_ref(),
-            self.policy.tools.read_file.as_ref(),
-            self.policy.tools.write_file.as_ref(),
-            self.policy.tools.http_request.as_ref(),
-        ];
-
-        for p in policies.into_iter().flatten() {
-            self.check_tool_patterns(p)?;
-        }
-
-        for p in self.policy.tools.custom.values() {
-            self.check_tool_patterns(p)?;
-        }
-        Ok(())
-    }
-
-    fn check_tool_patterns(&self, p: &ToolPolicy) -> Result<(), PolicyError> {
-        let all_rules = p.deny.iter().chain(p.allow.iter()).chain(p.ask.iter());
-        for rule in all_rules {
-            if let RulePattern::Map(m) = rule {
-                if let Some(ref re_str) = m.regex {
-                    Regex::new(re_str).map_err(|e| {
-                        PolicyError::ParseError(format!("Invalid regex '{}': {}", re_str, e))
-                    })?;
-                }
-            }
-        }
-        for glob_pat in p.deny_paths.iter().chain(p.allow_paths.iter()) {
-            glob::Pattern::new(glob_pat).map_err(|e| {
-                PolicyError::ParseError(format!("Invalid glob '{}': {}", glob_pat, e))
-            })?;
-        }
-        Ok(())
+        Ok(Self {
+            policy,
+            compiled,
+            hash,
+        })
     }
 
     pub fn from_yaml_file(path: impl AsRef<Path>) -> Result<Self, PolicyError> {
@@ -423,7 +496,12 @@ impl PolicyEngine {
         let match_value = extracted.match_value();
 
         if let Some(tp) = tool_policy {
-            for (i, rule) in tp.deny.iter().enumerate() {
+            let compiled_tp = self.compiled_tool_policy(tool);
+            // The compiled view is built 1:1 from the YAML view, so when
+            // `tool_policy` returns Some, the compiled view is always present.
+            let compiled_tp = compiled_tp.expect("compiled tool policy missing for known tool");
+
+            for (i, rule) in compiled_tp.deny.iter().enumerate() {
                 let res = pattern_matches(rule, match_value, tool, context);
                 if res.matched {
                     let rule_ref = format!("tools.{}.deny[{}]", tool_name, i);
@@ -456,7 +534,7 @@ impl PolicyEngine {
                 }
             }
 
-            for (i, rule) in tp.ask.iter().enumerate() {
+            for (i, rule) in compiled_tp.ask.iter().enumerate() {
                 let res = pattern_matches(rule, match_value, tool, context);
                 if res.matched {
                     let rule_ref = format!("tools.{}.ask[{}]", tool_name, i);
@@ -495,7 +573,7 @@ impl PolicyEngine {
                 }
             }
 
-            for rule in tp.allow.iter() {
+            for rule in compiled_tp.allow.iter() {
                 if pattern_matches(rule, match_value, tool, context).matched {
                     return GuardDecision::Allow;
                 }
@@ -565,6 +643,16 @@ impl PolicyEngine {
             Tool::Custom(id) => self.policy.tools.custom.get(id.as_str()),
         }
     }
+
+    fn compiled_tool_policy(&self, tool: &Tool) -> Option<&CompiledToolPolicy> {
+        match tool {
+            Tool::Bash => self.compiled.bash.as_ref(),
+            Tool::ReadFile => self.compiled.read_file.as_ref(),
+            Tool::WriteFile => self.compiled.write_file.as_ref(),
+            Tool::HttpRequest => self.compiled.http_request.as_ref(),
+            Tool::Custom(id) => self.compiled.custom.get(id.as_str()),
+        }
+    }
 }
 
 #[derive(Debug, Default)]
@@ -573,13 +661,18 @@ struct MatchResult {
     condition: Option<String>,
 }
 
-fn pattern_matches(rule: &RulePattern, value: &str, tool: &Tool, context: &Context) -> MatchResult {
+fn pattern_matches(
+    rule: &CompiledRulePattern,
+    value: &str,
+    tool: &Tool,
+    context: &Context,
+) -> MatchResult {
     match rule {
-        RulePattern::Plain(s) => MatchResult {
+        CompiledRulePattern::Plain(s) => MatchResult {
             matched: value.contains(s.as_str()),
             condition: None,
         },
-        RulePattern::Map(m) => {
+        CompiledRulePattern::Map(m) => {
             let mut result = MatchResult {
                 matched: false,
                 condition: m.condition.as_ref().map(|c| c.raw.clone()),
@@ -600,12 +693,10 @@ fn pattern_matches(rule: &RulePattern, value: &str, tool: &Tool, context: &Conte
                     return result;
                 }
             }
-            if let Some(ref re_str) = m.regex {
-                if let Ok(re) = Regex::new(re_str) {
-                    if re.is_match(value) {
-                        result.matched = true;
-                        return result;
-                    }
+            if let Some(ref re) = m.regex {
+                if re.is_match(value) {
+                    result.matched = true;
+                    return result;
                 }
             }
             if let Some(ref plain) = m.plain {
@@ -626,11 +717,11 @@ fn pattern_matches(rule: &RulePattern, value: &str, tool: &Tool, context: &Conte
     }
 }
 
-fn pattern_display(rule: &RulePattern) -> String {
+fn pattern_display(rule: &CompiledRulePattern) -> String {
     match rule {
-        RulePattern::Plain(s) => s.clone(),
-        RulePattern::Map(m) => {
-            if let Some(ref re) = m.regex {
+        CompiledRulePattern::Plain(s) => s.clone(),
+        CompiledRulePattern::Map(m) => {
+            if let Some(ref re) = m.regex_src {
                 format!("regex:{}", re)
             } else if let Some(ref prefix) = m.prefix {
                 format!("prefix:{}", prefix)
