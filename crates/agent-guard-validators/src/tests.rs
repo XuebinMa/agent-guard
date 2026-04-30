@@ -305,6 +305,240 @@ mod bash_classify_tests {
 }
 
 #[cfg(test)]
+mod redirect_validation_tests {
+    //! Read-redirection awareness for `validate_paths`.
+    //!
+    //! Threat model: an agent constructs a Bash command that uses an explicit
+    //! `<` redirection to read a file outside the configured workspace, e.g.
+    //! `cat < /etc/shadow`. Without read-target collection, `validate_paths`
+    //! only inspects write targets, so the redirect bypasses the boundary.
+    //!
+    //! `<<` (here-doc) and `<<<` (here-string) consume their next token as
+    //! data, not as a path, so they must NOT yield a path-validation target.
+    //! `shell_split` keeps `<<` and `<<<` as single tokens (it does not split
+    //! on `<`/`>`), so an exact-match on `READ_PATH_REDIRECTIONS = &["<"]`
+    //! naturally excludes them — no tokenizer change is needed.
+    //!
+    //! `cmd <input` (no whitespace between `<` and the path) is also kept as
+    //! a single token by `shell_split`, so it is NOT collected. This matches
+    //! the existing write-side behaviour for `cmd >output`.
+
+    use crate::bash::{validate_bash_command, validate_paths, PermissionMode, ValidationResult};
+    use std::path::Path;
+
+    #[derive(Clone, Copy)]
+    enum Expected {
+        Allow,
+        Block,
+    }
+
+    fn assert_case(
+        label: &str,
+        command: &str,
+        mode: PermissionMode,
+        workspace: &Path,
+        expected: Expected,
+    ) {
+        // Use the full pipeline for end-to-end coverage; tests in this module
+        // intentionally exercise commands that pass `validate_read_only`.
+        let result = validate_bash_command(command, mode, workspace);
+        match (expected, &result) {
+            (Expected::Allow, ValidationResult::Allow) => {}
+            (Expected::Block, ValidationResult::Block { .. }) => {}
+            _ => panic!(
+                "case `{label}` failed: command={command:?} mode={mode:?} workspace={workspace:?} expected={:?} got={result:?}",
+                match expected {
+                    Expected::Allow => "Allow",
+                    Expected::Block => "Block",
+                },
+            ),
+        }
+    }
+
+    #[test]
+    fn redirect_validation_table() {
+        let ws = Path::new("/workspace");
+        let tmp_x = Path::new("/tmp/x");
+
+        // Each row: (label, command, mode, workspace, expected).
+        let cases: &[(&str, &str, PermissionMode, &Path, Expected)] = &[
+            // 1. Absolute read target outside workspace, ReadOnly mode.
+            (
+                "read_outside_readonly",
+                "cat < /etc/shadow",
+                PermissionMode::ReadOnly,
+                ws,
+                Expected::Block,
+            ),
+            // 2. Absolute read target outside workspace, WorkspaceWrite mode.
+            (
+                "read_outside_workspace_write",
+                "cat < /etc/shadow",
+                PermissionMode::WorkspaceWrite,
+                ws,
+                Expected::Block,
+            ),
+            // 3. Absolute read target inside workspace, ReadOnly mode.
+            (
+                "read_inside_readonly",
+                "cat < /workspace/file.txt",
+                PermissionMode::ReadOnly,
+                ws,
+                Expected::Allow,
+            ),
+            // 4. Here-doc — next token is a delimiter, not a path.
+            (
+                "heredoc_allowed",
+                "cat << EOF\nbody\nEOF",
+                PermissionMode::ReadOnly,
+                ws,
+                Expected::Allow,
+            ),
+            // 5. Here-string — next token is literal data, not a path.
+            (
+                "herestring_allowed",
+                "cat <<< \"literal string\"",
+                PermissionMode::ReadOnly,
+                ws,
+                Expected::Allow,
+            ),
+            // 6. Mixed `< input > output` where the read target is outside.
+            //    Use WorkspaceWrite so the substring `>` doesn't trip
+            //    `validate_read_only`'s write-redirection guard. The write
+            //    target is in-workspace, so only the read target should fire.
+            (
+                "mixed_read_outside_write_inside",
+                "cmd < /etc/passwd > /workspace/output.txt",
+                PermissionMode::WorkspaceWrite,
+                ws,
+                Expected::Block,
+            ),
+            // 6b. Mixed `< input > output` where both are clean.
+            (
+                "mixed_both_clean",
+                "cmd < /workspace/in.txt > /workspace/out.txt",
+                PermissionMode::WorkspaceWrite,
+                ws,
+                Expected::Allow,
+            ),
+            // 7. `cmd <input` — no whitespace. `shell_split` keeps `<input`
+            //    as a single token, so no read target is collected. This
+            //    mirrors the existing write-side behaviour for `cmd >file`
+            //    and is documented as a known limitation.
+            (
+                "no_space_redirect_not_validated",
+                "cat </etc/shadow",
+                PermissionMode::WorkspaceWrite,
+                ws,
+                Expected::Allow,
+            ),
+            // 8. Semicolon-separated segments — both have outside reads.
+            (
+                "semicolon_segments_first_blocks",
+                "cat < /etc/passwd ; cat < /etc/shadow",
+                PermissionMode::ReadOnly,
+                ws,
+                Expected::Block,
+            ),
+            // 9. Relative path with `..` parent escape.
+            (
+                "parent_dir_escape",
+                "cat < ../../../etc/passwd",
+                PermissionMode::WorkspaceWrite,
+                ws,
+                Expected::Block,
+            ),
+            // 10. `$VAR`-prefixed target — skipped (we don't expand vars).
+            (
+                "dollar_prefix_skipped",
+                "cat < $VAR/file",
+                PermissionMode::WorkspaceWrite,
+                ws,
+                Expected::Allow,
+            ),
+            // 11. `/dev/null` — special-case skip.
+            (
+                "dev_null_skipped",
+                "cat < /dev/null",
+                PermissionMode::ReadOnly,
+                ws,
+                Expected::Allow,
+            ),
+            // 12. Relative `./input.txt` in WorkspaceWrite — no parent
+            //     escape, mirrors write-target relative-path behaviour.
+            (
+                "relative_dot_path_allowed",
+                "cat < ./input.txt",
+                PermissionMode::WorkspaceWrite,
+                tmp_x,
+                Expected::Allow,
+            ),
+            // 13. Bypass attempt: quoted absolute outside-workspace path.
+            //     The trim_matches on quotes strips them before validation.
+            (
+                "quoted_path_still_blocked",
+                "cat < \"/etc/shadow\"",
+                PermissionMode::ReadOnly,
+                ws,
+                Expected::Block,
+            ),
+            // 14. Bypass attempt: pipeline segment with read redirect.
+            (
+                "pipeline_segment_read_blocked",
+                "echo hi | cat < /etc/shadow",
+                PermissionMode::WorkspaceWrite,
+                ws,
+                Expected::Block,
+            ),
+        ];
+
+        for (label, cmd, mode, workspace, expected) in cases {
+            assert_case(label, cmd, *mode, workspace, *expected);
+        }
+    }
+
+    #[test]
+    fn validate_paths_directly_blocks_read_target_outside_workspace() {
+        // Direct validate_paths exercise to lock in the failure mode at the
+        // function granularity (skipping validate_read_only's substring guard).
+        let result = validate_paths(
+            "cat < /etc/shadow",
+            PermissionMode::ReadOnly,
+            Path::new("/workspace"),
+        );
+        assert!(matches!(result, ValidationResult::Block { .. }));
+    }
+
+    #[test]
+    fn validate_paths_directly_allows_read_inside_workspace() {
+        let result = validate_paths(
+            "cat < /workspace/notes.txt",
+            PermissionMode::ReadOnly,
+            Path::new("/workspace"),
+        );
+        assert_eq!(result, ValidationResult::Allow);
+    }
+
+    #[test]
+    fn validate_paths_block_message_says_read_target() {
+        let result = validate_paths(
+            "cat < /etc/shadow",
+            PermissionMode::ReadOnly,
+            Path::new("/workspace"),
+        );
+        match result {
+            ValidationResult::Block { reason } => {
+                assert!(
+                    reason.contains("read target"),
+                    "block reason should identify the read target, got: {reason}"
+                );
+            }
+            other => panic!("expected Block, got {other:?}"),
+        }
+    }
+}
+
+#[cfg(test)]
 mod path_tests {
     use crate::path::{
         detect_trust_prompt, validate_path_access, TrustConfig, TrustDecision, TrustPolicy,
