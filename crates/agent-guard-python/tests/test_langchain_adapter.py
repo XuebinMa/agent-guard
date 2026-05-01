@@ -8,7 +8,12 @@ Run with (after `maturin develop`):
 import json
 import asyncio
 import pytest
-from agent_guard import Guard, wrap_langchain_tool, AgentGuardSecurityError
+from agent_guard import (
+    AgentGuardDeniedError,
+    AgentGuardSecurityError,
+    Guard,
+    wrap_langchain_tool,
+)
 
 
 # ── Mock LangChain BaseTool ──────────────────────────────────────────────────
@@ -221,3 +226,43 @@ def test_blocked_tool_allow(guard_blocked):
     wrapped = wrap_langchain_tool(guard_blocked, tool, mode="check")
     result = wrapped.run("2+2")
     assert "ORIGINAL_CALC: 2+2" == result
+
+
+# ── Category 8: Policy verification fail-closed (signed policies) ────────────
+
+def _invalid_signed_guard():
+    return Guard.from_signed_yaml(
+        POLICY_CHECK,
+        "0000000000000000000000000000000000000000000000000000000000000001",
+        "ff" * 64,
+    )
+
+
+def test_auto_mode_fails_closed_for_invalid_signed_policy():
+    """Auto mode must refuse to dispatch when the policy signature is invalid."""
+    invalid_guard = _invalid_signed_guard()
+    tool = MockCalcTool()
+    wrapped = wrap_langchain_tool(invalid_guard, tool, mode="auto", trust_level="trusted")
+    with pytest.raises(AgentGuardDeniedError) as exc_info:
+        wrapped.run("2+2")
+    assert exc_info.value.code == "PolicyVerificationFailed"
+
+
+def test_check_mode_fails_closed_for_invalid_signed_policy():
+    """Check mode must also refuse to dispatch when the policy signature is invalid."""
+    invalid_guard = _invalid_signed_guard()
+    tool = MockCalcTool()
+    wrapped = wrap_langchain_tool(invalid_guard, tool, mode="check", trust_level="trusted")
+    with pytest.raises(AgentGuardDeniedError) as exc_info:
+        wrapped.run("2+2")
+    assert exc_info.value.code == "PolicyVerificationFailed"
+
+
+def test_check_mode_async_fails_closed_for_invalid_signed_policy():
+    """Async check path must refuse to dispatch when the policy signature is invalid."""
+    invalid_guard = _invalid_signed_guard()
+    tool = MockCalcTool()
+    wrapped = wrap_langchain_tool(invalid_guard, tool, mode="check", trust_level="trusted")
+    with pytest.raises(AgentGuardDeniedError) as exc_info:
+        asyncio.run(wrapped._arun("2+2"))
+    assert exc_info.value.code == "PolicyVerificationFailed"

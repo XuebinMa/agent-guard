@@ -108,14 +108,14 @@ def build_security_error(decision: Any, *, fallback_message: Optional[str] = Non
     )
 
 
-def ensure_verified_policy_for_auto(decision: Any) -> None:
+def ensure_verified_policy(decision: Any) -> None:
     if getattr(decision, "policy_verification_status", None) != "invalid":
         return
 
     synthetic_decision = type("PolicyDecision", (), {
         "outcome": "deny",
         "message": getattr(decision, "policy_verification_error", None)
-        or "policy signature verification failed; auto mode refuses to continue",
+        or "agent-guard refuses to continue with an invalid policy signature",
         "code": "PolicyVerificationFailed",
         "matched_rule": None,
         "ask_prompt": None,

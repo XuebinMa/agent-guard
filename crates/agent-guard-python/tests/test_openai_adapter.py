@@ -72,8 +72,32 @@ def test_openai_wrapper_auto_mode_fails_closed_for_invalid_signed_policy():
         trust_level="trusted",
     )
 
-    with pytest.raises(AgentGuardDeniedError, match="verification"):
+    with pytest.raises(AgentGuardDeniedError) as exc_info:
         wrapped({"command": "echo blocked"})
+    assert exc_info.value.code == "PolicyVerificationFailed"
+
+
+def test_openai_wrapper_check_mode_fails_closed_for_invalid_signed_policy():
+    invalid_guard = Guard.from_signed_yaml(
+        POLICY,
+        "0000000000000000000000000000000000000000000000000000000000000001",
+        "ff" * 64,
+    )
+
+    handler_calls = []
+
+    wrapped = wrap_openai_tool(
+        invalid_guard,
+        lambda input_data: handler_calls.append(input_data) or "should-not-run",
+        tool="web_search",
+        mode="check",
+        trust_level="trusted",
+    )
+
+    with pytest.raises(AgentGuardDeniedError) as exc_info:
+        wrapped({"query": "agent-guard"})
+    assert exc_info.value.code == "PolicyVerificationFailed"
+    assert handler_calls == []
 
 
 def test_openai_wrapper_rejects_invalid_mode(guard):

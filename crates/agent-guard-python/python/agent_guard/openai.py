@@ -3,7 +3,7 @@ from typing import Any, Callable, Optional
 from ._agent_guard import Guard
 from .adapters import (
     build_security_error,
-    ensure_verified_policy_for_auto,
+    ensure_verified_policy,
     handle_execute_result,
     prepare_payload,
     resolve_mode,
@@ -54,8 +54,7 @@ def wrap_openai_tool(
         decision = guard.check(tool=tool, payload=payload, **guard_options)
         if decision.outcome != "allow":
             raise build_security_error(decision)
-        if mode == "auto":
-            ensure_verified_policy_for_auto(decision)
+        ensure_verified_policy(decision)
         return handler(input_data, *args, **kwargs)
 
     return wrapped
