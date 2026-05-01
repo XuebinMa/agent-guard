@@ -4,7 +4,7 @@ from ._agent_guard import Guard
 from .adapters import (
     AgentGuardSecurityError,
     build_security_error,
-    ensure_verified_policy_for_auto,
+    ensure_verified_policy,
     handle_execute_result,
     prepare_payload,
     resolve_mode,
@@ -69,8 +69,7 @@ def wrap_langchain_tool(
         decision = guard.check(tool=tool.name, payload=payload_str, **guard_options)
         if decision.outcome != "allow":
             raise build_security_error(decision)
-        if mode == "auto":
-            ensure_verified_policy_for_auto(decision)
+        ensure_verified_policy(decision)
         return original_run(*args, **kwargs)
 
     async def guarded_arun(*args, **kwargs) -> Any:
@@ -98,8 +97,7 @@ def wrap_langchain_tool(
         )
         if decision.outcome != "allow":
             raise build_security_error(decision)
-        if mode == "auto":
-            ensure_verified_policy_for_auto(decision)
+        ensure_verified_policy(decision)
         if original_arun:
             return await original_arun(*args, **kwargs)
         return await asyncio.to_thread(original_run, *args, **kwargs)

@@ -172,7 +172,7 @@ function buildExecuteError(error, policyVersion) {
   })
 }
 
-function enforceVerifiedPolicyForAuto(decision) {
+function enforceVerifiedPolicy(decision) {
   if (!decision || decision.policyVerificationStatus !== 'invalid') {
     return
   }
@@ -181,7 +181,7 @@ function enforceVerifiedPolicyForAuto(decision) {
     outcome: 'deny',
     message:
       decision.policyVerificationError ||
-      'policy signature verification failed; auto mode refuses to execute with an invalid policy signature',
+      'agent-guard refuses to continue with an invalid policy signature',
     code: 'PolicyVerificationFailed',
     policyVersion: decision.policyVersion || decision.policy_version,
     policyVerificationStatus: decision.policyVerificationStatus,
@@ -271,9 +271,7 @@ function createAdapterExports(nativeApi = {}) {
           throw buildDecisionError(decision)
         }
 
-        if (mode === 'auto') {
-          enforceVerifiedPolicyForAuto(decision)
-        }
+        enforceVerifiedPolicy(decision)
 
         try {
           const result = handler.call(this, input, ...rest)
