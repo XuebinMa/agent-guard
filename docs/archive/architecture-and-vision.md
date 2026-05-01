@@ -6,7 +6,7 @@
 | **Audience** | Maintainers, Architects, Product Managers, Security Engineers |
 | **Version** | 1.4 |
 | **Last Reviewed** | 2026-04-20 |
-| **Related Docs** | [User Manual](../guides/getting-started/user-manual.md), [Threat Model](../threat-model.md) |
+| **Related Docs** | [User Manual](../guides/getting-started/user-manual.md), [Threat Model](../concepts/threat-model.md) |
 
 ---
 

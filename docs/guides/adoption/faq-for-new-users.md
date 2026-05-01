@@ -6,7 +6,7 @@
 | **Audience** | Evaluators, First-Time Users, Community Readers |
 | **Version** | 1.0 |
 | **Last Reviewed** | 2026-04-14 |
-| **Related Docs** | [Three-Minute Proof](../getting-started/three-minute-proof.md), [Secure Shell Tools](../getting-started/secure-shell-tools.md), [Framework Support Matrix](../../framework-support-matrix.md) |
+| **Related Docs** | [Three-Minute Proof](../getting-started/three-minute-proof.md), [Secure Shell Tools](../getting-started/secure-shell-tools.md), [Framework Support Matrix](../../reference/framework-support-matrix.md) |
 
 ---
 
@@ -116,7 +116,7 @@ Use this order:
 
 1. [Node Quickstart](../../../crates/agent-guard-node/examples/quickstart/README.md)
 2. [Secure Shell Tools](../getting-started/secure-shell-tools.md)
-3. [Framework Support Matrix](../../framework-support-matrix.md)
+3. [Framework Support Matrix](../../reference/framework-support-matrix.md)
 
 That path gives you:
 

@@ -6,7 +6,7 @@
 | **Audience** | DevOps, SREs, System Admins |
 | **Version** | 1.1 |
 | **Last Reviewed** | 2026-04-15 |
-| **Related Docs** | [Observability](observability.md), [Capability Parity](../../capability-parity.md) |
+| **Related Docs** | [Observability](observability.md), [Capability Parity](../../concepts/capability-parity.md) |
 
 ---
 

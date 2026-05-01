@@ -6,7 +6,7 @@
 | **Audience** | Developers, DevOps |
 | **Version** | 1.1 |
 | **Last Reviewed** | 2026-04-15 |
-| **Related Docs** | [User Manual](user-manual.md), [Capability Parity](../../capability-parity.md) |
+| **Related Docs** | [User Manual](user-manual.md), [Capability Parity](../../concepts/capability-parity.md) |
 
 ---
 

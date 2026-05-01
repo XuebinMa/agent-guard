@@ -6,7 +6,7 @@
 | **Audience** | Developers, Integrators |
 | **Version** | 1.2 |
 | **Last Reviewed** | 2026-04-15 |
-| **Related Docs** | [Migration Guide](migration-guide.md), [Threat Model](../../threat-model.md) |
+| **Related Docs** | [Migration Guide](migration-guide.md), [Threat Model](../../concepts/threat-model.md) |
 
 ---
 

@@ -6,7 +6,7 @@
 | **Audience** | SREs, Security Analysts |
 | **Version** | 1.2 |
 | **Last Reviewed** | 2026-04-08 |
-| **Related Docs** | [Deployment Guide](deployment-guide.md), [Threat Model](../../threat-model.md) |
+| **Related Docs** | [Deployment Guide](deployment-guide.md), [Threat Model](../../concepts/threat-model.md) |
 
 ---
 

@@ -6,7 +6,7 @@
 | **Audience** | DevOps, Security Engineers |
 | **Version** | 1.1 |
 | **Last Reviewed** | 2026-04-13 |
-| **Related Docs** | [Threat Model](threat-model.md), [Archive: Architecture & Future Directions](archive/architecture-and-vision.md) |
+| **Related Docs** | [Threat Model](threat-model.md), [Archive: Architecture & Future Directions](../archive/architecture-and-vision.md) |
 
 ---
 

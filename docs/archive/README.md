@@ -12,7 +12,7 @@ This directory contains historical strategy documents, milestone records, releas
 | **[Phase 2 Design](phase2-design.md)** | 2 | Core Engine & DSL logic | 🏛️ Archived | [Documentation Hub](../README.md) |
 | **[Phase 3 Design](phase3-design.md)** | 3 | FFI Bindings & Atomic Reload | 🏛️ Archived | [User Manual](../guides/getting-started/user-manual.md) |
 | **[Phase 6 Design](phase6-design.md)** | 6 | Enterprise SIEM & Receipts | 🏛️ Archived | [Observability Guide](../guides/operations/observability.md) |
-| **[Phase 8 Design](phase8-design.md)** | 8 | RC Validation & Stress Tests | 🏛️ Archived | [Security Audit Report](../security-audit.md) |
+| **[Phase 8 Design](phase8-design.md)** | 8 | RC Validation & Stress Tests | 🏛️ Archived | [Security Audit Report](../reference/security-audit.md) |
 | **[v0.1.0 Release Notes](release-notes-v0.1.0.md)** | - | Initial Alpha release | 🏛️ Archived | [v0.2.0 Release Notes](release-notes-v0.2.0.md) |
 | **[Sales Demo Script](sales-demo-script.md)** | 8 | CISO pitch & demo flow | 🏛️ Archived | [Main README](../../README.md) |
 

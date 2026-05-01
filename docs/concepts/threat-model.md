@@ -6,7 +6,7 @@
 | **Audience** | Security Auditors, Compliance Officers |
 | **Version** | 2.2 |
 | **Last Reviewed** | 2026-04-08 |
-| **Related Docs** | [Capability Parity](capability-parity.md), [Archive: Architecture & Future Directions](archive/architecture-and-vision.md) |
+| **Related Docs** | [Capability Parity](capability-parity.md), [Archive: Architecture & Future Directions](../archive/architecture-and-vision.md) |
 
 ---
 

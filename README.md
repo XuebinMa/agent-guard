@@ -146,7 +146,7 @@ What to understand before integrating:
 - [Side-Effect Wedge Demo](docs/guides/getting-started/side-effect-wedge-demo.md): best current proof of the multi-side-effect runtime
 - [Secure Shell Tools](docs/guides/getting-started/secure-shell-tools.md): best first integration when shell is the risk
 - [Check vs Enforce](docs/guides/getting-started/check-vs-enforce.md): when to keep your handler vs when to move execution into `agent-guard`
-- [Framework Support Matrix](docs/framework-support-matrix.md): what is supported today across Node, Python, and Rust
+- [Framework Support Matrix](docs/reference/framework-support-matrix.md): what is supported today across Node, Python, and Rust
 - [User Manual](docs/guides/getting-started/user-manual.md): install, policy basics, and SDK integration
 
 Additional references:

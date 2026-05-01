@@ -6,7 +6,7 @@
 | **Audience** | Security Researchers, Risk Officers, Maintainers |
 | **Version** | 1.1 |
 | **Last Reviewed** | 2026-04-08 |
-| **Related Docs** | [Threat Model](threat-model.md), [Capability Parity](capability-parity.md) |
+| **Related Docs** | [Threat Model](../concepts/threat-model.md), [Capability Parity](../concepts/capability-parity.md) |
 
 ---
 

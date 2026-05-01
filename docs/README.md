@@ -42,9 +42,9 @@ If you are new to the repo, start with the active docs first and only drop into 
 - **I want a specific ChatGPT Actions path after the core proof** → [ChatGPT Actions Integration](guides/getting-started/chatgpt-actions.md)
 - **I want a fast attack demo for evaluation or sharing** → [Attack Demo Playbook](guides/getting-started/attack-demo-playbook.md)
 - **I want to deploy safely** → [Deployment Guide](guides/operations/deployment-guide.md)
-- **I want to audit security posture** → [Threat Model](threat-model.md)
-- **I want to know what frameworks are actually supported** → [Framework Support Matrix](framework-support-matrix.md)
-- **I want to compare platform gaps** → [Capability Parity Matrix](capability-parity.md)
+- **I want to audit security posture** → [Threat Model](concepts/threat-model.md)
+- **I want to know what frameworks are actually supported** → [Framework Support Matrix](reference/framework-support-matrix.md)
+- **I want to compare platform gaps** → [Capability Parity Matrix](concepts/capability-parity.md)
 - **I want historical strategy or release context** → [Document Archive](archive/README.md)
 - **I want maintainer-only planning artifacts** → `docs/superpowers/`
 - **I want material I can share publicly** → [Launch Kit](guides/adoption/launch-kit.md)
@@ -74,7 +74,7 @@ After the first run:
 
 For developers deciding which binding or adapter path to use today.
 
-- 🧭 **[Framework Support Matrix](framework-support-matrix.md)**: Current support status across Rust, Node, Python, LangChain-style adapters, OpenAI-style adapters, and ChatGPT Actions patterns.
+- 🧭 **[Framework Support Matrix](reference/framework-support-matrix.md)**: Current support status across Rust, Node, Python, LangChain-style adapters, OpenAI-style adapters, and ChatGPT Actions patterns.
 
 ---
 
@@ -105,9 +105,12 @@ For SREs and DevOps engineers managing `agent-guard` in production environments.
 ## 🔒 Security & Audit
 For security researchers and auditors reviewing the system's defensive posture.
 
-- 🏹 **[Threat Model](threat-model.md)**: Formal asset analysis and attack surface matrix.
-- 🗺️ **[Capability Parity Matrix](capability-parity.md)**: Feature alignment across Linux, macOS, and Windows.
-- 🔍 **[Security Audit Report](security-audit.md)**: Release-era self-audit checkpoint, useful after the primary threat-model review.
+- 🏹 **[Threat Model](concepts/threat-model.md)**: Formal asset analysis and attack surface matrix.
+- 🗺️ **[Capability Parity Matrix](concepts/capability-parity.md)**: Feature alignment across Linux, macOS, and Windows.
+- 🔍 **[Security Audit Report](reference/security-audit.md)**: Release-era self-audit checkpoint, useful after the primary threat-model review.
+- 🌐 **[Cross-Language Parity](concepts/cross-language-parity.md)**: API and decision identity across Rust / Python / Node bindings.
+- 🔌 **[Adapter Contract](concepts/adapter-contract.md)**: How LangChain / OpenAI adapters wrap host handlers.
+- 🏖️ **Sandbox References**: [Linux](reference/sandbox-linux.md) · [macOS](reference/sandbox-macos.md) · [Windows](reference/sandbox-windows.md)
 
 ---
 

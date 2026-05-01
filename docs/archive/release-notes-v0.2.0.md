@@ -48,4 +48,4 @@ This release has passed the **v0.2.0 Release Gate**:
 
 ---
 **Full Documentation**: [Main Hub](../README.md)
-**Parity Matrix**: [Capability Parity Matrix](../capability-parity.md)
+**Parity Matrix**: [Capability Parity Matrix](../concepts/capability-parity.md)

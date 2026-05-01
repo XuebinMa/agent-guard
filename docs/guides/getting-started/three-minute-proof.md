@@ -90,7 +90,7 @@ For those, continue with:
 
 - [Secure Shell Tools](secure-shell-tools.md)
 - [Check vs Enforce](check-vs-enforce.md)
-- [Framework Support Matrix](../../framework-support-matrix.md)
+- [Framework Support Matrix](../../reference/framework-support-matrix.md)
 
 ---
 
