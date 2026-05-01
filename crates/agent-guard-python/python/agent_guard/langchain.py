@@ -4,8 +4,11 @@ from ._agent_guard import Guard
 from .adapters import (
     AgentGuardSecurityError,
     build_security_error,
+    dispatch_via_run,
+    dispatch_via_run_async,
     ensure_verified_policy,
     handle_execute_result,
+    has_runtime_api,
     prepare_payload,
     resolve_mode,
     run_check_async,
@@ -13,8 +16,8 @@ from .adapters import (
 )
 
 def wrap_langchain_tool(
-    guard: Guard, 
-    tool: Any, 
+    guard: Guard,
+    tool: Any,
     agent_id: Optional[str] = None,
     actor: Optional[str] = None,
     trust_level: str = "untrusted",
@@ -22,15 +25,28 @@ def wrap_langchain_tool(
 ) -> Any:
     """
     Wraps a LangChain tool with agent-guard security enforcement.
-    
+
     Args:
         guard: The initialized agent-guard.Guard instance.
         tool: A LangChain tool instance (BaseTool).
         agent_id: Optional ID for the agent.
         actor: Optional ID for the human actor.
         trust_level: Trust level for the execution ("untrusted", "trusted", "admin").
-        mode: "enforce" (sandbox), "check" (policy-only), or "auto" (enforce for shell, check for others).
-        
+        mode: One of:
+
+            - ``"enforce"`` — always sandbox the call via ``Guard.execute``.
+            - ``"check"``   — always go through ``Guard.check`` (policy-only;
+              the original tool runs in-process when allowed). Fail-closed on
+              invalid policy signatures.
+            - ``"auto"`` (default) — for shell-like tools, behave like
+              ``enforce``. For non-shell tools, dispatch through the unified
+              ``Guard.run`` runtime API when the binding exposes it. The
+              ``RuntimeOutcome::Handoff`` variant means the host runs the
+              original tool itself and the adapter then closes the audit loop
+              via ``Guard.report_handoff_result``. When the binding does not
+              expose ``run`` (older builds), ``auto`` for non-shell tools
+              degrades to ``check`` semantics.
+
     Returns:
         The same tool instance with guarded methods.
     """
@@ -40,6 +56,12 @@ def wrap_langchain_tool(
     original_run = tool._run
     original_arun = getattr(tool, "_arun", None)
     resolved_mode = resolve_mode(tool.name, mode)
+
+    # Defensive fallback: if the binding doesn't expose Guard.run, downgrade
+    # the auto/non-shell path to "check" so this adapter still works against
+    # older PyO3 bindings.
+    if resolved_mode == "run" and not has_runtime_api(guard):
+        resolved_mode = "check"
 
     def _raw_input(*args, **kwargs) -> Any:
         if args and len(args) == 1 and not kwargs:
@@ -66,6 +88,17 @@ def wrap_langchain_tool(
                 original_input=raw_input,
             )
 
+        if resolved_mode == "run":
+            return dispatch_via_run(
+                guard,
+                tool=tool.name,
+                payload=payload_str,
+                guard_options=guard_options,
+                handler=original_run,
+                handler_args=args,
+                handler_kwargs=kwargs,
+            )
+
         decision = guard.check(tool=tool.name, payload=payload_str, **guard_options)
         if decision.outcome != "allow":
             raise build_security_error(decision)
@@ -87,6 +120,18 @@ def wrap_langchain_tool(
                 result,
                 result_mapper=lambda outcome, _original: outcome.output.stdout if outcome.output else "",
                 original_input=raw_input,
+            )
+
+        if resolved_mode == "run":
+            return await dispatch_via_run_async(
+                guard,
+                tool=tool.name,
+                payload=payload_str,
+                guard_options=guard_options,
+                handler=original_run,
+                handler_args=args,
+                handler_kwargs=kwargs,
+                async_handler=original_arun,
             )
 
         decision = await run_check_async(
