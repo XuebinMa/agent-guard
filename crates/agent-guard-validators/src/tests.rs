@@ -619,3 +619,221 @@ mod path_tests {
         assert!(!validate_path_access("/etc/passwd", "/tmp"));
     }
 }
+
+// ── path.rs coverage backfill (S4-6) ─────────────────────────────────────────
+//
+// Locks down branches not exercised by the existing path_tests module:
+//   * `TrustEvent::TrustRequired` is always emitted when prompt is detected.
+//   * `TrustResolver::resolve` (the convenience wrapper) returns the same
+//     verdict as `resolve_with_text` with the canonical prompt.
+//   * `TrustResolver::is_trust_prompt` static helper agrees with
+//     `detect_trust_prompt`.
+//   * `TrustResolver::trusts` short-circuits on denied even when also
+//     allowlisted.
+//   * `TrustDecision::events()` is empty for `NotRequired` and non-empty
+//     for `Required`.
+//   * `path_matches_trusted_root` resolves prefix inclusion correctly,
+//     including `..` segments that escape the candidate root.
+//   * Multiple allowlisted/denied roots are honored (linear `iter().any()`
+//     covers list traversal beyond a single entry).
+//   * Denied root precedence: when a path matches both allow and deny,
+//     the deny path is taken.
+#[cfg(test)]
+mod path_coverage_tests {
+    use crate::path::{
+        detect_trust_prompt, path_matches_trusted_root, TrustConfig, TrustDecision, TrustEvent,
+        TrustPolicy, TrustResolver,
+    };
+
+    #[test]
+    fn trust_required_event_always_emitted_when_prompt_detected() {
+        let resolver = TrustResolver::new(TrustConfig::new());
+        let decision = resolver.resolve_with_text("/cwd", "trust this folder");
+        let events = decision.events();
+        assert!(
+            matches!(events.first(), Some(TrustEvent::TrustRequired { cwd }) if cwd == "/cwd"),
+            "first event must be TrustRequired with the cwd; got {:?}",
+            events
+        );
+    }
+
+    #[test]
+    fn trust_resolved_event_carries_policy_for_allowlisted() {
+        let cfg = TrustConfig::new().with_allowlisted("/work");
+        let resolver = TrustResolver::new(cfg);
+        let decision = resolver.resolve_with_text("/work", "trust this folder");
+        let events = decision.events();
+        let resolved = events
+            .iter()
+            .find_map(|e| match e {
+                TrustEvent::TrustResolved { cwd, policy } => Some((cwd.clone(), *policy)),
+                _ => None,
+            })
+            .expect("expected TrustResolved event for allowlisted cwd");
+        assert_eq!(resolved.0, "/work");
+        assert_eq!(resolved.1, TrustPolicy::AutoTrust);
+    }
+
+    #[test]
+    fn trust_denied_event_carries_reason_for_denied_root() {
+        let cfg = TrustConfig::new().with_denied("/blocked");
+        let resolver = TrustResolver::new(cfg);
+        let decision = resolver.resolve_with_text("/blocked", "trust this folder");
+        let events = decision.events();
+        let denied_reason = events
+            .iter()
+            .find_map(|e| match e {
+                TrustEvent::TrustDenied { reason, .. } => Some(reason.clone()),
+                _ => None,
+            })
+            .expect("expected TrustDenied event for denied cwd");
+        assert!(
+            denied_reason.contains("/blocked"),
+            "deny reason should reference the matched root: {}",
+            denied_reason
+        );
+    }
+
+    #[test]
+    fn resolver_resolve_uses_canonical_prompt() {
+        let resolver = TrustResolver::new(TrustConfig::new());
+        // The plain `resolve` wrapper must trigger the prompt detection
+        // path and return the same shape as resolve_with_text.
+        let decision = resolver.resolve("/anywhere");
+        assert_eq!(decision.policy(), Some(TrustPolicy::RequireApproval));
+    }
+
+    #[test]
+    fn is_trust_prompt_static_helper_agrees_with_detect_fn() {
+        assert!(TrustResolver::is_trust_prompt("trust this folder"));
+        assert!(!TrustResolver::is_trust_prompt("hi there"));
+        // Static helper and free function must agree.
+        assert_eq!(
+            TrustResolver::is_trust_prompt("yes, proceed"),
+            detect_trust_prompt("yes, proceed"),
+        );
+    }
+
+    #[test]
+    fn trusts_returns_true_for_allowlisted_only() {
+        let resolver =
+            TrustResolver::new(TrustConfig::new().with_allowlisted("/Users/me/projects"));
+        assert!(resolver.trusts("/Users/me/projects"));
+        assert!(resolver.trusts("/Users/me/projects/agent-guard"));
+        assert!(!resolver.trusts("/Users/other"));
+    }
+
+    #[test]
+    fn trusts_returns_false_when_only_denied() {
+        let resolver = TrustResolver::new(TrustConfig::new().with_denied("/no-go"));
+        assert!(!resolver.trusts("/no-go"));
+        assert!(!resolver.trusts("/no-go/sub"));
+        // Not allowlisted either, so still false.
+        assert!(!resolver.trusts("/anywhere-else"));
+    }
+
+    #[test]
+    fn trusts_denied_root_overrides_allowlisted() {
+        let cfg = TrustConfig::new()
+            .with_allowlisted("/shared")
+            .with_denied("/shared/secret");
+        let resolver = TrustResolver::new(cfg);
+        // /shared is allowed.
+        assert!(resolver.trusts("/shared"));
+        // /shared/secret is denied even though it sits under an allowlisted root.
+        assert!(!resolver.trusts("/shared/secret"));
+        assert!(!resolver.trusts("/shared/secret/inner"));
+    }
+
+    #[test]
+    fn resolve_denied_takes_precedence_over_allowlist() {
+        let cfg = TrustConfig::new()
+            .with_allowlisted("/shared")
+            .with_denied("/shared/secret");
+        let resolver = TrustResolver::new(cfg);
+        let decision = resolver.resolve_with_text("/shared/secret", "trust this folder");
+        assert_eq!(decision.policy(), Some(TrustPolicy::Deny));
+    }
+
+    #[test]
+    fn resolver_walks_multiple_allowlisted_roots_to_find_match() {
+        let cfg = TrustConfig::new()
+            .with_allowlisted("/first")
+            .with_allowlisted("/second")
+            .with_allowlisted("/third");
+        let resolver = TrustResolver::new(cfg);
+        // Hits the third allowlisted entry; covers the iter().any() loop.
+        let decision = resolver.resolve_with_text("/third/sub", "trust this folder");
+        assert_eq!(decision.policy(), Some(TrustPolicy::AutoTrust));
+    }
+
+    #[test]
+    fn resolver_walks_multiple_denied_roots_to_find_match() {
+        let cfg = TrustConfig::new()
+            .with_denied("/d1")
+            .with_denied("/d2")
+            .with_denied("/d3");
+        let resolver = TrustResolver::new(cfg);
+        let decision = resolver.resolve_with_text("/d3/leaf", "trust this folder");
+        assert_eq!(decision.policy(), Some(TrustPolicy::Deny));
+    }
+
+    #[test]
+    fn not_required_decision_returns_empty_events_slice() {
+        let decision = TrustDecision::NotRequired;
+        assert!(decision.events().is_empty());
+        assert!(decision.policy().is_none());
+    }
+
+    /// Build an isolated, canonicalizable directory tree for path-matching
+    /// tests so that platform-specific canonicalization (e.g. `/tmp` ->
+    /// `/private/tmp` on macOS) is handled consistently for both root and
+    /// candidate. Returns the canonicalized root path.
+    fn make_isolated_root(unique: &str) -> std::path::PathBuf {
+        let mut root = std::env::temp_dir();
+        let pid = std::process::id();
+        root.push(format!("agent-guard-path-tests-{pid}-{unique}"));
+        std::fs::create_dir_all(&root).expect("create isolated root");
+        std::fs::canonicalize(&root).expect("canonicalize root")
+    }
+
+    #[test]
+    fn path_matches_trusted_root_accepts_exact_and_descendants() {
+        let root = make_isolated_root("descendants");
+        let sub = root.join("sub");
+        std::fs::create_dir_all(&sub).expect("create sub");
+        let sub = std::fs::canonicalize(&sub).expect("canonicalize sub");
+
+        let root_str = root.to_str().expect("root utf-8");
+        let sub_str = sub.to_str().expect("sub utf-8");
+        assert!(path_matches_trusted_root(root_str, root_str));
+        assert!(path_matches_trusted_root(sub_str, root_str));
+
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn path_matches_trusted_root_rejects_unrelated_roots() {
+        let a = make_isolated_root("unrelated-a");
+        let b = make_isolated_root("unrelated-b");
+        let a_str = a.to_str().expect("a utf-8");
+        let b_str = b.to_str().expect("b utf-8");
+        assert!(!path_matches_trusted_root(a_str, b_str));
+        assert!(!path_matches_trusted_root(b_str, a_str));
+
+        let _ = std::fs::remove_dir_all(&a);
+        let _ = std::fs::remove_dir_all(&b);
+    }
+
+    #[test]
+    fn path_matches_trusted_root_handles_dot_dot_lexical_normalization() {
+        let root = make_isolated_root("dotdot");
+        let root_str = root.to_str().expect("root utf-8");
+        // <root>/a/.. lexically normalizes to <root>; even if "a" does not
+        // exist, the lexical pass keeps the test deterministic on CI.
+        let dotdot = format!("{root_str}/a/..");
+        assert!(path_matches_trusted_root(&dotdot, root_str));
+
+        let _ = std::fs::remove_dir_all(&root);
+    }
+}
