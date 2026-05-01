@@ -139,6 +139,42 @@ jobs:
           npm run demo:quickstart --prefix crates/agent-guard-node
           npm run demo:flow --prefix crates/agent-guard-node
 
+  parity-e2e:
+    name: Cross-language Parity E2E
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Linux sandbox deps
+        run: sudo apt-get update && sudo apt-get install -y libseccomp-dev
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+      - name: Cache Rust
+        uses: Swatinem/rust-cache@v2
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: crates/agent-guard-node/package-lock.json
+      - name: Build Python binding (maturin develop)
+        run: |
+          python -m venv .venv
+          .venv/bin/pip install --upgrade pip maturin
+          cd crates/agent-guard-python
+          VIRTUAL_ENV="$GITHUB_WORKSPACE/.venv" \
+            "$GITHUB_WORKSPACE/.venv/bin/maturin" develop --features extension-module
+      - name: Build Node binding
+        run: |
+          cd crates/agent-guard-node
+          npm ci
+          npm run build:debug
+      - name: Run cross-language parity comparator
+        run: .venv/bin/python tests/cross-language-parity/compare.py
+
   bench-artifact:
     name: Bench Artifact (non-blocking)
     runs-on: ubuntu-latest

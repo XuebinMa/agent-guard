@@ -1,0 +1,41 @@
+version: 1
+default_mode: workspace_write
+
+tools:
+  bash:
+    mode: workspace_write
+    deny:
+      - prefix: "rm -rf"
+      - prefix: "sudo"
+      - regex: "curl\\s+.*\\|\\s*bash"
+    ask:
+      - prefix: "git push"
+    allow:
+      - prefix: "echo"
+      - prefix: "ls"
+      - prefix: "cat"
+      - prefix: "cargo"
+
+  write_file:
+    mode: workspace_write
+    deny_paths:
+      - "/etc/**"
+      - "**/.ssh/**"
+
+  read_file:
+    mode: workspace_write
+    deny_paths:
+      - "/etc/shadow"
+      - "/etc/passwd"
+      - "**/.ssh/id_*"
+
+  http_request:
+    mode: workspace_write
+    deny:
+      - regex: "^https?://169\\.254\\.169\\.254"
+
+anomaly:
+  enabled: false
+
+audit:
+  enabled: false
