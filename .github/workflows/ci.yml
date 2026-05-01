@@ -138,3 +138,44 @@ jobs:
         run: |
           npm run demo:quickstart --prefix crates/agent-guard-node
           npm run demo:flow --prefix crates/agent-guard-node
+
+  bench-artifact:
+    name: Bench Artifact (non-blocking)
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Linux sandbox deps
+        run: sudo apt-get update && sudo apt-get install -y libseccomp-dev
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+      - name: Cache Rust
+        uses: Swatinem/rust-cache@v2
+      - name: Run benches
+        run: |
+          set -o pipefail
+          mkdir -p bench-out
+          cargo bench -p agent-guard-core --bench policy_check 2>&1 | tee bench-out/policy_check.txt
+          cargo bench -p agent-guard-sdk  --bench audit_write 2>&1 | tee bench-out/audit_write.txt
+          cargo bench -p agent-guard-sdk  --bench runtime_decision 2>&1 | tee bench-out/runtime_decision.txt
+      - name: Summarize benches
+        if: always()
+        run: |
+          {
+            echo '## Bench results'
+            echo
+            for f in bench-out/*.txt; do
+              echo "### $(basename "$f" .txt)"
+              echo '```'
+              grep -E 'time:|change:|Performance' "$f" || cat "$f"
+              echo '```'
+            done
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload bench artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bench-results-${{ github.run_id }}
+          path: |
+            bench-out/
+            target/criterion/

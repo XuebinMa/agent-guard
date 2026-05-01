@@ -22,4 +22,9 @@ ed25519-dalek.workspace = true
 rand.workspace = true
 
 [dev-dependencies]
+criterion.workspace = true
 tempfile = "3"
+
+[[bench]]
+name = "policy_check"
+harness = false
