@@ -59,7 +59,7 @@ npm run demo:proof --prefix crates/agent-guard-node
 Docs:
 - Three-Minute Proof: ../getting-started/three-minute-proof.md
 - Node Quickstart: ../../../crates/agent-guard-node/examples/quickstart/README.md
-- Framework Support Matrix: ../../framework-support-matrix.md
+- Framework Support Matrix: ../../reference/framework-support-matrix.md
 ```
 
 ---
@@ -132,7 +132,7 @@ When a platform allows multiple links, use this order:
 
 1. [Three-Minute Proof](../getting-started/three-minute-proof.md)
 2. [Node Quickstart](../../../crates/agent-guard-node/examples/quickstart/README.md)
-3. [Framework Support Matrix](../../framework-support-matrix.md)
+3. [Framework Support Matrix](../../reference/framework-support-matrix.md)
 
 If you can only share one link, use:
 

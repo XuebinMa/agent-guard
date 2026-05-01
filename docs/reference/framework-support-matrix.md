@@ -6,7 +6,7 @@
 | **Audience** | Developers, Integrators |
 | **Version** | 1.0 |
 | **Last Reviewed** | 2026-04-15 |
-| **Related Docs** | [README](../README.md), [Node README](../crates/agent-guard-node/README.md), [Python README](../crates/agent-guard-python/README.md) |
+| **Related Docs** | [README](../README.md), [Node README](../../crates/agent-guard-node/README.md), [Python README](../../crates/agent-guard-python/README.md) |
 
 ---
 
@@ -17,7 +17,7 @@ This matrix answers the practical adoption questions for the current execution-c
 - what has been validated in the repository?
 - what should a new user try first?
 
-This is not the same as the OS sandbox matrix in [capability-parity.md](capability-parity.md).  
+This is not the same as the OS sandbox matrix in [capability-parity.md](../concepts/capability-parity.md).  
 That document describes platform enforcement boundaries.  
 This document describes framework and binding readiness.
 
@@ -59,9 +59,9 @@ Why:
 
 Start here:
 
-- [Node quickstart](../crates/agent-guard-node/examples/quickstart/README.md)
-- [Secure shell tools guide](guides/getting-started/secure-shell-tools.md)
-- [Check vs enforce guide](guides/getting-started/check-vs-enforce.md)
+- [Node quickstart](../../crates/agent-guard-node/examples/quickstart/README.md)
+- [Secure shell tools guide](../guides/getting-started/secure-shell-tools.md)
+- [Check vs enforce guide](../guides/getting-started/check-vs-enforce.md)
 
 ---
 
@@ -195,7 +195,7 @@ Best fit:
 
 Reference:
 
-- [ChatGPT Actions integration guide](guides/getting-started/chatgpt-actions.md)
+- [ChatGPT Actions integration guide](../guides/getting-started/chatgpt-actions.md)
 
 ---
 

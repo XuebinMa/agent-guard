@@ -112,7 +112,7 @@ Whenever you post a screenshot or clip, pair it with:
 
 1. [Three-Minute Proof](../getting-started/three-minute-proof.md)
 2. [Node Quickstart](../../../crates/agent-guard-node/examples/quickstart/README.md)
-3. [Framework Support Matrix](../../framework-support-matrix.md)
+3. [Framework Support Matrix](../../reference/framework-support-matrix.md)
 
 That gives viewers:
 

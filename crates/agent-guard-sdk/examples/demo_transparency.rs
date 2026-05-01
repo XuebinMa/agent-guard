@@ -106,5 +106,5 @@ fn main() {
     }
 
     println!("====================================================");
-    println!("Note: See docs/capability-parity.md for the full platform matrix.");
+    println!("Note: See docs/concepts/capability-parity.md for the full platform matrix.");
 }

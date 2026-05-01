@@ -6,7 +6,7 @@
 | **Audience** | Maintainers, DevRel, Early Adopters |
 | **Version** | 1.0 |
 | **Last Reviewed** | 2026-04-14 |
-| **Related Docs** | [Three-Minute Proof](../getting-started/three-minute-proof.md), [Attack Demo Playbook](../getting-started/attack-demo-playbook.md), [Demo Asset Workflow](demo-asset-workflow.md), [Social Post Templates](social-posts.md), [FAQ For New Users](faq-for-new-users.md), [Framework Support Matrix](../../framework-support-matrix.md) |
+| **Related Docs** | [Three-Minute Proof](../getting-started/three-minute-proof.md), [Attack Demo Playbook](../getting-started/attack-demo-playbook.md), [Demo Asset Workflow](demo-asset-workflow.md), [Social Post Templates](social-posts.md), [FAQ For New Users](faq-for-new-users.md), [Framework Support Matrix](../../reference/framework-support-matrix.md) |
 
 ---
 
@@ -187,7 +187,7 @@ Before sharing publicly, make sure you have:
 - one static screenshot showing the blocked command output
 - one visual asset process in [Demo Asset Workflow](demo-asset-workflow.md)
 - one link to [Three-Minute Proof](../getting-started/three-minute-proof.md)
-- one link to [Framework Support Matrix](../../framework-support-matrix.md)
+- one link to [Framework Support Matrix](../../reference/framework-support-matrix.md)
 - one sentence that explains the problem before the feature list
 
 ---
@@ -213,7 +213,7 @@ Use this order:
 1. Share the proof demo clip or screenshot.
 2. Link to [Three-Minute Proof](../getting-started/three-minute-proof.md).
 3. Link to [Node Quickstart](../../../crates/agent-guard-node/examples/quickstart/README.md) for people who want to try it.
-4. Link to [Framework Support Matrix](../../framework-support-matrix.md) for people evaluating fit.
+4. Link to [Framework Support Matrix](../../reference/framework-support-matrix.md) for people evaluating fit.
 
 That sequence is much more effective than linking straight to architecture docs first.
 
@@ -254,7 +254,7 @@ What you will see:
 
 - [Three-Minute Proof](../getting-started/three-minute-proof.md)
 - [Node Quickstart](../../../crates/agent-guard-node/examples/quickstart/README.md)
-- [Framework Support Matrix](../../framework-support-matrix.md)
+- [Framework Support Matrix](../../reference/framework-support-matrix.md)
 ```
 
 ---
