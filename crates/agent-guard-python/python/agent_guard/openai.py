@@ -3,8 +3,10 @@ from typing import Any, Callable, Optional
 from ._agent_guard import Guard
 from .adapters import (
     build_security_error,
+    dispatch_via_run,
     ensure_verified_policy,
     handle_execute_result,
+    has_runtime_api,
     prepare_payload,
     resolve_mode,
 )
@@ -25,15 +27,29 @@ def wrap_openai_tool(
     """
     Wrap an OpenAI-style tool handler with agent-guard checks.
 
-    The wrapped callable accepts the original handler input and either:
-    - forwards to the original handler in `check` / `auto` mode when allowed
-    - executes in the sandbox in `enforce` mode
-    - raises a typed security exception on deny / ask-required
+    The wrapped callable accepts the original handler input and dispatches
+    according to ``mode``:
+
+    - ``"enforce"`` — always sandbox the call via ``Guard.execute``.
+    - ``"check"``   — always go through ``Guard.check`` (policy-only). The
+      original handler runs in-process when allowed. Fail-closed on invalid
+      policy signatures.
+    - ``"auto"`` — for shell-like tools, behave like ``enforce``. For non-shell
+      tools, dispatch through the unified ``Guard.run`` runtime API when the
+      binding exposes it. The ``RuntimeOutcome::Handoff`` variant means the
+      handler runs in-process and the adapter then calls
+      ``Guard.report_handoff_result`` to close the audit loop. When the binding
+      does not expose ``run`` (older builds), ``auto`` for non-shell tools
+      degrades to ``check`` semantics.
     """
     if not callable(handler):
         raise TypeError("wrap_openai_tool requires a callable handler")
 
     resolved_mode = resolve_mode(tool, mode)
+
+    if resolved_mode == "run" and not has_runtime_api(guard):
+        resolved_mode = "check"
+
     guard_options = {
         "agent_id": agent_id,
         "actor": actor,
@@ -49,6 +65,17 @@ def wrap_openai_tool(
                 result,
                 result_mapper=result_mapper,
                 original_input=input_data,
+            )
+
+        if resolved_mode == "run":
+            return dispatch_via_run(
+                guard,
+                tool=tool,
+                payload=payload,
+                guard_options=guard_options,
+                handler=handler,
+                handler_args=(input_data, *args),
+                handler_kwargs=kwargs,
             )
 
         decision = guard.check(tool=tool, payload=payload, **guard_options)

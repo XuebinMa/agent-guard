@@ -103,3 +103,126 @@ def test_openai_wrapper_check_mode_fails_closed_for_invalid_signed_policy():
 def test_openai_wrapper_rejects_invalid_mode(guard):
     with pytest.raises(AgentGuardExecutionError, match="Unsupported adapter mode"):
         wrap_openai_tool(guard, lambda _input_data: None, tool="web_search", mode="invalid")
+
+
+# ── Handoff path through Guard.run (S3-2 runtime API) ────────────────────────
+#
+# As with the LangChain tests, these use a duck-typed FakeGuard so the contract
+# is exercised independently of S3-2's binding work.
+
+
+class _FakeOutcome:
+    def __init__(self, outcome, **kwargs):
+        self.outcome = outcome
+        self.request_id = kwargs.get("request_id", "req-1")
+        self.policy_version = kwargs.get("policy_version", "v1")
+        self.policy_verification_status = kwargs.get("policy_verification_status", "unsigned")
+        self.policy_verification_error = kwargs.get("policy_verification_error", None)
+        self.message = kwargs.get("message", None)
+        self.code = kwargs.get("code", None)
+        self.matched_rule = kwargs.get("matched_rule", None)
+        self.ask_prompt = kwargs.get("ask_prompt", None)
+
+
+class FakeGuard:
+    def __init__(self, outcome):
+        self._outcome = outcome
+        self.run_calls = []
+        self.handoff_reports = []
+
+    def run(self, *, tool, payload, **kwargs):
+        self.run_calls.append({"tool": tool, "payload": payload, **kwargs})
+        return self._outcome
+
+    def report_handoff_result(self, request_id, result):
+        self.handoff_reports.append((request_id, result))
+
+    def check(self, *a, **k):
+        raise AssertionError("check() must not be called on the run path")
+
+    def execute(self, *a, **k):
+        raise AssertionError("execute() must not be called on the run path")
+
+
+def test_openai_auto_mode_handoff_invokes_handler_and_reports_audit():
+    fake = FakeGuard(_FakeOutcome("handoff", request_id="req-openai-handoff"))
+    handler_calls = []
+
+    def handler(input_data):
+        handler_calls.append(input_data)
+        return {"ok": True, "echo": input_data["query"]}
+
+    wrapped = wrap_openai_tool(
+        fake,
+        handler,
+        tool="web_search",
+        mode="auto",
+        trust_level="trusted",
+    )
+
+    result = wrapped({"query": "agent-guard"})
+
+    assert result == {"ok": True, "echo": "agent-guard"}
+    assert handler_calls == [{"query": "agent-guard"}]
+    assert len(fake.handoff_reports) == 1
+    request_id, handoff_result = fake.handoff_reports[0]
+    assert request_id == "req-openai-handoff"
+    assert handoff_result.exit_code == 0
+
+
+def test_openai_auto_mode_handoff_handler_raise_still_reports_audit():
+    fake = FakeGuard(_FakeOutcome("handoff", request_id="req-openai-err"))
+
+    def handler(_input_data):
+        raise ValueError("oops")
+
+    wrapped = wrap_openai_tool(
+        fake,
+        handler,
+        tool="web_search",
+        mode="auto",
+        trust_level="trusted",
+    )
+
+    with pytest.raises(ValueError, match="oops"):
+        wrapped({"query": "x"})
+
+    assert len(fake.handoff_reports) == 1
+    request_id, handoff_result = fake.handoff_reports[0]
+    assert request_id == "req-openai-err"
+    assert handoff_result.exit_code == 1
+    assert handoff_result.stderr == "oops"
+
+
+def test_openai_auto_mode_run_deny_raises_without_handler_call():
+    fake = FakeGuard(
+        _FakeOutcome(
+            "denied",
+            request_id="req-openai-deny",
+            message="nope",
+            code="DeniedByRule",
+            matched_rule="rule-x",
+        )
+    )
+
+    handler_calls = []
+
+    def handler(input_data):
+        handler_calls.append(input_data)
+        return "should-not-run"
+
+    wrapped = wrap_openai_tool(
+        fake,
+        handler,
+        tool="web_search",
+        mode="auto",
+        trust_level="trusted",
+    )
+
+    with pytest.raises(AgentGuardDeniedError) as exc_info:
+        wrapped({"query": "y"})
+
+    assert exc_info.value.code == "DeniedByRule"
+    assert exc_info.value.matched_rule == "rule-x"
+    assert handler_calls == []
+    assert fake.handoff_reports == []
