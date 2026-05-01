@@ -18,9 +18,9 @@ windows-sandbox = ["agent-guard-sandbox/windows-sandbox"]
 windows-appcontainer = ["agent-guard-sandbox/windows-appcontainer"]
 
 [dependencies]
-agent-guard-core = { path = "../agent-guard-core" }
-agent-guard-validators = { path = "../agent-guard-validators" }
-agent-guard-sandbox = { path = "../agent-guard-sandbox" }
+agent-guard-core = { path = "../agent-guard-core", version = "=0.2.0-rc1" }
+agent-guard-validators = { path = "../agent-guard-validators", version = "=0.2.0-rc1" }
+agent-guard-sandbox = { path = "../agent-guard-sandbox", version = "=0.2.0-rc1" }
 tracing.workspace = true
 tracing-subscriber = { workspace = true, optional = true }
 prometheus-client.workspace = true

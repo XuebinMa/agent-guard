@@ -1,0 +1,49 @@
+# cargo-deny configuration
+# Run locally:  cargo deny check
+# CI:           .github/workflows/ci.yml — `cargo-deny` job
+
+[graph]
+all-features = true
+
+[advisories]
+yanked = "warn"
+# All ignored advisories are reachable only via reqwest 0.11 → rustls 0.21
+# transitively (or async-std via httpmock dev-dep). Fix requires upgrading
+# reqwest to 0.12 (rustls 0.22+) and httpmock to a current release; that's
+# a minor-breaking dep migration and will land in a dedicated PR rather
+# than this deps-pin PR. Tracked as Sprint 4 follow-up.
+ignore = [
+    "RUSTSEC-2026-0104",  # rustls-webpki — panic on empty BIT STRING in CRL
+    "RUSTSEC-2026-0099",  # rustls-webpki — name constraints URI accept
+    "RUSTSEC-2026-0098",  # rustls 0.21 — fragmentation handling
+    "RUSTSEC-2026-0097",  # rand — unsound with custom logger
+    "RUSTSEC-2025-0134",  # rustls-pemfile unmaintained (transitive via reqwest)
+    "RUSTSEC-2025-0052",  # async-std unmaintained (transitive via httpmock dev-dep)
+]
+
+[bans]
+multiple-versions = "warn"
+wildcards = "deny"
+allow-wildcard-paths = true
+
+[licenses]
+allow = [
+    "MIT",
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "ISC",
+    "Unicode-DFS-2016",
+    "Unicode-3.0",
+    "MPL-2.0",
+    "Zlib",
+    "CDLA-Permissive-2.0",
+    "OpenSSL",
+]
+confidence-threshold = 0.93
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
