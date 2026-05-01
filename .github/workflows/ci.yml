@@ -205,6 +205,29 @@ jobs:
       - name: Run cross-language parity comparator
         run: .venv/bin/python tests/cross-language-parity/compare.py
 
+  sbom:
+    name: SBOM (CycloneDX)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Install cargo-cyclonedx
+        run: cargo install cargo-cyclonedx --locked
+      - name: Generate CycloneDX SBOM (per-crate, all features)
+        run: cargo cyclonedx --format json --all-features
+      - name: Collect SBOM artifacts
+        run: |
+          mkdir -p sbom-out
+          find crates -name '*.cdx.json' -exec mv {} sbom-out/ \;
+          ls -la sbom-out/
+      - name: Upload SBOM artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbom-cyclonedx-${{ github.run_id }}
+          path: sbom-out/
+
   bench-artifact:
     name: Bench Artifact (non-blocking)
     runs-on: ubuntu-latest
