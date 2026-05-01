@@ -10,7 +10,7 @@ name = "agent_guard"
 crate-type = ["cdylib"]
 
 [dependencies]
-agent-guard-sdk = { path = "../agent-guard-sdk" }
+agent-guard-sdk = { path = "../agent-guard-sdk", version = "=0.2.0-rc1" }
 tracing-subscriber = { workspace = true }
 pyo3 = { version = "0.28", features = ["abi3-py310"] }
 hex.workspace = true

@@ -139,6 +139,36 @@ jobs:
           npm run demo:quickstart --prefix crates/agent-guard-node
           npm run demo:flow --prefix crates/agent-guard-node
 
+  cargo-deny:
+    name: cargo-deny
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo install cargo-deny --locked
+      - run: cargo deny check
+
+  cargo-audit:
+    name: cargo-audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo install cargo-audit --locked
+      # Ignored advisories are tracked as Sprint 4 follow-up; all reachable
+      # via reqwest 0.11 → rustls 0.21 (or async-std via httpmock dev-dep).
+      # Fix requires the reqwest 0.12 / rustls 0.22 migration in a dedicated PR.
+      - run: |
+          cargo audit \
+            --ignore RUSTSEC-2026-0104 \
+            --ignore RUSTSEC-2026-0099 \
+            --ignore RUSTSEC-2026-0098 \
+            --ignore RUSTSEC-2026-0097 \
+            --ignore RUSTSEC-2025-0134 \
+            --ignore RUSTSEC-2025-0052
+
   parity-e2e:
     name: Cross-language Parity E2E
     runs-on: ubuntu-latest

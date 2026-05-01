@@ -13,7 +13,7 @@ crate-type = ["cdylib"]
 macos-sandbox = ["agent-guard-sdk/macos-sandbox"]
 
 [dependencies]
-agent-guard-sdk = { path = "../agent-guard-sdk" }
+agent-guard-sdk = { path = "../agent-guard-sdk", version = "=0.2.0-rc1" }
 napi = { version = "2.12", features = ["async", "serde-json"] }
 napi-derive = "2.12"
 serde = { version = "1.0", features = ["derive"] }

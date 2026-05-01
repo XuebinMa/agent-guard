@@ -6,6 +6,6 @@ license.workspace = true
 description = "Bash and path validators for agent-guard"
 
 [dependencies]
-agent-guard-core = { path = "../agent-guard-core" }
+agent-guard-core = { path = "../agent-guard-core", version = "=0.2.0-rc1" }
 serde.workspace = true
 serde_json.workspace = true

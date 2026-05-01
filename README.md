@@ -6,6 +6,7 @@
 [![Version](https://img.shields.io/badge/Version-0.2.0--rc1-blue.svg)]()
 [![Focus](https://img.shields.io/badge/Focus-Execution%20Control-green.svg)]()
 [![License](https://img.shields.io/badge/License-MIT-yellow.svg)]()
+[![MSRV](https://img.shields.io/badge/MSRV-1.79-orange.svg)]()
 
 `agent-guard` is for AI application and agent developers who need a real execution boundary before tool calls turn into shell commands, file mutations, or other side effects. It sits between agent intent and execution so risky actions do not rely only on prompts, regexes, or ad hoc handler code.
 
