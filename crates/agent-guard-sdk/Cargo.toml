@@ -38,6 +38,20 @@ hex.workspace = true
 reqwest = { workspace = true, features = ["json", "rustls-tls", "blocking"] }
 
 [dev-dependencies]
+criterion.workspace = true
 rand = "0.8"
 httpmock = "0.7"
 tempfile = "3"
+# Used only in `audit_write` bench to redirect stdout to /dev/null so the
+# stdout-control bench doesn't flood CI logs. Unix-only; bench falls back
+# to a no-op on non-unix targets.
+[target.'cfg(unix)'.dev-dependencies]
+libc = "0.2"
+
+[[bench]]
+name = "audit_write"
+harness = false
+
+[[bench]]
+name = "runtime_decision"
+harness = false
