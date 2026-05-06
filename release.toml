@@ -1,0 +1,41 @@
+# cargo-release configuration
+# Run:  cargo install cargo-release --locked
+#       cargo release <level> [--execute]
+#
+# Where <level> ∈ {major, minor, patch, alpha, beta, rc, release}
+#
+# Without --execute the run is a dry-run. Add --execute to actually move
+# version numbers, commit, and tag. The configured workflow is:
+#
+#  1. cargo release <level>          (dry-run)
+#  2. review the proposed diff + tag
+#  3. cargo release <level> --execute
+#  4. cargo release publish --execute (only when crates are ready for crates.io)
+#
+# For now we ship release commits and tags but skip the actual `cargo publish`
+# step, since the crates aren't on crates.io yet.
+
+# Use a single shared version across all workspace crates so the seven
+# crates always release together and inter-crate `version = "=0.2.0-rc1"`
+# pins stay consistent.
+shared-version = true
+
+# Tag once per workspace at the workspace level, not per-crate.
+consolidate-commits = true
+tag-name = "v{{version}}"
+tag-message = "agent-guard v{{version}}"
+pre-release-commit-message = "chore(release): v{{version}}"
+
+# Skip `cargo publish` for now — the crates aren't on crates.io and a
+# stray publish would be hard to undo. Flip to `true` when we're ready.
+publish = false
+
+# Don't push the tag automatically; the human reviews and pushes it
+# explicitly to control when the release becomes visible.
+push = false
+
+# CHANGELOG.md updates are intentionally NOT automated here. cargo-release's
+# `pre-release-replacements` resolves paths per-crate, so a workspace-level
+# CHANGELOG would be rewritten N times (once per crate) and corrupted.
+# CONTRIBUTING.md § Releasing instructs the human to roll the
+# [Unreleased] heading manually before invoking cargo release.
