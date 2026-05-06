@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+`cargo-release` automation rewrites the `[Unreleased]` heading at each release; do not delete it.
+
+## [Unreleased]
+
+### Added
+- `cargo-release` integration. New `release.toml` configures workspace-coordinated releases (shared version across all seven crates, single tag per workspace, manual push). See `CONTRIBUTING.md` § Releasing for the workflow.
+
 ## [0.2.0-rc1] - 2026-04-08
 
 ### Added

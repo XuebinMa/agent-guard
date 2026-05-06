@@ -162,12 +162,29 @@ For non-vulnerability security suggestions (defense in depth, hardening), open a
 
 ## Releasing
 
-Release engineering is centralized in `cargo-release` (planned for Sprint 4 S4-3); until that lands, releases are done manually:
+Release engineering is centralized in `cargo-release` driven by the workspace-level [`release.toml`](release.toml).
 
-1. Bump `version` in `Cargo.toml` `[workspace.package]`.
-2. Bump matching versions in each crate's `Cargo.toml` (cargo-release will automate this).
-3. Update `CHANGELOG.md` (planned in S4-3).
-4. Tag with `v<semver>` and push.
+```bash
+cargo install cargo-release --locked   # one-time
+cargo release <level>                  # dry-run — review the proposed diff + tag
+cargo release <level> --execute        # commit version bump + create tag
+git push origin main v<semver>         # push manually after review
+```
+
+`<level>` is one of `patch`, `minor`, `major`, `alpha`, `beta`, `rc`, or `release`. The configuration:
+
+- Uses a **shared version** across all seven workspace crates so they always release together (matches the `version = "=0.2.0-rc1"` inter-crate pin in `Cargo.toml`).
+- Creates **one tag per workspace** (`v<semver>`) rather than a tag per crate.
+- **Skips `cargo publish`** for now (`publish = false` in `release.toml`) — flip to `true` when the crates are ready for crates.io.
+- **Does not auto-push** — you push the tag explicitly so the release becomes visible only after a final review.
+- **Does NOT roll `CHANGELOG.md`** automatically — `cargo-release`'s `pre-release-replacements` resolves paths per-crate, which would rewrite a workspace-level CHANGELOG seven times. Update `CHANGELOG.md` by hand before each release: rename the current `## [Unreleased]` heading to `## [<new-version>] — <date>` and add a fresh `## [Unreleased]` stub above it.
+
+Recommended pre-release sequence:
+
+1. Edit `CHANGELOG.md` — promote `[Unreleased]` to a versioned heading with the release date.
+2. `cargo release <level>` — dry-run, review the proposed version bump.
+3. `cargo release <level> --execute` — commit + tag.
+4. `git push origin main v<semver>` — push when ready.
 
 ## Getting help
 
