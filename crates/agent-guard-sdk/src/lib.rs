@@ -2,6 +2,7 @@ pub mod anomaly;
 #[doc(hidden)]
 pub mod audit_writer;
 pub mod doctor;
+mod enforce;
 mod executors;
 pub mod guard;
 mod guard_helpers;
@@ -14,7 +15,8 @@ pub mod siem;
 
 pub use anomaly::{get_detector, AnomalyDetector, AnomalyStatus};
 pub use doctor::{collect_doctor_report, render_doctor_html, render_doctor_text, DoctorReport};
-pub use guard::{DefaultSandboxDiagnosis, ExecuteOutcome, ExecuteResult, Guard, GuardInitError};
+pub use enforce::{ExecuteOutcome, ExecuteResult};
+pub use guard::{DefaultSandboxDiagnosis, Guard, GuardInitError};
 pub use metrics::{get_metrics, Metrics};
 pub use policy_signing::{
     load_policy_signature_file, load_public_key_file, parse_hex_signing_key, sign_policy,
