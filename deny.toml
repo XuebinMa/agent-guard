@@ -7,19 +7,12 @@ all-features = true
 
 [advisories]
 yanked = "warn"
-# All ignored advisories are reachable only via reqwest 0.11 → rustls 0.21
-# transitively (or async-std via httpmock dev-dep). Fix requires upgrading
-# reqwest to 0.12 (rustls 0.22+) and httpmock to a current release; that's
-# a minor-breaking dep migration and will land in a dedicated PR rather
-# than this deps-pin PR. Tracked as Sprint 4 follow-up.
-ignore = [
-    "RUSTSEC-2026-0104",  # rustls-webpki — panic on empty BIT STRING in CRL
-    "RUSTSEC-2026-0099",  # rustls-webpki — name constraints URI accept
-    "RUSTSEC-2026-0098",  # rustls 0.21 — fragmentation handling
-    "RUSTSEC-2026-0097",  # rand — unsound with custom logger
-    "RUSTSEC-2025-0134",  # rustls-pemfile unmaintained (transitive via reqwest)
-    "RUSTSEC-2025-0052",  # async-std unmaintained (transitive via httpmock dev-dep)
-]
+# No ignored advisories. The previous six entries (RUSTSEC-2026-0097/0098/0099/0104,
+# RUSTSEC-2025-0052/0134) were resolved by upgrading reqwest 0.11 → 0.13
+# (rustls 0.23, drops rustls-pemfile), httpmock 0.7 → 0.8 (drops async-std),
+# and rand 0.8.5 → 0.8.6 (note: RUSTSEC-2026-0097 originated from our direct
+# `rand` dep, not from the reqwest chain).
+ignore = []
 
 [bans]
 multiple-versions = "warn"
