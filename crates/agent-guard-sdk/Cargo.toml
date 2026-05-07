@@ -35,12 +35,12 @@ arc-swap.workspace = true
 chrono.workspace = true
 ed25519-dalek.workspace = true
 hex.workspace = true
-reqwest = { workspace = true, features = ["json", "rustls-tls", "blocking"] }
+reqwest = { workspace = true, features = ["json", "rustls", "blocking"] }
 
 [dev-dependencies]
 criterion.workspace = true
-rand = "0.8"
-httpmock = "0.7"
+rand.workspace = true
+httpmock = "0.8"
 tempfile = "3"
 # Used only in `audit_write` bench to redirect stdout to /dev/null so the
 # stdout-control bench doesn't flood CI logs. Unix-only; bench falls back
