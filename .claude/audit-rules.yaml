@@ -1,0 +1,74 @@
+# Audit dispatch rules for the agent-guard three-layer audit workflow.
+#
+# Consumed by:
+#   Layer 1 (PostToolUse, PR-3, not yet wired)  — real-time review on .rs edits
+#   Layer 2 (PreCommit gate, this PR)           — runs ./.claude/workflows/pre-commit-review.sh
+#   Layer 3 (Weekly deep audit, PR-2)           — schedule-driven full sweep
+#
+# Path matching: each entry under `paths` is a glob. `**` matches any number of
+# path segments; `*` matches a single segment. The first matching rule, in
+# declaration order, classifies the file. Files that match no rule are NOT
+# audited.
+#
+# Reviewer field: a list of LLM agent names that should be invoked when the
+# corresponding layer is wired in. Layer 2 today does NOT spawn LLM reviewers
+# (cost / latency / synchronous-blocking concerns) and instead runs a small
+# set of deterministic CRITICAL-pattern checks scoped by `severity_block`.
+# Treat `reviewers` as the authoritative future-state dispatch list.
+#
+# severity_block: the minimum reviewer severity that should fail the gate.
+#   CRITICAL — security-relevant or data-loss risk; block commit (exit 2).
+#   HIGH     — quality regression; warn only on Layer 2 (still surfaced).
+
+version: 1
+
+rules:
+  # 1. Validators and sandbox: hardest blast radius — these decide what
+  #    actually escapes onto the host. Any new unwrap/panic/unsafe here is
+  #    treated as CRITICAL.
+  - id: validators-and-sandbox
+    paths:
+      - "crates/agent-guard-validators/**/*.rs"
+      - "crates/agent-guard-sandbox/**/*.rs"
+    reviewers:
+      - rust-reviewer
+      - security-reviewer
+    severity_block: CRITICAL
+
+  # 2. SDK core enforcement surface: Guard, enforce pipeline, executors,
+  #    policy signing, provenance attestation. Silent failures here let
+  #    risky tool calls through; treat as CRITICAL.
+  - id: sdk-core-enforcement
+    paths:
+      - "crates/agent-guard-sdk/src/guard.rs"
+      - "crates/agent-guard-sdk/src/guard_helpers.rs"
+      - "crates/agent-guard-sdk/src/enforce.rs"
+      - "crates/agent-guard-sdk/src/executors.rs"
+      - "crates/agent-guard-sdk/src/policy_signing.rs"
+      - "crates/agent-guard-sdk/src/provenance.rs"
+    reviewers:
+      - rust-reviewer
+      - silent-failure-hunter
+    severity_block: CRITICAL
+
+  # 3. Type design surface for invariants: the public decision/trust types
+  #    that everything else depends on.
+  - id: core-type-design
+    paths:
+      - "crates/agent-guard-core/src/policy.rs"
+      - "crates/agent-guard-core/src/decision.rs"
+      - "crates/agent-guard-core/src/types.rs"
+    reviewers:
+      - rust-reviewer
+      - type-design-analyzer
+    severity_block: CRITICAL
+
+  # 4. Default catch-all for any other Rust source. HIGH-only — surfaced
+  #    but does not block commits, so day-to-day development isn't gated
+  #    on subjective taste.
+  - id: rust-default
+    paths:
+      - "**/*.rs"
+    reviewers:
+      - rust-reviewer
+    severity_block: HIGH

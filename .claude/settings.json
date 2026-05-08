@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "_doc": "Team-shared Claude Code settings for agent-guard. Layer-2 PreCommit gate is wired here. Layer 1 (PostToolUse) and Layer 3 (weekly cron) will be added in follow-up PRs. Per-machine permissions live in settings.local.json (gitignored).",
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash .claude/workflows/pre-commit-review.sh",
+            "timeout": 300
+          }
+        ]
+      }
+    ]
+  }
+}
