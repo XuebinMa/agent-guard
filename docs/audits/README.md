@@ -81,15 +81,68 @@ run.
 5. If a finding is a known false positive, narrow the agent's prompt in
    `weekly-deep-audit.sh` to reduce noise on the next run.
 
+## Layer 1 — real-time edit-time review
+
+The Layer-1 hook lives at [`.claude/workflows/post-edit-review.sh`](../../.claude/workflows/post-edit-review.sh)
+and is wired into `.claude/settings.json` as a `PostToolUse` hook on
+`Edit|Write`. It fires after every successful Edit/Write on a `.rs`
+file and runs the **same deterministic CRITICAL-pattern scan** Layer 2
+applies at commit time, but on the just-written region only and
+scoped to files whose `audit-rules.yaml` rule has
+`severity_block: CRITICAL`.
+
+| where                                       | what it stores                                 |
+| ------------------------------------------- | ---------------------------------------------- |
+| `.claude/.audit-state/findings.log`         | append-only timestamped findings; tail this    |
+| `.claude/.audit-state/stamps/<sha256>.stamp` | per-path debounce stamp (mtime is the timestamp) |
+
+`.claude/.audit-state/` is gitignored; nothing here ever gets committed.
+
+**Debounce.** Layer 1 enforces a 5-second per-path debounce: bursting
+ten edits to the same file in a second produces at most one log entry
+and one stderr summary. Editing ten *different* files in a burst still
+produces ten reports — each path has its own stamp.
+
+**Tailing findings live (in another terminal):**
+
+```bash
+tail -F .claude/.audit-state/findings.log
+```
+
+Each line is:
+
+```
+<YYYY-MM-DDTHH:MM:SS>  <rel_path>:<line>  CRITICAL  rule=<rule_id>  reviewers=<csv>  <msg> :: <snippet>
+```
+
+The `reviewers=` field is sourced from the matched rule's `reviewers:`
+list and records which LLM agents *would* be dispatched if real LLM
+review were enabled. Today Layer 1 ships **deterministic-only** —
+spawning real reviewer agents on every Edit (typical session: dozens
+of edits) would burn tens of dollars per active developer per day.
+The `reviewers=` provenance keeps the routing decision settled so a
+later opt-in PR can flip the dispatch on without re-routing.
+
+**Skipping the hook:**
+
+| how                                  | when                                        |
+| ------------------------------------ | ------------------------------------------- |
+| `AGENT_GUARD_SKIP_POSTEDIT=1`        | global override (emergency / quiet sessions) |
+| Edits to files under `.claude/`      | always skipped (defensive — prevents recursion if a future agent writes config there) |
+
+Layer 1 is **warn-only** — the hook always exits 0. The only
+observable effects are the appended log line and the one-line stderr
+summary surfaced back to the agent.
+
 ## Why this exists
 
-This is **Layer 3** of the three-layer audit workflow:
+This is the third layer of the three-layer audit workflow:
 
 | layer | trigger                       | gate? | landing PR |
 | ----- | ----------------------------- | ----- | ---------- |
-| 1     | PostToolUse on `.rs` edit     | warn  | (deferred — PR-3) |
+| 1     | PostToolUse on `.rs` edit     | warn  | (this PR)  |
 | 2     | PreCommit on `git commit ...` | block | [#33](https://github.com/XuebinMa/agent-guard/pull/33) |
-| 3     | Weekly cron                   | none  | (this PR)  |
+| 3     | Weekly cron                   | none  | [#34](https://github.com/XuebinMa/agent-guard/pull/34) |
 
 Layer 2 catches most regressions at the commit boundary using
 deterministic patterns. Layer 3 fills the gaps with LLM-based reasoning
