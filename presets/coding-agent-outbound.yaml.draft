@@ -1,0 +1,217 @@
+# agent-guard outbound preset for AI coding agents
+# ---------------------------------------------------------------------------
+# Phase 0 / A2 draft — 2026-05-09
+# ---------------------------------------------------------------------------
+# THIS IS A DRAFT. Not loaded by `agent-guard` (`.draft` extension keeps it
+# out of the loader). Real production preset ships in Sprint 5-2 at
+# `presets/coding-agent-outbound.yaml`.
+#
+# Purpose: zero-config policy for developers running AI coding agents
+# (Claude Code, Cursor, Codex CLI, Aider) who want sensible "ask before
+# anything goes outbound" defaults without writing their first rule.
+#
+# Design rules:
+#   1. Code / test loops stay frictionless. No ask on `git status`, `git
+#      commit`, `cargo build`, `npm test`, etc.
+#   2. Anything that ships state outside the workspace = `ask`.
+#   3. Anything destructive + irreversible = `deny`.
+#   4. Anything well-known dangerous (curl-pipe-bash, cloud metadata) =
+#      `deny`, no second chance.
+#   5. Reading credential / secret files = `deny` at action layer; the
+#      content layer (Sprint 6) will do the same for inline secrets.
+#   6. Comment every rule with the moment it catches and the rationale —
+#      this file is also documentation.
+#
+# Open questions (tracked in plan A2 → discussion):
+#   - Should `git push` to a fork (not origin) ask, or auto-allow?
+#   - `kubectl apply` in dev cluster — ask or allow?
+#   - `terraform apply` in workspace plan-only mode — ask or allow?
+#   - HTTP method-aware deny (POST/PUT/PATCH/DELETE non-local) needs schema
+#     extension; currently URL-centric only. See `executors.rs:80`.
+# ---------------------------------------------------------------------------
+
+version: 1
+
+# Coding agents need to read source freely. Default starts permissive within
+# the workspace; outbound guards live in per-tool rules below.
+default_mode: workspace_write
+
+tools:
+
+  bash:
+    mode: workspace_write
+
+    # ─── DENY (highest priority, no prompt) ────────────────────────────
+    deny:
+      # Catastrophic destructive ops — never auto, no ask.
+      - prefix: "rm -rf /"
+      - regex: "rm\\s+-[rRfv]+\\s+\\$HOME"
+      - regex: "rm\\s+-[rRfv]+\\s+~(/|$)"
+      - regex: "rm\\s+-[rRfv]+\\s+\\.\\.?$"
+
+      # History-rewriting / forced overwrite — irreversible to remote.
+      - prefix: "git push --force"
+      - prefix: "git push -f"
+      - regex: "git\\s+push\\s+.*--force-with-lease"
+      - regex: "git\\s+push\\s+.*--mirror"
+
+      # Reset against remote tracking — likely loses unpushed work.
+      - regex: "git\\s+reset\\s+--hard\\s+(origin|upstream)/"
+
+      # Curl-pipe-bash and exfil chain patterns.
+      - regex: "curl[^|]*\\|\\s*sh"
+      - regex: "curl[^|]*\\|\\s*bash"
+      - regex: "wget[^|]*\\|\\s*sh"
+      - regex: "wget[^|]*\\|\\s*bash"
+
+      # Cloud metadata endpoints (SSRF / IMDS classic).
+      - regex: "(?i)169\\.254\\.169\\.254"
+      - regex: "(?i)metadata\\.google\\.internal"
+
+      # Sudo — agents have no business in privilege escalation.
+      - prefix: "sudo "
+
+      # Disk / filesystem level — irreversible.
+      - regex: "(mkfs\\.|dd\\s+if=.*of=/dev/)"
+
+    # ─── ASK (interactive approval, recoverable) ───────────────────────
+    ask:
+      # ─── code egress ─────────────────────────────────────────────────
+      # Catches the moment "agent thinks it's done, wants to ship it."
+      - prefix: "git push"
+
+      # ─── package release ─────────────────────────────────────────────
+      # Public registry mutations. Once published, can't fully unpublish.
+      - prefix: "npm publish"
+      - prefix: "yarn publish"
+      - prefix: "pnpm publish"
+      - prefix: "cargo publish"
+      - prefix: "gem push"
+      - prefix: "twine upload"
+      - regex: "python\\s+-m\\s+twine\\s+upload"
+      - regex: "python3?\\s+setup\\.py\\s+(upload|sdist\\s+upload)"
+
+      # ─── artifact / container egress ─────────────────────────────────
+      - prefix: "docker push"
+      - prefix: "podman push"
+      - regex: "buildx\\s+build\\s+.*--push"
+
+      # ─── public release / repo mutation ──────────────────────────────
+      # GitHub-visible state changes that other people will see.
+      - prefix: "gh release create"
+      - prefix: "gh release edit"
+      - prefix: "gh release upload"
+      - prefix: "gh release delete"
+      - prefix: "gh repo create"
+      - prefix: "gh repo delete"
+      - prefix: "gh repo archive"
+      - prefix: "gh issue close"
+      - prefix: "gh pr merge"
+
+      # ─── workspace destructive (recoverable, but ask anyway) ─────────
+      - prefix: "git reset --hard"
+      - prefix: "git clean -fd"
+      - regex: "rm\\s+-[rRfv]+\\s+"   # any rm -r / -rf / -rR not caught above
+      - regex: "find\\s+.*\\s-delete"
+
+      # ─── deployment / infra mutation ─────────────────────────────────
+      - regex: "kubectl\\s+(apply|delete|drain|cordon|uncordon|patch)"
+      - regex: "helm\\s+(install|upgrade|uninstall)"
+      - regex: "terraform\\s+(apply|destroy|import)"
+      - regex: "pulumi\\s+(up|destroy|refresh)"
+      - prefix: "ansible-playbook"
+      - regex: "aws\\s+s3\\s+(rm|sync\\s+--delete|mv)"
+      - regex: "aws\\s+(ec2|rds|lambda)\\s+(delete|terminate|stop)"
+      - regex: "gcloud\\s+(deploy|app\\s+deploy|compute\\s+instances\\s+delete)"
+      - prefix: "fly deploy"
+      - regex: "vercel\\s+.*--prod"
+      - regex: "netlify\\s+deploy\\s+.*--prod"
+      - regex: "wrangler\\s+(publish|deploy)"
+
+  read_file:
+    mode: workspace_write
+    # Pre-warn at action layer for credential / secret files.
+    # Sprint 6 content layer will additionally scan inline secrets in any
+    # file read, regardless of path.
+    deny_paths:
+      - "**/.env"
+      - "**/.env.*"
+      - "**/.envrc"
+      - "**/.ssh/**"
+      - "**/id_rsa*"
+      - "**/id_ed25519*"
+      - "**/*.pem"
+      - "**/*.key"
+      - "**/credentials"
+      - "**/.aws/credentials"
+      - "**/.aws/config"
+      - "**/.docker/config.json"
+      - "**/.npmrc"
+      - "**/.pypirc"
+      - "**/.cargo/credentials*"
+      - "**/.netrc"
+      - "**/secrets.yaml"
+      - "**/secrets.yml"
+      - "**/secret.json"
+
+  write_file:
+    mode: workspace_write
+    deny_paths:
+      # System paths — never write.
+      - "/etc/**"
+      - "/usr/**"
+      - "/boot/**"
+      - "/sys/**"
+      - "/proc/**"
+      # Credential / config — never write. Forces the agent to surface
+      # any "I'll modify your credentials" intent explicitly.
+      - "**/.ssh/**"
+      - "**/.aws/**"
+      - "**/.docker/**"
+      - "**/.npmrc"
+      - "**/.pypirc"
+
+  http_request:
+    mode: workspace_write
+    # Schema is URL-centric today. Method-aware gating
+    # (POST/PUT/PATCH/DELETE → ask) is runtime-side via HTTP executor
+    # (`executors.rs:80`). Sprint 5-2 will codify the YAML side once the
+    # schema gains a `method` matcher.
+    deny:
+      # Cloud / link-local metadata.
+      - regex: "^https?://169\\.254\\.169\\.254"
+      - regex: "^https?://metadata\\.google\\.internal"
+      - regex: "^https?://metadata\\.azure\\.com"
+
+      # Loopback / private RFC1918 mutation surfaces. If you genuinely
+      # need to call your local dev server, override this rule
+      # explicitly — defaulting to safe.
+      - regex: "^https?://localhost"
+      - regex: "^https?://127\\.0\\.0\\.1"
+      - regex: "^https?://0\\.0\\.0\\.0"
+      - regex: "^https?://10\\."
+      - regex: "^https?://172\\.(1[6-9]|2[0-9]|3[01])\\."
+      - regex: "^https?://192\\.168\\."
+
+# ─── Trust override ─────────────────────────────────────────────────────
+trust:
+  untrusted:
+    # Untrusted actors hard-limited to read_only.
+    override_mode: read_only
+
+# ─── Anomaly / rate limiting ────────────────────────────────────────────
+anomaly:
+  enabled: true
+  rate_limit:
+    window_seconds: 60
+    max_calls: 30
+  deny_fuse:
+    enabled: true
+    threshold: 5
+    window_seconds: 60
+
+# ─── Audit ──────────────────────────────────────────────────────────────
+audit:
+  enabled: true
+  output: stdout
+  include_payload_hash: true
