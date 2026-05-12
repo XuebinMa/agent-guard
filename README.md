@@ -120,6 +120,14 @@ Today, the runtime can already own execution for:
 
 ---
 
+## Adjacent Layer: Loop Governance
+
+`agent-guard` controls the **outbound side effect** on each tool call. It deliberately does not govern the surrounding autonomous loop — budget caps, verifier gates, retry admission, and JSONL run records are a different failure mode (a 47-retry overnight bill vs. a single rogue `git push`).
+
+For that layer, see [MartinLoop](https://github.com/Keesan12/martin-loop): it wraps autonomous coding agents with budgets, verifier gates, and run records. The two layers compose — MartinLoop decides whether the next attempt is admitted; `agent-guard` decides whether the side effects inside that attempt are allowed to leave.
+
+---
+
 ## Current Scope
 
 What is strong today:
