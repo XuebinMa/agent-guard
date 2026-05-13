@@ -143,7 +143,7 @@ What to understand before integrating:
 - adapter `enforce` is still strongest on shell-like execution paths today
 - Bash still has the deepest validator path; `read_file` and `write_file` now normalize paths and fail closed on symlink escapes, while HTTP policy matching is still more URL-centric today
 - HTTP execution ownership distinguishes mutation methods at runtime, but policy matching is still primarily URL-centric
-- Python and Node bindings currently use the SDK's default sandbox selection; explicit sandbox-selection APIs are not exposed yet
+- Python and Node bindings intentionally use the SDK's default sandbox selection in the current wedge release; explicit backend selection is deferred until pilot demand surfaces
 - broader capability coverage is intentionally narrow, not generic
 - broader policy workflow and control-plane ideas are future expansion paths, not the phase-one hook
 
