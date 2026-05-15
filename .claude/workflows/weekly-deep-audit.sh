@@ -158,8 +158,14 @@ Return ONLY a markdown report to stdout. Format:
 If you find nothing, write exactly: `_no findings_` and stop.'
 
 # -- 4) Agent dispatch -------------------------------------------------------
-# Each agent runs in its own claude -p subprocess. Output is captured per
-# agent into temp files; aggregated into the final report at the end.
+# Each agent runs in its own claude -p subprocess, SERIALLY (not in parallel).
+# Serial dispatch trades a few extra minutes of latency for quota friendliness:
+# agents share the user's Claude usage window, so running them back-to-back
+# rather than concurrently reduces rate-limit-burst collisions. If combined
+# token usage still hits the 5h message-limit, stagger across weekdays via
+# separate launchd plists.
+# Output is captured per agent into temp files; aggregated into the final
+# report at the end.
 
 TMPDIR_RUN="$(mktemp -d -t agg-weekly-audit.XXXXXX)"
 trap 'rm -rf "$TMPDIR_RUN"' EXIT
@@ -211,17 +217,23 @@ run_one() {
     } > "$out"
 }
 
-declare -a pids
 declare -a labels
 declare -a shorts
+declare -a status
+exit_code=0
 
 queue() {
     local short="$1" label="$2" prompt_var="$3"
     if [[ -z "$ONLY_AGENT" || "$ONLY_AGENT" == "$short" ]]; then
-        run_one "$short" "$label" "${!prompt_var}" &
-        pids+=("$!")
         labels+=("$label")
         shorts+=("$short")
+        if run_one "$short" "$label" "${!prompt_var}"; then
+            status+=("ok")
+        else
+            status+=("fail")
+            exit_code=1
+            echo "$LOG_PREFIX $short returned non-zero" >&2
+        fi
     fi
 }
 
@@ -229,23 +241,12 @@ queue "silent-failure"   "silent-failure-hunter"   "PROMPT_SILENT_FAILURE"
 queue "security-bounty"  "security-bounty-hunter"  "PROMPT_SECURITY_BOUNTY"
 queue "type-design"      "type-design-analyzer"    "PROMPT_TYPE_DESIGN"
 
-if [[ ${#pids[@]} -eq 0 ]]; then
+if [[ ${#shorts[@]} -eq 0 ]]; then
     echo "$LOG_PREFIX no agents to run (check --agent value)" >&2
     exit 64
 fi
 
-# -- 5) Wait & track per-agent exit codes ------------------------------------
-exit_code=0
-declare -a status
-for i in "${!pids[@]}"; do
-    if wait "${pids[$i]}"; then
-        status+=("ok")
-    else
-        status+=("fail")
-        exit_code=1
-        echo "$LOG_PREFIX ${shorts[$i]} returned non-zero" >&2
-    fi
-done
+# -- 5) Per-agent exit codes already tracked synchronously above -------------
 
 # -- 6) Aggregate ------------------------------------------------------------
 {
