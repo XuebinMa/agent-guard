@@ -205,11 +205,22 @@ fn shell_split(s: &str) -> Vec<String> {
             '\\' if !in_single_quote => escaped = true,
             '\'' if !in_double_quote => in_single_quote = !in_single_quote,
             '"' if !in_single_quote => in_double_quote = !in_double_quote,
-            ' ' | '\t' | '\n' | '\r' if !in_single_quote && !in_double_quote => {
+            ' ' | '\t' if !in_single_quote && !in_double_quote => {
                 if !current.is_empty() {
                     parts.push(current.clone());
                     current.clear();
                 }
+            }
+            '\n' | '\r' if !in_single_quote && !in_double_quote => {
+                // Unquoted newline / carriage return is a statement
+                // terminator in bash. Treat it like `;` so each statement
+                // reaches `check_command_segment` and the write/read-target
+                // scans, matching how `sh -c` will actually execute it.
+                if !current.is_empty() {
+                    parts.push(current.clone());
+                    current.clear();
+                }
+                parts.push(";".to_string());
             }
             '|' | ';' | '&' if !in_single_quote && !in_double_quote => {
                 if !current.is_empty() {
@@ -293,6 +304,24 @@ fn extract_first_command(s: &str) -> String {
     s.split_whitespace().next().unwrap_or("").to_string()
 }
 
+/// Substrings whose presence in any (shell-split) token indicates a
+/// command-substitution construct whose inner command cannot be safely
+/// validated by this layer. Parameter expansion (`${VAR}`) is intentionally
+/// not listed — it expands to a value, not to a separately-executed
+/// command, and is common in legitimate workflows.
+const SUBSTITUTION_PATTERNS: &[&str] = &["$(", "`", "<(", ">("];
+
+fn contains_command_substitution(command: &str) -> Option<&'static str> {
+    for token in shell_split(command) {
+        for &pat in SUBSTITUTION_PATTERNS {
+            if token.contains(pat) {
+                return Some(pat);
+            }
+        }
+    }
+    None
+}
+
 pub fn validate_bash_command(
     command: &str,
     mode: PermissionMode,
@@ -305,6 +334,24 @@ pub fn validate_bash_command(
     }
     if mode == PermissionMode::Allow {
         return ValidationResult::Allow;
+    }
+
+    // Gate substitution before policy checks: if a substituted command or
+    // path target is opaque to the validator, no downstream policy decision
+    // can be trusted. Matches the scope of `validate_paths` (ReadOnly +
+    // WorkspaceWrite); DangerFullAccess / Prompt accept opaque payloads by
+    // design.
+    if matches!(
+        mode,
+        PermissionMode::ReadOnly | PermissionMode::WorkspaceWrite
+    ) {
+        if let Some(pat) = contains_command_substitution(command) {
+            return ValidationResult::Block {
+                reason: format!(
+                    "Command contains shell substitution '{pat}' whose inner command cannot be validated"
+                ),
+            };
+        }
     }
 
     let res = validate_read_only(command, mode);

