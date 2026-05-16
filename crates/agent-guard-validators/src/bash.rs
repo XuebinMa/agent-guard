@@ -234,6 +234,42 @@ fn shell_split(s: &str) -> Vec<String> {
                 }
                 parts.push(c.to_string());
             }
+            '<' if !in_single_quote && !in_double_quote => {
+                // Split on unquoted `<` so glued forms like `cat</etc/shadow`
+                // reach the read-target scan. Coalesce `<<` / `<<<` so
+                // here-doc and here-string tokens stay recognizable.
+                if !current.is_empty() {
+                    parts.push(current.clone());
+                    current.clear();
+                }
+                if chars.peek() == Some(&'<') {
+                    let _ = chars.next();
+                    if chars.peek() == Some(&'<') {
+                        let _ = chars.next();
+                        parts.push("<<<".to_string());
+                    } else {
+                        parts.push("<<".to_string());
+                    }
+                } else {
+                    parts.push("<".to_string());
+                }
+            }
+            '>' if !in_single_quote && !in_double_quote => {
+                // Split on unquoted `>` so glued forms like `tee>/etc/passwd`
+                // reach the write-target scan. Coalesce `>>` (append). `>&`
+                // remains two tokens (`>` then `&`); the redirection-target
+                // collector already skips `&`-prefixed next tokens.
+                if !current.is_empty() {
+                    parts.push(current.clone());
+                    current.clear();
+                }
+                if chars.peek() == Some(&'>') {
+                    let _ = chars.next();
+                    parts.push(">>".to_string());
+                } else {
+                    parts.push(">".to_string());
+                }
+            }
             _ => current.push(c),
         }
     }
@@ -304,19 +340,37 @@ fn extract_first_command(s: &str) -> String {
     s.split_whitespace().next().unwrap_or("").to_string()
 }
 
-/// Substrings whose presence in any (shell-split) token indicates a
-/// command-substitution construct whose inner command cannot be safely
-/// validated by this layer. Parameter expansion (`${VAR}`) is intentionally
-/// not listed — it expands to a value, not to a separately-executed
-/// command, and is common in legitimate workflows.
-const SUBSTITUTION_PATTERNS: &[&str] = &["$(", "`", "<(", ">("];
-
+/// Detect command-substitution constructs whose inner command cannot be
+/// safely validated by this layer:
+///   * `$(...)`  — POSIX command substitution
+///   * `` `...` `` — backtick command substitution
+///   * `<(...)`  — process substitution (input)
+///   * `>(...)`  — process substitution (output)
+///
+/// Parameter expansion (`${VAR}`) and bare `$VAR` are intentionally NOT
+/// flagged — they expand to a value, not to a separately-executed command,
+/// and are common in legitimate workflows.
+///
+/// `$(` and `` ` `` survive `shell_split` inside a single token (neither
+/// `$`, `(`, nor `` ` `` is a separator). Process substitution, however, is
+/// `<` or `>` immediately followed by `(` — and after the glued-redirection
+/// fix `<` and `>` are now standalone tokens, so we detect adjacency
+/// between a `<` / `>` token and a `(`-prefixed neighbour.
 fn contains_command_substitution(command: &str) -> Option<&'static str> {
-    for token in shell_split(command) {
-        for &pat in SUBSTITUTION_PATTERNS {
-            if token.contains(pat) {
-                return Some(pat);
-            }
+    let tokens = shell_split(command);
+    for (idx, token) in tokens.iter().enumerate() {
+        if token.contains("$(") {
+            return Some("$(");
+        }
+        if token.contains('`') {
+            return Some("`");
+        }
+        if (token == "<" || token == ">")
+            && tokens
+                .get(idx + 1)
+                .is_some_and(|next| next.starts_with('('))
+        {
+            return Some(if token == "<" { "<(" } else { ">(" });
         }
     }
     None
@@ -557,12 +611,29 @@ fn write_targets_for_segment(segment: &[String]) -> Vec<String> {
                     .cloned(),
             );
         }
-        "mv" | "cp" | "ln" | "link" => {
+        "mv" | "cp" => {
+            // Destination is the last non-flag arg; sources are read-only
+            // and not aliased post-op, so they remain out of scope here.
             if let Some(last) = args.iter().rev().find(|token| {
                 !token.starts_with('-') && !WRITE_REDIRECTIONS.contains(&token.as_str())
             }) {
                 targets.push(last.clone());
             }
+        }
+        "ln" | "link" => {
+            // Both `ln -s` (symlink) and `ln` / `link` (hardlink) bind the
+            // created name to the source: symlinks follow the source for
+            // future writes, hardlinks share its inode. Treat every non-flag
+            // arg as a target so a workspace-internal link whose source
+            // points outside the workspace is rejected (closes the
+            // 2026-05-14 HIGH path-traversal-escape finding).
+            targets.extend(
+                args.iter()
+                    .filter(|token| {
+                        !token.starts_with('-') && !WRITE_REDIRECTIONS.contains(&token.as_str())
+                    })
+                    .cloned(),
+            );
         }
         _ => {}
     }

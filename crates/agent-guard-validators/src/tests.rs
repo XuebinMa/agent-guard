@@ -421,16 +421,16 @@ mod redirect_validation_tests {
                 ws,
                 Expected::Allow,
             ),
-            // 7. `cmd <input` — no whitespace. `shell_split` keeps `<input`
-            //    as a single token, so no read target is collected. This
-            //    mirrors the existing write-side behaviour for `cmd >file`
-            //    and is documented as a known limitation.
+            // 7. `cmd <input` — no whitespace. After the glued-redirection
+            //    fix, `shell_split` splits on unquoted `<` and `>` so the
+            //    target is tokenized and reaches the read-target scan.
+            //    Matches the symmetric write-side fix for `cmd>file`.
             (
-                "no_space_redirect_not_validated",
+                "no_space_redirect_blocked_after_glued_fix",
                 "cat </etc/shadow",
                 PermissionMode::WorkspaceWrite,
                 ws,
-                Expected::Allow,
+                Expected::Block,
             ),
             // 8. Semicolon-separated segments — both have outside reads.
             (
@@ -991,5 +991,138 @@ mod bash_substitution_and_separator_tests {
             workspace(),
         );
         assert!(matches!(r, ValidationResult::Block { .. }));
+    }
+}
+
+// ── Glued redirection and ln-symlink escape coverage ─────────────────────────
+//
+// Regression tests for the two HIGH findings in docs/audits/2026-05-14.md:
+//
+// 1. Glued `cmd>path` / `cmd>>path` / `cmd<path` redirection is not
+//    tokenized in WorkspaceWrite, so `shell_split` keeps the whole thing
+//    as one token and `write_targets_for_segment` / `read_targets_for_segment`
+//    never see a redirection operator.
+// 2. `ln`/`link` only validates the last non-flag argument as a target, so
+//    `ln -s /etc/passwd workspace_link` passes — the source `/etc/passwd`
+//    is unvalidated, and once the link exists a subsequent write to
+//    `workspace_link` lands on the host path.
+#[cfg(test)]
+mod bash_glued_redirection_and_link_tests {
+    use crate::bash::{validate_bash_command, PermissionMode, ValidationResult};
+    use std::path::Path;
+
+    fn ws() -> PermissionMode {
+        PermissionMode::WorkspaceWrite
+    }
+    fn workspace() -> &'static Path {
+        Path::new("/workspace")
+    }
+
+    // ── glued redirection ────────────────────────────────────────────────────
+
+    #[test]
+    fn blocks_glued_tee_write_redirection_workspace_write() {
+        let r = validate_bash_command("tee>/etc/passwd", ws(), workspace());
+        assert!(matches!(r, ValidationResult::Block { .. }));
+    }
+
+    #[test]
+    fn blocks_glued_append_redirection_workspace_write() {
+        let r = validate_bash_command("cat>>/etc/shadow", ws(), workspace());
+        assert!(matches!(r, ValidationResult::Block { .. }));
+    }
+
+    #[test]
+    fn blocks_glued_echo_write_redirection_workspace_write() {
+        let r = validate_bash_command("echo x>/etc/cron.d/poc", ws(), workspace());
+        assert!(matches!(r, ValidationResult::Block { .. }));
+    }
+
+    #[test]
+    fn blocks_glued_read_redirection_workspace_write() {
+        let r = validate_bash_command("cat</etc/shadow", ws(), workspace());
+        assert!(matches!(r, ValidationResult::Block { .. }));
+    }
+
+    #[test]
+    fn allows_glued_write_redirection_to_workspace_relative() {
+        // After tokenization, the target is `out.txt` — still in-workspace.
+        let r = validate_bash_command("echo x>out.txt", ws(), workspace());
+        assert_eq!(r, ValidationResult::Allow);
+    }
+
+    #[test]
+    fn allows_fd_duplication_2_amp_1() {
+        // `2>&1` is fd duplication, not a path-bound write; the `&1`
+        // suffix is intentionally skipped by `write_targets_for_segment`.
+        let r = validate_bash_command("echo x > out.txt 2>&1", ws(), workspace());
+        assert_eq!(r, ValidationResult::Allow);
+    }
+
+    #[test]
+    fn blocks_fd_redirection_to_host_path() {
+        // `2>/etc/passwd` redirects stderr to a host path — must still be
+        // caught after glued tokenization.
+        let r = validate_bash_command("echo x 2>/etc/passwd", ws(), workspace());
+        assert!(matches!(r, ValidationResult::Block { .. }));
+    }
+
+    // ── ln / link symlink escape ─────────────────────────────────────────────
+
+    #[test]
+    fn blocks_ln_symlink_source_outside_workspace() {
+        // Step 1 of the 2026-05-14 path-traversal-escape attack: even though
+        // the destination `workspace_link` is workspace-relative, the source
+        // `/etc/passwd` would, once linked, redirect any future write on the
+        // link onto the host path.
+        let r = validate_bash_command(
+            "ln -s /etc/passwd workspace_link",
+            ws(),
+            workspace(),
+        );
+        assert!(matches!(r, ValidationResult::Block { .. }));
+    }
+
+    #[test]
+    fn blocks_link_hardlink_source_outside_workspace() {
+        // Hardlinks share an inode, so a workspace-internal hardlink to
+        // `/etc/passwd` exposes the host inode to in-workspace writes.
+        let r = validate_bash_command(
+            "link /etc/passwd workspace_link",
+            ws(),
+            workspace(),
+        );
+        assert!(matches!(r, ValidationResult::Block { .. }));
+    }
+
+    #[test]
+    fn blocks_ln_default_hardlink_source_outside_workspace() {
+        // `ln` without `-s` defaults to hardlink semantics; same risk.
+        let r = validate_bash_command(
+            "ln /etc/passwd workspace_link",
+            ws(),
+            workspace(),
+        );
+        assert!(matches!(r, ValidationResult::Block { .. }));
+    }
+
+    #[test]
+    fn allows_ln_both_args_within_workspace() {
+        // Source and destination both workspace-relative — legitimate use.
+        let r = validate_bash_command("ln -s file_a file_b", ws(), workspace());
+        assert_eq!(r, ValidationResult::Allow);
+    }
+
+    #[test]
+    fn allows_cp_source_outside_dest_inside_workspace() {
+        // `cp` reads from source and writes to destination; the inode is
+        // not aliased, so an outside-workspace source remains safe to read
+        // into the workspace. Only `ln`/`link` get the expanded rule.
+        let r = validate_bash_command(
+            "cp /etc/passwd workspace_copy",
+            ws(),
+            workspace(),
+        );
+        assert_eq!(r, ValidationResult::Allow);
     }
 }
