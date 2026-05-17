@@ -6,9 +6,16 @@ use httpmock::Method::POST;
 use httpmock::MockServer;
 
 fn trusted() -> Context {
+    // `working_directory` left as None: these tests exercise policy /
+    // decide-flow logic with placeholder absolute paths (e.g.
+    // `/workspace/README.md`) that are unrelated to the test process's
+    // temp dir. After 2026-05-15 fix #3 the path resolver enforces a
+    // canonical-prefix bound when `working_directory` is `Some`, which
+    // would now correctly reject those placeholders. Tests that need
+    // workspace confinement set their own bound locally.
     Context {
         trust_level: TrustLevel::Trusted,
-        working_directory: Some(std::env::temp_dir()),
+        working_directory: None,
         ..Default::default()
     }
 }
