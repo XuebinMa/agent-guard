@@ -141,21 +141,56 @@ pub(crate) fn execute_http_request(payload: &str) -> Result<SandboxOutput, Sandb
 }
 
 /// Unconditional deny-list for resolved destination IPs. Covers categories
-/// a URL regex cannot reliably catch after DNS, including the link-local
-/// range that hosts cloud-provider metadata services. Loopback and RFC1918
-/// private ranges are intentionally not blocked here — those are policy
-/// decisions the user expresses through `http_request.deny` URL patterns.
+/// a URL regex cannot reliably catch after DNS:
+///
+///   * loopback (`127.0.0.0/8`, `::1`) — services bound to the host's
+///     loopback interface are not meant for cross-process callers.
+///   * link-local (`169.254.0.0/16`, `fe80::/10`) — cloud-provider
+///     metadata endpoints and other auto-configuration targets.
+///   * RFC1918 (`10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`) — the
+///     three "private use" IPv4 ranges that host internal services
+///     (Consul, k8s API, internal RPCs).
+///   * IPv6 unique-local-address (`fc00::/7`, per RFC 4193) — the IPv6
+///     analogue of RFC1918.
+///   * unspecified / broadcast / multicast — not meaningful destinations
+///     for an outbound mutation HTTP call.
+///
+/// The previous design left loopback and RFC1918 out of this list and
+/// expected operators to assemble per-deployment deny patterns; the
+/// 2026-05-15 audit showed that broad allow-lists silently re-opened
+/// SSRF to internal targets. The new default is fail-closed; future
+/// work can add an explicit `allow_private_targets` policy opt-in for
+/// users that genuinely intend the executor to reach internal services.
 pub(crate) fn is_always_blocked_ip(ip: &IpAddr) -> bool {
+    if ip.is_loopback() {
+        return true;
+    }
     match ip {
         IpAddr::V4(v4) => {
-            v4.is_link_local() || v4.is_unspecified() || v4.is_broadcast() || v4.is_multicast()
+            v4.is_link_local()
+                || v4.is_unspecified()
+                || v4.is_broadcast()
+                || v4.is_multicast()
+                || v4.is_private()
         }
-        IpAddr::V6(v6) => v6.is_unspecified() || v6.is_multicast() || is_ipv6_link_local(v6),
+        IpAddr::V6(v6) => {
+            v6.is_unspecified()
+                || v6.is_multicast()
+                || is_ipv6_link_local(v6)
+                || is_ipv6_unique_local(v6)
+        }
     }
 }
 
 pub(crate) fn is_ipv6_link_local(ip: &Ipv6Addr) -> bool {
     (ip.segments()[0] & 0xffc0) == 0xfe80
+}
+
+/// IPv6 unique-local-address range (RFC 4193): `fc00::/7`. Covers both
+/// `fc00:`/`fcff:` and `fd00:`/`fdff:` prefixes. Stable `Ipv6Addr::is_unique_local`
+/// is still unstable in `std`, so the bit test is inlined here.
+pub(crate) fn is_ipv6_unique_local(ip: &Ipv6Addr) -> bool {
+    (ip.segments()[0] & 0xfe00) == 0xfc00
 }
 
 /// Resolve a URL's host once at policy time and return a host/address pair
@@ -218,4 +253,102 @@ pub(crate) fn is_mutation_method(method: &reqwest::Method) -> bool {
             | reqwest::Method::PATCH
             | reqwest::Method::DELETE
     )
+}
+
+#[cfg(test)]
+mod tests {
+    //! Regression coverage for the 2026-05-15 HIGH SSRF finding: the
+    //! mutation HTTP executor's `is_always_blocked_ip` did not deny
+    //! loopback, RFC1918, or IPv6 unique-local-address (fc00::/7), so a
+    //! resolved-then-pinned URL could reach internal services (Consul,
+    //! k8s API, cloud metadata neighbours, lab subnets) from a code path
+    //! that markets itself as "safe outbound HTTP".
+    use super::is_always_blocked_ip;
+    use std::net::IpAddr;
+
+    fn ip(s: &str) -> IpAddr {
+        s.parse().expect("parse IP")
+    }
+
+    // ── blocked (newly enforced) ─────────────────────────────────────────────
+
+    #[test]
+    fn blocks_ipv4_loopback() {
+        assert!(is_always_blocked_ip(&ip("127.0.0.1")));
+        assert!(is_always_blocked_ip(&ip("127.255.255.254")));
+    }
+
+    #[test]
+    fn blocks_ipv6_loopback() {
+        assert!(is_always_blocked_ip(&ip("::1")));
+    }
+
+    #[test]
+    fn blocks_rfc1918_ten_dot() {
+        assert!(is_always_blocked_ip(&ip("10.0.0.1")));
+        assert!(is_always_blocked_ip(&ip("10.255.255.255")));
+    }
+
+    #[test]
+    fn blocks_rfc1918_one_seven_two() {
+        assert!(is_always_blocked_ip(&ip("172.16.0.1")));
+        assert!(is_always_blocked_ip(&ip("172.31.255.254")));
+    }
+
+    #[test]
+    fn allows_just_outside_rfc1918_one_seven_two_range() {
+        // 172.15.x.x and 172.32.x.x are NOT RFC1918 — must remain reachable.
+        assert!(!is_always_blocked_ip(&ip("172.15.0.1")));
+        assert!(!is_always_blocked_ip(&ip("172.32.0.1")));
+    }
+
+    #[test]
+    fn blocks_rfc1918_one_nine_two() {
+        assert!(is_always_blocked_ip(&ip("192.168.1.1")));
+        assert!(is_always_blocked_ip(&ip("192.168.255.255")));
+    }
+
+    #[test]
+    fn blocks_ipv6_unique_local_fc00_slash_7() {
+        // fc00::/7 covers fc00::..fdff:... — both fc-prefix and fd-prefix
+        // are reserved as unique local addresses (RFC 4193).
+        assert!(is_always_blocked_ip(&ip("fc00::1")));
+        assert!(is_always_blocked_ip(&ip("fd00::1")));
+        assert!(is_always_blocked_ip(&ip("fdff:ffff::1")));
+    }
+
+    // ── still blocked (regression-guard for the pre-existing categories) ────
+
+    #[test]
+    fn blocks_ipv4_link_local_carryover() {
+        assert!(is_always_blocked_ip(&ip("169.254.169.254"))); // metadata
+    }
+
+    #[test]
+    fn blocks_ipv6_link_local_carryover() {
+        assert!(is_always_blocked_ip(&ip("fe80::1")));
+    }
+
+    #[test]
+    fn blocks_unspecified_and_multicast_carryover() {
+        assert!(is_always_blocked_ip(&ip("0.0.0.0")));
+        assert!(is_always_blocked_ip(&ip("224.0.0.1")));
+        assert!(is_always_blocked_ip(&ip("::")));
+        assert!(is_always_blocked_ip(&ip("ff00::1")));
+    }
+
+    // ── allowed (public ranges must remain reachable) ───────────────────────
+
+    #[test]
+    fn allows_public_ipv4_addresses() {
+        assert!(!is_always_blocked_ip(&ip("8.8.8.8")));
+        assert!(!is_always_blocked_ip(&ip("1.1.1.1")));
+        assert!(!is_always_blocked_ip(&ip("142.250.80.46")));
+    }
+
+    #[test]
+    fn allows_public_ipv6_addresses() {
+        assert!(!is_always_blocked_ip(&ip("2001:4860:4860::8888")));
+        assert!(!is_always_blocked_ip(&ip("2606:4700:4700::1111")));
+    }
 }
