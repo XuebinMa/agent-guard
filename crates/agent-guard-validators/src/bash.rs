@@ -66,24 +66,56 @@ const READ_PATH_REDIRECTIONS: &[&str] = &["<"];
 #[allow(dead_code)]
 const READ_DATA_REDIRECTIONS: &[&str] = &["<<", "<<<"];
 
+/// Environment-variable name prefixes whose assignment indicates code
+/// injection. Matched against `shell_split` tokens with a `<NAME>=` prefix
+/// so that quoting which splits the literal across raw bytes (e.g.
+/// `env L'D'_PRELOAD=...`) is still caught — bash quote-stripping rejoins
+/// the segments before we see them. Filenames that merely contain the
+/// literal substring (e.g. `cat /workspace/log_LD_PRELOAD.txt`) are no
+/// longer false-positives, since they never appear as `<NAME>=...`.
+const DANGEROUS_ENV_VAR_PREFIXES: &[&str] = &[
+    "LD_PRELOAD=",
+    "DYLD_INSERT_LIBRARIES=",
+    "PYTHONPATH=",
+    "NODE_OPTIONS=",
+];
+
+/// Interpreters that accept an inline-code flag (`-c`, `-e`, `-r`). When
+/// invoked with one of those flags, the interpreter's argument is an
+/// opaque program that the validator cannot introspect — so it must be
+/// blocked in ReadOnly mode to prevent destructive operations laundered
+/// through `python3 -c`, `perl -e`, etc.
+const INLINE_CODE_INTERPRETERS: &[&str] = &[
+    "python", "python2", "python3", "perl", "ruby", "node", "nodejs", "php", "sh", "bash", "zsh",
+    "ksh", "dash", "fish", "awk",
+];
+
+const INLINE_CODE_FLAGS: &[&str] = &["-c", "-e", "-r", "--command", "--exec"];
+
 #[must_use]
 pub fn validate_read_only(command: &str, mode: PermissionMode) -> ValidationResult {
     if mode != PermissionMode::ReadOnly {
         return ValidationResult::Allow;
     }
 
-    // Industrial Standard Mitigation: Detect environment variable injections (CWE-94)
-    if command.contains("LD_PRELOAD")
-        || command.contains("PYTHONPATH")
-        || command.contains("NODE_OPTIONS")
-    {
-        return ValidationResult::Block {
-            reason: "Environment variable injection attempt detected".to_string(),
-        };
-    }
-
     // Industrial Standard Mitigation: Proper shell splitting that respects quotes
     let parts = shell_split(command);
+
+    // Token-prefix scan for dangerous env-var assignments. Runs over the
+    // post-quote-strip tokens, so quoting tricks (`L'D'_PRELOAD=...`) are
+    // caught and benign filename matches are not.
+    for token in &parts {
+        for &prefix in DANGEROUS_ENV_VAR_PREFIXES {
+            if token.starts_with(prefix) {
+                return ValidationResult::Block {
+                    reason: format!(
+                        "Environment variable injection attempt detected ({}…)",
+                        prefix.trim_end_matches('=')
+                    ),
+                };
+            }
+        }
+    }
 
     let mut current_cmd_parts = Vec::new();
     for part in parts {
@@ -180,6 +212,23 @@ fn check_command_segment(parts: &[String]) -> Option<ValidationResult> {
     if first_command == "sudo" && parts.len() > 1 {
         let inner = parts[1..].to_vec();
         return check_command_segment(&inner);
+    }
+
+    // Interpreter-laundering check: `python3 -c '...'` / `perl -e '...'` /
+    // `bash -c '...'` etc. hand an opaque program to the interpreter. We
+    // cannot introspect the inner code, so the only safe ReadOnly response
+    // is Block. Running the interpreter against a script file or with a
+    // diagnostic flag (e.g. `python3 --version`) remains allowed.
+    if INLINE_CODE_INTERPRETERS.contains(&first_command.as_str()) {
+        for arg in &parts[1..] {
+            if INLINE_CODE_FLAGS.contains(&arg.as_str()) {
+                return Some(ValidationResult::Block {
+                    reason: format!(
+                        "Interpreter '{first_command}' invoked with inline-code flag '{arg}' is not allowed in read-only mode"
+                    ),
+                });
+            }
+        }
     }
 
     None

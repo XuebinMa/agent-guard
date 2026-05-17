@@ -1126,3 +1126,197 @@ mod bash_glued_redirection_and_link_tests {
         assert_eq!(r, ValidationResult::Allow);
     }
 }
+
+// ── Interpreter laundering and quoted env-var injection coverage ─────────────
+//
+// Regression tests for the 2026-05-15 HIGH "Validator bypass" finding:
+//
+// 1. ReadOnly mode accepts interpreter wrappers (`python3 -c "..."`,
+//    `perl -e`, `node -e`, `bash -c "..."`, etc.) because
+//    `check_command_segment` only matches the first token against
+//    `WRITE_COMMANDS` / `STATE_MODIFYING_COMMANDS`.
+// 2. The `LD_PRELOAD` / `PYTHONPATH` / `NODE_OPTIONS` block at the top
+//    of `validate_read_only` was a raw-substring scan, so quoting that
+//    splits the literal across `shell_split` segments (e.g.
+//    `env L'D'_PRELOAD=/tmp/e.so cat`) bypassed it. After bash quote-
+//    stripping the token becomes `LD_PRELOAD=/tmp/e.so`; a token-prefix
+//    scan catches it. The same token check also drops the false-positive
+//    that the substring scan had on benign filenames containing the
+//    literal (e.g. `cat /workspace/log_LD_PRELOAD.txt`).
+#[cfg(test)]
+mod bash_interpreter_and_env_injection_tests {
+    use crate::bash::{validate_bash_command, PermissionMode, ValidationResult};
+    use std::path::Path;
+
+    fn ro() -> PermissionMode {
+        PermissionMode::ReadOnly
+    }
+    fn workspace() -> &'static Path {
+        Path::new("/workspace")
+    }
+
+    // ── interpreter wrappers in ReadOnly ────────────────────────────────────
+
+    #[test]
+    fn blocks_python3_dash_c_in_readonly() {
+        let r = validate_bash_command(
+            "python3 -c \"import os; os.system('rm -rf /workspace')\"",
+            ro(),
+            workspace(),
+        );
+        assert!(matches!(r, ValidationResult::Block { .. }));
+    }
+
+    #[test]
+    fn blocks_python_dash_c_in_readonly() {
+        let r = validate_bash_command("python -c 'print(1)'", ro(), workspace());
+        assert!(matches!(r, ValidationResult::Block { .. }));
+    }
+
+    #[test]
+    fn blocks_perl_dash_e_in_readonly() {
+        let r = validate_bash_command(
+            "perl -e 'system(\"rm -rf /workspace\")'",
+            ro(),
+            workspace(),
+        );
+        assert!(matches!(r, ValidationResult::Block { .. }));
+    }
+
+    #[test]
+    fn blocks_node_dash_e_in_readonly() {
+        let r = validate_bash_command(
+            "node -e \"require('child_process').execSync('rm -rf /workspace')\"",
+            ro(),
+            workspace(),
+        );
+        assert!(matches!(r, ValidationResult::Block { .. }));
+    }
+
+    #[test]
+    fn blocks_ruby_dash_e_in_readonly() {
+        let r = validate_bash_command("ruby -e 'system(\"id\")'", ro(), workspace());
+        assert!(matches!(r, ValidationResult::Block { .. }));
+    }
+
+    #[test]
+    fn blocks_bash_dash_c_in_readonly() {
+        let r = validate_bash_command("bash -c 'echo hi'", ro(), workspace());
+        assert!(matches!(r, ValidationResult::Block { .. }));
+    }
+
+    #[test]
+    fn blocks_sh_dash_c_in_readonly() {
+        let r = validate_bash_command("sh -c 'echo hi'", ro(), workspace());
+        assert!(matches!(r, ValidationResult::Block { .. }));
+    }
+
+    #[test]
+    fn blocks_awk_program_via_dash_e_in_readonly() {
+        // `awk -e 'BEGIN{system("...")}` is the awk equivalent.
+        let r = validate_bash_command(
+            "awk -e 'BEGIN{system(\"id\")}'",
+            ro(),
+            workspace(),
+        );
+        assert!(matches!(r, ValidationResult::Block { .. }));
+    }
+
+    #[test]
+    fn blocks_php_dash_r_in_readonly() {
+        let r = validate_bash_command("php -r 'echo 1;'", ro(), workspace());
+        assert!(matches!(r, ValidationResult::Block { .. }));
+    }
+
+    #[test]
+    fn blocks_sudo_bash_dash_c_in_readonly() {
+        // sudo recursion should re-enter check_command_segment, so the
+        // wrapped interpreter is also caught.
+        let r = validate_bash_command("sudo bash -c 'echo hi'", ro(), workspace());
+        assert!(matches!(r, ValidationResult::Block { .. }));
+    }
+
+    #[test]
+    fn allows_python3_running_a_script_in_readonly() {
+        // No `-c` / `-e` / `-r`: running a script file is treated as a
+        // process invocation, not arbitrary inline code. The wedge does
+        // not introspect script contents.
+        let r = validate_bash_command("python3 script.py", ro(), workspace());
+        assert_eq!(r, ValidationResult::Allow);
+    }
+
+    #[test]
+    fn allows_interpreter_version_query_in_readonly() {
+        let r = validate_bash_command("python3 --version", ro(), workspace());
+        assert_eq!(r, ValidationResult::Allow);
+    }
+
+    // ── environment-variable injection (quoted bypass) ──────────────────────
+
+    #[test]
+    fn blocks_unquoted_ld_preload_in_readonly() {
+        let r = validate_bash_command(
+            "LD_PRELOAD=/tmp/e.so cat /tmp/f",
+            ro(),
+            workspace(),
+        );
+        assert!(matches!(r, ValidationResult::Block { .. }));
+    }
+
+    #[test]
+    fn blocks_quoted_ld_preload_concatenation_in_readonly() {
+        // Audit 2026-05-15: `env L'D'_PRELOAD=/tmp/e.so cat` — bash
+        // concatenates `L` + `D_PRELOAD=...` after expansion, so shell_split
+        // returns a single token `LD_PRELOAD=/tmp/e.so` even though the
+        // raw command does not contain the literal substring.
+        let r = validate_bash_command(
+            "env L'D'_PRELOAD=/tmp/e.so cat /tmp/f",
+            ro(),
+            workspace(),
+        );
+        assert!(matches!(r, ValidationResult::Block { .. }));
+    }
+
+    #[test]
+    fn blocks_dyld_insert_libraries_in_readonly() {
+        let r = validate_bash_command(
+            "DYLD_INSERT_LIBRARIES=/tmp/e.dylib cat /tmp/f",
+            ro(),
+            workspace(),
+        );
+        assert!(matches!(r, ValidationResult::Block { .. }));
+    }
+
+    #[test]
+    fn blocks_pythonpath_injection_in_readonly() {
+        let r = validate_bash_command(
+            "PYTHONPATH=/tmp/evil python3 -m mymod",
+            ro(),
+            workspace(),
+        );
+        assert!(matches!(r, ValidationResult::Block { .. }));
+    }
+
+    #[test]
+    fn blocks_node_options_injection_in_readonly() {
+        let r = validate_bash_command(
+            "NODE_OPTIONS='--require /tmp/evil.js' node app.js",
+            ro(),
+            workspace(),
+        );
+        assert!(matches!(r, ValidationResult::Block { .. }));
+    }
+
+    #[test]
+    fn allows_filename_containing_env_var_literal_in_readonly() {
+        // False-positive that the old raw-substring check produced:
+        // a filename happening to contain the string `LD_PRELOAD` was
+        // wrongly blocked. The token-prefix scan no longer trips on it.
+        let r = validate_bash_command(
+            "cat /workspace/log_LD_PRELOAD.txt",
+            ro(),
+            workspace(),
+        );
+        assert_eq!(r, ValidationResult::Allow);
+    }
+}
