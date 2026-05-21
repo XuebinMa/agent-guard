@@ -4,8 +4,8 @@
 | :--- | :--- |
 | **Status** | 🟢 Active Support Snapshot |
 | **Audience** | Developers, Integrators |
-| **Version** | 1.0 |
-| **Last Reviewed** | 2026-04-15 |
+| **Version** | 1.1 |
+| **Last Reviewed** | 2026-05-21 |
 | **Related Docs** | [README](../README.md), [Node README](../../crates/agent-guard-node/README.md), [Python README](../../crates/agent-guard-python/README.md) |
 
 ---
@@ -35,8 +35,8 @@ It is intentionally narrower than a broad platform map. The goal is to help a de
 | Node OpenAI-style adapter | ✅ Supported | Real runtime validation with `@openai/agents` | OpenAI Agents style handlers | `wrapOpenAITool()` available. |
 | Node ChatGPT Actions pattern | ✅ Example Available | Local end-to-end example server verified | Custom GPT / Actions prototypes | Uses an HTTP service behind GPT Actions. |
 | Python binding | ✅ Supported | Python tests and demos | Python hosts and wrappers | Build-from-source flow. |
-| Python LangChain adapter | 🟡 Beta | Repository wrappers and tests | LangChain Python experiments | Official wrapper surface is present, but not yet validated against a real framework version matrix in CI. |
-| Python OpenAI-style adapter | 🟡 Beta | Repository wrappers and tests | OpenAI-style handler integration in Python apps | Official wrapper surface is available, but runtime validation is currently wrapper-level rather than package-level. |
+| Python LangChain adapter | 🟡 Beta | Wrapper + adapter tests, plus a real-package validation script | LangChain Python experiments | `wrap_langchain_tool()` available. A `tests/real_runtime_validation.py` script exercises the wrapper against real `langchain_core` `BaseTool`s, but CI does not yet run a framework version matrix automatically. |
+| Python OpenAI-style adapter | 🟡 Beta | Wrapper + adapter tests | OpenAI-style handler integration in Python apps | `wrap_openai_tool()` available. Adapter test suite covers the handoff / deny / ask / error paths end-to-end; no CI version matrix yet. |
 | AutoGen adapter | ⚪ Not shipped | No official adapter | No official adapter today | Still part of roadmap, not current official integration surface. |
 
 ---
@@ -143,7 +143,7 @@ Best current fit:
 
 Important caveat:
 
-The Python adapter layer is now official, but still below the current Node surface in maturity. The main missing step is real framework-package validation in CI, not basic wrapper availability.
+The Python adapter layer is now official, but still below the current Node surface in maturity. A real-package validation script (`tests/real_runtime_validation.py`) exercises `wrap_langchain_tool` against actual `langchain_core` types, and the adapter unit suite covers handoff / deny / ask / error paths end-to-end; the remaining gap is an automated CI matrix that pins specific framework package versions per release.
 
 Boundary note:
 

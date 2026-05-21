@@ -2,10 +2,10 @@
 
 | Field | Details |
 | :--- | :--- |
-| **Status** | 🟢 Baseline Established (v0.2.0) |
+| **Status** | 🟢 Baseline Established (v0.2.0-rc1) |
 | **Audience** | DevOps, Security Engineers |
-| **Version** | 1.1 |
-| **Last Reviewed** | 2026-04-13 |
+| **Version** | 1.2 |
+| **Last Reviewed** | 2026-05-21 |
 | **Related Docs** | [Threat Model](threat-model.md), [Archive: Architecture & Future Directions](../archive/architecture-and-vision.md) |
 
 ---
@@ -55,6 +55,6 @@
 
 ## ⚠️ Known Gaps & Roadmap
 
-1. **Windows Network Isolation**: Currently, Low-IL does not restrict network access. This is a primary driver for the **AppContainer (M7.1)** implementation.
-2. **macOS Global Read**: The Seatbelt prototype currently allows reading files outside the workspace. Future iterations will tighten this to `(allow file-read* (subpath workspace))`.
-3. **Linux FS Isolation**: Native seccomp now blocks common write and networking syscalls in restricted modes, but it is still path-agnostic. Prefer Landlock-capable hosts when you need OS-level workspace-only write isolation.
+1. **Windows Network Isolation (Low-IL)**: The default Low-IL backend does not restrict network access. The **AppContainer** backend (opt-in via the `windows-appcontainer` feature) is now shipped and provides network-scope isolation via SID-based capabilities. Default Windows builds still ship Low-IL; opt in to AppContainer when you need network confinement.
+2. **macOS Global Read**: The Seatbelt profile still emits `(allow file-read* (subpath "/"))`, so reads outside the workspace are intentionally permitted at the OS layer. Future iterations will tighten this to `(allow file-read* (subpath workspace))`. Until then, treat macOS as a write-confinement backend, not a read-confinement one.
+3. **Linux FS Isolation**: Native seccomp blocks common write and networking syscalls in restricted modes but is path-agnostic. A path-aware **Landlock** backend (`landlock` feature, kernel 5.13+) is shipped and is the recommended choice when you need OS-level workspace-only write isolation. Hosts without Landlock fall back to the seccomp filter plus the in-process validator gate.
