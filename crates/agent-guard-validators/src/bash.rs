@@ -245,6 +245,15 @@ fn check_command_segment(parts: &[String]) -> Option<ValidationResult> {
 
 /// Simple shell splitter that respects single and double quotes.
 fn shell_split(s: &str) -> Vec<String> {
+    // Quoted-delimiter here-doc bodies (`<<'EOF'`, `<<"EOF"`, `<<-'EOF'`)
+    // are literal text that the shell never tokenises as commands or
+    // redirections. Mask their bytes so the tokenisation pass below never
+    // sees `> ../foo` inside a commit message body as a real redirect.
+    // Symmetric with how `contains_command_substitution` skips the same
+    // shape via `skip_literal_heredoc_body`.
+    let masked = mask_literal_heredoc_bodies(s);
+    let s = masked.as_str();
+
     let mut parts = Vec::new();
     let mut current = String::new();
     let mut in_single_quote = false;
@@ -555,6 +564,124 @@ fn contains_code_laundering_command(command: &str) -> Option<&'static str> {
 /// (`'DELIM'` or `"DELIM"`), find the body terminator and return the byte
 /// index immediately after it. Returns `None` for unquoted or malformed
 /// delimiters so the caller falls back to ordinary scanning.
+/// Pre-tokenisation pass that replaces the bytes inside the body of any
+/// quoted-delimiter here-doc (`<<'DELIM'`, `<<"DELIM"`, plus the `<<-`
+/// indented forms) with spaces. The shell never executes or expands a
+/// quoted-delim heredoc body, so a `>` / `<` / `|` inside one is literal
+/// text — not a real redirection or pipe.
+///
+/// Bug being closed: before this pass, `shell_split` saw the body of a
+/// `git commit -F - <<'EOF' ... EOF` heredoc as code, so a commit message
+/// that happened to contain a literal `> ../escape.txt` tripped the
+/// relative-parent-escape gate. Symmetric with the heredoc skip already
+/// performed by `contains_command_substitution` via
+/// `skip_literal_heredoc_body`.
+///
+/// Unquoted-delimiter heredocs (`<<EOF`) are left alone: bash does
+/// parameter and command substitution inside their bodies, so the
+/// substitution scanner needs to see them. A literal `>` inside an
+/// unquoted heredoc body is still never a real redirect either, but we
+/// keep that out of scope until we see real false positives — the
+/// conservative behaviour mirrors `skip_literal_heredoc_body`.
+fn mask_literal_heredoc_bodies(command: &str) -> String {
+    let bytes = command.as_bytes();
+    let n = bytes.len();
+    let mut out = bytes.to_vec();
+    let mut i = 0;
+    let mut in_single_quote = false;
+    let mut in_double_quote = false;
+
+    while i < n {
+        let c = bytes[i];
+
+        if in_single_quote {
+            if c == b'\'' {
+                in_single_quote = false;
+            }
+            i += 1;
+            continue;
+        }
+        if in_double_quote {
+            if c == b'\\' && i + 1 < n {
+                i += 2;
+                continue;
+            }
+            if c == b'"' {
+                in_double_quote = false;
+            }
+            i += 1;
+            continue;
+        }
+
+        if c == b'\\' && i + 1 < n {
+            i += 2;
+            continue;
+        }
+        if c == b'\'' {
+            in_single_quote = true;
+            i += 1;
+            continue;
+        }
+        if c == b'"' {
+            in_double_quote = true;
+            i += 1;
+            continue;
+        }
+
+        // `<<` outside any quote: candidate here-doc operator.
+        if c == b'<' && i + 1 < n && bytes[i + 1] == b'<' {
+            let mut j = i + 2;
+            if j < n && bytes[j] == b'-' {
+                j += 1;
+            }
+            while j < n && (bytes[j] == b' ' || bytes[j] == b'\t') {
+                j += 1;
+            }
+            // Only quoted delimiters get masked (see doc-comment).
+            if j < n && (bytes[j] == b'\'' || bytes[j] == b'"') {
+                if let Some(body_end) = skip_literal_heredoc_body(bytes, j) {
+                    // Recompute body_start: after the newline that closes
+                    // the `<<...DELIM` opening line.
+                    let quote = bytes[j];
+                    let delim_start = j + 1;
+                    let mut delim_end = delim_start;
+                    while delim_end < n && bytes[delim_end] != quote {
+                        delim_end += 1;
+                    }
+                    let mut body_start = delim_end.saturating_add(1);
+                    while body_start < n && bytes[body_start] != b'\n' {
+                        body_start += 1;
+                    }
+                    if body_start < n {
+                        body_start += 1;
+                    }
+                    // Replace every byte in the body (including newlines)
+                    // with a single space. Newlines inside a heredoc body
+                    // are never statement separators, so masking them is
+                    // accurate and removes a class of spurious `\n→;`
+                    // injections downstream in `shell_split`.
+                    let end = body_end.min(n);
+                    if body_start < end {
+                        out[body_start..end].fill(b' ');
+                    }
+                    i = body_end;
+                    continue;
+                }
+            }
+        }
+
+        i += 1;
+    }
+
+    // SAFETY: input was valid UTF-8 (`&str`). We only ever write the ASCII
+    // byte 0x20 (space) into positions inside masked heredoc bodies. We
+    // never write into the middle of a multi-byte sequence in a way that
+    // breaks UTF-8: an entire run of body bytes becomes ASCII spaces, and
+    // bytes outside any masked range are left untouched. The result is
+    // therefore guaranteed valid UTF-8.
+    String::from_utf8(out).expect("masking preserves UTF-8 validity")
+}
+
 fn skip_literal_heredoc_body(bytes: &[u8], start: usize) -> Option<usize> {
     let n = bytes.len();
     if start >= n {
@@ -1091,6 +1218,93 @@ mod tests {
             PermissionMode::WorkspaceWrite,
             Path::new("/workspace"),
             &escape,
+        );
+        assert!(matches!(result, ValidationResult::Block { .. }));
+    }
+
+    // ── heredoc body literalness (quoting-aware shell_split) ────────────────
+
+    #[test]
+    fn shell_split_masks_quoted_heredoc_body() {
+        // Tokens inside a `<<'EOF'` body are literal text, not shell syntax.
+        // After masking, the body collapses to whitespace and the `>` /
+        // `../escape.txt` from inside the body produce no tokens.
+        let parts = shell_split("cat <<'EOF'\necho > ../escape.txt\nEOF\n");
+        assert!(
+            !parts.iter().any(|t| t == ">"),
+            "`>` from heredoc body must not survive tokenization, got {parts:?}"
+        );
+        assert!(
+            !parts.iter().any(|t| t == "../escape.txt"),
+            "literal `../escape.txt` from heredoc body must not survive, got {parts:?}"
+        );
+    }
+
+    #[test]
+    fn validate_paths_allows_parent_escape_inside_quoted_heredoc_body() {
+        // The exact dogfood bug from 2026-05-20: a commit message body that
+        // happens to contain `> ../foo` was being parsed as a real relative
+        // parent-dir escape redirect. With masking, the body is invisible to
+        // the redirect collector.
+        let cmd = "git commit -F - <<'COMMITMSG'\nfix: example\n\nexample text mentions echo > ../escape.txt\nCOMMITMSG\n";
+        let result = validate_paths(
+            cmd,
+            PermissionMode::WorkspaceWrite,
+            Path::new("/workspace"),
+            &[],
+        );
+        assert_eq!(result, ValidationResult::Allow);
+    }
+
+    #[test]
+    fn validate_paths_allows_absolute_write_inside_quoted_heredoc_body() {
+        // Same shape, but the body literal is an absolute outside-workspace
+        // path. Still must not fire — the shell never opens a file here.
+        let cmd = "cat <<'EOF'\ndocs reference: echo > /etc/passwd\nEOF\n";
+        let result = validate_paths(
+            cmd,
+            PermissionMode::WorkspaceWrite,
+            Path::new("/workspace"),
+            &[],
+        );
+        assert_eq!(result, ValidationResult::Allow);
+    }
+
+    #[test]
+    fn validate_paths_blocks_real_redirect_outside_heredoc_body() {
+        // Regression: a real `>` redirect outside any heredoc must still
+        // block. Combines a real out-of-workspace write with a heredoc whose
+        // body contains a fake one — only the real redirect should fire.
+        let cmd = "echo ok > /etc/passwd && cat <<'EOF'\nbody mentions echo > /etc/shadow\nEOF\n";
+        let result = validate_paths(
+            cmd,
+            PermissionMode::WorkspaceWrite,
+            Path::new("/workspace"),
+            &[],
+        );
+        match result {
+            ValidationResult::Block { reason } => {
+                assert!(
+                    reason.contains("/etc/passwd"),
+                    "real redirect to /etc/passwd should be the cited target, got: {reason}"
+                );
+            }
+            other => panic!("expected Block on real redirect, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn validate_paths_blocks_redirect_outside_unquoted_heredoc_body() {
+        // Unquoted-delimiter heredocs are not masked (matches
+        // `skip_literal_heredoc_body`'s contract): the substitution scanner
+        // still needs to see those bodies. A real `>` outside the heredoc on
+        // the same command line must therefore still block.
+        let cmd = "echo ok > /etc/passwd <<EOF\nfiller body\nEOF\n";
+        let result = validate_paths(
+            cmd,
+            PermissionMode::WorkspaceWrite,
+            Path::new("/workspace"),
+            &[],
         );
         assert!(matches!(result, ValidationResult::Block { .. }));
     }
