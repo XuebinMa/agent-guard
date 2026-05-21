@@ -1,39 +1,53 @@
 # agent-guard outbound preset for AI coding agents
 # ---------------------------------------------------------------------------
-# Phase 0 / A2 draft — 2026-05-09
+# Sprint 5-2 — 2026-05-21
 # ---------------------------------------------------------------------------
-# THIS IS A DRAFT. Not loaded by `agent-guard` (`.draft` extension keeps it
-# out of the loader). Real production preset ships in Sprint 5-2 at
-# `presets/coding-agent-outbound.yaml`.
+# Zero-config policy for developers running AI coding agents (Claude Code,
+# Cursor, Codex CLI, Aider, etc.) who want sensible "ask before anything
+# goes outbound" defaults without writing their first rule.
 #
-# Purpose: zero-config policy for developers running AI coding agents
-# (Claude Code, Cursor, Codex CLI, Aider) who want sensible "ask before
-# anything goes outbound" defaults without writing their first rule.
+# Adopt with:
+#
+#   guard-hook --policy presets/coding-agent-outbound.yaml      # Claude Code
+#   GUARD_POLICY=presets/coding-agent-outbound.yaml ./your-agent
+#
+# or copy this file to your project root and edit in place.
 #
 # Design rules:
 #   1. Code / test loops stay frictionless. No ask on `git status`, `git
-#      commit`, `cargo build`, `npm test`, etc.
-#   2. Anything that ships state outside the workspace = `ask`.
-#   3. Anything destructive + irreversible = `deny`.
-#   4. Anything well-known dangerous (curl-pipe-bash, cloud metadata) =
-#      `deny`, no second chance.
-#   5. Reading credential / secret files = `deny` at action layer; the
-#      content layer (Sprint 6) will do the same for inline secrets.
-#   6. Comment every rule with the moment it catches and the rationale —
-#      this file is also documentation.
+#      commit`, `cargo build`, `npm test`, etc. — anything that does not
+#      ship state outside the workspace.
+#   2. Anything that ships state outside the workspace = `ask`. The agent
+#      must surface the intent to a human; the human resumes execution.
+#   3. Anything destructive + irreversible = `deny`. No second chance.
+#   4. Well-known dangerous patterns (curl-pipe-bash, cloud metadata) =
+#      `deny`, regardless of mode.
+#   5. Reading credential / secret files = `deny` at the action layer; a
+#      content-layer pre-tokenization gate will catch inline secrets in
+#      a later sprint.
+#   6. Every rule carries a short comment naming the moment it catches
+#      and the reason — this file is also documentation.
 #
-# Open questions (tracked in plan A2 → discussion):
-#   - Should `git push` to a fork (not origin) ask, or auto-allow?
-#   - `kubectl apply` in dev cluster — ask or allow?
-#   - `terraform apply` in workspace plan-only mode — ask or allow?
-#   - HTTP method-aware deny (POST/PUT/PATCH/DELETE non-local) needs schema
-#     extension; currently URL-centric only. See `executors.rs:80`.
+# Coverage (the 5 outbound categories from the strategic frame):
+#   - code egress:        `git push` family
+#   - package release:    npm / yarn / pnpm / cargo / gem / twine / setup.py
+#   - artifact egress:    docker / podman / buildx push, gh release
+#   - remote mutation:    HTTP to cloud metadata + RFC1918 / loopback
+#                         (method-aware filtering deferred — see README)
+#   - destructive shell:  rm -rf, git reset --hard, find -delete, etc.
+#
+# Related docs:
+#   - presets/README.md
+#   - docs/guides/getting-started/secure-shell-tools.md
+#   - docs/guides/getting-started/check-vs-enforce.md
 # ---------------------------------------------------------------------------
 
 version: 1
 
-# Coding agents need to read source freely. Default starts permissive within
-# the workspace; outbound guards live in per-tool rules below.
+# Coding agents need workspace-internal work to be friction-free; outbound
+# guards live in per-tool rules below. Override per-tool if you want a
+# stricter default for one surface (e.g. set `bash.mode: read_only` for an
+# audit-only run while keeping write_file at workspace_write).
 default_mode: workspace_write
 
 tools:
@@ -49,7 +63,7 @@ tools:
       - regex: "rm\\s+-[rRfv]+\\s+~(/|$)"
       - regex: "rm\\s+-[rRfv]+\\s+\\.\\.?$"
 
-      # History-rewriting / forced overwrite — irreversible to remote.
+      # History-rewriting / forced overwrite — irreversible at the remote.
       - prefix: "git push --force"
       - prefix: "git push -f"
       - regex: "git\\s+push\\s+.*--force-with-lease"
@@ -64,11 +78,11 @@ tools:
       - regex: "wget[^|]*\\|\\s*sh"
       - regex: "wget[^|]*\\|\\s*bash"
 
-      # Cloud metadata endpoints (SSRF / IMDS classic).
+      # Cloud metadata endpoints reached via shell (SSRF / IMDS classic).
       - regex: "(?i)169\\.254\\.169\\.254"
       - regex: "(?i)metadata\\.google\\.internal"
 
-      # Sudo — agents have no business in privilege escalation.
+      # Privilege escalation — agents have no business in sudo.
       - prefix: "sudo "
 
       # Disk / filesystem level — irreversible.
@@ -78,6 +92,8 @@ tools:
     ask:
       # ─── code egress ─────────────────────────────────────────────────
       # Catches the moment "agent thinks it's done, wants to ship it."
+      # Covers push to origin, fork, or any remote — the user decides
+      # whether the destination is what they expected.
       - prefix: "git push"
 
       # ─── package release ─────────────────────────────────────────────
@@ -130,8 +146,8 @@ tools:
 
   read_file:
     mode: workspace_write
-    # Pre-warn at action layer for credential / secret files.
-    # Sprint 6 content layer will additionally scan inline secrets in any
+    # Pre-warn at action layer for credential / secret files. A future
+    # content-layer sprint will additionally scan inline secrets in any
     # file read, regardless of path.
     deny_paths:
       - "**/.env"
@@ -173,12 +189,13 @@ tools:
 
   http_request:
     mode: workspace_write
-    # Schema is URL-centric today. Method-aware gating
-    # (POST/PUT/PATCH/DELETE → ask) is runtime-side via HTTP executor
-    # (`executors.rs:80`). Sprint 5-2 will codify the YAML side once the
-    # schema gains a `method` matcher.
+    # The payload schema today is URL-only — there is no `method` field
+    # the validator can match on. So "ask on any non-local POST/PUT/
+    # PATCH/DELETE" is not expressible without a schema extension; the
+    # rules below cover the highest-value URL-only protections instead.
+    # See presets/README.md for the host-side method-aware pattern.
     deny:
-      # Cloud / link-local metadata.
+      # Cloud / link-local metadata endpoints (IMDS classic, SSRF chain).
       - regex: "^https?://169\\.254\\.169\\.254"
       - regex: "^https?://metadata\\.google\\.internal"
       - regex: "^https?://metadata\\.azure\\.com"
@@ -193,11 +210,14 @@ tools:
       - regex: "^https?://172\\.(1[6-9]|2[0-9]|3[01])\\."
       - regex: "^https?://192\\.168\\."
 
-# ─── Trust override ─────────────────────────────────────────────────────
-trust:
-  untrusted:
-    # Untrusted actors hard-limited to read_only.
-    override_mode: read_only
+# ─── Trust override (optional, off by default) ──────────────────────────
+# This preset deliberately does NOT set a trust floor — the deny/ask
+# rules above ARE the security boundary, and a trust override that
+# downgrades `untrusted` agents to `read_only` would conflict with
+# `bash.mode: workspace_write` and deny every shell call before any rule
+# could fire. Hosts that classify agents into trust tiers can layer
+# their own override on top; see docs/guides/getting-started/trust-tooling.md
+# for the typical pattern.
 
 # ─── Anomaly / rate limiting ────────────────────────────────────────────
 anomaly:
@@ -211,6 +231,9 @@ anomaly:
     window_seconds: 60
 
 # ─── Audit ──────────────────────────────────────────────────────────────
+# Defaults to stdout so the preset works in any directory. Switch to
+# `output: file` + `file_path: ...` when you want durable forensic
+# storage; the JSONL format is unchanged.
 audit:
   enabled: true
   output: stdout
