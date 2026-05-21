@@ -203,6 +203,13 @@ pub struct ToolPolicy {
     pub allow_paths: Vec<String>,
     #[serde(default)]
     pub deny_paths: Vec<String>,
+    /// Path globs that are permitted to fall outside `context.working_directory`.
+    /// When a tool path matches one of these, the workspace-bound check in
+    /// `resolve_tool_path` is skipped and the path proceeds to the normal
+    /// `deny` / `deny_paths` / `ask` / `allow` evaluation. Empty list = old
+    /// behaviour (workspace bound is always enforced).
+    #[serde(default)]
+    pub workspace_escape_paths: Vec<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -351,7 +358,12 @@ fn compile_tool_policy(p: &ToolPolicy) -> Result<CompiledToolPolicy, PolicyError
     let deny = p.deny.iter().map(compile_rule).collect::<Result<_, _>>()?;
     let allow = p.allow.iter().map(compile_rule).collect::<Result<_, _>>()?;
     let ask = p.ask.iter().map(compile_rule).collect::<Result<_, _>>()?;
-    for glob_pat in p.deny_paths.iter().chain(p.allow_paths.iter()) {
+    for glob_pat in p
+        .deny_paths
+        .iter()
+        .chain(p.allow_paths.iter())
+        .chain(p.workspace_escape_paths.iter())
+    {
         glob::Pattern::new(glob_pat)
             .map_err(|e| PolicyError::ParseError(format!("Invalid glob '{}': {}", glob_pat, e)))?;
     }
@@ -473,7 +485,22 @@ impl PolicyEngine {
         let extracted = match tool {
             Tool::ReadFile | Tool::WriteFile => match extract_path(payload) {
                 Ok(ExtractedPayload::Path(path)) => {
-                    match resolve_tool_path(&path, context.working_directory.as_deref()) {
+                    // A path that matches the tool's `workspace_escape_paths`
+                    // bypasses the workspace-bound check inside resolve_tool_path
+                    // and is then subject to the normal deny / ask / allow flow.
+                    let escapes_workspace = tool_policy
+                        .map(|tp| {
+                            tp.workspace_escape_paths.iter().any(|pat| {
+                                path_glob_matches(pat, &path, context.working_directory.as_deref())
+                            })
+                        })
+                        .unwrap_or(false);
+                    let effective_bound = if escapes_workspace {
+                        None
+                    } else {
+                        context.working_directory.as_deref()
+                    };
+                    match resolve_tool_path(&path, effective_bound) {
                         Ok(resolved) => {
                             ExtractedPayload::Path(resolved.to_string_lossy().into_owned())
                         }

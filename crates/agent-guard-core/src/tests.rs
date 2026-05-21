@@ -1333,6 +1333,139 @@ tools:
         assert!(matches!(res, Err(PolicyError::ParseError(_))));
     }
 
+    #[test]
+    fn invalid_workspace_escape_path_glob_fails_at_load_time() {
+        // Same validation pass must cover workspace_escape_paths so bad globs
+        // surface at policy load, not at first matching attempt.
+        let yaml = r#"
+version: 1
+default_mode: workspace_write
+tools:
+  write_file:
+    workspace_escape_paths:
+      - "[unclosed"
+"#;
+        let res = PolicyEngine::from_yaml_str(yaml);
+        assert!(matches!(res, Err(PolicyError::ParseError(_))));
+    }
+
+    // ── workspace_escape_paths ───────────────────────────────────────────────
+
+    #[test]
+    fn workspace_escape_paths_allows_listed_path_outside_workspace() {
+        // Path falls outside the working_directory but matches an escape glob;
+        // the workspace-bound check is bypassed and no other rule matches, so
+        // the call lands at the default Allow tail.
+        let yaml = r#"
+version: 1
+default_mode: workspace_write
+tools:
+  write_file:
+    workspace_escape_paths:
+      - "/private/tmp/**"
+      - "/tmp/**"
+"#;
+        let engine = PolicyEngine::from_yaml_str(yaml).unwrap();
+        let mut context = ctx(crate::types::TrustLevel::Trusted);
+        context.working_directory = Some(std::path::PathBuf::from("/var/agent-guard-workspace"));
+        let d = engine.check(
+            &crate::types::Tool::WriteFile,
+            r#"{"path":"/tmp/agent-scratch.md"}"#,
+            &context,
+        );
+        assert_eq!(d, GuardDecision::Allow);
+    }
+
+    #[test]
+    fn workspace_escape_paths_preserves_traversal_deny_for_unlisted_path() {
+        // Different out-of-workspace path that does NOT match the escape list
+        // must still trip PATH_TRAVERSAL — the gate is opt-in per glob.
+        let yaml = r#"
+version: 1
+default_mode: workspace_write
+tools:
+  write_file:
+    workspace_escape_paths:
+      - "/tmp/**"
+"#;
+        let engine = PolicyEngine::from_yaml_str(yaml).unwrap();
+        let mut context = ctx(crate::types::TrustLevel::Trusted);
+        context.working_directory = Some(std::path::PathBuf::from("/var/agent-guard-workspace"));
+        let d = engine.check(
+            &crate::types::Tool::WriteFile,
+            r#"{"path":"/etc/agent-target.conf"}"#,
+            &context,
+        );
+        if let GuardDecision::Deny { reason } = d {
+            assert_eq!(reason.code, crate::decision::DecisionCode::PathTraversal);
+        } else {
+            panic!("expected Deny(PathTraversal), got {:?}", d);
+        }
+    }
+
+    #[test]
+    fn workspace_escape_paths_still_subject_to_deny_paths() {
+        // Once the escape lets the path through the bound, the rest of the
+        // policy still applies. deny_paths must still win.
+        //
+        // Uses a canonical-form tempdir prefix for both globs so the test is
+        // stable across platforms (on macOS /tmp resolves to /private/tmp via
+        // a symlink, which would defeat a literal "/tmp/**" deny_paths glob
+        // against the canonicalized match_value).
+        let escape_root = tempfile::tempdir()
+            .expect("tempdir")
+            .path()
+            .canonicalize()
+            .expect("canonicalize tempdir");
+        let escape_root_str = escape_root.to_str().unwrap();
+        let yaml = format!(
+            r#"
+version: 1
+default_mode: workspace_write
+tools:
+  write_file:
+    workspace_escape_paths:
+      - "{root}/**"
+    deny_paths:
+      - "{root}/secrets/**"
+"#,
+            root = escape_root_str,
+        );
+        let engine = PolicyEngine::from_yaml_str(&yaml).unwrap();
+        let mut context = ctx(crate::types::TrustLevel::Trusted);
+        context.working_directory = Some(std::path::PathBuf::from("/var/agent-guard-workspace"));
+        let payload = format!(r#"{{"path":"{}/secrets/token"}}"#, escape_root_str);
+        let d = engine.check(&crate::types::Tool::WriteFile, &payload, &context);
+        assert!(matches!(d, GuardDecision::Deny { .. }));
+    }
+
+    #[test]
+    fn workspace_escape_paths_only_applies_to_owning_tool() {
+        // Escape list is per-tool: a path that escapes for write_file must
+        // still trip PATH_TRAVERSAL on read_file (which has no escape list).
+        let yaml = r#"
+version: 1
+default_mode: workspace_write
+tools:
+  write_file:
+    workspace_escape_paths:
+      - "/tmp/**"
+"#;
+        let engine = PolicyEngine::from_yaml_str(yaml).unwrap();
+        let mut context = ctx(crate::types::TrustLevel::Trusted);
+        context.working_directory = Some(std::path::PathBuf::from("/var/agent-guard-workspace"));
+        let d = engine.check(
+            &crate::types::Tool::ReadFile,
+            r#"{"path":"/tmp/agent-scratch.md"}"#,
+            &context,
+        );
+        if let GuardDecision::Deny { reason } = d {
+            assert_eq!(reason.code, crate::decision::DecisionCode::PathTraversal);
+        } else {
+            panic!("expected Deny(PathTraversal), got {:?}", d);
+        }
+    }
+
     // ── PolicyMode::Blocked ──────────────────────────────────────────────────
 
     #[test]
