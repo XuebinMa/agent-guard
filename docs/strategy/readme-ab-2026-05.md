@@ -1,9 +1,9 @@
 # README A/B Draft — 2026-05-09
 
-> **Working draft for community feedback.** Two candidate versions of the README
-> top section. To be posted to GitHub Discussions for poll + reaction-collection
-> before any change to the live `README.md`. This file is part of A 层 (zero
-> audit-workflow risk) per the parallel execution plan.
+> **Status: shipped.** Version B was adopted into the live `README.md`
+> on 2026-05-21 (Phase 1, Sprint 5-1) per the decision criteria in
+> §"Decision criteria" below. This file is retained as the design record
+> showing why the framing changed; the live README is the source of truth.
 
 ## Goal
 

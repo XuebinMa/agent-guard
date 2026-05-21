@@ -1,23 +1,24 @@
 # agent-guard
 
-> The execution control layer for agent side effects.
-> When an agent is about to do something real, `agent-guard` decides whether to execute it, deny it, ask for approval, or hand it back to the host.
+> Outbound change control for AI coding agents — action and content.
+> Your agent writes code and runs tests freely; the moment it tries to push, publish, deploy, or send a secret out, `agent-guard` is the gate.
 
 [![Version](https://img.shields.io/badge/Version-0.2.0--rc1-blue.svg)]()
-[![Focus](https://img.shields.io/badge/Focus-Execution%20Control-green.svg)]()
+[![Focus](https://img.shields.io/badge/Focus-Outbound%20Control-green.svg)]()
 [![License](https://img.shields.io/badge/License-MIT-yellow.svg)]()
 [![MSRV](https://img.shields.io/badge/MSRV-1.79-orange.svg)]()
 
-`agent-guard` is for AI application and agent developers who need a real execution boundary before tool calls turn into shell commands, file mutations, or other side effects. It sits between agent intent and execution so risky actions do not rely only on prompts, regexes, or ad hoc handler code.
+`agent-guard` is for developers running AI coding agents — Claude Code, Cursor, Codex CLI, Aider — who don't want the next `git push --force` to be the agent's idea, and don't want a stray `.env` quietly making it into the model's context.
 
-Today, the clearest short-term wedge is side-effect execution control across a very small set of high-risk actions:
+Two layers of outbound control, one decision surface:
 
-- shell / terminal
-- file write
-- outbound mutation HTTP
-- one runtime decision surface for `execute | deny | ask_for_approval | handoff`
+- **Action layer** (today): gate `git push`, `npm publish`, `docker push`, `gh release create`, non-local HTTP mutations, `rm -rf` — before they become real
+- **Content layer** (roadmap): detect credentials and PII in tool inputs and outputs before they reach the LLM provider or external API
+- **Audit layer**: every decision signed with Ed25519 — tamper-evident receipts ready for EU AI Act articles 28-31 evidence
 
-That narrow wedge is the adoption point, not the final scope. The project can grow into broader side-effect control over time, but the reason to use it now is simple: it gives your agent a real execution decision point where side effects become real.
+Best fit: solo and small-team devs running coding agents in real workflows. **Local-first by design** — no cloud, no telemetry, no data leaves your machine.
+
+Why now: EU AI Act enforcement begins 2026-08-02. Claude Code's PreToolUse hook has known gaps with MCP tools (#33106). DNS-tunnel credential exfiltration exploits (CVE-2025-55284) are already in the wild. The cost of "the agent did something irreversible" is no longer hypothetical.
 
 ---
 
@@ -45,9 +46,20 @@ The verification script uses temporary directories for Python build/test work so
 
 ---
 
-## See The Wedge
+## Try The Preset First
 
-If you only try one thing, run the side-effect wedge demo:
+The fastest adoption path is the zero-config outbound preset. It covers all five action-layer categories (code egress, package release, artifact egress, remote mutation, destructive shell) with sensible defaults, so you do not have to write your first rule.
+
+```bash
+cargo install --path crates/guard-hook   # one-time install of the Claude Code adapter
+guard-hook check \
+  --policy presets/coding-agent-outbound.yaml \
+  --agent-id smoke-test < event.json
+```
+
+A real `git push` from the agent then surfaces as an `ask` decision; a `git push --force` is denied outright; a `cargo build` passes through with no friction. See [presets/README.md](presets/README.md) for adoption with the Rust SDK, Node binding, or Claude Code PreToolUse hook, and for the contributing guide on new presets.
+
+If you prefer a runnable end-to-end demo of the multi-side-effect runtime, the Node side-effect wedge is also wired up:
 
 ```bash
 npm ci --prefix crates/agent-guard-node
@@ -66,9 +78,7 @@ What you should see:
 [4] remote publish decision: ask_for_approval
 ```
 
-That path is documented in [Side-Effect Wedge Demo](docs/guides/getting-started/side-effect-wedge-demo.md).
-
-If you want the fastest shell-only proof instead, use [Three-Minute Proof](docs/guides/getting-started/three-minute-proof.md).
+That path is documented in [Side-Effect Wedge Demo](docs/guides/getting-started/side-effect-wedge-demo.md). For the fastest shell-only proof, use [Three-Minute Proof](docs/guides/getting-started/three-minute-proof.md).
 
 ---
 
@@ -77,17 +87,17 @@ If you want the fastest shell-only proof instead, use [Three-Minute Proof](docs/
 The core runtime decision now looks like this:
 
 ```text
-agent action
+agent action (outbound moment)
   -> agent-guard
   -> execute | deny | ask_for_approval | handoff
   -> optional guard-owned execution
-  -> audit outcome
+  -> Ed25519-signed audit record
 ```
 
 This is the difference between:
 
 - hoping the model behaves
-- and putting an explicit execution control layer in front of side effects
+- and putting an explicit gate in front of every outbound action
 
 Today, the runtime can already own execution for:
 
@@ -95,22 +105,24 @@ Today, the runtime can already own execution for:
 - file write
 - outbound mutation HTTP
 
+Together those three surfaces cover the action-layer categories the preset bundles (code egress, package release, artifact egress, remote mutation, destructive shell).
+
 ---
 
 ## Why Developers Adopt It
 
-- **Real boundary, not prompt-only safety**: risky tool calls hit a decision point before execution.
-- **Small integration surface**: wrap existing LangChain-style tools or OpenAI-style handlers instead of rewriting your runtime.
-- **Incremental rollout**: start with the raw runtime APIs for the highest-risk side effects, then layer adapters on top where they fit.
-- **Auditable outcomes**: keep receipts and logs as support for trust and review, without making enterprise workflow the first thing you have to buy into.
+- **A real outbound boundary, not prompt-only safety**: `git push`, `npm publish`, `docker push`, `rm -rf`, `kubectl apply` all hit a decision point before they become real.
+- **Zero-config preset**: a copy-able policy that covers the five action-layer categories on day one — no rule-writing required.
+- **Small integration surface**: wrap existing LangChain-style tools or OpenAI-style handlers, or hook into Claude Code's PreToolUse via `guard-hook`. No runtime rewrite.
+- **Tamper-evident audit**: every decision is Ed25519-signed, JSONL-formatted, and ready to map onto EU AI Act articles 28-31 without an enterprise control plane.
 
 ---
 
 ## Best Fit Right Now
 
-- code agents or shell-enabled agents
-- AI applications with high-risk tool calls
-- teams that need a pre-execution decision layer before real side effects happen
+- solo and small-team devs running Claude Code / Cursor / Codex CLI / Aider against real codebases
+- shell-enabled coding agents that publish, push, deploy, or otherwise produce outbound effects
+- teams that want a tamper-evident audit trail before the EU AI Act enforcement deadline
 
 ## Not The First Thing To Reach For
 
@@ -130,20 +142,25 @@ For that layer, see [MartinLoop](https://github.com/Keesan12/martin-loop): it wr
 
 ## Current Scope
 
-What is strong today:
+What is strong today (action layer):
 
-- shell / terminal, file write, and outbound mutation HTTP are the main proof surfaces
-- Node is the fastest adoption path
-- normalized runtime decisions, approval flows, and auditable outcomes are available now
+- the five outbound action categories — code egress, package release, artifact egress, remote mutation, destructive shell — are covered by a zero-config preset
+- shell / terminal, file write, and outbound mutation HTTP are the underlying runtime proof surfaces
+- normalized runtime decisions, approval flows, and Ed25519-signed audit records are available now
 - the SDK already includes policy signing, execution receipts, metrics, anomaly detection, and SIEM export beyond the narrow wedge
+
+What is roadmap (content layer):
+
+- credentials / PII detection on tool inputs and outputs before they reach the LLM provider or external API
+- HTTP method matching in policy (today the schema is URL-only; method-aware filtering goes host-side — see [presets/README.md](presets/README.md))
+- distribution as a Claude Code plugin / ECC marketplace entry
 
 What to understand before integrating:
 
-- the raw runtime APIs now expose `execute | deny | ask_for_approval | handoff`
+- raw runtime APIs expose `execute | deny | ask_for_approval | handoff`
 - adapter `enforce` is still strongest on shell-like execution paths today
-- Bash still has the deepest validator path; `read_file` and `write_file` now normalize paths and fail closed on symlink escapes, while HTTP policy matching is still more URL-centric today
-- HTTP execution ownership distinguishes mutation methods at runtime, but policy matching is still primarily URL-centric
-- Python and Node bindings intentionally use the SDK's default sandbox selection in the current wedge release; explicit backend selection is deferred until pilot demand surfaces
+- Bash has the deepest validator path; `read_file` / `write_file` normalize paths and fail closed on symlink escapes; HTTP policy matching is URL-centric (see roadmap)
+- Python and Node bindings use the SDK's default sandbox selection in the current release; explicit backend selection is deferred until pilot demand surfaces
 - broader capability coverage is intentionally narrow, not generic
 - broader policy workflow and control-plane ideas are future expansion paths, not the phase-one hook
 
@@ -151,11 +168,13 @@ What to understand before integrating:
 
 ## Fastest Paths
 
-- [Node Quickstart](crates/agent-guard-node/examples/quickstart/README.md): shortest end-to-end path for a new developer
-- [Side-Effect Wedge Demo](docs/guides/getting-started/side-effect-wedge-demo.md): best current proof of the multi-side-effect runtime
-- [Secure Shell Tools](docs/guides/getting-started/secure-shell-tools.md): best first integration when shell is the risk
+- [Outbound preset](presets/README.md): the zero-config policy for coding-agent users — start here
+- [Claude Code PreToolUse hook](docs/guides/operations/claude-code-hook.md): wire `guard-hook` into your live Claude Code session
+- [Node Quickstart](crates/agent-guard-node/examples/quickstart/README.md): shortest programmatic path for a new developer
+- [Side-Effect Wedge Demo](docs/guides/getting-started/side-effect-wedge-demo.md): runnable proof of the multi-side-effect runtime
+- [Secure Shell Tools](docs/guides/getting-started/secure-shell-tools.md): first integration when shell is the dominant risk
 - [Check vs Enforce](docs/guides/getting-started/check-vs-enforce.md): when to keep your handler vs when to move execution into `agent-guard`
-- [Framework Support Matrix](docs/reference/framework-support-matrix.md): what is supported today across Node, Python, and Rust
+- [Framework Support Matrix](docs/reference/framework-support-matrix.md): current Node / Python / Rust adoption surfaces
 - [User Manual](docs/guides/getting-started/user-manual.md): install, policy basics, and SDK integration
 
 Additional references:
@@ -170,8 +189,9 @@ Additional references:
 
 ## Framework Entry Points
 
-- **Node**: strongest current adoption surface, with wrappers for LangChain-style tools and OpenAI-style handlers
-- **Python**: wrapper surface is available, but broader runtime semantics and explicit sandbox selection are not yet brought to parity
+- **Claude Code**: the `guard-hook` PreToolUse adapter is the lowest-friction entry — point one `--policy` flag at the outbound preset
+- **Node**: strongest programmatic surface, with wrappers for LangChain-style tools and OpenAI-style handlers
+- **Python**: wrap_langchain_tool / wrap_openai_tool are available; a real-package validation script ships, automated CI version matrix is the remaining gap
 - **Rust SDK**: most direct integration path for hosts that want explicit control over side-effect decisioning and execution
 
 ---
