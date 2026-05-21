@@ -622,6 +622,7 @@ pub fn validate_bash_command(
     command: &str,
     mode: PermissionMode,
     workspace_path: &Path,
+    escape_paths: &[String],
 ) -> ValidationResult {
     if mode == PermissionMode::Blocked {
         return ValidationResult::Block {
@@ -662,7 +663,7 @@ pub fn validate_bash_command(
         return res;
     }
 
-    let res = validate_paths(command, mode, workspace_path);
+    let res = validate_paths(command, mode, workspace_path, escape_paths);
     if res != ValidationResult::Allow {
         return res;
     }
@@ -696,15 +697,21 @@ pub fn validate_command(
     command: &str,
     mode: PermissionMode,
     _workspace: &Path,
+    escape_paths: &[String],
 ) -> ValidationResult {
-    validate_bash_command(command, mode, _workspace)
+    validate_bash_command(command, mode, _workspace, escape_paths)
 }
 
 pub fn validate_mode(command: &str, mode: PermissionMode) -> ValidationResult {
     validate_read_only(command, mode)
 }
 
-pub fn validate_paths(command: &str, mode: PermissionMode, workspace: &Path) -> ValidationResult {
+pub fn validate_paths(
+    command: &str,
+    mode: PermissionMode,
+    workspace: &Path,
+    escape_paths: &[String],
+) -> ValidationResult {
     if !matches!(
         mode,
         PermissionMode::ReadOnly | PermissionMode::WorkspaceWrite
@@ -721,6 +728,12 @@ pub fn validate_paths(command: &str, mode: PermissionMode, workspace: &Path) -> 
 
         let path = Path::new(candidate);
         if path.is_absolute() && !path_stays_within_workspace(path, &workspace) {
+            // Absolute path outside the workspace gets one last chance via the
+            // policy-declared escape list. Relative `../` escape (below) does
+            // not — that vector is always suspicious regardless of policy.
+            if matches_escape_glob(candidate, escape_paths) {
+                continue;
+            }
             return ValidationResult::Block {
                 reason: format!(
                     "write target '{}' is outside the configured workspace",
@@ -747,6 +760,9 @@ pub fn validate_paths(command: &str, mode: PermissionMode, workspace: &Path) -> 
 
         let path = Path::new(candidate);
         if path.is_absolute() && !path_stays_within_workspace(path, &workspace) {
+            if matches_escape_glob(candidate, escape_paths) {
+                continue;
+            }
             return ValidationResult::Block {
                 reason: format!(
                     "read target '{}' is outside the configured workspace",
@@ -766,6 +782,14 @@ pub fn validate_paths(command: &str, mode: PermissionMode, workspace: &Path) -> 
     }
 
     ValidationResult::Allow
+}
+
+fn matches_escape_glob(candidate: &str, escape_paths: &[String]) -> bool {
+    escape_paths.iter().any(|pat| {
+        glob::Pattern::new(pat)
+            .map(|g| g.matches(candidate))
+            .unwrap_or(false)
+    })
 }
 
 pub fn validate_sed(command: &str, mode: PermissionMode) -> ValidationResult {
@@ -979,6 +1003,7 @@ mod tests {
             "echo ok > output.txt",
             PermissionMode::WorkspaceWrite,
             Path::new("/workspace"),
+            &[],
         );
         assert_eq!(result, ValidationResult::Allow);
     }
@@ -989,6 +1014,7 @@ mod tests {
             "echo ok > /etc/passwd",
             PermissionMode::WorkspaceWrite,
             Path::new("/workspace"),
+            &[],
         );
         assert!(matches!(result, ValidationResult::Block { .. }));
     }
@@ -999,6 +1025,7 @@ mod tests {
             "echo ok > ../outside.txt",
             PermissionMode::WorkspaceWrite,
             Path::new("/workspace"),
+            &[],
         );
         assert!(matches!(result, ValidationResult::Block { .. }));
     }
@@ -1009,6 +1036,61 @@ mod tests {
             "tee /etc/passwd",
             PermissionMode::WorkspaceWrite,
             Path::new("/workspace"),
+            &[],
+        );
+        assert!(matches!(result, ValidationResult::Block { .. }));
+    }
+
+    #[test]
+    fn validate_paths_escape_list_allows_listed_absolute_write() {
+        // Absolute path outside workspace, but matches an escape glob → allow.
+        let escape = vec!["/tmp/**".to_string()];
+        let result = validate_paths(
+            "echo ok > /tmp/scratch.md",
+            PermissionMode::WorkspaceWrite,
+            Path::new("/workspace"),
+            &escape,
+        );
+        assert_eq!(result, ValidationResult::Allow);
+    }
+
+    #[test]
+    fn validate_paths_escape_list_does_not_allow_relative_parent_escape() {
+        // Even with an escape glob that would syntactically match the resolved
+        // form, a relative `../` write is still rejected — the relative-escape
+        // path is a different threat class.
+        let escape = vec!["/**".to_string()];
+        let result = validate_paths(
+            "echo ok > ../outside.txt",
+            PermissionMode::WorkspaceWrite,
+            Path::new("/workspace"),
+            &escape,
+        );
+        assert!(matches!(result, ValidationResult::Block { .. }));
+    }
+
+    #[test]
+    fn validate_paths_escape_list_allows_listed_absolute_read() {
+        // Read target symmetry: escape list also lets cat /tmp/... through.
+        let escape = vec!["/tmp/**".to_string()];
+        let result = validate_paths(
+            "cat /tmp/scratch.md",
+            PermissionMode::WorkspaceWrite,
+            Path::new("/workspace"),
+            &escape,
+        );
+        assert_eq!(result, ValidationResult::Allow);
+    }
+
+    #[test]
+    fn validate_paths_escape_list_still_blocks_unlisted_absolute() {
+        // Path outside workspace and outside the escape list → still blocked.
+        let escape = vec!["/tmp/**".to_string()];
+        let result = validate_paths(
+            "echo ok > /etc/passwd",
+            PermissionMode::WorkspaceWrite,
+            Path::new("/workspace"),
+            &escape,
         );
         assert!(matches!(result, ValidationResult::Block { .. }));
     }

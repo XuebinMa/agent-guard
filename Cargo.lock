@@ -98,6 +98,7 @@ name = "agent-guard-validators"
 version = "0.2.0-rc1"
 dependencies = [
  "agent-guard-core",
+ "glob",
  "serde",
  "serde_json",
 ]

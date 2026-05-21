@@ -430,7 +430,8 @@ impl Guard {
                 Err(decision) => return decision,
             };
 
-            let result = validate_bash_command(&command, mode, workspace_path);
+            let escape_paths = state.engine.workspace_escape_paths(&input.tool);
+            let result = validate_bash_command(&command, mode, workspace_path, escape_paths);
             match result {
                 ValidationResult::Block { reason } => {
                     let code = classify_block_reason(&reason);

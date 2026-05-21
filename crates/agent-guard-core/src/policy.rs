@@ -671,6 +671,16 @@ impl PolicyEngine {
         }
     }
 
+    /// Read-only accessor for a tool's `workspace_escape_paths` list. Returns
+    /// an empty slice when the tool is unconfigured or has no escape list.
+    /// Used by external callers (e.g. the bash validator) that need to honour
+    /// the same escape semantics as the in-engine path resolution.
+    pub fn workspace_escape_paths(&self, tool: &Tool) -> &[String] {
+        self.tool_policy(tool)
+            .map(|tp| tp.workspace_escape_paths.as_slice())
+            .unwrap_or(&[])
+    }
+
     fn compiled_tool_policy(&self, tool: &Tool) -> Option<&CompiledToolPolicy> {
         match tool {
             Tool::Bash => self.compiled.bash.as_ref(),
