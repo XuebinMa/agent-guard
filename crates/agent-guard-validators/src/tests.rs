@@ -929,6 +929,194 @@ mod bash_substitution_and_separator_tests {
         assert_eq!(r, ValidationResult::Allow);
     }
 
+    // ── quoting context: literal forms must NOT trigger substitution block ──
+    //
+    // Audit 2026-05-21 dogfood finding: the substitution detector ignored
+    // quoting context, so `$(...)` and backticks inside single-quoted strings
+    // or quoted-delimiter heredoc bodies were blocked even though the shell
+    // would treat them as literal text. These tests pin the corrected
+    // semantics.
+
+    #[test]
+    fn allows_dollar_paren_inside_single_quotes() {
+        let r = validate_bash_command("echo 'literal $(date) text'", ws(), workspace());
+        assert_eq!(
+            r,
+            ValidationResult::Allow,
+            "single quotes disable substitution; got {r:?}"
+        );
+    }
+
+    #[test]
+    fn allows_backtick_inside_single_quotes() {
+        let r = validate_bash_command("echo 'literal `date` text'", ws(), workspace());
+        assert_eq!(
+            r,
+            ValidationResult::Allow,
+            "single quotes disable substitution; got {r:?}"
+        );
+    }
+
+    #[test]
+    fn allows_escaped_dollar_paren_outside_quotes() {
+        let r = validate_bash_command("echo \\$(date)", ws(), workspace());
+        assert_eq!(
+            r,
+            ValidationResult::Allow,
+            "escaped $ is not substitution; got {r:?}"
+        );
+    }
+
+    #[test]
+    fn allows_backtick_inside_quoted_delimiter_heredoc() {
+        let cmd = "cat <<'EOF'\ntext with `backticks` and $(literals)\nEOF";
+        let r = validate_bash_command(cmd, ws(), workspace());
+        assert_eq!(
+            r,
+            ValidationResult::Allow,
+            "<<'EOF' body is literal; got {r:?}"
+        );
+    }
+
+    #[test]
+    fn allows_backtick_inside_double_quoted_delimiter_heredoc() {
+        let cmd = "cat <<\"EOF\"\nbody with `backticks`\nEOF";
+        let r = validate_bash_command(cmd, ws(), workspace());
+        assert_eq!(
+            r,
+            ValidationResult::Allow,
+            "<<\"EOF\" body is literal in bash; got {r:?}"
+        );
+    }
+
+    #[test]
+    fn allows_dash_quoted_heredoc_body() {
+        let cmd = "cat <<-'END'\n\tbody $(no_run) and `no_run`\n\tEND";
+        let r = validate_bash_command(cmd, ws(), workspace());
+        assert_eq!(
+            r,
+            ValidationResult::Allow,
+            "<<-'END' body is literal; got {r:?}"
+        );
+    }
+
+    // Adversarial: substitution is still active inside double-quoted strings
+    // and unquoted-delimiter heredocs. These must remain blocked.
+
+    #[test]
+    fn blocks_dollar_paren_inside_double_quotes() {
+        let r = validate_bash_command("echo \"output: $(date)\"", ws(), workspace());
+        assert!(
+            matches!(r, ValidationResult::Block { .. }),
+            "double quotes do NOT disable substitution; got {r:?}"
+        );
+    }
+
+    #[test]
+    fn blocks_backtick_inside_double_quotes() {
+        let r = validate_bash_command("echo \"output: `date`\"", ws(), workspace());
+        assert!(
+            matches!(r, ValidationResult::Block { .. }),
+            "double quotes do NOT disable backticks; got {r:?}"
+        );
+    }
+
+    #[test]
+    fn blocks_substitution_inside_unquoted_heredoc() {
+        let cmd = "cat <<EOF\n$(rm -rf /etc/passwd)\nEOF";
+        let r = validate_bash_command(cmd, ws(), workspace());
+        assert!(
+            matches!(r, ValidationResult::Block { .. }),
+            "<<EOF body is expanded; got {r:?}"
+        );
+    }
+
+    #[test]
+    fn blocks_substitution_after_quoted_heredoc_closes() {
+        // A literal heredoc body must not leak its safe-context into
+        // subsequent commands. After `EOF` closes, a `;` `$(...)` is back
+        // in normal context and must block.
+        let cmd = "cat <<'EOF'\nliteral `body`\nEOF\n$(rm -rf /etc/passwd)";
+        let r = validate_bash_command(cmd, ws(), workspace());
+        assert!(
+            matches!(r, ValidationResult::Block { .. }),
+            "post-heredoc substitution must still block; got {r:?}"
+        );
+    }
+
+    // ── code-laundering builtins (eval / source / .) ────────────────────────
+    //
+    // The substitution gate skips single-quoted regions because the shell
+    // treats them as literal — `'$(whoami)'` is just a string. But bash
+    // builtins `eval`, `source`, and `.` *re-parse* their string args as
+    // shell code, which would re-introduce substitution. These builtins
+    // are opaque code launderers and must be blocked outright in
+    // ReadOnly + WorkspaceWrite modes, like `python -c` / `bash -c`.
+
+    #[test]
+    fn blocks_eval_with_single_quoted_substitution_workspace_write() {
+        let r = validate_bash_command("eval '$(whoami)'", ws(), workspace());
+        assert!(
+            matches!(r, ValidationResult::Block { .. }),
+            "eval with laundered substitution must block; got {r:?}"
+        );
+    }
+
+    #[test]
+    fn blocks_eval_with_literal_string_workspace_write() {
+        // Even with no substitution syntax visible, `eval "literal"` is
+        // opaque code execution and must be blocked.
+        let r = validate_bash_command("eval \"echo hello\"", ws(), workspace());
+        assert!(
+            matches!(r, ValidationResult::Block { .. }),
+            "eval is opaque code execution; got {r:?}"
+        );
+    }
+
+    #[test]
+    fn blocks_eval_in_readonly_mode() {
+        let r = validate_bash_command("eval 'whoami'", ro(), workspace());
+        assert!(matches!(r, ValidationResult::Block { .. }));
+    }
+
+    #[test]
+    fn blocks_source_builtin_workspace_write() {
+        let r = validate_bash_command("source /tmp/payload.sh", ws(), workspace());
+        assert!(
+            matches!(r, ValidationResult::Block { .. }),
+            "source executes the file as shell code; got {r:?}"
+        );
+    }
+
+    #[test]
+    fn blocks_dot_builtin_workspace_write() {
+        // POSIX `.` is the portable name for `source`.
+        let r = validate_bash_command(". /tmp/payload.sh", ws(), workspace());
+        assert!(matches!(r, ValidationResult::Block { .. }));
+    }
+
+    #[test]
+    fn blocks_eval_after_pipe() {
+        // Code-laundering check must inspect every segment, not just the
+        // first command. `cat file | eval` is also opaque execution.
+        let r = validate_bash_command("echo whoami | eval", ws(), workspace());
+        assert!(matches!(r, ValidationResult::Block { .. }));
+    }
+
+    #[test]
+    fn allows_evaluate_substring_in_other_commands() {
+        // Word-boundary check: `evaluate`, `evaluation`, `eval-something`
+        // are unrelated identifiers and must not match.
+        let r = validate_bash_command("echo evaluate this", ws(), workspace());
+        assert_eq!(r, ValidationResult::Allow);
+    }
+
+    #[test]
+    fn allows_filename_containing_eval() {
+        let r = validate_bash_command("cat /workspace/evaluator.log", ro(), workspace());
+        assert_eq!(r, ValidationResult::Allow);
+    }
+
     // ── newline as command separator ────────────────────────────────────────
 
     #[test]

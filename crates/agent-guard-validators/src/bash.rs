@@ -92,6 +92,15 @@ const INLINE_CODE_INTERPRETERS: &[&str] = &[
 
 const INLINE_CODE_FLAGS: &[&str] = &["-c", "-e", "-r", "--command", "--exec"];
 
+/// Builtins that re-parse string arguments as shell code, regardless of
+/// quoting. They launder substitution past the context-aware substitution
+/// gate (`'$(rm -rf /)'` is literal as a string but executable once `eval`
+/// re-parses it). Blocked in ReadOnly + WorkspaceWrite modes, same posture
+/// as `python -c` / `bash -c`.
+///
+/// `.` is the POSIX-portable spelling of `source`.
+const CODE_LAUNDERING_COMMANDS: &[&str] = &["eval", "source", "."];
+
 #[must_use]
 pub fn validate_read_only(command: &str, mode: PermissionMode) -> ValidationResult {
     if mode != PermissionMode::ReadOnly {
@@ -396,33 +405,217 @@ fn extract_first_command(s: &str) -> String {
 ///   * `<(...)`  — process substitution (input)
 ///   * `>(...)`  — process substitution (output)
 ///
+/// Honours shell quoting context. Substitution is only flagged when the
+/// shell would actually evaluate it:
+///   * Single-quoted strings (`'...'`) suppress all substitution.
+///   * Double-quoted strings (`"..."`) still expand `$(...)` and backticks.
+///   * Heredocs with a quoted delimiter (`<<'EOF'`, `<<"EOF"`, `<<-'EOF'`)
+///     have a literal body and suppress substitution.
+///   * Heredocs with an unquoted delimiter (`<<EOF`) expand their body, so
+///     substitution inside is flagged.
+///   * Backslash-escaped `\$` outside single quotes is literal.
+///
 /// Parameter expansion (`${VAR}`) and bare `$VAR` are intentionally NOT
 /// flagged — they expand to a value, not to a separately-executed command,
 /// and are common in legitimate workflows.
-///
-/// `$(` and `` ` `` survive `shell_split` inside a single token (neither
-/// `$`, `(`, nor `` ` `` is a separator). Process substitution, however, is
-/// `<` or `>` immediately followed by `(` — and after the glued-redirection
-/// fix `<` and `>` are now standalone tokens, so we detect adjacency
-/// between a `<` / `>` token and a `(`-prefixed neighbour.
 fn contains_command_substitution(command: &str) -> Option<&'static str> {
-    let tokens = shell_split(command);
-    for (idx, token) in tokens.iter().enumerate() {
-        if token.contains("$(") {
+    let bytes = command.as_bytes();
+    let n = bytes.len();
+    let mut i = 0;
+
+    while i < n {
+        let c = bytes[i];
+
+        // Backslash escape outside any quote: skip the next byte.
+        if c == b'\\' && i + 1 < n {
+            i += 2;
+            continue;
+        }
+
+        // Single-quoted region: bash treats everything inside as literal.
+        if c == b'\'' {
+            i += 1;
+            while i < n && bytes[i] != b'\'' {
+                i += 1;
+            }
+            i += 1; // skip closing quote (or step past EOF)
+            continue;
+        }
+
+        // Double-quoted region: substitution is STILL active. Scan inside
+        // for `$(` and backticks, honouring `\` escapes.
+        if c == b'"' {
+            i += 1;
+            while i < n && bytes[i] != b'"' {
+                if bytes[i] == b'\\' && i + 1 < n {
+                    i += 2;
+                    continue;
+                }
+                if bytes[i] == b'$' && i + 1 < n && bytes[i + 1] == b'(' {
+                    return Some("$(");
+                }
+                if bytes[i] == b'`' {
+                    return Some("`");
+                }
+                i += 1;
+            }
+            i += 1;
+            continue;
+        }
+
+        // Heredoc: `<<` or `<<-` followed by a delimiter token. If the
+        // delimiter is quoted, the body is literal — skip past it.
+        if c == b'<' && i + 1 < n && bytes[i + 1] == b'<' {
+            let mut j = i + 2;
+            if j < n && bytes[j] == b'-' {
+                j += 1;
+            }
+            while j < n && (bytes[j] == b' ' || bytes[j] == b'\t') {
+                j += 1;
+            }
+            if let Some(skip_to) = skip_literal_heredoc_body(bytes, j) {
+                i = skip_to;
+                continue;
+            }
+            // Unquoted (or unrecognised) heredoc: let the main loop scan
+            // the body. Step past the `<<` and continue.
+            i += 2;
+            continue;
+        }
+
+        // Process substitution: `<(` or `>(` outside any quote.
+        if (c == b'<' || c == b'>') && i + 1 < n && bytes[i + 1] == b'(' {
+            return Some(if c == b'<' { "<(" } else { ">(" });
+        }
+
+        // Top-level substitution.
+        if c == b'$' && i + 1 < n && bytes[i + 1] == b'(' {
             return Some("$(");
         }
-        if token.contains('`') {
+        if c == b'`' {
             return Some("`");
         }
-        if (token == "<" || token == ">")
-            && tokens
-                .get(idx + 1)
-                .is_some_and(|next| next.starts_with('('))
-        {
-            return Some(if token == "<" { "<(" } else { ">(" });
+
+        i += 1;
+    }
+
+    None
+}
+
+/// Detect bash code-laundering builtins (`eval`, `source`, `.`) anywhere
+/// in the command. Splits on shell statement separators so a laundered
+/// builtin in any pipeline segment is caught. Skips leading variable
+/// assignments (`VAR=val eval ...`) before reading the first command word.
+///
+/// Returns the matched builtin name on hit, `None` otherwise.
+fn contains_code_laundering_command(command: &str) -> Option<&'static str> {
+    let parts = shell_split(command);
+    let mut segment: Vec<&String> = Vec::new();
+
+    let flush = |segment: &[&String]| -> Option<&'static str> {
+        for token in segment {
+            // Skip variable-assignment prefixes: `FOO=bar eval ...`.
+            if token.contains('=')
+                && token
+                    .as_bytes()
+                    .iter()
+                    .take_while(|&&b| b != b'=')
+                    .all(|&b| b.is_ascii_alphanumeric() || b == b'_')
+            {
+                continue;
+            }
+            for &builtin in CODE_LAUNDERING_COMMANDS {
+                if token.as_str() == builtin {
+                    return Some(builtin);
+                }
+            }
+            // First non-assignment token decides the segment's command.
+            return None;
+        }
+        None
+    };
+
+    for part in &parts {
+        if part == "|" || part == ";" || part == "&&" || part == "||" || part == "&" {
+            if let Some(hit) = flush(&segment) {
+                return Some(hit);
+            }
+            segment.clear();
+        } else {
+            segment.push(part);
         }
     }
+    if let Some(hit) = flush(&segment) {
+        return Some(hit);
+    }
     None
+}
+
+/// If `bytes[start..]` begins with a quoted heredoc delimiter
+/// (`'DELIM'` or `"DELIM"`), find the body terminator and return the byte
+/// index immediately after it. Returns `None` for unquoted or malformed
+/// delimiters so the caller falls back to ordinary scanning.
+fn skip_literal_heredoc_body(bytes: &[u8], start: usize) -> Option<usize> {
+    let n = bytes.len();
+    if start >= n {
+        return None;
+    }
+    let quote = match bytes[start] {
+        b'\'' => b'\'',
+        b'"' => b'"',
+        _ => return None,
+    };
+
+    let delim_start = start + 1;
+    let mut delim_end = delim_start;
+    while delim_end < n && bytes[delim_end] != quote {
+        delim_end += 1;
+    }
+    if delim_end >= n {
+        // Unterminated quoted delimiter — treat as literal-until-EOF so
+        // the caller doesn't flag substitution-looking bytes the user
+        // clearly intended as content.
+        return Some(n);
+    }
+    let delim = &bytes[delim_start..delim_end];
+    if delim.is_empty() {
+        return None;
+    }
+
+    // Body starts after the newline that closes the `<<...DELIM` line.
+    let mut body_start = delim_end + 1;
+    while body_start < n && bytes[body_start] != b'\n' {
+        body_start += 1;
+    }
+    if body_start >= n {
+        return Some(n);
+    }
+    body_start += 1;
+
+    // Walk lines until we find one whose trimmed content equals `delim`.
+    let mut line_start = body_start;
+    while line_start < n {
+        let mut line_end = line_start;
+        while line_end < n && bytes[line_end] != b'\n' {
+            line_end += 1;
+        }
+        // `<<-` form allows leading tabs on the closing delimiter line.
+        let trimmed_start = {
+            let mut t = line_start;
+            while t < line_end && bytes[t] == b'\t' {
+                t += 1;
+            }
+            t
+        };
+        if &bytes[trimmed_start..line_end] == delim {
+            return Some(line_end);
+        }
+        if line_end >= n {
+            return Some(n);
+        }
+        line_start = line_end + 1;
+    }
+    Some(n)
 }
 
 pub fn validate_bash_command(
@@ -452,6 +645,13 @@ pub fn validate_bash_command(
             return ValidationResult::Block {
                 reason: format!(
                     "Command contains shell substitution '{pat}' whose inner command cannot be validated"
+                ),
+            };
+        }
+        if let Some(builtin) = contains_code_laundering_command(command) {
+            return ValidationResult::Block {
+                reason: format!(
+                    "Builtin '{builtin}' re-parses its arguments as shell code and is not allowed"
                 ),
             };
         }
