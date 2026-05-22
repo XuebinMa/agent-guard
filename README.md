@@ -59,6 +59,14 @@ guard-hook check \
 
 A real `git push` from the agent then surfaces as an `ask` decision; a `git push --force` is denied outright; a `cargo build` passes through with no friction. See [presets/README.md](presets/README.md) for adoption with the Rust SDK, Node binding, or Claude Code PreToolUse hook, and for the contributing guide on new presets.
 
+For a runnable decision preview of the preset — an agent finishing a feature, then the gate firing on `git push` — use the bundled demo:
+
+```bash
+npm ci --prefix crates/agent-guard-node
+npm run build:debug --prefix crates/agent-guard-node
+npm run demo:outbound --prefix crates/agent-guard-node
+```
+
 If you prefer a runnable end-to-end demo of the multi-side-effect runtime, the Node side-effect wedge is also wired up:
 
 ```bash

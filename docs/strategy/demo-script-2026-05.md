@@ -5,6 +5,24 @@
 > what S5-2 has to make possible. If a scene below can't be shot truthfully
 > after S5-2, S5-2 isn't done.
 
+> **Status (2026-05-22).** S5-2 has shipped (`presets/coding-agent-outbound.yaml`).
+> The S5-3 reproducible demo now exists as a decision-preview:
+> `npm run demo:outbound --prefix crates/agent-guard-node` plays scenes 0-9
+> truthfully (frictionless work → the gate firing on `git push` → the
+> `git push --force` / curl-pipe-bash denies). It is decide-only; it does not
+> execute git operations.
+>
+> Still manual / not yet done:
+> - The actual screen recording (asciinema → captioned cut). The script below
+>   is the contract for that recording.
+> - Scenes 14-19 (the `agent-guard verify` signed-receipt terminal) — needs a
+>   live signed receipt, deferred until the receipt-producing path is wired
+>   into the demo.
+> - Scene 19 (the content-layer exfil counter-example) — needs the S6 content
+>   layer; per "Watch-outs" below, cut it from any recording made before S6.
+>   The current demo substitutes an *action-layer* deny (curl-pipe-bash),
+>   which is honest for what ships today.
+
 ## Why this exists
 
 Plan A4 deliverable. The README B version (`docs/strategy/readme-ab-2026-05.md`)

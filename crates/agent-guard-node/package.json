@@ -16,6 +16,7 @@
     "demo:attack": "node examples/attack-demo/app.js",
     "demo:chatgpt-actions": "node examples/chatgpt-actions/server.js",
     "demo:flow": "node demos/demo_multi_tool_flow.js",
+    "demo:outbound": "node demos/demo_outbound_gate.js",
     "demo:proof": "node examples/attack-demo/app.js",
     "demo:quickstart": "node examples/quickstart/app.js",
     "demo:wedge": "node demos/demo_side_effect_wedge.js",
