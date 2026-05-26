@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use std::io::Write;
-use std::net::{IpAddr, Ipv6Addr, SocketAddr, ToSocketAddrs};
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, ToSocketAddrs};
 use std::path::Path;
 use std::time::Duration;
 
@@ -174,6 +174,13 @@ pub(crate) fn is_always_blocked_ip(ip: &IpAddr) -> bool {
                 || v4.is_private()
         }
         IpAddr::V6(v6) => {
+            // IPv4-mapped (`::ffff:a.b.c.d`), IPv4-compatible (`::a.b.c.d`),
+            // and NAT64 (`64:ff9b::a.b.c.d`) carry an embedded IPv4 that
+            // dual-stack hosts route to the IPv4 endpoint. Recurse so the
+            // same deny-list applies. Closes 2026-05-25 HIGH.
+            if let Some(v4) = ipv6_extract_embedded_ipv4(v6) {
+                return is_always_blocked_ip(&IpAddr::V4(v4));
+            }
             v6.is_unspecified()
                 || v6.is_multicast()
                 || is_ipv6_link_local(v6)
@@ -191,6 +198,36 @@ pub(crate) fn is_ipv6_link_local(ip: &Ipv6Addr) -> bool {
 /// is still unstable in `std`, so the bit test is inlined here.
 pub(crate) fn is_ipv6_unique_local(ip: &Ipv6Addr) -> bool {
     (ip.segments()[0] & 0xfe00) == 0xfc00
+}
+
+/// Pull the embedded IPv4 out of an IPv6 address that carries one. Covers:
+///   * IPv4-mapped (`::ffff:0:0/96`, RFC 4291 §2.5.5.2) — modern dual-stack.
+///   * IPv4-compatible (`::/96` with non-zero low 32 bits, RFC 4291 §2.5.5.1)
+///     — deprecated but still accepted by some stacks.
+///   * NAT64 well-known prefix (`64:ff9b::/96`, RFC 6052) — IPv6-only-to-v4
+///     translation path used by ISPs and 464XLAT clients.
+///
+/// `Ipv6Addr::to_ipv4()` already covers the first two but on `::` returns
+/// `Some(0.0.0.0)`, which round-trips into the unspecified branch correctly,
+/// and on `::1` is unreachable here because the top-level `is_loopback()`
+/// check catches it before the IPv6 branch runs.
+pub(crate) fn ipv6_extract_embedded_ipv4(v6: &Ipv6Addr) -> Option<Ipv4Addr> {
+    if let Some(v4) = v6.to_ipv4() {
+        return Some(v4);
+    }
+    let segments = v6.segments();
+    if segments[0] == 0x0064
+        && segments[1] == 0xff9b
+        && segments[2..6].iter().all(|&s| s == 0)
+    {
+        return Some(Ipv4Addr::new(
+            (segments[6] >> 8) as u8,
+            (segments[6] & 0xff) as u8,
+            (segments[7] >> 8) as u8,
+            (segments[7] & 0xff) as u8,
+        ));
+    }
+    None
 }
 
 /// Resolve a URL's host once at policy time and return a host/address pair
@@ -350,5 +387,64 @@ mod tests {
     fn allows_public_ipv6_addresses() {
         assert!(!is_always_blocked_ip(&ip("2001:4860:4860::8888")));
         assert!(!is_always_blocked_ip(&ip("2606:4700:4700::1111")));
+    }
+
+    // ── 2026-05-25 HIGH: IPv4-mapped / -compatible / NAT64 IPv6 bypass ──────
+    //
+    // Dual-stack hosts route `::ffff:a.b.c.d` (IPv4-mapped, RFC 4291 §2.5.5.2)
+    // and the deprecated `::a.b.c.d` (IPv4-compatible, §2.5.5.1) to the
+    // embedded IPv4 endpoint. NAT64 (RFC 6052, well-known `64:ff9b::/96`)
+    // does the same for IPv6-only stacks. The deny-list installed by 1a339da
+    // only checked `Ipv6Addr::is_loopback()` (which matches `::1` strictly)
+    // and the RFC 4193 unique-local prefix, so any of those wrapping forms
+    // routed straight to loopback / RFC1918 / cloud-metadata.
+    //
+    // Fix recurses on the embedded IPv4 so the same deny-list applies.
+
+    #[test]
+    fn blocks_ipv4_mapped_loopback() {
+        assert!(is_always_blocked_ip(&ip("::ffff:127.0.0.1")));
+        assert!(is_always_blocked_ip(&ip("::ffff:127.255.255.254")));
+    }
+
+    #[test]
+    fn blocks_ipv4_mapped_rfc1918() {
+        assert!(is_always_blocked_ip(&ip("::ffff:10.0.0.1")));
+        assert!(is_always_blocked_ip(&ip("::ffff:172.16.0.1")));
+        assert!(is_always_blocked_ip(&ip("::ffff:192.168.1.1")));
+    }
+
+    #[test]
+    fn blocks_ipv4_mapped_link_local_metadata() {
+        assert!(is_always_blocked_ip(&ip("::ffff:169.254.169.254")));
+    }
+
+    #[test]
+    fn blocks_ipv4_compatible_loopback() {
+        // `::127.0.0.1` is the deprecated IPv4-compatible form — still
+        // routes to 127.0.0.1 on dual-stack TCP, so must be blocked.
+        assert!(is_always_blocked_ip(&ip("::127.0.0.1")));
+    }
+
+    #[test]
+    fn blocks_nat64_well_known_metadata() {
+        // 64:ff9b::169.254.169.254 — NAT64 path to cloud metadata.
+        assert!(is_always_blocked_ip(&ip("64:ff9b::169.254.169.254")));
+        assert!(is_always_blocked_ip(&ip("64:ff9b::10.0.0.1")));
+        assert!(is_always_blocked_ip(&ip("64:ff9b::127.0.0.1")));
+    }
+
+    #[test]
+    fn allows_ipv4_mapped_public_ipv4() {
+        // `::ffff:8.8.8.8` is a wrapped public IPv4; recursion lands on
+        // 8.8.8.8 which is allowed, so the wrapped form must also be.
+        assert!(!is_always_blocked_ip(&ip("::ffff:8.8.8.8")));
+    }
+
+    #[test]
+    fn allows_nat64_to_public_ipv4() {
+        // NAT64 is a legitimate v6-only-to-v4 translation path; the
+        // wrapped IPv4 (`8.8.8.8`) is public, so the NAT64 form is OK.
+        assert!(!is_always_blocked_ip(&ip("64:ff9b::8.8.8.8")));
     }
 }
