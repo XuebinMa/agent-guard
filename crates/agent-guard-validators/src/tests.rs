@@ -1480,3 +1480,137 @@ mod bash_interpreter_and_env_injection_tests {
         assert_eq!(r, ValidationResult::Allow);
     }
 }
+
+// ── Interpreter laundering in WorkspaceWrite mode ────────────────────────────
+//
+// Regression tests for the 2026-05-25 HIGH "WorkspaceWrite mode allows
+// interpreter / shell-laundering" finding. The 30c51e9 fix gated the
+// INLINE_CODE_INTERPRETERS + INLINE_CODE_FLAGS check inside
+// `check_command_segment`, which is reachable only via `validate_read_only`.
+// That function short-circuits with `Allow` when `mode != ReadOnly`, so
+// `python3 -c "open('/etc/cron.d/x','w').write(...)"` returned `Allow`
+// in WorkspaceWrite mode — defeating the documented workspace-bound
+// control. Lift the check to a `validate_bash_command` early gate that
+// covers ReadOnly + WorkspaceWrite, matching the substitution and code-
+// laundering gates that already live there.
+#[cfg(test)]
+mod bash_interpreter_in_workspace_write_tests {
+    use crate::bash::{validate_bash_command, PermissionMode, ValidationResult};
+    use std::path::Path;
+
+    fn ro() -> PermissionMode {
+        PermissionMode::ReadOnly
+    }
+    fn ws() -> PermissionMode {
+        PermissionMode::WorkspaceWrite
+    }
+    fn full() -> PermissionMode {
+        PermissionMode::DangerFullAccess
+    }
+    fn workspace() -> &'static Path {
+        Path::new("/workspace")
+    }
+
+    #[test]
+    fn blocks_python3_dash_c_in_workspace_write() {
+        // The exact payload from the 2026-05-25 audit.
+        let r = validate_bash_command(
+            "python3 -c \"open('/etc/cron.d/backdoor','w').write('x')\"",
+            ws(),
+            workspace(),
+            &[],
+        );
+        assert!(matches!(r, ValidationResult::Block { .. }));
+    }
+
+    #[test]
+    fn blocks_sh_dash_c_in_workspace_write() {
+        let r = validate_bash_command("sh -c 'rm -rf /etc'", ws(), workspace(), &[]);
+        assert!(matches!(r, ValidationResult::Block { .. }));
+    }
+
+    #[test]
+    fn blocks_bash_dash_c_in_workspace_write() {
+        let r = validate_bash_command("bash -c 'echo hi > /etc/x'", ws(), workspace(), &[]);
+        assert!(matches!(r, ValidationResult::Block { .. }));
+    }
+
+    #[test]
+    fn blocks_node_dash_e_in_workspace_write() {
+        let r = validate_bash_command(
+            "node -e \"require('fs').writeFileSync('/etc/passwd','x')\"",
+            ws(),
+            workspace(),
+            &[],
+        );
+        assert!(matches!(r, ValidationResult::Block { .. }));
+    }
+
+    #[test]
+    fn blocks_perl_dash_e_in_workspace_write() {
+        let r = validate_bash_command(
+            "perl -e 'open(F,\">/etc/passwd\"); print F \"x\"'",
+            ws(),
+            workspace(),
+            &[],
+        );
+        assert!(matches!(r, ValidationResult::Block { .. }));
+    }
+
+    #[test]
+    fn blocks_sudo_python3_dash_c_in_workspace_write() {
+        // sudo unwrap parity with the existing check_command_segment recursion.
+        let r = validate_bash_command(
+            "sudo python3 -c 'import os; os.unlink(\"/etc/passwd\")'",
+            ws(),
+            workspace(),
+            &[],
+        );
+        assert!(matches!(r, ValidationResult::Block { .. }));
+    }
+
+    #[test]
+    fn blocks_chained_interpreter_after_safe_segment_in_workspace_write() {
+        // Segment-aware: `safe && python3 -c '...'` must block on segment 2.
+        let r = validate_bash_command(
+            "echo ok && python3 -c 'open(\"/etc/x\",\"w\").write(\"y\")'",
+            ws(),
+            workspace(),
+            &[],
+        );
+        assert!(matches!(r, ValidationResult::Block { .. }));
+    }
+
+    #[test]
+    fn allows_python3_running_script_in_workspace_write() {
+        // No inline-code flag — running a script file remains allowed
+        // (the wedge does not introspect script contents).
+        let r = validate_bash_command("python3 script.py", ws(), workspace(), &[]);
+        assert_eq!(r, ValidationResult::Allow);
+    }
+
+    #[test]
+    fn allows_interpreter_version_query_in_workspace_write() {
+        let r = validate_bash_command("python3 --version", ws(), workspace(), &[]);
+        assert_eq!(r, ValidationResult::Allow);
+    }
+
+    #[test]
+    fn allows_python3_dash_c_in_full_access() {
+        // DangerFullAccess opts out of policy gating by design.
+        let r = validate_bash_command(
+            "python3 -c 'print(1)'",
+            full(),
+            workspace(),
+            &[],
+        );
+        assert_eq!(r, ValidationResult::Allow);
+    }
+
+    #[test]
+    fn carryover_blocks_python3_dash_c_in_read_only() {
+        // 30c51e9 behaviour must persist: ReadOnly continues to block.
+        let r = validate_bash_command("python3 -c 'print(1)'", ro(), workspace(), &[]);
+        assert!(matches!(r, ValidationResult::Block { .. }));
+    }
+}

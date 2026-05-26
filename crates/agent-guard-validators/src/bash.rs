@@ -223,22 +223,10 @@ fn check_command_segment(parts: &[String]) -> Option<ValidationResult> {
         return check_command_segment(&inner);
     }
 
-    // Interpreter-laundering check: `python3 -c '...'` / `perl -e '...'` /
-    // `bash -c '...'` etc. hand an opaque program to the interpreter. We
-    // cannot introspect the inner code, so the only safe ReadOnly response
-    // is Block. Running the interpreter against a script file or with a
-    // diagnostic flag (e.g. `python3 --version`) remains allowed.
-    if INLINE_CODE_INTERPRETERS.contains(&first_command.as_str()) {
-        for arg in &parts[1..] {
-            if INLINE_CODE_FLAGS.contains(&arg.as_str()) {
-                return Some(ValidationResult::Block {
-                    reason: format!(
-                        "Interpreter '{first_command}' invoked with inline-code flag '{arg}' is not allowed in read-only mode"
-                    ),
-                });
-            }
-        }
-    }
+    // Interpreter-laundering check lives in `validate_bash_command`'s
+    // early gate (see `contains_interpreter_with_inline_code`); it now
+    // covers both ReadOnly and WorkspaceWrite modes, so no per-segment
+    // check is needed here.
 
     None
 }
@@ -517,6 +505,67 @@ fn contains_command_substitution(command: &str) -> Option<&'static str> {
 /// assignments (`VAR=val eval ...`) before reading the first command word.
 ///
 /// Returns the matched builtin name on hit, `None` otherwise.
+/// Segment-aware scan for `python3 -c '...'` / `perl -e '...'` /
+/// `bash -c '...'` / etc. Matches the scope of the substitution gate
+/// (ReadOnly + WorkspaceWrite): the inner program is opaque to the
+/// validator, so any inline-code invocation has to be refused before
+/// the policy/path checks would even see the destructive payload.
+///
+/// Walks segments split on `|` / `;` / `&&` / `||` / `&`, skips leading
+/// `FOO=bar` variable-assignment prefixes (parity with
+/// `contains_code_laundering_command`), unwraps one `sudo` layer, then
+/// checks `first_command` against `INLINE_CODE_INTERPRETERS`. Returns
+/// `Some((interpreter, flag))` on the first hit.
+fn contains_interpreter_with_inline_code(command: &str) -> Option<(String, String)> {
+    let parts = shell_split(command);
+
+    let scan = |segment: &[&String]| -> Option<(String, String)> {
+        // Skip variable-assignment prefixes, then optionally one `sudo`.
+        let mut idx = 0;
+        while idx < segment.len() {
+            let token = segment[idx];
+            if token.contains('=')
+                && token
+                    .as_bytes()
+                    .iter()
+                    .take_while(|&&b| b != b'=')
+                    .all(|&b| b.is_ascii_alphanumeric() || b == b'_')
+            {
+                idx += 1;
+                continue;
+            }
+            break;
+        }
+        if idx < segment.len() && segment[idx].as_str() == "sudo" {
+            idx += 1;
+        }
+
+        let first = segment.get(idx)?;
+        if !INLINE_CODE_INTERPRETERS.contains(&first.as_str()) {
+            return None;
+        }
+        for arg in &segment[idx + 1..] {
+            if INLINE_CODE_FLAGS.contains(&arg.as_str()) {
+                return Some((first.as_str().to_string(), arg.as_str().to_string()));
+            }
+        }
+        None
+    };
+
+    let mut segment: Vec<&String> = Vec::new();
+    for part in &parts {
+        if part == "|" || part == ";" || part == "&&" || part == "||" || part == "&" {
+            if let Some(hit) = scan(&segment) {
+                return Some(hit);
+            }
+            segment.clear();
+        } else {
+            segment.push(part);
+        }
+    }
+    scan(&segment)
+}
+
 fn contains_code_laundering_command(command: &str) -> Option<&'static str> {
     let parts = shell_split(command);
     let mut segment: Vec<&String> = Vec::new();
@@ -780,6 +829,13 @@ pub fn validate_bash_command(
             return ValidationResult::Block {
                 reason: format!(
                     "Builtin '{builtin}' re-parses its arguments as shell code and is not allowed"
+                ),
+            };
+        }
+        if let Some((interp, flag)) = contains_interpreter_with_inline_code(command) {
+            return ValidationResult::Block {
+                reason: format!(
+                    "Interpreter '{interp}' invoked with inline-code flag '{flag}' is not allowed in this mode"
                 ),
             };
         }
