@@ -270,16 +270,44 @@ pub(crate) fn resolve_url_to_safe_addr(
     Ok((host.to_string(), addrs[0]))
 }
 
+/// Decide whether the SDK should own execution of this `HttpRequest`
+/// payload (Execute path -- runs through `resolve_url_to_safe_addr` and
+/// the SSRF deny-list) versus handing it off to the host (Handoff path
+/// -- no SDK-side network guard). Returns `true` for mutation methods
+/// (POST/PUT/PATCH/DELETE) and `true` whenever the method cannot be
+/// proven non-mutation: parse failure, missing field, non-string field,
+/// `null` root. The fail-closed branch closes the 2026-05-25-2 HIGH
+/// silent-failure where a malformed payload routed to Handoff and
+/// silently skipped the SSRF guard. Returns `false` only when parsing
+/// succeeds and the method is one of the documented non-mutation
+/// verbs (GET/HEAD/OPTIONS/...).
 pub(crate) fn payload_declares_mutation_http(payload: &str) -> bool {
-    serde_json::from_str::<serde_json::Value>(payload)
-        .ok()
-        .and_then(|v| {
-            v.get("method")
-                .and_then(|m| m.as_str())
-                .map(|s| s.to_ascii_uppercase())
-        })
-        .map(|method| matches!(method.as_str(), "POST" | "PUT" | "PATCH" | "DELETE"))
-        .unwrap_or(false)
+    let method = match serde_json::from_str::<serde_json::Value>(payload) {
+        Ok(v) => v
+            .get("method")
+            .and_then(|m| m.as_str())
+            .map(|s| s.to_ascii_uppercase()),
+        Err(err) => {
+            tracing::warn!(
+                target: "agent_guard::executors",
+                error = %err,
+                "HttpRequest payload failed to parse; failing closed to SDK Execute path"
+            );
+            return true;
+        }
+    };
+
+    match method.as_deref() {
+        Some("POST") | Some("PUT") | Some("PATCH") | Some("DELETE") => true,
+        Some(_) => false,
+        None => {
+            tracing::warn!(
+                target: "agent_guard::executors",
+                "HttpRequest payload has no string `method` field; failing closed to SDK Execute path"
+            );
+            true
+        }
+    }
 }
 
 pub(crate) fn is_mutation_method(method: &reqwest::Method) -> bool {
@@ -446,5 +474,82 @@ mod tests {
         // NAT64 is a legitimate v6-only-to-v4 translation path; the
         // wrapped IPv4 (`8.8.8.8`) is public, so the NAT64 form is OK.
         assert!(!is_always_blocked_ip(&ip("64:ff9b::8.8.8.8")));
+    }
+
+    // ── 2026-05-25-2 HIGH: payload_declares_mutation_http silent-failure ───
+    //
+    // Until this fix the function returned `false` on JSON parse failure
+    // (or missing/non-string `method`), routing the call to
+    // `RuntimeDecision::Handoff` instead of SDK-owned `Execute`. Handoff
+    // skips `resolve_url_to_safe_addr`, so a malformed `HttpRequest`
+    // payload that the policy somehow Allowed would bypass the SSRF guard
+    // entirely. New posture: fail-closed -- when parsing can't prove the
+    // method is non-mutation, treat it as mutation so the SDK owns it.
+
+    use super::payload_declares_mutation_http;
+
+    #[test]
+    fn mutation_methods_return_true() {
+        for method in ["POST", "PUT", "PATCH", "DELETE"] {
+            let payload = format!(r#"{{"method":"{method}","url":"http://x"}}"#);
+            assert!(
+                payload_declares_mutation_http(&payload),
+                "expected true for {method}"
+            );
+        }
+    }
+
+    #[test]
+    fn mutation_methods_case_insensitive_return_true() {
+        for method in ["post", "Put", "patch", "Delete"] {
+            let payload = format!(r#"{{"method":"{method}","url":"http://x"}}"#);
+            assert!(
+                payload_declares_mutation_http(&payload),
+                "expected true for {method}"
+            );
+        }
+    }
+
+    #[test]
+    fn non_mutation_methods_return_false() {
+        for method in ["GET", "HEAD", "OPTIONS"] {
+            let payload = format!(r#"{{"method":"{method}","url":"http://x"}}"#);
+            assert!(
+                !payload_declares_mutation_http(&payload),
+                "expected false for {method}"
+            );
+        }
+    }
+
+    #[test]
+    fn malformed_json_fails_closed_to_true() {
+        // Was the audit's exact bypass: parse-failure routed to Handoff.
+        assert!(payload_declares_mutation_http("not valid json"));
+        assert!(payload_declares_mutation_http("{"));
+        assert!(payload_declares_mutation_http(""));
+    }
+
+    #[test]
+    fn missing_method_field_fails_closed_to_true() {
+        assert!(payload_declares_mutation_http(r#"{"url":"http://x"}"#));
+    }
+
+    #[test]
+    fn non_string_method_fails_closed_to_true() {
+        assert!(payload_declares_mutation_http(r#"{"method":123,"url":"http://x"}"#));
+        assert!(payload_declares_mutation_http(r#"{"method":null,"url":"http://x"}"#));
+        assert!(payload_declares_mutation_http(r#"{"method":["POST"]}"#));
+    }
+
+    #[test]
+    fn empty_json_object_fails_closed_to_true() {
+        assert!(payload_declares_mutation_http("{}"));
+    }
+
+    #[test]
+    fn json_null_root_fails_closed_to_true() {
+        // `null` parses successfully as serde_json::Value::Null, but has
+        // no `method` field. The fail-closed path still applies.
+        assert!(payload_declares_mutation_http("null"));
     }
 }
