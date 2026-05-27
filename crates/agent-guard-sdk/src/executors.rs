@@ -216,10 +216,7 @@ pub(crate) fn ipv6_extract_embedded_ipv4(v6: &Ipv6Addr) -> Option<Ipv4Addr> {
         return Some(v4);
     }
     let segments = v6.segments();
-    if segments[0] == 0x0064
-        && segments[1] == 0xff9b
-        && segments[2..6].iter().all(|&s| s == 0)
-    {
+    if segments[0] == 0x0064 && segments[1] == 0xff9b && segments[2..6].iter().all(|&s| s == 0) {
         return Some(Ipv4Addr::new(
             (segments[6] >> 8) as u8,
             (segments[6] & 0xff) as u8,
@@ -536,8 +533,12 @@ mod tests {
 
     #[test]
     fn non_string_method_fails_closed_to_true() {
-        assert!(payload_declares_mutation_http(r#"{"method":123,"url":"http://x"}"#));
-        assert!(payload_declares_mutation_http(r#"{"method":null,"url":"http://x"}"#));
+        assert!(payload_declares_mutation_http(
+            r#"{"method":123,"url":"http://x"}"#
+        ));
+        assert!(payload_declares_mutation_http(
+            r#"{"method":null,"url":"http://x"}"#
+        ));
         assert!(payload_declares_mutation_http(r#"{"method":["POST"]}"#));
     }
 

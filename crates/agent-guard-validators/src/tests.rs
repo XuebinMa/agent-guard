@@ -1598,12 +1598,7 @@ mod bash_interpreter_in_workspace_write_tests {
     #[test]
     fn allows_python3_dash_c_in_full_access() {
         // DangerFullAccess opts out of policy gating by design.
-        let r = validate_bash_command(
-            "python3 -c 'print(1)'",
-            full(),
-            workspace(),
-            &[],
-        );
+        let r = validate_bash_command("python3 -c 'print(1)'", full(), workspace(), &[]);
         assert_eq!(r, ValidationResult::Allow);
     }
 

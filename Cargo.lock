@@ -957,6 +957,7 @@ dependencies = [
 name = "guard-verify"
 version = "0.2.0-rc1"
 dependencies = [
+ "agent-guard-core",
  "agent-guard-sdk",
  "chrono",
  "clap",
@@ -965,6 +966,7 @@ dependencies = [
  "rand 0.8.6",
  "serde",
  "serde_json",
+ "sha2",
 ]
 
 [[package]]

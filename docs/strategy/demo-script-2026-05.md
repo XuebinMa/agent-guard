@@ -5,23 +5,31 @@
 > what S5-2 has to make possible. If a scene below can't be shot truthfully
 > after S5-2, S5-2 isn't done.
 
-> **Status (2026-05-22).** S5-2 has shipped (`presets/coding-agent-outbound.yaml`).
-> The S5-3 reproducible demo now exists as a decision-preview:
-> `npm run demo:outbound --prefix crates/agent-guard-node` plays scenes 0-9
-> truthfully (frictionless work → the gate firing on `git push` → the
-> `git push --force` / curl-pipe-bash denies). It is decide-only; it does not
-> execute git operations.
+> **Status (2026-05-27).** All scenes that don't need the S6 content layer
+> are now recordable end-to-end against shipped binaries:
+>
+> - Scenes 0–13 (frictionless workspace work → the gate firing on `git
+>   push` → the force-push deny): `npm run demo:outbound
+>   --prefix crates/agent-guard-node` plays them truthfully as a
+>   decision-preview against `presets/coding-agent-outbound.yaml`.
+> - Scenes 14–19 (the `agent-guard verify` signed-receipt terminal): now
+>   recordable via two `guard-verify` subcommands shipped this sprint —
+>   `demo-receipts` produces a fresh Ed25519 keypair plus a JSONL of six
+>   signed receipts mirroring the storyboard beats; `verify-log
+>   --since 5m` reads the JSONL, verifies each signature, and prints a
+>   table that matches the storyboard's "every decision signed, audit-ready"
+>   caption. A tampered signature shows a `FAIL` row and exits non-zero.
 >
 > Still manual / not yet done:
-> - The actual screen recording (asciinema → captioned cut). The script below
->   is the contract for that recording.
-> - Scenes 14-19 (the `agent-guard verify` signed-receipt terminal) — needs a
->   live signed receipt, deferred until the receipt-producing path is wired
->   into the demo.
-> - Scene 19 (the content-layer exfil counter-example) — needs the S6 content
->   layer; per "Watch-outs" below, cut it from any recording made before S6.
->   The current demo substitutes an *action-layer* deny (curl-pipe-bash),
->   which is honest for what ships today.
+> - The actual screen recording (asciinema → captioned cut). The script
+>   below is the contract for that recording.
+> - Scene 19 (the content-layer exfil counter-example) — needs the S6
+>   content layer; per "Watch-outs" below, cut it from any recording made
+>   before S6. The current outbound demo substitutes an *action-layer*
+>   deny (curl-pipe-bash), which is honest for what ships today.
+> - Wiring signed receipts into the dogfood / guard-hook path so a live
+>   Claude Code session produces a real `receipts.jsonl` (today the demo
+>   uses the `demo-receipts` synthetic source). Tracked separately.
 
 ## Why this exists
 
@@ -63,17 +71,34 @@ Total: 30s. No voiceover; all caption-driven for autoplay-muted X / HN feeds.
   `npx agent-guard-plugin demo` or equivalent. If the demo can't be run from
   one command, S5-3 isn't done.
 
-## Reproducibility command (target shape, S5-3 deliverable)
+## Reproducibility command (shipped 2026-05-27)
 
 ```bash
-# Target — shipped as part of S5-3
-npx agent-guard-plugin demo --scenario push
-# Plays out scenes 0-19 in a clean sandbox, exits after receipt.
+# Scenes 0-13: the outbound gate, decision preview.
+npm run demo:outbound --prefix crates/agent-guard-node
 
-# Counter-example
-npx agent-guard-plugin demo --scenario exfil
-# Plays scenes 19-24, no prompt, just deny.
+# Scenes 14-19: the signed-receipt audit terminal.
+guard-verify demo-receipts --out-dir /tmp/agent-guard-demo
+guard-verify verify-log \
+  --receipts /tmp/agent-guard-demo/receipts.jsonl \
+  --public-key /tmp/agent-guard-demo/key.pub \
+  --since 5m
 ```
+
+The `demo-receipts` subcommand emits a fresh Ed25519 keypair and six
+storyboard-aligned receipts; `verify-log` is the bulk-verify path. A
+tampered signature surfaces as `FAIL` in the status column and a
+non-zero exit code, so the storyboard's "every decision signed,
+audit-ready" beat is shootable without any post-production trickery.
+
+The `npx agent-guard-plugin demo --scenario push` packaging from the
+original draft is still aspirational — that lives with Sprint 8
+distribution. For the recording, the two commands above are the
+contract.
+
+The counter-example (scenes 19-24, the content-layer exfil deny) is
+intentionally deferred until the S6 content layer ships; do not
+re-shoot it from the action-layer deny alone.
 
 Implementation note: this should reuse the existing wedge demo path
 (`docs/guides/getting-started/side-effect-wedge-demo.md` →

