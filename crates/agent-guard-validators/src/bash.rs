@@ -415,6 +415,89 @@ fn extract_first_command(s: &str) -> String {
 /// Parameter expansion (`${VAR}`) and bare `$VAR` are intentionally NOT
 /// flagged — they expand to a value, not to a separately-executed command,
 /// and are common in legitimate workflows.
+/// Recognise the safe substitution idiom `$(cat <<'DELIM' BODY DELIM)`
+/// (and the `<<"DELIM"` / `<<-'DELIM'` / `<<-"DELIM"` variants).
+///
+/// `$(...)` is normally refused because the shell evaluates the inner
+/// command before the outer command ever runs, and the validator has no
+/// way to reason about that inner program in general. But when the inner
+/// program is exactly a `cat` reading a quoted-delimiter here-doc — no
+/// other arguments, no extra commands, no chaining — the substitution
+/// reduces to "emit the literal heredoc body as a string." That cannot
+/// reach the filesystem, network, or any other side effect; the worst
+/// it can do is hand a string to the outer command.
+///
+/// Closes the recurring Claude Code dogfood friction: the system-prompt
+/// recommended commit form is
+/// `git commit -m "$(cat <<'EOF' ... EOF)"`. Before this idiom recogniser
+/// the validator denied every such call and Claude fell back to
+/// `git commit -F -` after a friction roundtrip; the dogfood JSONL had
+/// 12 of these denies between 2026-05-20 and 2026-05-27 with the same
+/// retry shape every time.
+///
+/// `paren_pos` is the index of the `(` that opens the substitution. On a
+/// match the function returns the byte index immediately after the
+/// closing `)` so the substitution walker can resume from there. On any
+/// deviation from the exact safe shape — different inner command,
+/// additional arguments, unquoted heredoc delimiter, trailing
+/// `; rm -rf /`, etc. — the function returns `None` and the substitution
+/// walker falls through to its normal refusal.
+fn safe_cat_heredoc_substitution_end(bytes: &[u8], paren_pos: usize) -> Option<usize> {
+    let n = bytes.len();
+    if paren_pos + 1 >= n {
+        return None;
+    }
+    let mut i = paren_pos + 1; // step past `(`
+
+    // Leading whitespace inside the substitution.
+    while i < n && (bytes[i] == b' ' || bytes[i] == b'\t' || bytes[i] == b'\n') {
+        i += 1;
+    }
+
+    // Expect the literal command word "cat" followed by inline whitespace.
+    // Reject "cats", "catalog", "catx" etc. by requiring whitespace right
+    // after the 'cat' bytes.
+    if i + 3 >= n || &bytes[i..i + 3] != b"cat" {
+        return None;
+    }
+    let after_cat = bytes[i + 3];
+    if !(after_cat == b' ' || after_cat == b'\t') {
+        return None;
+    }
+    i += 3;
+    while i < n && (bytes[i] == b' ' || bytes[i] == b'\t') {
+        i += 1;
+    }
+
+    // Expect `<<` (optionally `<<-` for the indented form) and then a
+    // quoted delimiter — `skip_literal_heredoc_body` only accepts the
+    // quoted form, which is what makes the body literal text.
+    if i + 1 >= n || bytes[i] != b'<' || bytes[i + 1] != b'<' {
+        return None;
+    }
+    i += 2;
+    if i < n && bytes[i] == b'-' {
+        i += 1;
+    }
+    while i < n && (bytes[i] == b' ' || bytes[i] == b'\t') {
+        i += 1;
+    }
+    let body_end = skip_literal_heredoc_body(bytes, i)?;
+    i = body_end;
+
+    // After the heredoc body the only legal next token is the closing `)`.
+    // Whitespace (incl. newline) between is fine; anything else — `;`,
+    // `&&`, another command — means more shell happens inside the
+    // substitution and the safe-idiom guarantee no longer holds.
+    while i < n && (bytes[i] == b' ' || bytes[i] == b'\t' || bytes[i] == b'\n') {
+        i += 1;
+    }
+    if i >= n || bytes[i] != b')' {
+        return None;
+    }
+    Some(i + 1)
+}
+
 fn contains_command_substitution(command: &str) -> Option<&'static str> {
     let bytes = command.as_bytes();
     let n = bytes.len();
@@ -449,6 +532,10 @@ fn contains_command_substitution(command: &str) -> Option<&'static str> {
                     continue;
                 }
                 if bytes[i] == b'$' && i + 1 < n && bytes[i + 1] == b'(' {
+                    if let Some(end) = safe_cat_heredoc_substitution_end(bytes, i + 1) {
+                        i = end;
+                        continue;
+                    }
                     return Some("$(");
                 }
                 if bytes[i] == b'`' {
@@ -487,6 +574,10 @@ fn contains_command_substitution(command: &str) -> Option<&'static str> {
 
         // Top-level substitution.
         if c == b'$' && i + 1 < n && bytes[i + 1] == b'(' {
+            if let Some(end) = safe_cat_heredoc_substitution_end(bytes, i + 1) {
+                i = end;
+                continue;
+            }
             return Some("$(");
         }
         if c == b'`' {
@@ -1155,7 +1246,8 @@ fn read_targets_for_segment(segment: &[String]) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::{
-        shell_split, validate_paths, validate_read_only, PermissionMode, ValidationResult,
+        shell_split, validate_bash_command, validate_paths, validate_read_only, PermissionMode,
+        ValidationResult,
     };
     use std::path::Path;
 
@@ -1363,5 +1455,152 @@ mod tests {
             &[],
         );
         assert!(matches!(result, ValidationResult::Block { .. }));
+    }
+
+    // ── safe-cat-heredoc substitution idiom (dogfood friction polish) ──────
+
+    #[test]
+    fn validate_bash_allows_cat_heredoc_substitution_inside_double_quotes() {
+        // The Claude Code system-prompt recommended commit form. Was the top
+        // recurring deny on the dogfood JSONL (12 hits, 2026-05-20..27).
+        let cmd = "git commit -m \"$(cat <<'EOF'\nfeat: thing\n\nbody\nEOF\n)\"";
+        let result = validate_bash_command(
+            cmd,
+            PermissionMode::WorkspaceWrite,
+            Path::new("/workspace"),
+            &[],
+        );
+        assert_eq!(result, ValidationResult::Allow, "got {result:?}");
+    }
+
+    #[test]
+    fn validate_bash_allows_top_level_cat_heredoc_substitution() {
+        // Symmetric to the double-quoted case: `$(cat <<'EOF' ... EOF)`
+        // with no surrounding quotes is still the same safe shape.
+        let cmd = "git commit -m $(cat <<'EOF'\nbody\nEOF\n)";
+        let result = validate_bash_command(
+            cmd,
+            PermissionMode::WorkspaceWrite,
+            Path::new("/workspace"),
+            &[],
+        );
+        assert_eq!(result, ValidationResult::Allow, "got {result:?}");
+    }
+
+    #[test]
+    fn validate_bash_allows_cat_heredoc_with_double_quoted_delimiter() {
+        // `<<"EOF"` is also a literal-body heredoc; idiom recognition must
+        // mirror skip_literal_heredoc_body, which accepts both quote chars.
+        let cmd = "git commit -m \"$(cat <<\"EOF\"\nbody\nEOF\n)\"";
+        let result = validate_bash_command(
+            cmd,
+            PermissionMode::WorkspaceWrite,
+            Path::new("/workspace"),
+            &[],
+        );
+        assert_eq!(result, ValidationResult::Allow, "got {result:?}");
+    }
+
+    #[test]
+    fn validate_bash_allows_cat_indented_heredoc_substitution() {
+        // `<<-` strips leading tabs on the closing delimiter line; the body
+        // is still literal, so the same safe-idiom guarantee applies.
+        let cmd = "echo \"$(cat <<-'EOF'\n\tbody\n\tEOF\n)\"";
+        let result = validate_bash_command(
+            cmd,
+            PermissionMode::WorkspaceWrite,
+            Path::new("/workspace"),
+            &[],
+        );
+        assert_eq!(result, ValidationResult::Allow, "got {result:?}");
+    }
+
+    #[test]
+    fn validate_bash_still_denies_unquoted_heredoc_substitution() {
+        // Without quotes on the delimiter the shell expands `$(...)` /
+        // backticks inside the body before piping to stdin; the safe-idiom
+        // guarantee no longer holds.
+        let cmd = "echo \"$(cat <<EOF\nbody\nEOF\n)\"";
+        let result = validate_bash_command(
+            cmd,
+            PermissionMode::WorkspaceWrite,
+            Path::new("/workspace"),
+            &[],
+        );
+        assert!(
+            matches!(result, ValidationResult::Block { .. }),
+            "expected Block, got {result:?}"
+        );
+    }
+
+    #[test]
+    fn validate_bash_still_denies_cat_with_file_argument() {
+        // The idiom only allows the heredoc form. A bare `$(cat /etc/passwd)`
+        // would let the substitution read an arbitrary file and inject it
+        // into the outer command; refuse.
+        let cmd = "git commit -m \"$(cat /etc/passwd)\"";
+        let result = validate_bash_command(
+            cmd,
+            PermissionMode::WorkspaceWrite,
+            Path::new("/workspace"),
+            &[],
+        );
+        assert!(
+            matches!(result, ValidationResult::Block { .. }),
+            "expected Block, got {result:?}"
+        );
+    }
+
+    #[test]
+    fn validate_bash_still_denies_substitution_with_chained_command_after_heredoc() {
+        // A trailing `; <cmd>` after the heredoc means more shell happens
+        // inside `$(...)`. Reject — the safe-idiom guarantee was "exactly
+        // `cat` + heredoc + nothing else."
+        let cmd = "echo \"$(cat <<'EOF'\nx\nEOF\n; touch /tmp/pwned)\"";
+        let result = validate_bash_command(
+            cmd,
+            PermissionMode::WorkspaceWrite,
+            Path::new("/workspace"),
+            &[],
+        );
+        assert!(
+            matches!(result, ValidationResult::Block { .. }),
+            "expected Block, got {result:?}"
+        );
+    }
+
+    #[test]
+    fn validate_bash_still_denies_non_cat_substitution() {
+        // The whitelist is strictly the word "cat"; `printf`, `date`, etc.
+        // remain refused so the gate doesn't silently widen.
+        let cmd = "echo \"$(date)\"";
+        let result = validate_bash_command(
+            cmd,
+            PermissionMode::WorkspaceWrite,
+            Path::new("/workspace"),
+            &[],
+        );
+        assert!(
+            matches!(result, ValidationResult::Block { .. }),
+            "expected Block, got {result:?}"
+        );
+    }
+
+    #[test]
+    fn validate_bash_still_denies_catx_prefix_match() {
+        // Defends the strict word boundary: a command like `catx <<'EOF'`
+        // happens to start with the three bytes "cat" but is not the `cat`
+        // builtin. Must still fail the idiom check.
+        let cmd = "echo \"$(catx <<'EOF'\nx\nEOF\n)\"";
+        let result = validate_bash_command(
+            cmd,
+            PermissionMode::WorkspaceWrite,
+            Path::new("/workspace"),
+            &[],
+        );
+        assert!(
+            matches!(result, ValidationResult::Block { .. }),
+            "expected Block, got {result:?}"
+        );
     }
 }
