@@ -143,6 +143,37 @@ pub fn map_tool(tool_name: &str, tool_input: &serde_json::Value) -> Option<Mappe
     }
 }
 
+// ── Workspace root discovery ──────────────────────────────────────────────────
+
+/// Walk up from `cwd` looking for the nearest ancestor containing a `.git`
+/// entry. Returns that ancestor when found; otherwise returns `cwd`
+/// unchanged so the behaviour stays compatible with non-git invocations.
+///
+/// Claude Code passes its current shell `cwd` in the PreToolUse event, but
+/// a developer who has `cd`'d into a sub-directory of the project sees the
+/// validator's workspace bound drift along with the shell — a write to
+/// `presets/README.md` from inside `crates/agent-guard-node` then fails
+/// `PATH_TRAVERSAL` even though both paths are inside the same repo.
+/// Anchoring to the git root matches the user's mental model of "this
+/// project" instead of "where the shell happens to be", which is the
+/// boundary the policy and the dogfood escape lists are written against.
+///
+/// `.git` is checked as either a directory (the standard case) or a file
+/// (the `gitdir:` redirect used by worktrees and submodules); either form
+/// is sufficient evidence that this directory is the repo root.
+pub fn discover_workspace_root(cwd: &Path) -> PathBuf {
+    let mut current = cwd;
+    loop {
+        if current.join(".git").exists() {
+            return current.to_path_buf();
+        }
+        match current.parent() {
+            Some(p) => current = p,
+            None => return cwd.to_path_buf(),
+        }
+    }
+}
+
 // ── Top-level entry ───────────────────────────────────────────────────────────
 
 pub fn run_check(stdin_buf: &str, policy_path: &Path, agent_id: &str, out: &mut impl Write) {
@@ -177,7 +208,10 @@ pub fn run_check(stdin_buf: &str, policy_path: &Path, agent_id: &str, out: &mut 
         session_id: input.session_id,
         actor: None,
         trust_level: TrustLevel::Untrusted,
-        working_directory: input.cwd.map(PathBuf::from),
+        working_directory: input
+            .cwd
+            .as_deref()
+            .map(|s| discover_workspace_root(Path::new(s))),
     };
 
     let guard_input = GuardInput {
@@ -326,5 +360,56 @@ mod tests {
         let body = String::from_utf8(out).unwrap();
         assert!(body.contains("\"hookEventName\":\"PreToolUse\""));
         assert!(body.contains("\"permissionDecision\":\"allow\""));
+    }
+
+    // ── discover_workspace_root ──────────────────────────────────────────────
+
+    #[test]
+    fn discover_workspace_root_returns_dir_with_git_directory() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        std::fs::create_dir(dir.path().join(".git")).expect("mk .git");
+        let root = discover_workspace_root(dir.path());
+        assert_eq!(root, dir.path());
+    }
+
+    #[test]
+    fn discover_workspace_root_walks_up_from_subdirectory() {
+        // The cwd-drift bug from 2026-05-22: an agent in
+        // <repo>/crates/agent-guard-node trying to write <repo>/presets/...
+        // saw the workspace bound stuck at the subdir and got
+        // PATH_TRAVERSAL. With discovery, the bound climbs to the repo root.
+        let dir = tempfile::tempdir().expect("tempdir");
+        std::fs::create_dir(dir.path().join(".git")).expect("mk .git");
+        let sub = dir.path().join("crates").join("agent-guard-node");
+        std::fs::create_dir_all(&sub).expect("mk sub");
+        let root = discover_workspace_root(&sub);
+        assert_eq!(root, dir.path().to_path_buf());
+    }
+
+    #[test]
+    fn discover_workspace_root_accepts_dot_git_as_file() {
+        // Worktrees and submodules use a `.git` *file* with a `gitdir:`
+        // redirect rather than a directory; the discovery has to accept
+        // both shapes.
+        let dir = tempfile::tempdir().expect("tempdir");
+        std::fs::write(dir.path().join(".git"), "gitdir: /elsewhere\n").expect("write .git file");
+        let root = discover_workspace_root(dir.path());
+        assert_eq!(root, dir.path());
+    }
+
+    #[test]
+    fn discover_workspace_root_falls_back_to_cwd_when_no_git_ancestor() {
+        // Outside any repo, behaviour is unchanged: return the cwd as-is so
+        // existing non-git deployments keep their original workspace bound.
+        let dir = tempfile::tempdir().expect("tempdir");
+        let root = discover_workspace_root(dir.path());
+        // The tempdir might itself be inside a git repo (e.g. /tmp on dev
+        // machines), so we only assert that the returned path is an
+        // ancestor of cwd — never a descendant or unrelated path.
+        assert!(
+            dir.path().starts_with(&root) || root == dir.path(),
+            "expected discovery to land on cwd or an ancestor, got {root:?} for cwd {:?}",
+            dir.path(),
+        );
     }
 }
