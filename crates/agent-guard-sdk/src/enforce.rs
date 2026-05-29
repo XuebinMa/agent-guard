@@ -104,6 +104,18 @@ impl Guard {
             }
         }
 
+        // S6-4c: content-layer masking on the execution path. For Mask mode,
+        // execute a redacted copy of the payload; for Warn, execute the
+        // original. Either way emit a ContentFinding audit record. Off by
+        // default; compiled only with the `content` feature.
+        #[cfg(feature = "content")]
+        let masked_payload: Option<String> =
+            self.apply_content_on_execution(input, &state, request_id);
+        #[cfg(feature = "content")]
+        let exec_payload: &str = masked_payload.as_deref().unwrap_or(&input.payload);
+        #[cfg(not(feature = "content"))]
+        let exec_payload: &str = &input.payload;
+
         let mode = state.engine.effective_mode(&input.tool, &input.context);
         let working_directory = input
             .context
@@ -146,13 +158,13 @@ impl Guard {
         let start = std::time::Instant::now();
         let execution_res = match input.tool {
             Tool::Bash => {
-                let command = extract_bash_command_for_execution(&input.payload)?;
+                let command = extract_bash_command_for_execution(exec_payload)?;
                 sandbox.execute(&command, &ctx)
             }
             Tool::WriteFile => {
-                execute_write_file(&input.payload, input.context.working_directory.as_deref())
+                execute_write_file(exec_payload, input.context.working_directory.as_deref())
             }
-            Tool::HttpRequest => execute_http_request(&input.payload),
+            Tool::HttpRequest => execute_http_request(exec_payload),
             _ => unreachable!("unsupported tool already returned above"),
         };
         let duration = start.elapsed();
@@ -211,7 +223,7 @@ impl Guard {
                 &policy_version,
                 &execution_backend,
                 &decision,
-                &sha256_hash(&input.payload),
+                &sha256_hash(exec_payload),
                 key,
             )
         });
@@ -222,6 +234,47 @@ impl Guard {
             receipt,
             policy_verification: state.policy_verification.clone(),
         })
+    }
+
+    /// S6-4c: apply the content policy on the execution path, emit a
+    /// `ContentFinding` audit record, and return a masked payload when the
+    /// policy is in Mask mode. Returns `None` when no content policy applies
+    /// or no sensitive content was found (caller keeps the original payload).
+    #[cfg(feature = "content")]
+    fn apply_content_on_execution(
+        &self,
+        input: &GuardInput,
+        state: &crate::guard::GuardState,
+        request_id: &str,
+    ) -> Option<String> {
+        let policy = state.engine.content_policy(&input.tool)?;
+        let app = crate::content_filter::apply_content_for_execution(
+            policy,
+            &input.tool,
+            &input.payload,
+        )?;
+
+        let mode_label = match app.mode {
+            agent_guard_core::ContentMode::Mask => "mask",
+            agent_guard_core::ContentMode::Warn => "warn",
+            agent_guard_core::ContentMode::Block => "block",
+        };
+
+        state
+            .siem_exporter
+            .export(agent_guard_core::AuditRecord::ContentFinding(
+                agent_guard_core::ContentFindingEvent {
+                    timestamp: chrono::Utc::now(),
+                    request_id: request_id.to_string(),
+                    agent_id: input.context.agent_id.clone(),
+                    tool: input.tool.name().to_string(),
+                    mode: mode_label.to_string(),
+                    count: app.labels.len(),
+                    labels: app.labels,
+                },
+            ));
+
+        app.masked_payload
     }
 
     pub fn execute_default(&self, input: &GuardInput) -> ExecuteResult {

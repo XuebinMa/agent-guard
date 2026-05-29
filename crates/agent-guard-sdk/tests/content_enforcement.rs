@@ -4,7 +4,10 @@
 //! stage in `evaluate()` is gated behind it.
 #![cfg(feature = "content")]
 
-use agent_guard_sdk::{Context, DecisionCode, Guard, GuardDecision, Tool};
+use agent_guard_sdk::{
+    guard::ExecuteOutcome, Context, DecisionCode, Guard, GuardDecision, GuardInput, Tool,
+    TrustLevel,
+};
 
 /// Policy that allows http_request at the action layer but blocks outbound
 /// content carrying secrets/PII.
@@ -85,4 +88,50 @@ tools:
     let decision = g.check_tool(Tool::HttpRequest, payload, Context::default());
 
     assert_eq!(decision, GuardDecision::Allow);
+}
+
+/// End-to-end: Mask mode rewrites the executed WriteFile payload, so the file
+/// on disk contains the redaction placeholder rather than the raw secret.
+#[test]
+fn mask_mode_writes_redacted_file_on_execution() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let yaml = format!(
+        r#"
+version: 1
+default_mode: workspace_write
+tools:
+  write_file:
+    mode: workspace_write
+    allow_paths:
+      - "{}/**"
+    content:
+      mode: mask
+"#,
+        dir.path().display()
+    );
+    let g = Guard::from_yaml(&yaml).expect("policy parses");
+
+    let target = dir.path().join("out.txt");
+    let inp = GuardInput {
+        tool: Tool::WriteFile,
+        payload: format!(
+            r#"{{"path":"{}","content":"token AKIAIOSFODNN7EXAMPLE end"}}"#,
+            target.display()
+        ),
+        context: Context {
+            trust_level: TrustLevel::Trusted,
+            working_directory: Some(dir.path().to_path_buf()),
+            ..Default::default()
+        },
+    };
+
+    let sandbox = agent_guard_sandbox::NoopSandbox;
+    match g.execute(&inp, &sandbox).expect("no sandbox error") {
+        ExecuteOutcome::Executed { .. } => {
+            let contents = std::fs::read_to_string(&target).expect("read target");
+            assert!(contents.contains("[REDACTED:AWS Access Key]"));
+            assert!(!contents.contains("AKIAIOSFODNN7EXAMPLE"));
+        }
+        other => panic!("expected Executed, got {other:?}"),
+    }
 }

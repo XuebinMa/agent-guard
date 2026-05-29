@@ -42,6 +42,7 @@ pub enum AuditRecord {
     SandboxFailure(SandboxFailureEvent),
     AnomalyTriggered(AnomalyEvent),
     AgentLocked(AnomalyEvent),
+    ContentFinding(ContentFindingEvent),
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -63,6 +64,24 @@ pub struct SandboxFailureEvent {
     pub tool: String,
     pub sandbox_type: String,
     pub error: String,
+}
+
+/// Audit record emitted when the content layer acts on an outbound payload
+/// (S6-4c). Captures *what kind* of sensitive data was found and *how* it was
+/// handled — never the raw matched content. Block-mode denials are recorded by
+/// the normal `ToolCall` deny path, so this event covers `mask` and `warn`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ContentFindingEvent {
+    pub timestamp: DateTime<Utc>,
+    pub request_id: String,
+    pub agent_id: Option<String>,
+    pub tool: String,
+    /// Content mode applied: `"mask"` or `"warn"`.
+    pub mode: String,
+    /// Finding-kind labels only (e.g. `"AWS Access Key"`, `"Email"`).
+    pub labels: Vec<String>,
+    /// Number of sensitive spans found.
+    pub count: usize,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

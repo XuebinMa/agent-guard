@@ -11,8 +11,8 @@ mod tests;
 
 pub use attestation::ExecutionProof;
 pub use audit::{
-    AnomalyEvent, AuditDecision, AuditEvent, AuditRecord, ExecutionEvent, ReloadEvent,
-    ReloadStatus, SandboxFailureEvent,
+    AnomalyEvent, AuditDecision, AuditEvent, AuditRecord, ContentFindingEvent, ExecutionEvent,
+    ReloadEvent, ReloadStatus, SandboxFailureEvent,
 };
 pub use decision::{DecisionCode, DecisionReason, GuardDecision, RuntimeDecision};
 pub use policy::{

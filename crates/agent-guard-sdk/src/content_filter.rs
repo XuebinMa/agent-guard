@@ -18,7 +18,9 @@
 use agent_guard_core::{
     ContentDetector, ContentMode, ContentPolicy, DecisionCode, GuardDecision, Tool,
 };
-use agent_guard_validators::content::{scan_pii, scan_secrets};
+use agent_guard_validators::content::{
+    redact_content, scan_pii, scan_secrets, RedactionMode, SensitiveSpan,
+};
 
 /// Apply a tool's content policy to its payload.
 ///
@@ -83,6 +85,97 @@ fn finding_labels(detectors: &[ContentDetector], text: &str) -> Vec<&'static str
         }
     }
     labels
+}
+
+/// Outcome of applying a content policy on the execution path.
+///
+/// Produced only for `Mask` / `Warn` modes with at least one finding. `Block`
+/// is handled earlier in the decision path and never reaches here.
+pub(crate) struct ContentApplication {
+    /// The mode that produced this application (`Mask` or `Warn`).
+    pub mode: ContentMode,
+    /// Finding-kind labels (no raw content) for auditing.
+    pub labels: Vec<String>,
+    /// The masked payload to execute instead of the original. `Some` only for
+    /// `Mask` mode; `None` for `Warn` (the original payload is executed).
+    pub masked_payload: Option<String>,
+}
+
+/// Apply a tool's content policy on the execution path (S6-4c).
+///
+/// - `Block` → `None` (already denied in the decision path).
+/// - `Warn`  → `Some` with `masked_payload: None` (execute as-is, audit only).
+/// - `Mask`  → `Some` with the payload's scannable field rewritten so each
+///   finding becomes a `[REDACTED:<label>]` placeholder.
+///
+/// Returns `None` when the tool is out of scope or no findings are present.
+pub(crate) fn apply_content_for_execution(
+    policy: &ContentPolicy,
+    tool: &Tool,
+    payload: &str,
+) -> Option<ContentApplication> {
+    if policy.mode == ContentMode::Block {
+        return None;
+    }
+
+    let text = scannable_text(tool, payload)?;
+    let spans = finding_spans(&policy.detect, &text);
+    if spans.is_empty() {
+        return None;
+    }
+
+    let labels: Vec<String> = spans.iter().map(|s| s.label.to_string()).collect();
+
+    let masked_payload = match policy.mode {
+        ContentMode::Mask => {
+            let outcome = redact_content(&text, &spans, RedactionMode::Mask);
+            rewrite_field(tool, payload, &outcome.content)
+        }
+        // Warn executes the original payload unchanged.
+        _ => None,
+    };
+
+    Some(ContentApplication {
+        mode: policy.mode,
+        labels,
+        masked_payload,
+    })
+}
+
+/// Collect sensitive spans for the configured detectors, ordered by position.
+fn finding_spans(detectors: &[ContentDetector], text: &str) -> Vec<SensitiveSpan> {
+    let mut spans = Vec::new();
+    for detector in detectors {
+        match detector {
+            ContentDetector::Secrets => {
+                spans.extend(scan_secrets(text).iter().map(SensitiveSpan::from_secret));
+            }
+            ContentDetector::Pii => {
+                spans.extend(scan_pii(text).iter().map(SensitiveSpan::from_pii));
+            }
+        }
+    }
+    spans.sort_by_key(|s| s.start);
+    spans
+}
+
+/// Rewrite the tool payload's scannable field with masked text.
+///
+/// Returns `None` (caller falls back to the original payload) if the payload
+/// is not a JSON object — no panic path.
+fn rewrite_field(tool: &Tool, payload: &str, masked: &str) -> Option<String> {
+    let field = match tool {
+        Tool::WriteFile => "content",
+        Tool::HttpRequest => "body",
+        _ => return None,
+    };
+    let mut value: serde_json::Value = serde_json::from_str(payload).ok()?;
+    let obj = value.as_object_mut()?;
+    obj.insert(
+        field.to_string(),
+        serde_json::Value::String(masked.to_string()),
+    );
+    serde_json::to_string(&value).ok()
 }
 
 #[cfg(test)]
@@ -172,5 +265,69 @@ mod tests {
         let payload = r#"{"command":"echo AKIAIOSFODNN7EXAMPLE"}"#;
 
         assert!(apply_content_policy(&pol, &Tool::Bash, payload).is_none());
+    }
+
+    // ── execution path (S6-4c) ────────────────────────────────────────────
+
+    #[test]
+    fn mask_rewrites_payload_field_and_reports_labels() {
+        let pol = policy(ContentMode::Mask, vec![ContentDetector::Secrets]);
+        let payload = r#"{"path":"out.txt","content":"key AKIAIOSFODNN7EXAMPLE end"}"#;
+
+        let app = apply_content_for_execution(&pol, &Tool::WriteFile, payload)
+            .expect("mask produces an application");
+
+        assert_eq!(app.mode, ContentMode::Mask);
+        assert_eq!(app.labels, vec!["AWS Access Key".to_string()]);
+        let masked = app.masked_payload.expect("mask rewrites the payload");
+        assert!(masked.contains("[REDACTED:AWS Access Key]"));
+        assert!(!masked.contains("AKIAIOSFODNN7EXAMPLE"));
+        // Still valid JSON with the other field intact.
+        let v: serde_json::Value = serde_json::from_str(&masked).unwrap();
+        assert_eq!(v["path"], "out.txt");
+    }
+
+    #[test]
+    fn warn_reports_labels_without_rewriting() {
+        let pol = policy(ContentMode::Warn, vec![ContentDetector::Secrets]);
+        let payload = r#"{"path":"out.txt","content":"AKIAIOSFODNN7EXAMPLE"}"#;
+
+        let app = apply_content_for_execution(&pol, &Tool::WriteFile, payload)
+            .expect("warn produces an application");
+
+        assert_eq!(app.mode, ContentMode::Warn);
+        assert_eq!(app.labels, vec!["AWS Access Key".to_string()]);
+        assert!(app.masked_payload.is_none());
+    }
+
+    #[test]
+    fn block_mode_has_no_execution_application() {
+        let pol = policy(ContentMode::Block, vec![ContentDetector::Secrets]);
+        let payload = r#"{"path":"out.txt","content":"AKIAIOSFODNN7EXAMPLE"}"#;
+
+        assert!(apply_content_for_execution(&pol, &Tool::WriteFile, payload).is_none());
+    }
+
+    #[test]
+    fn clean_content_has_no_execution_application() {
+        let pol = policy(ContentMode::Mask, vec![ContentDetector::Secrets]);
+        let payload = r#"{"path":"out.txt","content":"ordinary prose"}"#;
+
+        assert!(apply_content_for_execution(&pol, &Tool::WriteFile, payload).is_none());
+    }
+
+    #[test]
+    fn mask_rewrites_http_body() {
+        let pol = policy(ContentMode::Mask, vec![ContentDetector::Pii]);
+        let payload = r#"{"url":"https://x.test","method":"POST","body":"mail a@b.com here"}"#;
+
+        let app = apply_content_for_execution(&pol, &Tool::HttpRequest, payload)
+            .expect("mask produces an application");
+
+        let masked = app.masked_payload.expect("mask rewrites the body");
+        assert!(masked.contains("[REDACTED:Email]"));
+        assert!(!masked.contains("a@b.com"));
+        let v: serde_json::Value = serde_json::from_str(&masked).unwrap();
+        assert_eq!(v["url"], "https://x.test");
     }
 }
