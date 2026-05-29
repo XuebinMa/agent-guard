@@ -1,6 +1,8 @@
 pub mod anomaly;
 #[doc(hidden)]
 pub mod audit_writer;
+#[cfg(feature = "content")]
+mod content_filter;
 pub mod doctor;
 mod enforce;
 mod executors;

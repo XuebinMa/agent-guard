@@ -448,9 +448,26 @@ impl Guard {
             }
         }
 
-        state
+        let decision = state
             .engine
-            .check(&input.tool, &input.payload, &input.context)
+            .check(&input.tool, &input.payload, &input.context);
+
+        // S6-4b: content-layer enforcement. Only consulted when the action
+        // layer already allows the call — a content scan never relaxes an
+        // existing deny. Under Block mode, sensitive findings upgrade Allow
+        // to Deny. Off by default; compiled only with the `content` feature.
+        #[cfg(feature = "content")]
+        if matches!(decision, GuardDecision::Allow) {
+            if let Some(policy) = state.engine.content_policy(&input.tool) {
+                if let Some(content_decision) =
+                    crate::content_filter::apply_content_policy(policy, &input.tool, &input.payload)
+                {
+                    return content_decision;
+                }
+            }
+        }
+
+        decision
     }
 
     fn write_audit(

@@ -6,6 +6,10 @@ license.workspace = true
 description = "High-level SDK for agent-guard policy enforcement"
 
 [features]
+# S6-4b: content-layer enforcement (secret/PII detection on outbound
+# WriteFile content + HttpRequest body). Off by default — opt-in via this
+# flag, which enables the validators' `content` detectors.
+content = ["agent-guard-validators/content"]
 # Enable Linux seccomp-bpf sandbox.
 seccomp = ["agent-guard-sandbox/seccomp"]
 # Enable Linux Landlock filesystem isolation (kernel 5.13+).

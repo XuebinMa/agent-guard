@@ -221,4 +221,6 @@ pub enum DecisionCode {
     AgentLocked,
     #[serde(rename = "BLOCKED_BY_MODE")]
     BlockedByMode,
+    #[serde(rename = "SENSITIVE_CONTENT_BLOCKED")]
+    SensitiveContentBlocked,
 }
