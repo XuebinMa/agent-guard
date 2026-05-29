@@ -59,3 +59,8 @@ harness = false
 [[bench]]
 name = "runtime_decision"
 harness = false
+
+# Content-layer example requires the opt-in `content` feature.
+[[example]]
+name = "content_policy"
+required-features = ["content"]

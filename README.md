@@ -157,9 +157,13 @@ What is strong today (action layer):
 - normalized runtime decisions, approval flows, and Ed25519-signed audit records are available now
 - the SDK already includes policy signing, execution receipts, metrics, anomaly detection, and SIEM export beyond the narrow wedge
 
+What is experimental and opt-in (content layer):
+
+- credential / PII detection on outbound content — `write_file` content and `http_request` body — behind the off-by-default `content` feature, with three enforcement modes (`block` / `mask` / `warn`). See [Content layer](#content-layer-experimental) below.
+
 What is roadmap (content layer):
 
-- credentials / PII detection on tool inputs and outputs before they reach the LLM provider or external API
+- detection on tool *inputs* (prompts) before they reach the LLM provider, not just outbound effects
 - HTTP method matching in policy (today the schema is URL-only; method-aware filtering goes host-side — see [presets/README.md](presets/README.md))
 - distribution as a Claude Code plugin / ECC marketplace entry
 
@@ -171,6 +175,47 @@ What to understand before integrating:
 - Python and Node bindings use the SDK's default sandbox selection in the current release; explicit backend selection is deferred until pilot demand surfaces
 - broader capability coverage is intentionally narrow, not generic
 - broader policy workflow and control-plane ideas are future expansion paths, not the phase-one hook
+
+---
+
+## Content layer (experimental)
+
+The action layer decides *whether* a call may leave. The content layer inspects
+*what* leaves with it. It is **off by default** — opt in with the `content`
+feature flag — and currently scans two surfaces: `write_file` content and
+`http_request` body.
+
+Add a `content` block to any tool rule:
+
+```yaml
+tools:
+  http_request:
+    mode: full_access
+    content:
+      mode: block          # block | mask | warn
+      detect: [secrets, pii]   # optional; defaults to both
+```
+
+The three modes:
+
+| Mode | Effect |
+|------|--------|
+| `block` | Deny the call when sensitive content is detected (`SENSITIVE_CONTENT_BLOCKED`). |
+| `mask`  | Execute a redacted copy — each finding becomes `[REDACTED:<label>]` — and emit a `ContentFinding` audit record. |
+| `warn`  | Execute unchanged, but emit a `ContentFinding` audit record. |
+
+Findings only ever expose the *kind* of data (e.g. `AWS Access Key`, `Email`),
+never the raw matched substring — audit records carry labels and counts, not secrets.
+
+Run the example:
+
+```bash
+cargo run -p agent-guard-sdk --example content_policy --features content
+```
+
+This is a spike-grade detector set (named patterns + entropy fallback for
+secrets, regex + Luhn for PII), not a compliance-grade DLP engine. Treat it as a
+safety net, not the primary control.
 
 ---
 
