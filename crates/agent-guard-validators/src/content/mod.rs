@@ -10,9 +10,11 @@
 //! feature and is intentionally *not* wired into the `Guard` pipeline yet.
 
 pub mod pii;
+pub mod redaction;
 pub mod secrets;
 
 pub use pii::{scan as scan_pii, PiiFinding, PiiKind};
+pub use redaction::{redact_content, scan_all, RedactionMode, RedactionOutcome, SensitiveSpan};
 pub use secrets::{scan as scan_secrets, SecretFinding, SecretKind};
 
 /// How many leading characters of a sensitive match are kept in a redacted

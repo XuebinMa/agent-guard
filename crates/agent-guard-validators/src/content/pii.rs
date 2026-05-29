@@ -29,6 +29,18 @@ pub enum PiiKind {
     PhoneNumber,
 }
 
+impl PiiKind {
+    /// Short, stable human label used in redaction placeholders and reports.
+    pub fn label(self) -> &'static str {
+        match self {
+            PiiKind::Email => "Email",
+            PiiKind::UsSsn => "US SSN",
+            PiiKind::CreditCard => "Credit Card",
+            PiiKind::PhoneNumber => "Phone Number",
+        }
+    }
+}
+
 /// One detected PII value. The byte range refers to `content` passed to [`scan`].
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PiiFinding {

@@ -43,6 +43,22 @@ pub enum SecretKind {
     HighEntropyString,
 }
 
+impl SecretKind {
+    /// Short, stable human label used in redaction placeholders and reports.
+    pub fn label(self) -> &'static str {
+        match self {
+            SecretKind::AwsAccessKeyId => "AWS Access Key",
+            SecretKind::GitHubToken => "GitHub Token",
+            SecretKind::OpenAiKey => "OpenAI Key",
+            SecretKind::SlackToken => "Slack Token",
+            SecretKind::GoogleApiKey => "Google API Key",
+            SecretKind::StripeKey => "Stripe Key",
+            SecretKind::PrivateKeyBlock => "Private Key",
+            SecretKind::HighEntropyString => "High-Entropy Secret",
+        }
+    }
+}
+
 /// One detected secret. The byte range refers to `content` passed to [`scan`].
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SecretFinding {
