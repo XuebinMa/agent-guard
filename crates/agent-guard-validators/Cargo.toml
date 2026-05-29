@@ -5,8 +5,14 @@ edition.workspace = true
 license.workspace = true
 description = "Bash and path validators for agent-guard"
 
+[features]
+# S6-1 spike: content-layer secret detection. Off by default — this is a
+# feasibility PoC and is not wired into the main Guard pipeline yet.
+content = ["dep:regex"]
+
 [dependencies]
 agent-guard-core = { path = "../agent-guard-core", version = "=0.2.0-rc1" }
 glob.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+regex = { workspace = true, optional = true }

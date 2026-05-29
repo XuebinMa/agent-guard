@@ -1,6 +1,9 @@
 pub mod bash;
 pub mod path;
 
+#[cfg(feature = "content")]
+pub mod content;
+
 #[cfg(test)]
 mod tests;
 

@@ -99,6 +99,7 @@ version = "0.2.0-rc1"
 dependencies = [
  "agent-guard-core",
  "glob",
+ "regex",
  "serde",
  "serde_json",
 ]
