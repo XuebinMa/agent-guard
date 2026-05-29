@@ -2023,3 +2023,79 @@ mod file_paths_coverage_tests {
         assert_eq!(resolved, "");
     }
 }
+
+#[cfg(test)]
+mod content_policy_tests {
+    use crate::policy::{ContentDetector, ContentMode, PolicyEngine};
+    use crate::types::Tool;
+
+    #[test]
+    fn content_policy_absent_by_default() {
+        // Pre-S6-4 policy with no `content` block parses and yields None.
+        let yaml = r#"
+version: 1
+default_mode: workspace_write
+tools:
+  http_request:
+    mode: full_access
+"#;
+        let engine = PolicyEngine::from_yaml_str(yaml).expect("policy parses");
+        assert!(engine.content_policy(&Tool::HttpRequest).is_none());
+    }
+
+    #[test]
+    fn content_policy_parses_mode_and_default_detectors() {
+        let yaml = r#"
+version: 1
+default_mode: workspace_write
+tools:
+  http_request:
+    mode: full_access
+    content:
+      mode: block
+"#;
+        let engine = PolicyEngine::from_yaml_str(yaml).expect("policy parses");
+        let policy = engine
+            .content_policy(&Tool::HttpRequest)
+            .expect("content policy present");
+        assert_eq!(policy.mode, ContentMode::Block);
+        // `detect` omitted -> defaults to all detectors.
+        assert_eq!(
+            policy.detect,
+            vec![ContentDetector::Secrets, ContentDetector::Pii]
+        );
+    }
+
+    #[test]
+    fn content_policy_parses_explicit_detectors_and_mask_mode() {
+        let yaml = r#"
+version: 1
+default_mode: workspace_write
+tools:
+  write_file:
+    mode: workspace_write
+    content:
+      mode: mask
+      detect: [secrets]
+"#;
+        let engine = PolicyEngine::from_yaml_str(yaml).expect("policy parses");
+        let policy = engine
+            .content_policy(&Tool::WriteFile)
+            .expect("content policy present");
+        assert_eq!(policy.mode, ContentMode::Mask);
+        assert_eq!(policy.detect, vec![ContentDetector::Secrets]);
+    }
+
+    #[test]
+    fn content_policy_rejects_unknown_mode() {
+        let yaml = r#"
+version: 1
+default_mode: workspace_write
+tools:
+  http_request:
+    content:
+      mode: shred
+"#;
+        assert!(PolicyEngine::from_yaml_str(yaml).is_err());
+    }
+}

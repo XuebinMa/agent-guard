@@ -210,6 +210,46 @@ pub struct ToolPolicy {
     /// behaviour (workspace bound is always enforced).
     #[serde(default)]
     pub workspace_escape_paths: Vec<String>,
+    /// Optional content-layer policy (S6-4): scan this tool's text payload for
+    /// secrets / PII and act per [`ContentPolicy::mode`]. `None` = disabled,
+    /// which preserves pre-S6-4 behaviour. The schema always parses; whether it
+    /// is enforced depends on the SDK being built with the `content` feature.
+    #[serde(default)]
+    pub content: Option<ContentPolicy>,
+}
+
+/// Per-tool content-layer policy (S6-4).
+#[derive(Debug, Deserialize, Clone, PartialEq, Eq)]
+pub struct ContentPolicy {
+    pub mode: ContentMode,
+    /// Which detectors to run. Defaults to all of them.
+    #[serde(default = "default_content_detectors")]
+    pub detect: Vec<ContentDetector>,
+}
+
+/// What to do when a content detector matches. Mirrors the validator-side
+/// redaction modes, but defined here so `core` does not depend on `validators`.
+#[derive(Debug, Deserialize, Serialize, Clone, Copy, PartialEq, Eq)]
+pub enum ContentMode {
+    #[serde(rename = "block")]
+    Block,
+    #[serde(rename = "mask")]
+    Mask,
+    #[serde(rename = "warn")]
+    Warn,
+}
+
+/// Which content detector to apply.
+#[derive(Debug, Deserialize, Serialize, Clone, Copy, PartialEq, Eq)]
+pub enum ContentDetector {
+    #[serde(rename = "secrets")]
+    Secrets,
+    #[serde(rename = "pii")]
+    Pii,
+}
+
+fn default_content_detectors() -> Vec<ContentDetector> {
+    vec![ContentDetector::Secrets, ContentDetector::Pii]
 }
 
 #[derive(Debug, Clone)]
@@ -679,6 +719,13 @@ impl PolicyEngine {
         self.tool_policy(tool)
             .map(|tp| tp.workspace_escape_paths.as_slice())
             .unwrap_or(&[])
+    }
+
+    /// Read-only accessor for a tool's content-layer policy (S6-4). Returns
+    /// `None` when the tool is unconfigured or has no `content` block. The SDK
+    /// consults this before running the content detectors.
+    pub fn content_policy(&self, tool: &Tool) -> Option<&ContentPolicy> {
+        self.tool_policy(tool).and_then(|tp| tp.content.as_ref())
     }
 
     fn compiled_tool_policy(&self, tool: &Tool) -> Option<&CompiledToolPolicy> {
