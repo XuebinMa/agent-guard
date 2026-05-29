@@ -15,9 +15,7 @@ use std::sync::OnceLock;
 
 use regex::Regex;
 
-/// How many leading characters of a matched secret are kept in the redacted
-/// preview. Enough to recognise the credential family, not enough to use it.
-const PREVIEW_PREFIX_LEN: usize = 4;
+use super::redact;
 
 /// Minimum length for a token to be considered by the high-entropy fallback.
 const ENTROPY_MIN_LEN: usize = 20;
@@ -91,12 +89,6 @@ pub fn scan(content: &str) -> Vec<SecretFinding> {
 
     findings.sort_by_key(|f| f.start);
     findings
-}
-
-/// Redact a secret to a recognisable but unusable preview, e.g. `AKIA…(len 20)`.
-fn redact(secret: &str) -> String {
-    let prefix: String = secret.chars().take(PREVIEW_PREFIX_LEN).collect();
-    format!("{prefix}…(len {})", secret.chars().count())
 }
 
 /// True if `[start, end)` overlaps any already-recorded finding.
