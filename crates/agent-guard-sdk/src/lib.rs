@@ -1,4 +1,5 @@
 pub mod anomaly;
+pub mod approval;
 #[doc(hidden)]
 pub mod audit_writer;
 #[cfg(feature = "content")]
@@ -16,6 +17,7 @@ mod sandbox_resolution;
 pub mod siem;
 
 pub use anomaly::{get_detector, AnomalyDetector, AnomalyStatus};
+pub use approval::{ApprovalError, ApprovalLedger, ApprovalRecord, ApprovalStatus};
 pub use doctor::{collect_doctor_report, render_doctor_html, render_doctor_text, DoctorReport};
 pub use enforce::{ExecuteOutcome, ExecuteResult};
 pub use guard::{DefaultSandboxDiagnosis, Guard, GuardInitError};
