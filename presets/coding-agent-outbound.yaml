@@ -22,9 +22,11 @@
 #   3. Anything destructive + irreversible = `deny`. No second chance.
 #   4. Well-known dangerous patterns (curl-pipe-bash, cloud metadata) =
 #      `deny`, regardless of mode.
-#   5. Reading credential / secret files = `deny` at the action layer; a
-#      content-layer pre-tokenization gate will catch inline secrets in
-#      a later sprint.
+#   5. Reading credential / secret files = `deny` at the action layer.
+#      The content layer (opt-in `content` build) adds a second check on
+#      what leaves: secrets/PII in an outbound HTTP body are blocked, and
+#      in written file content are flagged (warn). See the `content:`
+#      blocks on `http_request` and `write_file` below.
 #   6. Every rule carries a short comment naming the moment it catches
 #      and the reason — this file is also documentation.
 #
@@ -35,6 +37,10 @@
 #   - remote mutation:    HTTP to cloud metadata + RFC1918 / loopback
 #                         (method-aware filtering deferred — see README)
 #   - destructive shell:  rm -rf, git reset --hard, find -delete, etc.
+#
+# Content layer (opt-in `content` build, see http_request / write_file):
+#   - outbound exfil:     secrets/PII in an HTTP body  -> block
+#   - local leak signal:  secrets/PII in written files -> warn (audit)
 #
 # Related docs:
 #   - presets/README.md
@@ -146,9 +152,10 @@ tools:
 
   read_file:
     mode: workspace_write
-    # Pre-warn at action layer for credential / secret files. A future
-    # content-layer sprint will additionally scan inline secrets in any
-    # file read, regardless of path.
+    # Deny at the action layer for credential / secret files by path.
+    # Note: the content layer does not yet scan read_file *output* — its
+    # current scope is write_file content + http_request body — so inline
+    # secrets in an allowed-path file are not caught here.
     deny_paths:
       - "**/.env"
       - "**/.env.*"
@@ -187,6 +194,16 @@ tools:
       - "**/.npmrc"
       - "**/.pypirc"
 
+    # ─── CONTENT LAYER — flag secrets/PII written to workspace files ───
+    # Writing a secret into a workspace file is normal dev activity (the
+    # agent scaffolding an .env, a test fixture, etc.), so this OBSERVES
+    # rather than blocks: a ContentFinding audit record is emitted and
+    # the write proceeds. Raise to `mode: mask` to redact on write, or
+    # `mode: block` to refuse. Enforced only with the `content` build.
+    content:
+      mode: warn
+      detect: [secrets, pii]
+
   http_request:
     mode: workspace_write
     # The payload schema today is URL-only — there is no `method` field
@@ -209,6 +226,20 @@ tools:
       - regex: "^https?://10\\."
       - regex: "^https?://172\\.(1[6-9]|2[0-9]|3[01])\\."
       - regex: "^https?://192\\.168\\."
+
+    # ─── CONTENT LAYER — block secrets/PII leaving in the body ─────────
+    # The action rules above only filter on the URL. This scans the
+    # request *body*: an AWS key / GitHub token / SSN POSTed to any host
+    # is the canonical exfil moment, so it is blocked outright
+    # (SENSITIVE_CONTENT_BLOCKED). Detection is spike-grade — if a
+    # legitimate high-entropy body trips it, downgrade this tool to
+    # `mode: warn` or narrow `detect`.
+    #
+    # Parses on every build; only ENFORCED when the runtime is compiled
+    # with the opt-in `content` feature. Without it, this block is inert.
+    content:
+      mode: block
+      detect: [secrets, pii]
 
 # ─── Trust override (optional, off by default) ──────────────────────────
 # This preset deliberately does NOT set a trust floor — the deny/ask

@@ -90,8 +90,18 @@ Five categories, mirroring the strategic outbound-action frame:
 | Artifact egress | `docker push`, `podman push`, `buildx --push`, `gh release ...` | ask |
 | Remote mutation (URL-only) | HTTP to cloud metadata, RFC1918, loopback | deny |
 | Destructive shell | `rm -rf /`, `rm -rf ~`, `mkfs`, `dd if=...of=/dev/...`, `sudo`, curl-pipe-bash | deny. Recoverable destructive (`rm -rf <some>`, `git reset --hard`, `git clean -fd`, `find … -delete`) → ask. |
+| Content exfil (opt-in) | secrets / PII in an `http_request` body; in `write_file` content | HTTP body → **deny** (`block`). File content → **warn** (audit, write proceeds). |
 
 Friction-free passthrough is the default for everything else inside the workspace: `git status`, `git diff`, `git commit`, `cargo build`, `cargo test`, `npm test`, etc. — no rule fires.
+
+### Content layer (opt-in)
+
+The last row is the **content layer** and behaves differently from the action rules above: it inspects *what* leaves, not just *whether* a call is allowed. It is **off unless the runtime is built with the `content` feature** — the `content:` blocks parse on every build but are inert without it.
+
+- `http_request.content: { mode: block }` — a detected secret/PII in the request body denies the call (`SENSITIVE_CONTENT_BLOCKED`). This is the first protection in this preset against POSTing a key to an *arbitrary* external host (the URL denies only cover metadata / RFC1918 / loopback).
+- `write_file.content: { mode: warn }` — writing a secret into a workspace file is normal dev activity, so it is recorded (a `ContentFinding` audit record) and allowed. Raise to `mask` to redact on write, or `block` to refuse.
+
+Detection is spike-grade (named patterns + entropy fallback for secrets; regex + Luhn for PII) and findings expose only the *kind* of data, never the raw value. If a legitimate high-entropy HTTP body trips `block`, downgrade that tool to `warn` or narrow its `detect` list. See the root [README § Content layer](../README.md#content-layer-experimental).
 
 ### Known gaps in this preset
 
