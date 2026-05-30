@@ -73,6 +73,8 @@ run_node() {
   npm ci --prefix crates/agent-guard-node
   npm run build:debug --prefix crates/agent-guard-node
   npm test --prefix crates/agent-guard-node
+  # agent-guard-plugin (npx init CLI) — dependency-free, built-in node:test.
+  npm test --prefix packages/agent-guard-plugin
   popd >/dev/null
 }
 

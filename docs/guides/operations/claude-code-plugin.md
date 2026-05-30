@@ -18,22 +18,36 @@ The plugin is the distribution wrapper. The actual evaluation is done by the `gu
 
 ## Install
 
-The plugin lives in the agent-guard repo itself (the repo doubles as a single-plugin marketplace).
+There are two install paths. Both end with the same `PreToolUse` gate; pick whichever fits your workflow.
+
+### Option A — one command (`npx`)
+
+```bash
+npx agent-guard-plugin init
+```
+
+This installs the `guard-hook` binary (via `cargo install` — Rust required), writes the outbound policy to `~/.claude/agent-guard/policy.yaml`, and wires the hook into `~/.claude/settings.json`. The edit is idempotent and preserves your other settings and hooks. Use `--dry-run` to preview, `npx agent-guard-plugin uninstall` to remove the hook. See [`packages/agent-guard-plugin`](../../../packages/agent-guard-plugin/README.md) for all options.
+
+### Option B — Claude Code marketplace plugin
+
+The repo doubles as a single-plugin marketplace:
 
 ```text
 /plugin marketplace add XuebinMa/agent-guard
 /plugin install agent-guard@agent-guard
 ```
 
-Then install the evaluation binary. The plugin **fails open** until it is present, so the gate is a no-op until you do this:
+Then install the evaluation binary (the plugin **fails open** until it is present, so the gate is a no-op until you do):
 
 ```bash
-cargo install --path crates/guard-hook
+cargo install --path crates/guard-hook         # from a repo checkout
+# or, from anywhere:
+npx agent-guard-plugin init --binary-only       # installs guard-hook only
 ```
 
-`cargo install` drops `guard-hook` into `~/.cargo/bin`, which the plugin's wrapper finds automatically. (An `npx agent-guard-plugin init` path that installs a prebuilt binary is planned — S8-2.)
+`cargo install` drops `guard-hook` into `~/.cargo/bin`, which the plugin's wrapper finds automatically.
 
-Restart Claude Code (or start a new session) so the `PreToolUse` hook is loaded.
+Either way, restart Claude Code (or start a new session) so the `PreToolUse` hook is loaded.
 
 ---
 

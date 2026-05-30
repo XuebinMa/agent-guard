@@ -31,6 +31,7 @@ node_version = json.loads((root / "crates/agent-guard-node/package.json").read_t
 python_version = read_toml(root / "crates/agent-guard-python/pyproject.toml")["project"]["version"]
 plugin_version = json.loads((root / ".claude-plugin/plugin.json").read_text())["version"]
 marketplace_version = json.loads((root / ".claude-plugin/marketplace.json").read_text())["plugins"][0]["version"]
+npx_plugin_version = json.loads((root / "packages/agent-guard-plugin/package.json").read_text())["version"]
 
 readme = (root / "README.md").read_text()
 docs_readme = (root / "docs/README.md").read_text()
@@ -61,6 +62,7 @@ print(docs_title_match.group(1))
 print(docs_release_match.group(1))
 print(plugin_version)
 print(marketplace_version)
+print(npx_plugin_version)
 PY
 }
 
@@ -80,6 +82,7 @@ checks=(
   "docs/README release link:${versions[6]}"
   ".claude-plugin/plugin.json:${versions[7]}"
   ".claude-plugin/marketplace.json:${versions[8]}"
+  "packages/agent-guard-plugin/package.json:${versions[9]}"
 )
 
 for check in "${checks[@]}"; do

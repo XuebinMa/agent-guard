@@ -1,0 +1,271 @@
+# agent-guard outbound preset for AI coding agents
+# ---------------------------------------------------------------------------
+# Sprint 5-2 — 2026-05-21
+# ---------------------------------------------------------------------------
+# Zero-config policy for developers running AI coding agents (Claude Code,
+# Cursor, Codex CLI, Aider, etc.) who want sensible "ask before anything
+# goes outbound" defaults without writing their first rule.
+#
+# Adopt with:
+#
+#   guard-hook --policy presets/coding-agent-outbound.yaml      # Claude Code
+#   GUARD_POLICY=presets/coding-agent-outbound.yaml ./your-agent
+#
+# or copy this file to your project root and edit in place.
+#
+# Design rules:
+#   1. Code / test loops stay frictionless. No ask on `git status`, `git
+#      commit`, `cargo build`, `npm test`, etc. — anything that does not
+#      ship state outside the workspace.
+#   2. Anything that ships state outside the workspace = `ask`. The agent
+#      must surface the intent to a human; the human resumes execution.
+#   3. Anything destructive + irreversible = `deny`. No second chance.
+#   4. Well-known dangerous patterns (curl-pipe-bash, cloud metadata) =
+#      `deny`, regardless of mode.
+#   5. Reading credential / secret files = `deny` at the action layer.
+#      The content layer (opt-in `content` build) adds a second check on
+#      what leaves: secrets/PII in an outbound HTTP body are blocked, and
+#      in written file content are flagged (warn). See the `content:`
+#      blocks on `http_request` and `write_file` below.
+#   6. Every rule carries a short comment naming the moment it catches
+#      and the reason — this file is also documentation.
+#
+# Coverage (the 5 outbound categories from the strategic frame):
+#   - code egress:        `git push` family
+#   - package release:    npm / yarn / pnpm / cargo / gem / twine / setup.py
+#   - artifact egress:    docker / podman / buildx push, gh release
+#   - remote mutation:    HTTP to cloud metadata + RFC1918 / loopback
+#                         (method-aware filtering deferred — see README)
+#   - destructive shell:  rm -rf, git reset --hard, find -delete, etc.
+#
+# Content layer (opt-in `content` build, see http_request / write_file):
+#   - outbound exfil:     secrets/PII in an HTTP body  -> block
+#   - local leak signal:  secrets/PII in written files -> warn (audit)
+#
+# Related docs:
+#   - presets/README.md
+#   - docs/guides/getting-started/secure-shell-tools.md
+#   - docs/guides/getting-started/check-vs-enforce.md
+# ---------------------------------------------------------------------------
+
+version: 1
+
+# Coding agents need workspace-internal work to be friction-free; outbound
+# guards live in per-tool rules below. Override per-tool if you want a
+# stricter default for one surface (e.g. set `bash.mode: read_only` for an
+# audit-only run while keeping write_file at workspace_write).
+default_mode: workspace_write
+
+tools:
+
+  bash:
+    mode: workspace_write
+
+    # ─── DENY (highest priority, no prompt) ────────────────────────────
+    deny:
+      # Catastrophic destructive ops — never auto, no ask.
+      - prefix: "rm -rf /"
+      - regex: "rm\\s+-[rRfv]+\\s+\\$HOME"
+      - regex: "rm\\s+-[rRfv]+\\s+~(/|$)"
+      - regex: "rm\\s+-[rRfv]+\\s+\\.\\.?$"
+
+      # History-rewriting / forced overwrite — irreversible at the remote.
+      - prefix: "git push --force"
+      - prefix: "git push -f"
+      - regex: "git\\s+push\\s+.*--force-with-lease"
+      - regex: "git\\s+push\\s+.*--mirror"
+
+      # Reset against remote tracking — likely loses unpushed work.
+      - regex: "git\\s+reset\\s+--hard\\s+(origin|upstream)/"
+
+      # Curl-pipe-bash and exfil chain patterns.
+      - regex: "curl[^|]*\\|\\s*sh"
+      - regex: "curl[^|]*\\|\\s*bash"
+      - regex: "wget[^|]*\\|\\s*sh"
+      - regex: "wget[^|]*\\|\\s*bash"
+
+      # Cloud metadata endpoints reached via shell (SSRF / IMDS classic).
+      - regex: "(?i)169\\.254\\.169\\.254"
+      - regex: "(?i)metadata\\.google\\.internal"
+
+      # Privilege escalation — agents have no business in sudo.
+      - prefix: "sudo "
+
+      # Disk / filesystem level — irreversible.
+      - regex: "(mkfs\\.|dd\\s+if=.*of=/dev/)"
+
+    # ─── ASK (interactive approval, recoverable) ───────────────────────
+    ask:
+      # ─── code egress ─────────────────────────────────────────────────
+      # Catches the moment "agent thinks it's done, wants to ship it."
+      # Covers push to origin, fork, or any remote — the user decides
+      # whether the destination is what they expected.
+      - prefix: "git push"
+
+      # ─── package release ─────────────────────────────────────────────
+      # Public registry mutations. Once published, can't fully unpublish.
+      - prefix: "npm publish"
+      - prefix: "yarn publish"
+      - prefix: "pnpm publish"
+      - prefix: "cargo publish"
+      - prefix: "gem push"
+      - prefix: "twine upload"
+      - regex: "python\\s+-m\\s+twine\\s+upload"
+      - regex: "python3?\\s+setup\\.py\\s+(upload|sdist\\s+upload)"
+
+      # ─── artifact / container egress ─────────────────────────────────
+      - prefix: "docker push"
+      - prefix: "podman push"
+      - regex: "buildx\\s+build\\s+.*--push"
+
+      # ─── public release / repo mutation ──────────────────────────────
+      # GitHub-visible state changes that other people will see.
+      - prefix: "gh release create"
+      - prefix: "gh release edit"
+      - prefix: "gh release upload"
+      - prefix: "gh release delete"
+      - prefix: "gh repo create"
+      - prefix: "gh repo delete"
+      - prefix: "gh repo archive"
+      - prefix: "gh issue close"
+      - prefix: "gh pr merge"
+
+      # ─── workspace destructive (recoverable, but ask anyway) ─────────
+      - prefix: "git reset --hard"
+      - prefix: "git clean -fd"
+      - regex: "rm\\s+-[rRfv]+\\s+"   # any rm -r / -rf / -rR not caught above
+      - regex: "find\\s+.*\\s-delete"
+
+      # ─── deployment / infra mutation ─────────────────────────────────
+      - regex: "kubectl\\s+(apply|delete|drain|cordon|uncordon|patch)"
+      - regex: "helm\\s+(install|upgrade|uninstall)"
+      - regex: "terraform\\s+(apply|destroy|import)"
+      - regex: "pulumi\\s+(up|destroy|refresh)"
+      - prefix: "ansible-playbook"
+      - regex: "aws\\s+s3\\s+(rm|sync\\s+--delete|mv)"
+      - regex: "aws\\s+(ec2|rds|lambda)\\s+(delete|terminate|stop)"
+      - regex: "gcloud\\s+(deploy|app\\s+deploy|compute\\s+instances\\s+delete)"
+      - prefix: "fly deploy"
+      - regex: "vercel\\s+.*--prod"
+      - regex: "netlify\\s+deploy\\s+.*--prod"
+      - regex: "wrangler\\s+(publish|deploy)"
+
+  read_file:
+    mode: workspace_write
+    # Deny at the action layer for credential / secret files by path.
+    # Note: the content layer does not yet scan read_file *output* — its
+    # current scope is write_file content + http_request body — so inline
+    # secrets in an allowed-path file are not caught here.
+    deny_paths:
+      - "**/.env"
+      - "**/.env.*"
+      - "**/.envrc"
+      - "**/.ssh/**"
+      - "**/id_rsa*"
+      - "**/id_ed25519*"
+      - "**/*.pem"
+      - "**/*.key"
+      - "**/credentials"
+      - "**/.aws/credentials"
+      - "**/.aws/config"
+      - "**/.docker/config.json"
+      - "**/.npmrc"
+      - "**/.pypirc"
+      - "**/.cargo/credentials*"
+      - "**/.netrc"
+      - "**/secrets.yaml"
+      - "**/secrets.yml"
+      - "**/secret.json"
+
+  write_file:
+    mode: workspace_write
+    deny_paths:
+      # System paths — never write.
+      - "/etc/**"
+      - "/usr/**"
+      - "/boot/**"
+      - "/sys/**"
+      - "/proc/**"
+      # Credential / config — never write. Forces the agent to surface
+      # any "I'll modify your credentials" intent explicitly.
+      - "**/.ssh/**"
+      - "**/.aws/**"
+      - "**/.docker/**"
+      - "**/.npmrc"
+      - "**/.pypirc"
+
+    # ─── CONTENT LAYER — flag secrets/PII written to workspace files ───
+    # Writing a secret into a workspace file is normal dev activity (the
+    # agent scaffolding an .env, a test fixture, etc.), so this OBSERVES
+    # rather than blocks: a ContentFinding audit record is emitted and
+    # the write proceeds. Raise to `mode: mask` to redact on write, or
+    # `mode: block` to refuse. Enforced only with the `content` build.
+    content:
+      mode: warn
+      detect: [secrets, pii]
+
+  http_request:
+    mode: workspace_write
+    # The payload schema today is URL-only — there is no `method` field
+    # the validator can match on. So "ask on any non-local POST/PUT/
+    # PATCH/DELETE" is not expressible without a schema extension; the
+    # rules below cover the highest-value URL-only protections instead.
+    # See presets/README.md for the host-side method-aware pattern.
+    deny:
+      # Cloud / link-local metadata endpoints (IMDS classic, SSRF chain).
+      - regex: "^https?://169\\.254\\.169\\.254"
+      - regex: "^https?://metadata\\.google\\.internal"
+      - regex: "^https?://metadata\\.azure\\.com"
+
+      # Loopback / private RFC1918 mutation surfaces. If you genuinely
+      # need to call your local dev server, override this rule
+      # explicitly — defaulting to safe.
+      - regex: "^https?://localhost"
+      - regex: "^https?://127\\.0\\.0\\.1"
+      - regex: "^https?://0\\.0\\.0\\.0"
+      - regex: "^https?://10\\."
+      - regex: "^https?://172\\.(1[6-9]|2[0-9]|3[01])\\."
+      - regex: "^https?://192\\.168\\."
+
+    # ─── CONTENT LAYER — block secrets/PII leaving in the body ─────────
+    # The action rules above only filter on the URL. This scans the
+    # request *body*: an AWS key / GitHub token / SSN POSTed to any host
+    # is the canonical exfil moment, so it is blocked outright
+    # (SENSITIVE_CONTENT_BLOCKED). Detection is spike-grade — if a
+    # legitimate high-entropy body trips it, downgrade this tool to
+    # `mode: warn` or narrow `detect`.
+    #
+    # Parses on every build; only ENFORCED when the runtime is compiled
+    # with the opt-in `content` feature. Without it, this block is inert.
+    content:
+      mode: block
+      detect: [secrets, pii]
+
+# ─── Trust override (optional, off by default) ──────────────────────────
+# This preset deliberately does NOT set a trust floor — the deny/ask
+# rules above ARE the security boundary, and a trust override that
+# downgrades `untrusted` agents to `read_only` would conflict with
+# `bash.mode: workspace_write` and deny every shell call before any rule
+# could fire. Hosts that classify agents into trust tiers can layer
+# their own override on top; see docs/guides/getting-started/trust-tooling.md
+# for the typical pattern.
+
+# ─── Anomaly / rate limiting ────────────────────────────────────────────
+anomaly:
+  enabled: true
+  rate_limit:
+    window_seconds: 60
+    max_calls: 30
+  deny_fuse:
+    enabled: true
+    threshold: 5
+    window_seconds: 60
+
+# ─── Audit ──────────────────────────────────────────────────────────────
+# Defaults to stdout so the preset works in any directory. Switch to
+# `output: file` + `file_path: ...` when you want durable forensic
+# storage; the JSONL format is unchanged.
+audit:
+  enabled: true
+  output: stdout
+  include_payload_hash: true
