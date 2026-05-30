@@ -59,6 +59,29 @@ audit:
 - `execution_started` / `execution_finished`.
 - `sandbox_failure`: Emitted on fail-closed errors.
 - `anomaly_triggered` / `agent_locked`.
+- `content_finding`: Content-layer detection on an executed call (opt-in `content` build). See below.
+
+### Content findings (`content_finding`)
+
+Emitted by the content layer when an executed call carries secrets / PII and the policy's `content.mode` is `mask` or `warn`. Requires a runtime built with the `content` feature; otherwise no such records are produced.
+
+```json
+{
+  "type": "content_finding",
+  "timestamp": "2026-05-29T12:00:00Z",
+  "request_id": "5f1c…",
+  "agent_id": "demo-agent",
+  "tool": "write_file",
+  "mode": "mask",
+  "labels": ["AWS Access Key", "Email"],
+  "count": 2
+}
+```
+
+Notes:
+- **No raw content.** The record carries only finding-*kind* labels (e.g. `AWS Access Key`, `Email`) and a `count` — never the matched secret/PII substring or the payload.
+- **`mode`** is `mask` (the executed payload was redacted to `[REDACTED:<label>]`) or `warn` (executed unchanged). `block` does **not** emit this record — a blocked call is denied before execution and appears as a `tool_call` with decision `deny` and code `SENSITIVE_CONTENT_BLOCKED`.
+- **Emitted on the execute path** (`Guard::execute` / `run`), not on a bare `Guard::check`. A check-only integration (e.g. the Claude Code hook) sees the `block` deny in `tool_call`, but not `content_finding` events.
 
 ---
 
