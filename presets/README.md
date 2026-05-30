@@ -103,6 +103,8 @@ The last row is the **content layer** and behaves differently from the action ru
 
 Detection is spike-grade (named patterns + entropy fallback for secrets; regex + Luhn for PII) and findings expose only the *kind* of data, never the raw value. If a legitimate high-entropy HTTP body trips `block`, downgrade that tool to `warn` or narrow its `detect` list. See the root [README § Content layer](../README.md#content-layer-experimental).
 
+**Via the Claude Code hook**, reach is narrower than on the SDK path: the hook only *checks* (so `warn`/`mask` are no-ops — only `block` denies) and no Claude Code tool carries an HTTP body, so `http_request.content` never fires there. Through the hook, content enforcement effectively means `write_file.content: { mode: block }`. See [Content layer through the hook](../docs/guides/operations/claude-code-hook.md#content-layer-through-the-hook-scope).
+
 ### Known gaps in this preset
 
 1. **HTTP method-aware filtering.** The current `http_request` payload schema is URL-only; the validator cannot see whether a request is a `POST` vs `GET`. The preset compensates by URL-level denies for the highest-value destinations (cloud metadata, RFC1918, loopback). If you need true "ask before any non-local mutating method," do it host-side: wrap your HTTP tool to set a different `tool` name (e.g. `Custom("http.mutate")`) for non-`GET` calls, then add a per-tool rule in policy. The validator will be extended with a `method` matcher in a future sprint.

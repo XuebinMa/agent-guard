@@ -354,6 +354,59 @@ mod tests {
     }
 
     #[test]
+    fn run_check_blocks_write_with_secret_under_content_block_policy() {
+        // Proves the content feature is compiled into guard-hook and that a
+        // `write_file.content: { mode: block }` policy denies a Write whose
+        // content carries a secret — the one content rule the check-only hook
+        // can act on.
+        let dir = tempfile::tempdir().expect("tempdir");
+        let policy_path = dir.path().join("policy.yaml");
+        let target = dir.path().join("out.txt");
+        let policy = format!(
+            r#"
+version: 1
+default_mode: workspace_write
+tools:
+  write_file:
+    mode: workspace_write
+    allow_paths:
+      - "{}/**"
+    content:
+      mode: block
+      detect: [secrets]
+"#,
+            dir.path().display()
+        );
+        std::fs::write(&policy_path, policy).expect("write policy");
+
+        let stdin = serde_json::json!({
+            "tool_name": "Write",
+            "tool_input": {
+                "file_path": target.to_string_lossy(),
+                "content": "deploy key AKIAIOSFODNN7EXAMPLE end"
+            }
+        })
+        .to_string();
+
+        let mut out = Vec::new();
+        run_check(&stdin, &policy_path, "test", &mut out);
+        let body = String::from_utf8(out).unwrap();
+
+        assert!(
+            body.contains("\"permissionDecision\":\"deny\""),
+            "expected deny, got: {body}"
+        );
+        assert!(
+            body.contains("SENSITIVE_CONTENT_BLOCKED"),
+            "expected content-block code, got: {body}"
+        );
+        assert!(
+            !body.contains("AKIAIOSFODNN7EXAMPLE"),
+            "deny reason must not echo the raw secret: {body}"
+        );
+    }
+
+    #[test]
     fn emit_approve_writes_modern_format() {
         let mut out = Vec::new();
         emit_approve(&mut out);

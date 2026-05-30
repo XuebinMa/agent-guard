@@ -16,6 +16,17 @@ This page documents friction that surfaces when you actually run it against your
 
 ---
 
+## Content layer through the hook (scope)
+
+`guard-hook` is built with the SDK's `content` feature on, so policy `content:` blocks are enforced. But two structural facts narrow what that means *through Claude Code*, versus a programmatic SDK integration:
+
+- **The hook only checks; it never executes.** It runs `Guard::check` and returns allow/deny/ask. Of the three content modes, only **`block`** changes a verdict in the check path — `warn` and `mask` act on the *execution* path (`Guard::execute`/`run`), which the hook does not use. So a `content: { mode: warn }` or `mask` rule is a no-op via the hook.
+- **No Claude Code tool sends an HTTP body.** The only HTTP mapping is `WebFetch` → an `HttpRequest` `GET` with no body. So an `http_request.content` rule has nothing to scan through the hook. HTTP-body secret/PII scanning is reachable only on the SDK path, where you issue an `HttpRequest` with a `body`.
+
+Net: through the Claude Code hook, content enforcement effectively means **`write_file.content: { mode: block }`** — a `Write`/`Edit` whose content carries a secret/PII is denied (`SENSITIVE_CONTENT_BLOCKED`). The [outbound preset](../../../presets/coding-agent-outbound.yaml) ships `write_file.content` as `warn` (observe-only) and `http_request.content` as `block`, so out of the box it adds no new hook-level denials; raise `write_file` to `block` if you want the hook to refuse secret-bearing file writes.
+
+---
+
 ## Hard kill switch
 
 If the hook is in your way, start Claude Code with:
