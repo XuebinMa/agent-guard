@@ -6,6 +6,8 @@ use clap::{Parser, Subcommand, ValueEnum};
 use ed25519_dalek::SigningKey;
 use std::path::{Path, PathBuf};
 
+mod report;
+
 /// CLI tool to verify agent-guard execution receipts and trust artifacts.
 #[derive(Parser)]
 #[command(name = "guard-verify", version, about)]
@@ -105,6 +107,35 @@ enum Commands {
         #[arg(short, long)]
         out_dir: PathBuf,
     },
+    /// Summarise an audit JSONL log into a compliance-evidence report.
+    ///
+    /// Aggregates `tool_call`, `content_finding`, execution, and anomaly
+    /// records into decision counts, denial breakdowns (by code and tool),
+    /// content-layer findings, and the policy versions / agents observed.
+    /// Unlike `verify-log` (which checks receipt signatures), this answers
+    /// "what did the boundary do" over a window. Scope with `--since` and
+    /// `--agent-id`; emit `--format json` for archival evidence.
+    Report {
+        /// Path to the audit JSONL file (`audit.output: file`).
+        #[arg(long)]
+        audit: PathBuf,
+        /// Only include records no older than this. Accepts `30s`, `5m`,
+        /// `2h`, `7d`. When omitted, every record is included.
+        #[arg(short = 's', long)]
+        since: Option<String>,
+        /// Optional agent_id filter.
+        #[arg(short, long)]
+        agent_id: Option<String>,
+        /// Output format.
+        #[arg(short, long, default_value = "text")]
+        format: ReportFormat,
+    },
+}
+
+#[derive(Clone, Debug, ValueEnum)]
+enum ReportFormat {
+    Text,
+    Json,
 }
 
 #[derive(Clone, Debug, ValueEnum)]
@@ -636,6 +667,57 @@ fn main() {
             agent_id,
         } => cmd_verify_log(receipts, public_key, since, agent_id),
         Commands::DemoReceipts { out_dir } => cmd_demo_receipts(out_dir),
+        Commands::Report {
+            audit,
+            since,
+            agent_id,
+            format,
+        } => cmd_report(audit, since, agent_id, format.clone()),
+    }
+}
+
+fn cmd_report(
+    audit_path: &PathBuf,
+    since: &Option<String>,
+    agent_id_filter: &Option<String>,
+    format: ReportFormat,
+) {
+    let contents = match std::fs::read_to_string(audit_path) {
+        Ok(s) => s,
+        Err(e) => exit_with_error(&format!(
+            "Failed to read audit log '{}': {e}",
+            audit_path.display()
+        )),
+    };
+
+    let cutoff: Option<u64> = match since {
+        Some(s) => {
+            let window_secs = match parse_since(s) {
+                Ok(n) => n,
+                Err(e) => exit_with_error(&e),
+            };
+            let now = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_secs())
+                .unwrap_or(0);
+            Some(now.saturating_sub(window_secs))
+        }
+        None => None,
+    };
+
+    let summary = report::build_report(
+        &contents,
+        cutoff,
+        agent_id_filter.as_deref(),
+        since.as_deref(),
+    );
+
+    match format {
+        ReportFormat::Json => match serde_json::to_string_pretty(&summary) {
+            Ok(json) => println!("{json}"),
+            Err(e) => exit_with_error(&format!("Failed to serialise report: {e}")),
+        },
+        ReportFormat::Text => report::print_text(&summary),
     }
 }
 

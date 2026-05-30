@@ -85,6 +85,38 @@ Notes:
 
 ---
 
+## 3b. 🧾 Compliance Report (`guard-verify report`)
+
+Turn an audit JSONL log into a control-evidence summary — what the boundary allowed vs denied, why, what the content layer caught, and under which policy versions — scoped to a window. This complements `guard-verify verify-log`, which cryptographically verifies signed execution receipts: the report answers *"what did the boundary do"*, the receipt log answers *"can we prove a specific execution happened"*.
+
+```bash
+# Human-readable summary over the last 7 days
+guard-verify report --audit ~/.agent-guard/audit.jsonl --since 7d
+
+# Machine/archival evidence (JSON), scoped to one agent
+guard-verify report --audit audit.jsonl --since 30d --agent-id claude-code --format json
+```
+
+Flags: `--since` accepts `30s` / `5m` / `2h` / `7d` (omit for all records); `--agent-id` filters to one agent; `--format text|json`.
+
+The report aggregates `tool_call` (decision counts, denials by code and by tool), `content_finding` (by mode and label), execution, `sandbox_failure`, and `anomaly_triggered` / `agent_locked` records, plus the distinct policy versions and agents observed. Malformed lines are counted (`parse_errors`) rather than aborting the run, so a partially-corrupt log still yields a report.
+
+```text
+=== agent-guard compliance report ===
+generated:   2026-05-29T12:30:00+00:00
+window:      7d
+events span: 2026-05-29T11:00:00+00:00 .. 2026-05-29T11:04:00+00:00
+
+records:     5 (1 parse error(s))
+decisions:   3 tool_call · 1 allow · 2 deny · 0 ask
+denials by code:
+  DESTRUCTIVE_COMMAND              1
+  SENSITIVE_CONTENT_BLOCKED        1
+...
+```
+
+---
+
 ## 4. 🛠️ Configuration Checklist
 - [ ] Set `audit.enabled: true` and `audit.output: file`.
 - [ ] Expose `/metrics` endpoint using `agent_guard_sdk::get_metrics()`.
