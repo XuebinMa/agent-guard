@@ -29,6 +29,8 @@ def read_toml(path: Path):
 cargo_version = read_toml(root / "Cargo.toml")["workspace"]["package"]["version"]
 node_version = json.loads((root / "crates/agent-guard-node/package.json").read_text())["version"]
 python_version = read_toml(root / "crates/agent-guard-python/pyproject.toml")["project"]["version"]
+plugin_version = json.loads((root / ".claude-plugin/plugin.json").read_text())["version"]
+marketplace_version = json.loads((root / ".claude-plugin/marketplace.json").read_text())["plugins"][0]["version"]
 
 readme = (root / "README.md").read_text()
 docs_readme = (root / "docs/README.md").read_text()
@@ -57,6 +59,8 @@ print(badge_match.group(1).replace("--", "-"))
 print(release_match.group(1))
 print(docs_title_match.group(1))
 print(docs_release_match.group(1))
+print(plugin_version)
+print(marketplace_version)
 PY
 }
 
@@ -74,6 +78,8 @@ checks=(
   "README release link:${versions[4]}"
   "docs/README title:${versions[5]}"
   "docs/README release link:${versions[6]}"
+  ".claude-plugin/plugin.json:${versions[7]}"
+  ".claude-plugin/marketplace.json:${versions[8]}"
 )
 
 for check in "${checks[@]}"; do

@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash|Write|Edit|WebFetch",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/scripts/guard-hook-plugin.sh\"",
+            "timeout": 10
+          }
+        ],
+        "description": "agent-guard PreToolUse gate: evaluate outbound and destructive tool calls (git push, npm publish, docker push, gh release, non-local HTTP, rm -rf, secret-bearing writes) against the bundled outbound policy. Fails open if the guard-hook binary is not installed.",
+        "id": "pre:agent-guard:outbound-gate"
+      }
+    ]
+  }
+}

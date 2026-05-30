@@ -222,7 +222,8 @@ safety net, not the primary control.
 ## Fastest Paths
 
 - [Outbound preset](presets/README.md): the zero-config policy for coding-agent users — start here
-- [Claude Code PreToolUse hook](docs/guides/operations/claude-code-hook.md): wire `guard-hook` into your live Claude Code session
+- [Claude Code plugin](docs/guides/operations/claude-code-plugin.md): one-command install — `/plugin marketplace add XuebinMa/agent-guard`, then `/plugin install agent-guard@agent-guard`
+- [Claude Code PreToolUse hook](docs/guides/operations/claude-code-hook.md): wire `guard-hook` into your live Claude Code session manually
 - [Node Quickstart](crates/agent-guard-node/examples/quickstart/README.md): shortest programmatic path for a new developer
 - [Side-Effect Wedge Demo](docs/guides/getting-started/side-effect-wedge-demo.md): runnable proof of the multi-side-effect runtime
 - [Secure Shell Tools](docs/guides/getting-started/secure-shell-tools.md): first integration when shell is the dominant risk

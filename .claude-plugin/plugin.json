@@ -1,0 +1,23 @@
+{
+  "name": "agent-guard",
+  "version": "0.2.0-rc1",
+  "description": "Outbound change control for AI coding agents. Gates git push, npm publish, docker push, gh release, non-local HTTP mutations, and rm -rf before they happen, against a bundled policy, with Ed25519-signed audit receipts. Local-first: no cloud, no telemetry.",
+  "author": {
+    "name": "Xuebin Ma",
+    "url": "https://github.com/XuebinMa"
+  },
+  "homepage": "https://github.com/XuebinMa/agent-guard",
+  "repository": "https://github.com/XuebinMa/agent-guard",
+  "license": "MIT",
+  "keywords": [
+    "claude-code",
+    "security",
+    "hooks",
+    "guardrails",
+    "outbound-control",
+    "policy",
+    "audit",
+    "agent-safety",
+    "compliance"
+  ]
+}
