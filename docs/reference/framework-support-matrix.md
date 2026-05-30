@@ -4,8 +4,8 @@
 | :--- | :--- |
 | **Status** | 🟢 Active Support Snapshot |
 | **Audience** | Developers, Integrators |
-| **Version** | 1.1 |
-| **Last Reviewed** | 2026-05-21 |
+| **Version** | 1.2 |
+| **Last Reviewed** | 2026-05-30 |
 | **Related Docs** | [README](../README.md), [Node README](../../crates/agent-guard-node/README.md), [Python README](../../crates/agent-guard-python/README.md) |
 
 ---
@@ -38,6 +38,7 @@ It is intentionally narrower than a broad platform map. The goal is to help a de
 | Python LangChain adapter | 🟡 Beta | Wrapper + adapter tests, plus a real-package validation script | LangChain Python experiments | `wrap_langchain_tool()` available. A `tests/real_runtime_validation.py` script exercises the wrapper against real `langchain_core` `BaseTool`s, but CI does not yet run a framework version matrix automatically. |
 | Python OpenAI-style adapter | 🟡 Beta | Wrapper + adapter tests | OpenAI-style handler integration in Python apps | `wrap_openai_tool()` available. Adapter test suite covers the handoff / deny / ask / error paths end-to-end; no CI version matrix yet. |
 | AutoGen adapter | ⚪ Not shipped | No official adapter | No official adapter today | Still part of roadmap, not current official integration surface. |
+| Claude Code plugin | 🟡 Preview | Hook adapter + plugin install validated | Claude Code users wanting an outbound gate | Gates built-in tools only — `Bash`, `Write`, `Edit`, `WebFetch`. **MCP tools (`mcp__*`) are not gated** ([#33106](https://github.com/anthropics/claude-code/issues/33106)); use the SDK for those. See [Claude Code plugin guide](../guides/operations/claude-code-plugin.md). |
 
 ---
 
@@ -214,11 +215,13 @@ When describing support publicly, use wording like:
 - “Node adapters for LangChain-style tools and OpenAI-style handlers are available and validated against real framework packages.”
 - “Python LangChain and OpenAI-style wrappers are available as beta paths.”
 - “AutoGen remains a roadmap item.”
+- “The Claude Code plugin gates the built-in tools where PreToolUse deny is enforced (`Bash`, `Write`, `Edit`, `WebFetch`); MCP tools are not gated by the hook (anthropics/claude-code#33106) and should be routed through the SDK.”
 
 Avoid wording like:
 
 - “All major frameworks fully supported”
 - “Cross-framework parity complete”
+- “The Claude Code plugin gates every tool call” (it does not cover MCP tools)
 
 Those overstate the current maturity level.
 

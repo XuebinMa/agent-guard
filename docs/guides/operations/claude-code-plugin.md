@@ -14,6 +14,16 @@ The agent-guard **Claude Code plugin** packages the [`guard-hook`](claude-code-h
 
 The plugin is the distribution wrapper. The actual evaluation is done by the `guard-hook` binary; see [Claude Code Hook](claude-code-hook.md) for the decision semantics, the known friction (top-level `$(…)`, workspace-escape paths), and the content-layer scope. This page covers only install and the plugin-specific behaviour.
 
+> **MCP tools (`mcp__*`) are not gated by this plugin.** Claude Code does not
+> currently enforce a `PreToolUse` `deny` for MCP server tool calls
+> ([anthropics/claude-code#33106](https://github.com/anthropics/claude-code/issues/33106)):
+> the hook fires and returns `deny`, but the MCP call proceeds anyway. The
+> agent-guard hook therefore matches only the built-in tools where `deny` **is**
+> enforced today — `Bash`, `Write`, `Edit`, `WebFetch`. It deliberately does not
+> claim coverage it cannot deliver. To gate MCP tool intents, route them through
+> the Guard SDK ([check vs enforce](../getting-started/check-vs-enforce.md)),
+> which enforces at the decision boundary independently of hook behaviour.
+
 ---
 
 ## Install
