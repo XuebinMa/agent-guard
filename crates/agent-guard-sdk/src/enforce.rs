@@ -4,6 +4,7 @@
 //! so each file stays close to a single concern.
 
 use std::path::PathBuf;
+use std::time::Instant;
 
 use agent_guard_core::{
     DecisionCode, DecisionReason, GuardDecision, GuardInput, RuntimeDecision, Tool,
@@ -12,6 +13,7 @@ use agent_guard_sandbox::{Sandbox, SandboxContext, SandboxError, SandboxOutput};
 use serde::Serialize;
 use uuid::Uuid;
 
+use crate::approval::{ApprovalConfig, ApprovalStatus};
 use crate::executors::{
     execute_http_request, execute_write_file, extract_bash_command_for_execution,
 };
@@ -104,13 +106,36 @@ impl Guard {
             }
         }
 
+        self.execute_allowed(
+            input,
+            sandbox,
+            request_id,
+            &state,
+            policy_version,
+            &decision,
+        )
+    }
+
+    /// Execute an action whose decision has already resolved to "proceed" — a
+    /// policy `Allow`, or a human-approved `ask` (S7-4). Does NOT re-run the
+    /// policy check; the caller owns that decision. Shared by the direct
+    /// execute path and the approval-resume path.
+    fn execute_allowed(
+        &self,
+        input: &GuardInput,
+        sandbox: &dyn Sandbox,
+        request_id: &str,
+        state: &crate::guard::GuardState,
+        policy_version: String,
+        decision: &GuardDecision,
+    ) -> ExecuteResult {
         // S6-4c: content-layer masking on the execution path. For Mask mode,
         // execute a redacted copy of the payload; for Warn, execute the
         // original. Either way emit a ContentFinding audit record. Off by
         // default; compiled only with the `content` feature.
         #[cfg(feature = "content")]
         let masked_payload: Option<String> =
-            self.apply_content_on_execution(input, &state, request_id);
+            self.apply_content_on_execution(input, state, request_id);
         #[cfg(feature = "content")]
         let exec_payload: &str = masked_payload.as_deref().unwrap_or(&input.payload);
         #[cfg(not(feature = "content"))]
@@ -222,7 +247,7 @@ impl Guard {
                 input.tool.name(),
                 &policy_version,
                 &execution_backend,
-                &decision,
+                decision,
                 &sha256_hash(exec_payload),
                 key,
             )
@@ -389,6 +414,188 @@ impl Guard {
                     policy_verification: state.policy_verification.clone(),
                 })
             }
+        }
+    }
+
+    /// Like [`run`](Self::run), but when the policy asks for approval this
+    /// records the request in `config.ledger` and BLOCKS, polling the ledger
+    /// until a human approves or denies it (via the `agent-guard` CLI) or the
+    /// timeout elapses (S7-4).
+    ///
+    /// - approved → the action executes and `Executed` is returned;
+    /// - denied   → `Denied { ApprovalDenied }`;
+    /// - timeout  → the request is marked `expired` and `Denied { ApprovalDenied }`.
+    ///
+    /// Non-ask outcomes (execute / deny / handoff) pass straight through, so
+    /// `run`'s behaviour is unchanged for everything except the ask path.
+    /// Approval is authoritative: after a human approves, the action executes
+    /// without re-running the deny/ask decision.
+    pub fn run_until_approved(
+        &self,
+        input: &GuardInput,
+        sandbox: &dyn Sandbox,
+        config: &ApprovalConfig,
+    ) -> RuntimeResult {
+        match self.run(input, sandbox)? {
+            RuntimeOutcome::AskForApproval {
+                request_id,
+                message,
+                policy_version,
+                policy_verification,
+                ..
+            } => self.wait_and_resume(
+                input,
+                sandbox,
+                config,
+                request_id,
+                message,
+                policy_version,
+                policy_verification,
+            ),
+            passthrough => Ok(passthrough),
+        }
+    }
+
+    /// Record a pending approval, block until a decision or timeout, then
+    /// resume (on approve) or deny.
+    #[allow(clippy::too_many_arguments)]
+    fn wait_and_resume(
+        &self,
+        input: &GuardInput,
+        sandbox: &dyn Sandbox,
+        config: &ApprovalConfig,
+        request_id: String,
+        message: String,
+        policy_version: String,
+        policy_verification: PolicyVerification,
+    ) -> RuntimeResult {
+        config
+            .ledger
+            .create_pending(
+                request_id.clone(),
+                input.tool.name(),
+                sha256_hash(&input.payload),
+                message,
+                input.context.agent_id.clone(),
+            )
+            .map_err(|e| {
+                SandboxError::ExecutionFailed(format!("approval ledger write failed: {e}"))
+            })?;
+
+        let deadline = Instant::now() + config.timeout;
+        loop {
+            let status = config
+                .ledger
+                .get(&request_id)
+                .map_err(|e| {
+                    SandboxError::ExecutionFailed(format!("approval ledger read failed: {e}"))
+                })?
+                .map(|record| record.status)
+                .unwrap_or(ApprovalStatus::Pending);
+
+            match status {
+                ApprovalStatus::Approved => {
+                    return self.resume_execution(input, sandbox, request_id)
+                }
+                ApprovalStatus::Denied => {
+                    return Ok(RuntimeOutcome::Denied {
+                        request_id,
+                        reason: DecisionReason::new(
+                            DecisionCode::ApprovalDenied,
+                            "approval request was denied",
+                        ),
+                        policy_version,
+                        policy_verification,
+                    })
+                }
+                ApprovalStatus::Expired | ApprovalStatus::Pending => {
+                    if Instant::now() >= deadline {
+                        // Best-effort terminal mark; ignore if already decided.
+                        let _ = config.ledger.decide(
+                            &request_id,
+                            ApprovalStatus::Expired,
+                            Some("timeout".to_string()),
+                        );
+                        return Ok(RuntimeOutcome::Denied {
+                            request_id,
+                            reason: DecisionReason::new(
+                                DecisionCode::ApprovalDenied,
+                                "approval request timed out",
+                            ),
+                            policy_version,
+                            policy_verification,
+                        });
+                    }
+                    std::thread::sleep(config.poll_interval);
+                }
+            }
+        }
+    }
+
+    /// Execute an approved action. Approval upgrades the original `ask` to a
+    /// proceed, so this runs `execute_allowed` with `Allow`.
+    fn resume_execution(
+        &self,
+        input: &GuardInput,
+        sandbox: &dyn Sandbox,
+        request_id: String,
+    ) -> RuntimeResult {
+        let state = self.state.load();
+        let policy_version = state.engine.version().to_string();
+        match self.execute_allowed(
+            input,
+            sandbox,
+            &request_id,
+            &state,
+            policy_version,
+            &GuardDecision::Allow,
+        )? {
+            ExecuteOutcome::Executed {
+                output,
+                policy_version,
+                receipt,
+                policy_verification,
+            } => Ok(RuntimeOutcome::Executed {
+                request_id,
+                output,
+                policy_version,
+                receipt,
+                policy_verification,
+            }),
+            // `execute_allowed` with `Allow` only yields `Executed`; map the
+            // other variants defensively rather than panicking.
+            ExecuteOutcome::Denied {
+                decision,
+                policy_version,
+                policy_verification,
+            } => {
+                let reason = match decision {
+                    GuardDecision::Deny { reason } => reason,
+                    _ => DecisionReason::new(
+                        DecisionCode::InternalError,
+                        "execution denied after approval",
+                    ),
+                };
+                Ok(RuntimeOutcome::Denied {
+                    request_id,
+                    reason,
+                    policy_version,
+                    policy_verification,
+                })
+            }
+            ExecuteOutcome::AskRequired {
+                policy_version,
+                policy_verification,
+                ..
+            } => Ok(RuntimeOutcome::Denied {
+                request_id,
+                reason: DecisionReason::new(
+                    DecisionCode::InternalError,
+                    "unexpected ask after approval",
+                ),
+                policy_version,
+                policy_verification,
+            }),
         }
     }
 

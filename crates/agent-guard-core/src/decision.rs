@@ -223,4 +223,6 @@ pub enum DecisionCode {
     BlockedByMode,
     #[serde(rename = "SENSITIVE_CONTENT_BLOCKED")]
     SensitiveContentBlocked,
+    #[serde(rename = "APPROVAL_DENIED")]
+    ApprovalDenied,
 }

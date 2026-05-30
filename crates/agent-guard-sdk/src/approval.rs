@@ -26,10 +26,43 @@ use std::collections::BTreeMap;
 use std::fs::OpenOptions;
 use std::io::Write;
 use std::path::{Path, PathBuf};
+use std::time::Duration;
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
+
+/// Configuration for the blocking approval flow (`Guard::run_until_approved`).
+///
+/// Holds the ledger to record the pending request in, how often to re-read it
+/// while waiting, and how long to wait before giving up.
+#[derive(Debug, Clone)]
+pub struct ApprovalConfig {
+    pub ledger: ApprovalLedger,
+    pub poll_interval: Duration,
+    pub timeout: Duration,
+}
+
+impl ApprovalConfig {
+    /// Defaults: poll every 2s, wait up to 30 minutes.
+    pub fn new(ledger: ApprovalLedger) -> Self {
+        Self {
+            ledger,
+            poll_interval: Duration::from_secs(2),
+            timeout: Duration::from_secs(30 * 60),
+        }
+    }
+
+    pub fn with_poll_interval(mut self, interval: Duration) -> Self {
+        self.poll_interval = interval;
+        self
+    }
+
+    pub fn with_timeout(mut self, timeout: Duration) -> Self {
+        self.timeout = timeout;
+        self
+    }
+}
 
 /// Lifecycle state of an approval request.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
