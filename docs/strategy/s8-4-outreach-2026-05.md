@@ -15,12 +15,13 @@
 The copy below references commands a stranger will run. If a command does not
 yet work for a fresh user, the post is dishonest. Verify:
 
-- [ ] **`npx agent-guard-plugin init` works for a non-checkout user** — i.e. the
-      `agent-guard-plugin` package is **published to npm**. As of 2026-05-30 it is
-      **not published**; the package lives at `packages/agent-guard-plugin/` only.
-      Until then, drop the `npx` line and lead with the marketplace path.
+- [x] **`npx agent-guard-plugin init` works for a non-checkout user** — the
+      `agent-guard-plugin` package is **published to npm**. Published 2026-05-30 as
+      `agent-guard-plugin@0.2.0-rc1` on the `latest` tag; `npx agent-guard-plugin@latest
+      --help` verified to fetch and run from a clean cache. The `npx` variants below
+      are now safe to post.
 - [x] **`/plugin marketplace add XuebinMa/agent-guard` resolves** — requires
-      `main` pushed to origin. Pushed 2026-05-30 (origin/main @ 0708ff6). Re-verify
+      `main` pushed to origin. Pushed 2026-05-30 (origin/main @ cb3ba93). Re-verify
       it actually adds in a clean Claude Code before posting.
 - [ ] **`cargo install` path verified on a clean machine** — the binary install is
       the one hard dependency (Rust toolchain). Confirm the documented command
