@@ -197,6 +197,14 @@ fn cmd_verify(receipt_path: &PathBuf, public_key_input: &str) {
     println!("Sandbox: {}", receipt.sandbox_type);
     println!("Decision:{}", receipt.decision);
     println!("Time:    {}", format_timestamp(receipt.timestamp));
+    if let Some(approval) = &receipt.approval {
+        println!(
+            "Approved:{} by {} at {}",
+            approval.request_id,
+            approval.decided_by.as_deref().unwrap_or("-"),
+            format_timestamp(approval.decided_at)
+        );
+    }
     println!();
 
     if receipt.verify(&public_key) {
@@ -227,6 +235,19 @@ fn cmd_inspect(receipt_path: &PathBuf) {
         format_timestamp(receipt.timestamp)
     );
     println!("Signature:    {}", signature_preview(&receipt.signature));
+    if let Some(approval) = &receipt.approval {
+        println!("--- Human Approval ---");
+        println!("Request ID:   {}", approval.request_id);
+        println!(
+            "Decided By:   {}",
+            approval.decided_by.as_deref().unwrap_or("-")
+        );
+        println!(
+            "Decided At:   {} ({})",
+            approval.decided_at,
+            format_timestamp(approval.decided_at)
+        );
+    }
     println!("---");
     println!("Note: Use 'guard-verify verify' to validate the signature.");
 }

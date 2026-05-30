@@ -13,13 +13,14 @@ use agent_guard_sandbox::{Sandbox, SandboxContext, SandboxError, SandboxOutput};
 use serde::Serialize;
 use uuid::Uuid;
 
-use crate::approval::{ApprovalConfig, ApprovalStatus};
+use crate::approval::{ApprovalConfig, ApprovalRecord, ApprovalStatus};
 use crate::executors::{
     execute_http_request, execute_write_file, extract_bash_command_for_execution,
 };
 use crate::guard::Guard;
 use crate::guard_helpers::sha256_hash;
 use crate::policy_signing::PolicyVerification;
+use crate::provenance::ApprovalProof;
 use crate::runtime::{HandoffResult, RuntimeOutcome, RuntimeResult};
 
 // ── ExecuteResult ─────────────────────────────────────────────────────────────
@@ -113,6 +114,7 @@ impl Guard {
             &state,
             policy_version,
             &decision,
+            None,
         )
     }
 
@@ -120,6 +122,7 @@ impl Guard {
     /// policy `Allow`, or a human-approved `ask` (S7-4). Does NOT re-run the
     /// policy check; the caller owns that decision. Shared by the direct
     /// execute path and the approval-resume path.
+    #[allow(clippy::too_many_arguments)]
     fn execute_allowed(
         &self,
         input: &GuardInput,
@@ -128,6 +131,7 @@ impl Guard {
         state: &crate::guard::GuardState,
         policy_version: String,
         decision: &GuardDecision,
+        approval: Option<ApprovalProof>,
     ) -> ExecuteResult {
         // S6-4c: content-layer masking on the execution path. For Mask mode,
         // execute a redacted copy of the payload; for Warn, execute the
@@ -242,7 +246,7 @@ impl Guard {
             .observe(duration.as_secs_f64());
 
         let receipt = state.signing_key.as_ref().map(|key| {
-            crate::provenance::ExecutionReceipt::sign(
+            let receipt = crate::provenance::ExecutionReceipt::sign(
                 &agent_id,
                 input.tool.name(),
                 &policy_version,
@@ -250,7 +254,11 @@ impl Guard {
                 decision,
                 &sha256_hash(exec_payload),
                 key,
-            )
+            );
+            match &approval {
+                Some(proof) => receipt.with_approval(proof.clone(), key),
+                None => receipt,
+            }
         });
 
         Ok(ExecuteOutcome::Executed {
@@ -484,18 +492,26 @@ impl Guard {
 
         let deadline = Instant::now() + config.timeout;
         loop {
-            let status = config
-                .ledger
-                .get(&request_id)
-                .map_err(|e| {
-                    SandboxError::ExecutionFailed(format!("approval ledger read failed: {e}"))
-                })?
+            let record = config.ledger.get(&request_id).map_err(|e| {
+                SandboxError::ExecutionFailed(format!("approval ledger read failed: {e}"))
+            })?;
+            let status = record
+                .as_ref()
                 .map(|record| record.status)
                 .unwrap_or(ApprovalStatus::Pending);
 
             match status {
                 ApprovalStatus::Approved => {
-                    return self.resume_execution(input, sandbox, request_id)
+                    // `record` is `Some` whenever a status was read from it.
+                    let approval =
+                        record
+                            .map(approval_proof_from_record)
+                            .unwrap_or(ApprovalProof {
+                                request_id: request_id.clone(),
+                                decided_by: None,
+                                decided_at: 0,
+                            });
+                    return self.resume_execution(input, sandbox, request_id, approval);
                 }
                 ApprovalStatus::Denied => {
                     return Ok(RuntimeOutcome::Denied {
@@ -539,6 +555,7 @@ impl Guard {
         input: &GuardInput,
         sandbox: &dyn Sandbox,
         request_id: String,
+        approval: ApprovalProof,
     ) -> RuntimeResult {
         let state = self.state.load();
         let policy_version = state.engine.version().to_string();
@@ -549,6 +566,7 @@ impl Guard {
             &state,
             policy_version,
             &GuardDecision::Allow,
+            Some(approval),
         )? {
             ExecuteOutcome::Executed {
                 output,
@@ -653,5 +671,17 @@ impl Guard {
         // core ExecutionEvent schema today; flagging presence keeps this
         // signal from being silently dropped.
         let _ = stderr_present;
+    }
+}
+
+/// Build the signed approval provenance (S7-5) from a decided ledger record.
+fn approval_proof_from_record(record: ApprovalRecord) -> ApprovalProof {
+    ApprovalProof {
+        request_id: record.request_id,
+        decided_by: record.decided_by,
+        decided_at: record
+            .decided_at
+            .map(|ts| ts.timestamp().max(0) as u64)
+            .unwrap_or(0),
     }
 }

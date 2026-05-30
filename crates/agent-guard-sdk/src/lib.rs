@@ -27,7 +27,7 @@ pub use policy_signing::{
     verify_policy, PolicyVerification, PolicyVerificationStatus,
 };
 pub use prometheus_client;
-pub use provenance::{ExecutionReceipt, RECEIPT_VERSION};
+pub use provenance::{ApprovalProof, ExecutionReceipt, RECEIPT_VERSION};
 pub use runtime::{HandoffResult, RuntimeOutcome, RuntimeResult};
 pub use siem::SiemExporter;
 
