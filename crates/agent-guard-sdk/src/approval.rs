@@ -109,6 +109,26 @@ enum LedgerEvent {
 
 // ── Ledger ────────────────────────────────────────────────────────────────────
 
+/// Environment variable that overrides the default ledger location.
+pub const LEDGER_PATH_ENV: &str = "AGENT_GUARD_APPROVALS";
+
+/// Default ledger path, shared by the runtime (which writes pending requests)
+/// and the CLI (which decides them) so both touch the same file. Resolution:
+///
+/// 1. `$AGENT_GUARD_APPROVALS`, if set.
+/// 2. `<home>/.agent-guard/approvals.jsonl` (`HOME`, or `USERPROFILE` on Windows).
+/// 3. `./.agent-guard/approvals.jsonl` when no home is discoverable.
+pub fn default_ledger_path() -> PathBuf {
+    if let Some(path) = std::env::var_os(LEDGER_PATH_ENV) {
+        return PathBuf::from(path);
+    }
+    let home = std::env::var_os("HOME")
+        .or_else(|| std::env::var_os("USERPROFILE"))
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from("."));
+    home.join(".agent-guard").join("approvals.jsonl")
+}
+
 /// A JSONL-backed approval ledger bound to a single file path.
 ///
 /// Cheap to clone/recreate — it holds only the path and reads the file on each
@@ -122,6 +142,11 @@ impl ApprovalLedger {
     /// Open (or lazily create on first write) a ledger at `path`.
     pub fn open(path: impl Into<PathBuf>) -> Self {
         Self { path: path.into() }
+    }
+
+    /// Open the ledger at [`default_ledger_path`].
+    pub fn default_location() -> Self {
+        Self::open(default_ledger_path())
     }
 
     /// The backing file path.
@@ -244,6 +269,14 @@ impl ApprovalLedger {
             path: self.path.clone(),
             source: std::io::Error::new(std::io::ErrorKind::InvalidData, e),
         })?;
+        if let Some(parent) = self.path.parent() {
+            if !parent.as_os_str().is_empty() {
+                std::fs::create_dir_all(parent).map_err(|source| ApprovalError::Io {
+                    path: parent.to_path_buf(),
+                    source,
+                })?;
+            }
+        }
         let mut file = OpenOptions::new()
             .create(true)
             .append(true)
