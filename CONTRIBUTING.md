@@ -149,7 +149,6 @@ Then **all three runners must change in the same PR** and `parity-e2e` must stay
 This repository is sometimes maintained with multiple parallel agents (worktree subagents, scheduled cron agents). The workflow has a few invariants you'll see in commit history:
 
 - **Parallel work in worktrees.** Up to two subagents per Sprint task work in isolated git worktrees so their changes don't interfere. The worktrees live under `.claude/worktrees/`.
-- **Plan / spec / report artifacts.** Maintainer-facing planning docs live under [`docs/superpowers/`](docs/superpowers/) (specs, plans, reports). They are not authoritative documentation — see that directory's README for the lifecycle.
 - **Conventional Commits + co-author trailer.** When an AI assistant authored a change, add the appropriate `Co-Authored-By:` trailer. The repository keeps the attribution.
 
 External contributors are welcome to use these workflows or skip them entirely; the repository's only hard requirement is the verify + PR + green-CI loop above.

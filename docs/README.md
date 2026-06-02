@@ -27,9 +27,8 @@ Current boundary note:
 
 - **Active product docs**: the top-level files and `docs/guides/` are the current integration, operations, and adoption surfaces
 - **Historical docs**: `docs/archive/` holds older design, release, and strategy material that should not be mistaken for the current product narrative
-- **Internal process docs**: `docs/superpowers/` contains maintainer-facing specs, plans, and reports produced by the superpowers workflow
 
-If you are new to the repo, start with the active docs first and only drop into `archive/` or `superpowers/` when you need historical or maintainer context.
+If you are new to the repo, start with the active docs first and only drop into `archive/` when you need historical context.
 
 ---
 
@@ -46,7 +45,6 @@ If you are new to the repo, start with the active docs first and only drop into 
 - **I want to know what frameworks are actually supported** → [Framework Support Matrix](reference/framework-support-matrix.md)
 - **I want to compare platform gaps** → [Capability Parity Matrix](concepts/capability-parity.md)
 - **I want historical strategy or release context** → [Document Archive](archive/README.md)
-- **I want maintainer-only planning artifacts** → `docs/superpowers/`
 - **I want material I can share publicly** → [Launch Kit](guides/adoption/launch-kit.md)
 - **I want a release post or social draft** → [Launch Kit](guides/adoption/launch-kit.md)
 - **I want ready-made replies for new users** → [FAQ For New Users](guides/adoption/faq-for-new-users.md)
@@ -118,4 +116,3 @@ For security researchers and auditors reviewing the system's defensive posture.
 For maintainers and reviewers who need archived strategy, release, or implementation history.
 
 - 🏛️ **[Document Archive](archive/README.md)**: Historical design documents, archived release notes, and past roadmap context.
-- 🛠️ **`docs/superpowers/`**: Internal specs, implementation plans, and workflow reports used during repository maintenance.
