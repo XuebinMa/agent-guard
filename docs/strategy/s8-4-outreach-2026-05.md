@@ -1,11 +1,11 @@
-# S8-4 — Plugin Launch Outreach (DRAFT — nothing posted)
+# S8-4 — Plugin Launch Outreach (X LIVE 2026-06-02)
 
 | Field | Details |
 | :--- | :--- |
-| **Status** | 🟡 Draft for review — do NOT post until the gating checklist below passes |
+| **Status** | 🟢 X thread posted 2026-06-02 — all install gates verified; Reddit / HN optional next |
 | **Occasion** | Sprint 8 ships Claude Code plugin distribution (one-command install) |
-| **Channels** | X, Hacker News, Reddit |
-| **Last reviewed** | 2026-05-30 |
+| **Channels** | X (posted) · Hacker News (optional) · Reddit (optional) |
+| **Last reviewed** | 2026-06-02 |
 | **Related** | [Launch Kit](../guides/adoption/launch-kit.md), [Social Post Templates](../guides/adoption/social-posts.md), [#33106 narrative](s8-3-issue-33106-narrative.md) |
 
 ---
@@ -20,17 +20,23 @@ yet work for a fresh user, the post is dishonest. Verify:
       `agent-guard-plugin@0.2.0-rc1` on the `latest` tag; `npx agent-guard-plugin@latest
       --help` verified to fetch and run from a clean cache. The locked X post below
       leads with `npx` and is safe to post.
-- [x] **`/plugin marketplace add XuebinMa/agent-guard` resolves** — requires
-      `main` pushed to origin. Pushed 2026-05-30 (origin/main @ cb3ba93). The X post
-      does not depend on this path; still worth a one-time add/install check in a
-      clean Claude Code before relying on the marketplace copy elsewhere.
+- [x] **`/plugin marketplace add XuebinMa/agent-guard` resolves** — clean-room
+      verified 2026-06-02: in an isolated `CLAUDE_CONFIG_DIR`, `marketplace add` +
+      `/plugin install agent-guard@agent-guard` succeeded, and with `guard-hook`
+      present a `git push` was intercepted end-to-end —
+      `[ASK_REQUIRED] rule 'prefix:git push' matched … [plugin:agent-guard]`. So the
+      marketplace path (hook wiring + binary + bundled policy) works for a fresh user,
+      not just the npx path.
 - [x] **`cargo install` path verified on a clean machine** — verified 2026-06-02:
       `cargo install --git https://github.com/XuebinMa/agent-guard guard-hook` built
       from the pushed repo (commit 154224d) with default features and the resulting
       binary ran (`guard-hook 0.2.0-rc1`).
-- [ ] **Lead with the stopped tool call, not the architecture** (Launch Kit rule).
-- [ ] **No "complete agent security" / "fixes #33106" claims** (see S8-3).
-- [ ] User has explicitly approved posting, per channel.
+- [x] **Lead with the stopped tool call, not the architecture** (Launch Kit rule) —
+      the locked thread opens on the agent's `git push` / file write / network call.
+- [x] **No "complete agent security" / "fixes #33106" claims** (see S8-3) — the
+      thread states the MCP gap explicitly and frames it as a decision boundary.
+- [x] User has explicitly approved posting, per channel — **X thread posted
+      2026-06-02**. Reddit / HN remain optional and unposted.
 
 The npm package is published, so the locked X post leads with the `npx` one-liner.
 The marketplace path remains available as an alternate install route in the HN /
