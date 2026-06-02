@@ -18,20 +18,23 @@ yet work for a fresh user, the post is dishonest. Verify:
 - [x] **`npx agent-guard-plugin init` works for a non-checkout user** — the
       `agent-guard-plugin` package is **published to npm**. Published 2026-05-30 as
       `agent-guard-plugin@0.2.0-rc1` on the `latest` tag; `npx agent-guard-plugin@latest
-      --help` verified to fetch and run from a clean cache. The `npx` variants below
-      are now safe to post.
+      --help` verified to fetch and run from a clean cache. The locked X post below
+      leads with `npx` and is safe to post.
 - [x] **`/plugin marketplace add XuebinMa/agent-guard` resolves** — requires
-      `main` pushed to origin. Pushed 2026-05-30 (origin/main @ cb3ba93). Re-verify
-      it actually adds in a clean Claude Code before posting.
-- [ ] **`cargo install` path verified on a clean machine** — the binary install is
-      the one hard dependency (Rust toolchain). Confirm the documented command
-      builds `guard-hook` from a fresh environment.
+      `main` pushed to origin. Pushed 2026-05-30 (origin/main @ cb3ba93). The X post
+      does not depend on this path; still worth a one-time add/install check in a
+      clean Claude Code before relying on the marketplace copy elsewhere.
+- [x] **`cargo install` path verified on a clean machine** — verified 2026-06-02:
+      `cargo install --git https://github.com/XuebinMa/agent-guard guard-hook` built
+      from the pushed repo (commit 154224d) with default features and the resulting
+      binary ran (`guard-hook 0.2.0-rc1`).
 - [ ] **Lead with the stopped tool call, not the architecture** (Launch Kit rule).
 - [ ] **No "complete agent security" / "fixes #33106" claims** (see S8-3).
 - [ ] User has explicitly approved posting, per channel.
 
-If the npm package is not published, every draft below switches to the
-**marketplace-first** variant (provided inline) — do not post the `npx` variant.
+The npm package is published, so the locked X post leads with the `npx` one-liner.
+The marketplace path remains available as an alternate install route in the HN /
+Reddit bodies below.
 
 ---
 
@@ -51,38 +54,79 @@ One sentence:
 
 ---
 
-## X (Twitter)
+## X (Twitter) — LOCKED FINAL (2026-06-02)
 
-### Variant 1 — marketplace-first (safe to post once marketplace verified)
+> Post the **thread** (recommended). The standalone is a fallback if you don't
+> want a thread. **X renders no markdown** — paste these as plain text; do not
+> add backticks or asterisks. Lead tweet is ~270 chars (fits the 280 limit);
+> the standalone is ~330 chars (needs X Premium, or trim the "Gates…" line).
+> Lead hook = `npx` (published + verified). Only unverified gate is the
+> clean-room marketplace add; this post does not depend on it.
 
-```text
-Your AI coding agent can `git push`, write files, and hit the network on its own.
+### Thread (recommended)
 
-agent-guard is now a Claude Code plugin — one line to put an approve/deny gate in front of those calls:
-
-/plugin marketplace add XuebinMa/agent-guard
-/plugin install agent-guard@agent-guard
-
-Local-first. Fail-open. Signed audit trail.
-```
-
-### Variant 2 — npx-first (ONLY after the npm package is published)
+**Tweet 1/5 — hook**
 
 ```text
-One command to gate your Claude Code agent's risky tool calls:
+Your AI coding agent can git push, overwrite files, and hit the network on its own — and you usually find out after.
+
+agent-guard is now a Claude Code plugin. One line to put an approve/deny gate in front of those calls:
 
 npx agent-guard-plugin init
 
-Now `git push`, file writes, and outbound HTTP go through an explicit
-approve/deny boundary before they happen. Local-first, auditable, idempotent.
+Local-first. Fail-open.
 ```
 
-Reply-bait follow-up (either variant):
+**Tweet 2/5 — what it gates**
 
 ```text
-Honest scope: it gates the built-in tools where PreToolUse deny is enforced
-today (Bash/Write/Edit/WebFetch). MCP tools aren't gated by the hook — route
-those through the SDK. No "total security" claims; it's a decision boundary.
+Out of the box it treats the outbound stuff as decision points, before they happen:
+
+git push · npm publish · docker push · gh release · non-local HTTP mutations · rm -rf
+
+A safe command still runs. A risky one stops and asks.
+```
+
+**Tweet 3/5 — honest scope**
+
+```text
+Honest scope: it gates the built-in tools where Claude Code actually enforces a PreToolUse deny — Bash, Write, Edit, WebFetch.
+
+MCP tools aren't gated by the hook (that path isn't enforced upstream yet) — route those through the SDK. It's a decision boundary, not "total security."
+```
+
+**Tweet 4/5 — requirements / fail-open**
+
+```text
+Two things worth knowing:
+
+- needs Rust — the guard binary installs via cargo
+- fail-open by design: if the guard is missing or broken it never blocks your agent, it just gets out of the way
+
+Every decision can emit an Ed25519-signed receipt for an audit trail.
+```
+
+**Tweet 5/5 — links + ask**
+
+```text
+Open source, MIT. Repo + 3-minute proof + plugin guide:
+https://github.com/XuebinMa/agent-guard
+
+Solo project, early (0.2.0-rc1). The feedback I actually want: where does the gate sit wrong — too coarse, too noisy, or missing the tool that scares you?
+```
+
+### Standalone (fallback — ~330 chars, needs Premium or a trim)
+
+```text
+Your AI coding agent can git push, overwrite files, and hit the network on its own.
+
+agent-guard is now a Claude Code plugin — one line to gate those calls before they happen:
+
+npx agent-guard-plugin init
+
+Gates git push / npm publish / docker push / outbound HTTP. Local-first, fail-open, signed audit trail. Needs Rust. MIT.
+
+https://github.com/XuebinMa/agent-guard
 ```
 
 ---
@@ -217,13 +261,12 @@ thing I actually want.
 
 ## Recommended posting sequence (after gating checklist passes)
 
-1. Push verified + marketplace add confirmed in a clean Claude Code.
-2. X (marketplace variant) — lowest stakes, fastest signal.
-3. Reddit (one sub, the best-fit one) — read its self-promo rule first.
-4. Show HN — only when the demo + install are reproducible on a clean machine,
-   and ideally when you can babysit comments for the first few hours.
-5. Hold the `npx` variants until the npm package is published; then update X +
-   pin a follow-up.
+1. X — post the locked thread above (`npx` lead). Lowest stakes, fastest signal.
+2. Reddit (one sub, the best-fit one) — read its self-promo rule first.
+3. Show HN — only when you can babysit comments for the first few hours. The
+   install is already reproducible on a clean machine (npx + cargo both verified).
+4. Optional: confirm the marketplace add/install in a clean Claude Code if you
+   plan to lean on the marketplace copy in the HN / Reddit bodies.
 
 ## Success signal to watch (from the plan, ~4 weeks out)
 
