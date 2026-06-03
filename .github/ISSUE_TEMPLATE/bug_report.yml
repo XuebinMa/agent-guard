@@ -1,0 +1,68 @@
+name: 🐞 Bug report
+description: Report incorrect behavior in agent-guard (wrong decision, crash, regression).
+labels: ["bug", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the report. **Security vulnerabilities do not belong here** —
+        follow the coordinated disclosure process in
+        [SECURITY.md](https://github.com/XuebinMa/agent-guard/blob/main/SECURITY.md) instead.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: What did agent-guard do, and what did you expect instead?
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      description: Minimal policy, tool call, and observed decision that trigger the issue.
+      placeholder: |
+        1. Policy: ...
+        2. Tool call / command: ...
+        3. Observed decision/output: ...
+        4. Expected: ...
+    validations:
+      required: true
+  - type: dropdown
+    id: surface
+    attributes:
+      label: Affected surface
+      options:
+        - Policy engine (agent-guard-core)
+        - Command/path validators (agent-guard-validators)
+        - Sandbox (agent-guard-sandbox)
+        - SDK / Guard pipeline (agent-guard-sdk)
+        - Python bindings (agent-guard-python)
+        - Node bindings (agent-guard-node)
+        - CLI (guard-verify)
+        - Docs / other
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version / commit
+      placeholder: "0.2.0-rc1 or a git SHA"
+    validations:
+      required: true
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating system
+      options:
+        - Linux
+        - macOS
+        - Windows
+        - Other / N/A
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs / audit records
+      description: Paste audit records, `guard-verify doctor` output, or error messages. Redact any secrets.
+      render: shell

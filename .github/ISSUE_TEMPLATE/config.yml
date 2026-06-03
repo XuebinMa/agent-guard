@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 💬 Questions & Discussion
+    url: https://github.com/XuebinMa/agent-guard/discussions
+    about: Ask questions, share ideas, or discuss usage in GitHub Discussions.
+  - name: 🔒 Report a security vulnerability
+    url: https://github.com/XuebinMa/agent-guard/security/policy
+    about: Do NOT open a public issue for vulnerabilities. Follow the coordinated disclosure process in SECURITY.md.

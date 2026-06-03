@@ -1,0 +1,23 @@
+# Code owners for agent-guard.
+#
+# GitHub requests review from the matching owner automatically when a PR
+# touches these paths. Order matters: the LAST matching pattern wins.
+# See https://docs.github.com/articles/about-code-owners
+
+# Default owner for everything in the repo.
+*                                 @XuebinMa
+
+# Security-critical surfaces — always route to an owner.
+/crates/agent-guard-core/         @XuebinMa
+/crates/agent-guard-validators/   @XuebinMa
+/crates/agent-guard-sandbox/      @XuebinMa
+/crates/agent-guard-sdk/          @XuebinMa
+
+# Release, supply-chain, CI, and security policy surfaces.
+/.github/                         @XuebinMa
+/scripts/                         @XuebinMa
+/SECURITY.md                      @XuebinMa
+/release.toml                     @XuebinMa
+/deny.toml                        @XuebinMa
+/Cargo.toml                       @XuebinMa
+/Cargo.lock                       @XuebinMa
