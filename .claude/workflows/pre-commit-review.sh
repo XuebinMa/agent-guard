@@ -225,6 +225,91 @@ CRITICAL_PATTERNS = [
     (re.compile(r'Command::new\s*\(\s*"(sh|bash)"'), "raw shell `Command::new(\"sh|bash\")`"),
 ]
 
+# -- Test-code exemption ----------------------------------------------------
+# `.expect()` / `panic!()` / `.unwrap()` are idiomatic and correct in test
+# code — it never executes on the host, so gating it is pure false-positive
+# noise (observed 2026-06-02: 3 of 7 Layer-1 findings were test-code FPs).
+# We exempt two cases: whole test files, and lines inside a `#[cfg(test)]`
+# module or a `#[test]` / `#[<runtime>::test]` function within a prod file.
+#
+# Because the gate diffs with -U0 (no context), we cannot see the enclosing
+# `#[cfg(test)]` attribute in the diff itself — so we read the file on disk
+# and compute test-scope line ranges by brace-matching. Comments and
+# double-quoted strings are stripped before counting braces so that braces
+# inside string literals don't skew the depth. If a block's braces never
+# balance we do NOT mark a range (bias toward flagging, never toward
+# silently exempting a real prod expect).
+
+def is_test_file(path):
+    base = path.rsplit("/", 1)[-1]
+    return base == "tests.rs" or base.endswith("_test.rs") or "/tests/" in path
+
+def strip_braces_source(line):
+    out = []
+    i, n = 0, len(line)
+    in_str = False
+    while i < n:
+        c = line[i]
+        if in_str:
+            if c == "\\" and i + 1 < n:
+                i += 2
+                continue
+            if c == '"':
+                in_str = False
+            i += 1
+            continue
+        if c == '"':
+            in_str = True
+            i += 1
+            continue
+        if c == "/" and i + 1 < n and line[i + 1] == "/":
+            break  # rest of line is a comment
+        out.append(c)
+        i += 1
+    return "".join(out)
+
+TEST_ATTR = re.compile(r'^#\[\s*(cfg\(\s*test\s*\)|test|[A-Za-z_][A-Za-z0-9_:]*::test)')
+
+def compute_test_ranges(path):
+    try:
+        with open(path, encoding="utf-8", errors="replace") as fh:
+            lines = fh.read().splitlines()
+    except OSError:
+        return []
+    ranges = []
+    n = len(lines)
+    i = 0
+    while i < n:
+        if TEST_ATTR.match(lines[i].strip()):
+            depth = 0
+            started = False
+            j = i
+            while j < n:
+                for ch in strip_braces_source(lines[j]):
+                    if ch == "{":
+                        depth += 1
+                        started = True
+                    elif ch == "}":
+                        depth -= 1
+                if started and depth <= 0:
+                    break
+                j += 1
+            if started and depth <= 0:
+                ranges.append((i + 1, j + 1))  # 1-based inclusive
+                i = j + 1
+                continue
+        i += 1
+    return ranges
+
+_range_cache = {}
+
+def in_test_scope(path, ln):
+    if is_test_file(path):
+        return True
+    if path not in _range_cache:
+        _range_cache[path] = compute_test_ranges(path)
+    return any(a <= ln <= b for a, b in _range_cache[path])
+
 cur_file = None
 new_ln = 0
 hunk_re = re.compile(r"^@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@")
@@ -253,7 +338,8 @@ for raw in diff_text.splitlines():
 
     for rx, msg in CRITICAL_PATTERNS:
         if rx.search(body):
-            print("{}:{}\t{}\t{}".format(cur_file, new_ln, msg, body.strip()[:120]))
+            if cur_file and not in_test_scope(cur_file, new_ln):
+                print("{}:{}\t{}\t{}".format(cur_file, new_ln, msg, body.strip()[:120]))
             break
     new_ln += 1
 PY
