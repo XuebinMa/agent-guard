@@ -93,8 +93,15 @@ fn test_gate_platform_selection_consistency() {
             assert_eq!(s_type, expected);
         }
 
-        #[cfg(not(feature = "landlock"))]
+        // Without Landlock, the backend is the native seccomp filter only when
+        // the `seccomp` feature is compiled in; otherwise the SDK reports a
+        // truthful "none" backend (unfiltered compat shell) rather than
+        // claiming syscall isolation it does not provide.
+        #[cfg(all(not(feature = "landlock"), feature = "seccomp"))]
         assert_eq!(s_type, "linux-seccomp");
+
+        #[cfg(all(not(feature = "landlock"), not(feature = "seccomp")))]
+        assert_eq!(s_type, "none");
     }
 
     #[cfg(all(target_os = "macos", feature = "macos-sandbox"))]
