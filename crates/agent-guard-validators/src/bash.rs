@@ -1124,47 +1124,62 @@ fn write_targets_for_segment(segment: &[String]) -> Vec<String> {
         return Vec::new();
     }
 
+    // Unwrap one leading `sudo` layer so the real command word and its args
+    // are what we reason about.
+    let segment = if segment.first().is_some_and(|token| token == "sudo") && segment.len() > 1 {
+        &segment[1..]
+    } else {
+        segment
+    };
+
     let mut targets = Vec::new();
-    let mut command_index = 0;
-    if segment.first().is_some_and(|token| token == "sudo") && segment.len() > 1 {
-        command_index = 1;
-    }
 
-    let command = segment[command_index].as_str();
-    let args = &segment[command_index + 1..];
-
+    // Pass 1: collect redirection targets. A redirection (`>`, `>>`, `>&`) can
+    // appear ANYWHERE in a simple command — before the command word
+    // (`>out cmd`), in the middle (`cmd >out arg`), or after it. Scanning the
+    // whole segment (not just the tokens after the command word) closes the
+    // leading-redirection bypass where `>/etc/passwd echo x` was parsed with
+    // `>` as the command word, so the out-of-workspace target was never seen.
+    // Redirection operators and their targets are removed from the positional
+    // stream so the command-word detection below is robust to a leading
+    // redirect.
+    let mut positional: Vec<&String> = Vec::new();
     let mut expecting_redirection_target = false;
-    for token in args {
+    for token in segment {
         if WRITE_REDIRECTIONS.contains(&token.as_str()) {
             expecting_redirection_target = true;
             continue;
         }
-
         if expecting_redirection_target {
             expecting_redirection_target = false;
             if !token.starts_with('&') {
                 targets.push(token.clone());
             }
+            continue;
         }
+        positional.push(token);
     }
+
+    // Pass 2: command-specific write operands. The command word is the first
+    // positional token (redirections/targets already stripped above).
+    let Some(command) = positional.first().map(|token| token.as_str()) else {
+        return targets;
+    };
+    let args = &positional[1..];
 
     match command {
         "touch" | "mkdir" | "rmdir" | "rm" | "chmod" | "chown" | "chgrp" | "unlink" | "tee" => {
             targets.extend(
                 args.iter()
-                    .filter(|token| {
-                        !token.starts_with('-') && !WRITE_REDIRECTIONS.contains(&token.as_str())
-                    })
-                    .cloned(),
+                    .filter(|token| !token.starts_with('-'))
+                    .map(|token| token.to_string()),
             );
         }
         "mv" | "cp" => {
             // Destination is the last non-flag arg; sources are read-only
             // and not aliased post-op, so they remain out of scope here.
-            if let Some(last) = args.iter().rev().find(|token| {
-                !token.starts_with('-') && !WRITE_REDIRECTIONS.contains(&token.as_str())
-            }) {
-                targets.push(last.clone());
+            if let Some(last) = args.iter().rev().find(|token| !token.starts_with('-')) {
+                targets.push(last.to_string());
             }
         }
         "ln" | "link" => {
@@ -1176,16 +1191,92 @@ fn write_targets_for_segment(segment: &[String]) -> Vec<String> {
             // 2026-05-14 HIGH path-traversal-escape finding).
             targets.extend(
                 args.iter()
-                    .filter(|token| {
-                        !token.starts_with('-') && !WRITE_REDIRECTIONS.contains(&token.as_str())
-                    })
-                    .cloned(),
+                    .filter(|token| !token.starts_with('-'))
+                    .map(|token| token.to_string()),
             );
+        }
+        "dd" => {
+            // `dd` writes to its `of=PATH` operand (reading from `if=` or, when
+            // absent, from stdin). The path is an `=`-joined operand, not a
+            // redirection or positional arg, so it is invisible to both scans
+            // above — closes the `dd of=/etc/passwd` bypass.
+            for token in args {
+                if let Some(path) = token.strip_prefix("of=") {
+                    if !path.is_empty() {
+                        targets.push(path.to_string());
+                    }
+                }
+            }
+        }
+        "tar" => {
+            targets.extend(tar_archive_write_target(args));
         }
         _ => {}
     }
 
     targets
+}
+
+/// Extract the archive path that `tar` *writes* to, or an empty vec when the
+/// invocation is not an archive-creating/appending one (extract/list read the
+/// archive instead, and their output goes to the cwd, which the normal path
+/// scan already governs).
+///
+/// Handles the common forms: short bundles (`-cf`, `-czf`), the old dashless
+/// first-arg bundle (`tar czf out.tar .`), and the long options
+/// (`--create`, `--file=out.tar`, `--file out.tar`). Exotic invocations
+/// (e.g. extraction redirected elsewhere via `-C`) remain best-effort; this
+/// closes the `tar -cf /etc/evil.tar .` write-escape from the HIGH-1 finding.
+fn tar_archive_write_target(args: &[&String]) -> Vec<String> {
+    let mut is_write_mode = false;
+    let mut archive: Option<String> = None;
+    let mut expect_file = false;
+
+    for (index, token) in args.iter().enumerate() {
+        let t = token.as_str();
+        if expect_file {
+            archive = Some(t.to_string());
+            expect_file = false;
+            continue;
+        }
+        if let Some(rest) = t.strip_prefix("--file=") {
+            archive = Some(rest.to_string());
+            continue;
+        }
+        match t {
+            "--file" => expect_file = true,
+            "--create" | "--append" | "--update" | "--catenate" | "--concatenate" => {
+                is_write_mode = true;
+            }
+            _ if t.starts_with("--") => {}
+            _ => {
+                // Short flag bundle: `-cf` (dashed) or, only as the first arg,
+                // the old dashless form `czf`. tar's contract is that `f` must
+                // be the last flag char for the following token to be the
+                // archive path.
+                let flags = if let Some(stripped) = t.strip_prefix('-') {
+                    Some(stripped)
+                } else if index == 0 {
+                    Some(t)
+                } else {
+                    None
+                };
+                if let Some(flags) = flags {
+                    if flags.chars().any(|c| matches!(c, 'c' | 'r' | 'u' | 'A')) {
+                        is_write_mode = true;
+                    }
+                    if flags.ends_with('f') {
+                        expect_file = true;
+                    }
+                }
+            }
+        }
+    }
+
+    match archive {
+        Some(path) if is_write_mode && !path.is_empty() && path != "-" => vec![path],
+        _ => Vec::new(),
+    }
 }
 
 fn collect_read_targets(command: &str) -> Vec<String> {
@@ -1211,22 +1302,26 @@ fn read_targets_for_segment(segment: &[String]) -> Vec<String> {
         return Vec::new();
     }
 
-    let mut targets = Vec::new();
-    let mut command_index = 0;
-    if segment.first().is_some_and(|token| token == "sudo") && segment.len() > 1 {
-        command_index = 1;
-    }
+    // Unwrap one leading `sudo` layer, then scan the WHOLE segment for `<`
+    // redirections. As with write redirections, an input redirect can precede
+    // the command word (`</etc/shadow cat`); scanning only the tokens after
+    // the command word missed that form.
+    let segment = if segment.first().is_some_and(|token| token == "sudo") && segment.len() > 1 {
+        &segment[1..]
+    } else {
+        segment
+    };
 
-    let args = &segment[command_index + 1..];
+    let mut targets = Vec::new();
 
     // Only explicit `<` redirections are treated as path targets.
     // `<<` (here-doc) and `<<<` (here-string) are tokenized as single tokens
-    // by `shell_split` (which doesn't split on `<`/`>`), so an exact-match on
-    // `READ_PATH_REDIRECTIONS` (just `<`) naturally excludes them. We do not
-    // infer read targets from positional args (e.g. `cat /etc/shadow`) — that
-    // is out of scope and covered by the `read_file` tool path with deny lists.
+    // by `shell_split`, so an exact-match on `READ_PATH_REDIRECTIONS` (just
+    // `<`) naturally excludes them. We do not infer read targets from
+    // positional args (e.g. `cat /etc/shadow`) — that is out of scope and
+    // covered by the `read_file` tool path with deny lists.
     let mut expecting_redirection_target = false;
-    for token in args {
+    for token in segment {
         if READ_PATH_REDIRECTIONS.contains(&token.as_str()) {
             expecting_redirection_target = true;
             continue;
@@ -1601,6 +1696,146 @@ mod tests {
         assert!(
             matches!(result, ValidationResult::Block { .. }),
             "expected Block, got {result:?}"
+        );
+    }
+
+    // ── HIGH-1: write-target extraction bypasses (WorkspaceWrite) ───────────
+    //
+    // Regression coverage for the audit finding where `validate_paths`
+    // collected write targets only from the tokens AFTER the command word and
+    // only for a fixed command allowlist. Three escape classes let an
+    // out-of-workspace write slip through as `Allow` in WorkspaceWrite mode:
+    //   1. a redirection placed before the command word (`>/etc/passwd cmd`);
+    //   2. `dd of=PATH` (`=`-joined operand, not a redirection);
+    //   3. `tar` creating an archive outside the workspace (`-f`/`--file`).
+
+    fn ws_paths(cmd: &str) -> ValidationResult {
+        validate_paths(
+            cmd,
+            PermissionMode::WorkspaceWrite,
+            Path::new("/workspace"),
+            &[],
+        )
+    }
+
+    #[test]
+    fn blocks_leading_redirect_outside_workspace_glued() {
+        // `>/etc/passwd echo x` — redirect is the very first token.
+        let result = ws_paths(">/etc/passwd echo pwned");
+        match result {
+            ValidationResult::Block { reason } => assert!(
+                reason.contains("/etc/passwd"),
+                "out-of-workspace target should be cited, got: {reason}"
+            ),
+            other => panic!("expected Block on leading redirect, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn blocks_leading_redirect_outside_workspace_spaced() {
+        // `> /etc/passwd echo x` — redirect leading, separated by a space.
+        assert!(matches!(
+            ws_paths("> /etc/passwd echo pwned"),
+            ValidationResult::Block { .. }
+        ));
+    }
+
+    #[test]
+    fn allows_leading_redirect_inside_workspace() {
+        // The fix must not over-block: a leading redirect to a workspace-
+        // relative path is still legitimate.
+        assert_eq!(ws_paths(">out.txt echo ok"), ValidationResult::Allow);
+    }
+
+    #[test]
+    fn blocks_dd_of_outside_workspace() {
+        // `dd of=/etc/passwd` writes to /etc from stdin; no `if=` means
+        // check_destructive's "dd if=" substring never fires either.
+        assert!(matches!(
+            ws_paths("dd of=/etc/passwd"),
+            ValidationResult::Block { .. }
+        ));
+    }
+
+    #[test]
+    fn blocks_dd_of_outside_workspace_in_pipeline() {
+        assert!(matches!(
+            ws_paths("echo pwned | dd of=/etc/cron.d/x"),
+            ValidationResult::Block { .. }
+        ));
+    }
+
+    #[test]
+    fn allows_dd_of_inside_workspace() {
+        assert_eq!(
+            ws_paths("dd if=/dev/zero of=out.bin"),
+            ValidationResult::Allow
+        );
+    }
+
+    #[test]
+    fn blocks_tar_create_outside_workspace() {
+        assert!(matches!(
+            ws_paths("tar -cf /etc/evil.tar ."),
+            ValidationResult::Block { .. }
+        ));
+    }
+
+    #[test]
+    fn blocks_tar_create_dashless_outside_workspace() {
+        // Old-style dashless flag bundle: `tar czf /etc/evil.tar .`.
+        assert!(matches!(
+            ws_paths("tar czf /etc/evil.tar ."),
+            ValidationResult::Block { .. }
+        ));
+    }
+
+    #[test]
+    fn blocks_tar_create_long_option_outside_workspace() {
+        assert!(matches!(
+            ws_paths("tar --create --file=/etc/evil.tar ."),
+            ValidationResult::Block { .. }
+        ));
+    }
+
+    #[test]
+    fn allows_tar_create_inside_workspace() {
+        // No FP: creating an archive at a workspace-relative path is allowed.
+        assert_eq!(ws_paths("tar -cf bundle.tar src"), ValidationResult::Allow);
+    }
+
+    #[test]
+    fn allows_tar_extract_reading_outside_workspace() {
+        // Extraction reads the `-f` archive (output goes to the cwd); the
+        // archive path must NOT be treated as a write target, so an absolute
+        // source archive does not spuriously block.
+        assert_eq!(
+            ws_paths("tar -xf /opt/pkg/archive.tar"),
+            ValidationResult::Allow
+        );
+    }
+
+    #[test]
+    fn blocks_leading_read_redirect_outside_workspace() {
+        // Symmetric `<` fix: `</etc/shadow cat` reads outside the workspace.
+        assert!(matches!(
+            ws_paths("</etc/shadow cat"),
+            ValidationResult::Block { .. }
+        ));
+    }
+
+    #[test]
+    fn end_to_end_validate_bash_blocks_leading_redirect() {
+        // Full pipeline (not just validate_paths) must deny.
+        let result = validate_bash_command(
+            ">/etc/passwd echo pwned",
+            PermissionMode::WorkspaceWrite,
+            Path::new("/workspace"),
+            &[],
+        );
+        assert!(
+            matches!(result, ValidationResult::Block { .. }),
+            "got {result:?}"
         );
     }
 }
