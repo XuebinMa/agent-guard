@@ -64,7 +64,20 @@ fn scannable_text(tool: &Tool, payload: &str) -> Option<String> {
         Tool::HttpRequest => "body",
         _ => return None,
     };
-    let value: serde_json::Value = serde_json::from_str(payload).ok()?;
+    let value: serde_json::Value = match serde_json::from_str(payload) {
+        Ok(value) => value,
+        Err(e) => {
+            // A malformed payload means the scan/mask path is skipped. Warn so
+            // "no findings" is distinguishable from "scan skipped due to a
+            // payload the guard could not parse".
+            tracing::warn!(
+                tool = ?tool,
+                error = %e,
+                "content scan skipped: tool payload is not valid JSON"
+            );
+            return None;
+        }
+    };
     value
         .get(field)
         .and_then(serde_json::Value::as_str)

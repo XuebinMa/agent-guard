@@ -172,6 +172,7 @@ pub(crate) fn is_always_blocked_ip(ip: &IpAddr) -> bool {
                 || v4.is_broadcast()
                 || v4.is_multicast()
                 || v4.is_private()
+                || is_v4_shared_or_benchmark(v4)
         }
         IpAddr::V6(v6) => {
             // IPv4-mapped (`::ffff:a.b.c.d`), IPv4-compatible (`::a.b.c.d`),
@@ -187,6 +188,22 @@ pub(crate) fn is_always_blocked_ip(ip: &IpAddr) -> bool {
                 || is_ipv6_unique_local(v6)
         }
     }
+}
+
+/// IPv4 ranges that `std`'s helpers do not cover but that must never be
+/// reachable from the outbound HTTP executor:
+///   * `100.64.0.0/10` — RFC 6598 shared/CGNAT space, routed to internal
+///     services and proxies in some cloud/ISP environments.
+///   * `198.18.0.0/15` — RFC 2544 benchmarking range.
+///   * `0.0.0.0/8` — RFC 1122 "this network"; `is_unspecified()` only catches
+///     the single `0.0.0.0` address, not the whole block.
+///
+/// Closes 2026-06-01 MEDIUM (SSRF deny-list gap).
+fn is_v4_shared_or_benchmark(v4: &Ipv4Addr) -> bool {
+    let o = v4.octets();
+    (o[0] == 100 && (o[1] & 0xc0) == 64) // 100.64.0.0/10
+        || (o[0] == 198 && (o[1] & 0xfe) == 18) // 198.18.0.0/15
+        || o[0] == 0 // 0.0.0.0/8
 }
 
 pub(crate) fn is_ipv6_link_local(ip: &Ipv6Addr) -> bool {
@@ -222,6 +239,17 @@ pub(crate) fn ipv6_extract_embedded_ipv4(v6: &Ipv6Addr) -> Option<Ipv4Addr> {
             (segments[6] & 0xff) as u8,
             (segments[7] >> 8) as u8,
             (segments[7] & 0xff) as u8,
+        ));
+    }
+    // 6to4 (`2002::/16`, RFC 3056): the embedded IPv4 is the two segments after
+    // the `2002` prefix, so `2002:AABB:CCDD::/48` carries `AA.BB.CC.DD`.
+    // Closes 2026-06-01 MEDIUM (embedded-private 6to4 SSRF gap).
+    if segments[0] == 0x2002 {
+        return Some(Ipv4Addr::new(
+            (segments[1] >> 8) as u8,
+            (segments[1] & 0xff) as u8,
+            (segments[2] >> 8) as u8,
+            (segments[2] & 0xff) as u8,
         ));
     }
     None
@@ -471,6 +499,56 @@ mod tests {
         // NAT64 is a legitimate v6-only-to-v4 translation path; the
         // wrapped IPv4 (`8.8.8.8`) is public, so the NAT64 form is OK.
         assert!(!is_always_blocked_ip(&ip("64:ff9b::8.8.8.8")));
+    }
+
+    // ── 2026-06-01 MEDIUM: SSRF deny-list gaps (CGNAT / benchmark /
+    // this-network / 6to4) ─────────────────────────────────────────────────
+
+    #[test]
+    fn blocks_rfc6598_cgnat_shared_space() {
+        // 100.64.0.0/10 spans the 100.64.x.x .. 100.127.x.x second octet.
+        assert!(is_always_blocked_ip(&ip("100.64.0.1")));
+        assert!(is_always_blocked_ip(&ip("100.100.0.1")));
+        assert!(is_always_blocked_ip(&ip("100.127.255.254")));
+    }
+
+    #[test]
+    fn allows_just_outside_cgnat_range() {
+        // 100.63.x.x and 100.128.x.x are public — must remain reachable.
+        assert!(!is_always_blocked_ip(&ip("100.63.255.255")));
+        assert!(!is_always_blocked_ip(&ip("100.128.0.1")));
+    }
+
+    #[test]
+    fn blocks_rfc2544_benchmark_range() {
+        // 198.18.0.0/15 covers 198.18.x.x and 198.19.x.x.
+        assert!(is_always_blocked_ip(&ip("198.18.0.1")));
+        assert!(is_always_blocked_ip(&ip("198.19.255.254")));
+        // 198.17.x.x and 198.20.x.x are outside the block.
+        assert!(!is_always_blocked_ip(&ip("198.17.0.1")));
+        assert!(!is_always_blocked_ip(&ip("198.20.0.1")));
+    }
+
+    #[test]
+    fn blocks_this_network_zero_slash_eight() {
+        // The whole 0.0.0.0/8 block, not just the unspecified 0.0.0.0.
+        assert!(is_always_blocked_ip(&ip("0.1.2.3")));
+        assert!(is_always_blocked_ip(&ip("0.255.255.255")));
+    }
+
+    #[test]
+    fn blocks_6to4_embedded_private_ipv4() {
+        // 2002:AABB:CCDD::/48 routes to embedded AA.BB.CC.DD on 6to4 stacks.
+        // 2002:0a00:0001:: → 10.0.0.1 (RFC1918); 2002:a9fe:a9fe:: → metadata.
+        assert!(is_always_blocked_ip(&ip("2002:0a00:0001::")));
+        assert!(is_always_blocked_ip(&ip("2002:7f00:0001::"))); // 127.0.0.1
+        assert!(is_always_blocked_ip(&ip("2002:a9fe:a9fe::"))); // 169.254.169.254
+    }
+
+    #[test]
+    fn allows_6to4_to_public_ipv4() {
+        // 2002:0808:0808:: → 8.8.8.8 (public) must stay reachable.
+        assert!(!is_always_blocked_ip(&ip("2002:0808:0808::")));
     }
 
     // ── 2026-05-25-2 HIGH: payload_declares_mutation_http silent-failure ───
