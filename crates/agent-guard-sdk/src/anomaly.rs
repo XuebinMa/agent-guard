@@ -59,6 +59,10 @@ impl AnomalyDetector {
             Ok(guard) => guard,
             Err(_) => {
                 // If the mutex is poisoned, we fail-closed for security.
+                tracing::error!(
+                    actor = actor,
+                    "AnomalyDetector state mutex poisoned in check; failing closed to Locked"
+                );
                 return AnomalyStatus::Locked;
             }
         };
@@ -123,7 +127,16 @@ impl AnomalyDetector {
         let now = Instant::now();
         let mut states = match self.states.lock() {
             Ok(guard) => guard,
-            Err(_) => return, // Silent return on poison for non-critical update
+            // Fail-closed: recover the poisoned guard so the denial is still
+            // recorded and the Deny Fuse can still trip. Dropping it here would
+            // let an actor exhaust the threshold without ever locking.
+            Err(poisoned) => {
+                tracing::error!(
+                    actor = actor,
+                    "AnomalyDetector state mutex poisoned in report_denial; recovering to record denial"
+                );
+                poisoned.into_inner()
+            }
         };
         compact_states(&mut states, config, now);
         let state = states.entry(actor.to_string()).or_default();

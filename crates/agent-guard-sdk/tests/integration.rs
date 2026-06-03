@@ -726,12 +726,11 @@ fn audit_event_jsonl_is_valid_json() {
     use agent_guard_core::AuditEvent;
     let tool = Tool::ReadFile;
     let decision = GuardDecision::Deny {
-        reason: agent_guard_sdk::DecisionReason {
-            code: agent_guard_sdk::DecisionCode::DeniedByRule,
-            message: "test".to_string(),
-            details: None,
-            matched_rule: Some("tools.read_file.deny[0]".to_string()),
-        },
+        reason: agent_guard_sdk::DecisionReason::new(
+            agent_guard_sdk::DecisionCode::DeniedByRule,
+            "test",
+        )
+        .matched_rule("tools.read_file.deny[0]"),
     };
     let event = AuditEvent::from_decision(
         "req-3".to_string(),

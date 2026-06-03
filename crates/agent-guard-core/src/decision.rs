@@ -2,7 +2,12 @@ use serde::{Deserialize, Serialize};
 
 // ── GuardDecision ─────────────────────────────────────────────────────────────
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+// `GuardDecision` drives enforcement, so it is `Serialize`-only by design: it
+// must never be reconstructed from external input. Deriving `Deserialize` would
+// let untrusted JSON (`{"decision":"allow"}`) synthesize an `Allow` without
+// passing through the policy engine. Audit/receipt consumers read the
+// serialized form; they never deserialize it back to drive a decision.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(tag = "decision", rename_all = "snake_case")]
 pub enum GuardDecision {
     Allow,
@@ -137,7 +142,11 @@ impl RuntimeDecision {
 
 // ── DecisionReason ────────────────────────────────────────────────────────────
 
+// `#[non_exhaustive]` forces cross-crate callers through `DecisionReason::new`
+// (and its builders), which always supply a non-empty `message`, instead of a
+// struct literal that could set `message: ""` and bypass that guarantee.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[non_exhaustive]
 pub struct DecisionReason {
     pub code: DecisionCode,
     pub message: String,

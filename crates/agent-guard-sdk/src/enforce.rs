@@ -13,7 +13,7 @@ use agent_guard_sandbox::{Sandbox, SandboxContext, SandboxError, SandboxOutput};
 use serde::Serialize;
 use uuid::Uuid;
 
-use crate::approval::{ApprovalConfig, ApprovalRecord, ApprovalStatus};
+use crate::approval::{ApprovalConfig, ApprovalError, ApprovalRecord, ApprovalStatus};
 use crate::executors::{
     execute_http_request, execute_write_file, extract_bash_command_for_execution,
 };
@@ -526,12 +526,24 @@ impl Guard {
                 }
                 ApprovalStatus::Expired | ApprovalStatus::Pending => {
                     if Instant::now() >= deadline {
-                        // Best-effort terminal mark; ignore if already decided.
-                        let _ = config.ledger.decide(
+                        // Terminal mark. `AlreadyDecided` is expected when the
+                        // request was resolved concurrently; any other error is
+                        // a real ledger write failure that would leave the
+                        // ledger `Pending` while we return a denial, so surface
+                        // it rather than discarding it silently.
+                        if let Err(e) = config.ledger.decide(
                             &request_id,
                             ApprovalStatus::Expired,
                             Some("timeout".to_string()),
-                        );
+                        ) {
+                            if !matches!(e, ApprovalError::AlreadyDecided { .. }) {
+                                tracing::warn!(
+                                    request_id = %request_id,
+                                    error = %e,
+                                    "failed to mark approval request Expired in ledger; state/audit may be inconsistent"
+                                );
+                            }
+                        }
                         return Ok(RuntimeOutcome::Denied {
                             request_id,
                             reason: DecisionReason::new(
@@ -668,9 +680,14 @@ impl Guard {
 
         // `stderr` is captured in the HandoffResult type for future surface
         // expansion (e.g. SIEM details), but is intentionally not part of the
-        // core ExecutionEvent schema today; flagging presence keeps this
-        // signal from being silently dropped.
-        let _ = stderr_present;
+        // core ExecutionEvent schema today. Emit a debug signal when it is
+        // present so the omission is observable rather than silently dropped.
+        if stderr_present {
+            tracing::debug!(
+                request_id = request_id,
+                "handoff result carried stderr; not included in core ExecutionEvent schema"
+            );
+        }
     }
 }
 
