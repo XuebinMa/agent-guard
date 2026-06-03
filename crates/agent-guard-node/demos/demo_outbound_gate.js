@@ -3,8 +3,8 @@
 // agent-guard · outbound gate demo
 // ---------------------------------------------------------------------------
 // Plays the "your AI coding agent finished a feature, now it wants to ship
-// it" storyboard (docs/strategy/demo-script-2026-05.md) against the real
-// shipped preset (presets/coding-agent-outbound.yaml).
+// it" storyboard against the real shipped preset
+// (presets/coding-agent-outbound.yaml).
 //
 // This is a DECISION PREVIEW: it calls guard.decide(...) and prints the
 // verdict for each step. It deliberately does NOT execute git / shell

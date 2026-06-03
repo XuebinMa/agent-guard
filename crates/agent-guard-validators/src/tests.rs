@@ -843,7 +843,7 @@ mod path_coverage_tests {
 
 // ── Substitution and newline-separator regression coverage ───────────────────
 //
-// Regression tests for the two CRITICAL findings in docs/audits/2026-05-14.md:
+// Regression tests for two CRITICAL findings from the 2026-05-14 security audit:
 //
 // 1. Command substitution (`$(...)`, backticks, process substitution
 //    `<(...)` / `>(...)`) was tokenized as ordinary characters, leaving
@@ -1177,7 +1177,7 @@ mod bash_substitution_and_separator_tests {
 
 // ── Glued redirection and ln-symlink escape coverage ─────────────────────────
 //
-// Regression tests for the two HIGH findings in docs/audits/2026-05-14.md:
+// Regression tests for two HIGH findings from the 2026-05-14 security audit:
 //
 // 1. Glued `cmd>path` / `cmd>>path` / `cmd<path` redirection is not
 //    tokenized in WorkspaceWrite, so `shell_split` keeps the whole thing
