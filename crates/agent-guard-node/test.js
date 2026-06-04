@@ -1,7 +1,6 @@
 'use strict'
 
 const assert = require('assert/strict')
-const http = require('http')
 const { mkdtempSync, readFileSync } = require('fs')
 const { tmpdir } = require('os')
 const { join } = require('path')
@@ -129,42 +128,33 @@ tools:
     assert.equal(writeOutcome.status || writeOutcome.outcome, 'executed')
     assert.equal(readFileSync(writeTarget, 'utf8'), 'hello from node')
 
-    let receivedBody = ''
-    const server = http.createServer((req, res) => {
-      let chunks = ''
-      req.on('data', (chunk) => {
-        chunks += chunk
-      })
-      req.on('end', () => {
-        receivedBody = chunks
-        res.statusCode = 202
-        res.end('accepted')
-      })
-    })
-    await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve))
-    const address = server.address()
-    const httpUrl = `http://127.0.0.1:${address.port}/publish`
+    // The mutation HTTP executor pins and vets the resolved address, failing
+    // closed on private / loopback targets (SSRF guard, see executors.rs
+    // `is_always_blocked_ip`). `decide` is computed without connecting, so the
+    // decision surface is assertable directly; an actual `run` against a
+    // loopback address must be blocked rather than executed.
+    const loopbackUrl = 'http://127.0.0.1:8080/publish'
     const httpDecision = guard.decide(
       'http_request',
-      JSON.stringify({ method: 'POST', url: httpUrl, body: 'payload' })
+      JSON.stringify({ method: 'POST', url: loopbackUrl, body: 'payload' })
     )
     assert.equal(httpDecision.outcome, 'execute')
 
     const httpReadDecision = guard.decide(
       'http_request',
-      JSON.stringify({ method: 'GET', url: httpUrl })
+      JSON.stringify({ method: 'GET', url: loopbackUrl })
     )
     assert.equal(httpReadDecision.outcome, 'handoff')
 
-    const httpOutcome = await guard.run(
-      'http_request',
-      JSON.stringify({ method: 'POST', url: httpUrl, body: 'payload' })
-    )
-    assert.equal(httpOutcome.status || httpOutcome.outcome, 'executed')
-    assert.equal(httpOutcome.output.stdout, 'accepted')
-    assert.equal(receivedBody, 'payload')
-    await new Promise((resolve, reject) =>
-      server.close((error) => (error ? reject(error) : resolve()))
+    // Running the mutation fails closed: the SSRF guard rejects the resolved
+    // loopback address, so `guard.run` rejects instead of executing.
+    await assert.rejects(
+      async () =>
+        guard.run(
+          'http_request',
+          JSON.stringify({ method: 'POST', url: loopbackUrl, body: 'payload' })
+        ),
+      /blocked address|execution failed/i
     )
 
     const deniedOutcome = await guard.execute('bash', normalizePayload('bash', 'rm -rf /'))
