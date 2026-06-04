@@ -178,6 +178,18 @@ What to understand before integrating:
 
 ---
 
+## Threat Coverage — OWASP Agentic Top 10
+
+Where `agent-guard` sits on the OWASP Top 10 for Agentic Applications (ASI01–ASI10). It is an **execution-control** layer, so it is a *primary* control for the side-effect risks and a *containment* backstop for the autonomy ones — not a full-stack agentic-security platform.
+
+- ✅ **Primary control**: **ASI02** Tool Misuse, **ASI05** Unexpected Code Execution
+- 🟡 **Containment / accountability**: **ASI01** Goal Hijack, **ASI03** Privilege Abuse, **ASI08** Cascading Failures, **ASI09** Human-Agent Trust, **ASI10** Rogue Agents
+- ⬜ **Out of scope** (by design): **ASI04** supply-chain / MCP scanning, **ASI06** memory poisoning, **ASI07** inter-agent comms
+
+The through-line across the 🟡 rows is the Ed25519 execution-proof chain — actions a hijacked or rogue agent takes are still gated, recorded, and attributable. Full mapping: [Framework Support Matrix §10](docs/reference/framework-support-matrix.md#10-threat-coverage--owasp-agentic-top-10).
+
+---
+
 ## Content layer (experimental)
 
 The action layer decides *whether* a call may leave. The content layer inspects
