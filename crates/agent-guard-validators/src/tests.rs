@@ -1569,6 +1569,139 @@ mod bash_interpreter_in_workspace_write_tests {
         assert!(matches!(r, ValidationResult::Block { .. }));
     }
 
+    // ── sudo flag-token bypass (audit 2026-06-08 CRITICAL) ───────────────────
+    // `sudo -u root <cmd>` put an argument-taking sudo option (`-u root`) in
+    // front of the real command. The validator unwrapped only the single
+    // `sudo` token, so `-u` became the apparent command word and the wrapped
+    // command was invisible to every gate. The fix skips sudo's own options
+    // (including those that consume a following value) before reading the
+    // command word.
+
+    #[test]
+    fn blocks_sudo_user_flag_then_state_command_in_readonly() {
+        // ReadOnly state/write gate: `rm` must still be caught behind `-u root`.
+        let r = validate_bash_command("sudo -u root rm /etc/passwd", ro(), workspace(), &[]);
+        assert!(matches!(r, ValidationResult::Block { .. }));
+    }
+
+    #[test]
+    fn blocks_sudo_user_flag_then_write_target_outside_workspace() {
+        // WorkspaceWrite path gate: the out-of-workspace write target
+        // `/etc/passwd` must be collected even when `rm` hides behind `-u root`.
+        let r = validate_bash_command("sudo -u root rm /etc/passwd", ws(), workspace(), &[]);
+        assert!(matches!(r, ValidationResult::Block { .. }));
+    }
+
+    #[test]
+    fn blocks_sudo_user_flag_then_interpreter_inline_code_in_workspace_write() {
+        // Interpreter-laundering gate: `python3 -c` behind `-u root`.
+        let r = validate_bash_command(
+            "sudo -u root python3 -c 'import os; os.unlink(\"/etc/passwd\")'",
+            ws(),
+            workspace(),
+            &[],
+        );
+        assert!(matches!(r, ValidationResult::Block { .. }));
+    }
+
+    #[test]
+    fn blocks_sudo_bundled_flags_then_write_command_in_readonly() {
+        // Bundled boolean + arg-taking flag ending the bundle (`-knu root`):
+        // the value `root` belongs to `-u`, so the command word is `rm`.
+        let r = validate_bash_command("sudo -knu root rm /etc/passwd", ro(), workspace(), &[]);
+        assert!(matches!(r, ValidationResult::Block { .. }));
+    }
+
+    #[test]
+    fn blocks_sudo_double_dash_then_write_command_in_readonly() {
+        // `--` terminates sudo option parsing; `rm` is the command word after it.
+        let r = validate_bash_command("sudo -- rm /etc/passwd", ro(), workspace(), &[]);
+        assert!(matches!(r, ValidationResult::Block { .. }));
+    }
+
+    #[test]
+    fn allows_sudo_user_flag_then_benign_command_in_workspace_write() {
+        // The flag-skip must not over-block: `sudo -u root echo hi` runs a
+        // non-write command with no out-of-workspace target.
+        let r = validate_bash_command("sudo -u root echo hi", ws(), workspace(), &[]);
+        assert_eq!(r, ValidationResult::Allow);
+    }
+
+    // ── other transparent wrappers (audit 2026-05-18 follow-up) ──────────────
+    // `env`/`nice`/`nohup`/`timeout`/`doas` and bare `NAME=value` prefixes are
+    // stripped the same way as `sudo`, so the wrapped command word reaches the
+    // gates.
+
+    #[test]
+    fn blocks_env_assignment_then_write_command_in_readonly() {
+        let r = validate_bash_command("env FOO=1 rm /etc/passwd", ro(), workspace(), &[]);
+        assert!(matches!(r, ValidationResult::Block { .. }));
+    }
+
+    #[test]
+    fn blocks_bare_assignment_then_write_target_outside_workspace() {
+        // 2026-05-19: a bare `FOO=1` prefix must not hide the `tee` write target.
+        let r = validate_bash_command("FOO=1 tee /etc/passwd", ws(), workspace(), &[]);
+        assert!(matches!(r, ValidationResult::Block { .. }));
+    }
+
+    #[test]
+    fn blocks_nice_adjustment_flag_then_write_command_in_readonly() {
+        // `-n 10` is an arg-taking flag; the command word is `rm`.
+        let r = validate_bash_command("nice -n 10 rm /etc/passwd", ro(), workspace(), &[]);
+        assert!(matches!(r, ValidationResult::Block { .. }));
+    }
+
+    #[test]
+    fn blocks_nohup_then_write_command_in_readonly() {
+        let r = validate_bash_command("nohup rm /etc/passwd", ro(), workspace(), &[]);
+        assert!(matches!(r, ValidationResult::Block { .. }));
+    }
+
+    #[test]
+    fn blocks_timeout_duration_then_write_command_in_workspace_write() {
+        // `timeout` takes a leading DURATION operand before the command word.
+        let r = validate_bash_command("timeout 5 rm /etc/passwd", ws(), workspace(), &[]);
+        assert!(matches!(r, ValidationResult::Block { .. }));
+    }
+
+    #[test]
+    fn blocks_doas_user_flag_then_write_command_in_readonly() {
+        let r = validate_bash_command("doas -u root rm /etc/passwd", ro(), workspace(), &[]);
+        assert!(matches!(r, ValidationResult::Block { .. }));
+    }
+
+    #[test]
+    fn blocks_nested_sudo_env_then_write_command_in_readonly() {
+        // Wrapper nesting: `sudo env rm` must unwrap both layers.
+        let r = validate_bash_command("sudo env rm /etc/passwd", ro(), workspace(), &[]);
+        assert!(matches!(r, ValidationResult::Block { .. }));
+    }
+
+    #[test]
+    fn blocks_env_assignment_then_interpreter_inline_code_in_workspace_write() {
+        let r = validate_bash_command(
+            "env FOO=1 python3 -c 'import os; os.unlink(\"/etc/passwd\")'",
+            ws(),
+            workspace(),
+            &[],
+        );
+        assert!(matches!(r, ValidationResult::Block { .. }));
+    }
+
+    #[test]
+    fn allows_timeout_duration_then_benign_command_in_workspace_write() {
+        // Must not over-block: the DURATION skip leaves `echo` as command word.
+        let r = validate_bash_command("timeout 5 echo hi", ws(), workspace(), &[]);
+        assert_eq!(r, ValidationResult::Allow);
+    }
+
+    #[test]
+    fn allows_env_assignment_then_benign_command_in_workspace_write() {
+        let r = validate_bash_command("env FOO=1 echo hi", ws(), workspace(), &[]);
+        assert_eq!(r, ValidationResult::Allow);
+    }
+
     #[test]
     fn blocks_chained_interpreter_after_safe_segment_in_workspace_write() {
         // Segment-aware: `safe && python3 -c '...'` must block on segment 2.
