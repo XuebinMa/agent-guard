@@ -14,7 +14,7 @@ Two layers of outbound control, one decision surface:
 
 - **Action layer** (today): gate `git push`, `npm publish`, `docker push`, `gh release create`, non-local HTTP mutations, `rm -rf` — before they become real
 - **Content layer** (roadmap): detect credentials and PII in tool inputs and outputs before they reach the LLM provider or external API
-- **Audit layer**: every decision signed with Ed25519 — tamper-evident receipts ready for EU AI Act articles 28-31 evidence
+- **Audit layer**: every decision signed with Ed25519 — tamper-evident receipts usable as supporting evidence in compliance workflows
 
 Best fit: solo and small-team devs running coding agents in real workflows. **Local-first by design** — no cloud, no telemetry, no data leaves your machine.
 
@@ -122,7 +122,7 @@ Together those three surfaces cover the action-layer categories the preset bundl
 - **A real outbound boundary, not prompt-only safety**: `git push`, `npm publish`, `docker push`, `rm -rf`, `kubectl apply` all hit a decision point before they become real.
 - **Zero-config preset**: a copy-able policy that covers the five action-layer categories on day one — no rule-writing required.
 - **Small integration surface**: wrap existing LangChain-style tools or OpenAI-style handlers, or hook into Claude Code's PreToolUse via `guard-hook`. No runtime rewrite.
-- **Tamper-evident audit**: every decision is Ed25519-signed, JSONL-formatted, and ready to map onto EU AI Act articles 28-31 without an enterprise control plane.
+- **Tamper-evident audit**: every decision is Ed25519-signed and JSONL-formatted — a verifiable evidence trail you can hand to whatever compliance process you answer to, without an enterprise control plane.
 
 ---
 
