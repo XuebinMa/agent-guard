@@ -104,6 +104,7 @@ For SREs and DevOps engineers managing `agent-guard` in production environments.
 For security researchers and auditors reviewing the system's defensive posture.
 
 - 🏹 **[Threat Model](concepts/threat-model.md)**: Formal asset analysis and attack surface matrix.
+- 🧱 **[Enforcement Layers (ADR)](concepts/enforcement-layers.md)**: Which layer is the security boundary in which deployment shape, and how bypass reports are triaged.
 - 🗺️ **[Capability Parity Matrix](concepts/capability-parity.md)**: Feature alignment across Linux, macOS, and Windows.
 - 🔍 **[Security Audit Report](reference/security-audit.md)**: Release-era self-audit checkpoint, useful after the primary threat-model review.
 - 🌐 **[Cross-Language Parity](concepts/cross-language-parity.md)**: API and decision identity across Rust / Python / Node bindings.
