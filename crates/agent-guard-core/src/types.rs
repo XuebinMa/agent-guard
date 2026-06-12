@@ -16,6 +16,13 @@ pub enum Tool {
 }
 
 impl Tool {
+    /// Canonical names of the built-in (non-`Custom`) variants, exactly as
+    /// produced by `name()` and accepted by `from_builtin_name()`. This is
+    /// the single source of truth the bindings parse against; their parity
+    /// tests iterate this list.
+    pub const BUILTIN_NAMES: &'static [&'static str] =
+        &["bash", "read_file", "write_file", "http_request"];
+
     pub fn name(&self) -> &str {
         match self {
             Tool::Bash => "bash",
@@ -23,6 +30,19 @@ impl Tool {
             Tool::WriteFile => "write_file",
             Tool::HttpRequest => "http_request",
             Tool::Custom(id) => id.as_str(),
+        }
+    }
+
+    /// Parse a canonical built-in tool name. Returns `None` for anything
+    /// else; callers route those through `CustomToolId::new` to build
+    /// `Tool::Custom`.
+    pub fn from_builtin_name(name: &str) -> Option<Tool> {
+        match name {
+            "bash" => Some(Tool::Bash),
+            "read_file" => Some(Tool::ReadFile),
+            "write_file" => Some(Tool::WriteFile),
+            "http_request" => Some(Tool::HttpRequest),
+            _ => None,
         }
     }
 }
@@ -40,8 +60,6 @@ pub struct CustomToolId(String);
 
 impl CustomToolId {
     const MAX_LEN: usize = 64;
-    const BUILTIN_NAMES: &'static [&'static str] =
-        &["bash", "read_file", "write_file", "http_request"];
 
     pub fn new(id: impl Into<String>) -> Result<Self, CustomToolIdError> {
         let id = id.into();
@@ -54,7 +72,7 @@ impl CustomToolId {
         {
             return Err(CustomToolIdError::InvalidChars);
         }
-        if Self::BUILTIN_NAMES.contains(&id.to_lowercase().as_str()) {
+        if Tool::BUILTIN_NAMES.contains(&id.to_lowercase().as_str()) {
             return Err(CustomToolIdError::ConflictsWithBuiltin(id));
         }
         Ok(Self(id))
@@ -88,6 +106,36 @@ pub enum TrustLevel {
     Untrusted,
     Trusted,
     Admin,
+}
+
+impl TrustLevel {
+    /// Every variant, in declaration order. Bindings parse against `name()`
+    /// / `from_name()`; their parity tests iterate this list.
+    pub const ALL: [TrustLevel; 3] = [
+        TrustLevel::Untrusted,
+        TrustLevel::Trusted,
+        TrustLevel::Admin,
+    ];
+
+    /// Canonical snake_case name, matching the serde encoding.
+    pub fn name(&self) -> &'static str {
+        match self {
+            TrustLevel::Untrusted => "untrusted",
+            TrustLevel::Trusted => "trusted",
+            TrustLevel::Admin => "admin",
+        }
+    }
+
+    /// Parse a canonical trust-level name. Returns `None` for unknown names
+    /// so callers fail closed rather than guessing.
+    pub fn from_name(name: &str) -> Option<TrustLevel> {
+        match name {
+            "untrusted" => Some(TrustLevel::Untrusted),
+            "trusted" => Some(TrustLevel::Trusted),
+            "admin" => Some(TrustLevel::Admin),
+            _ => None,
+        }
+    }
 }
 
 // ── Context ───────────────────────────────────────────────────────────────────
