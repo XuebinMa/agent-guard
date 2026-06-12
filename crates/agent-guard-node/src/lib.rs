@@ -599,21 +599,18 @@ fn context_from_node(options: Option<Context>) -> RustContext {
 
 fn parse_tool(tool_str: &str) -> Result<RustTool> {
     use agent_guard_sdk::CustomToolId;
-    match tool_str {
-        "bash" => Ok(RustTool::Bash),
-        "read_file" => Ok(RustTool::ReadFile),
-        "write_file" => Ok(RustTool::WriteFile),
-        "http_request" => Ok(RustTool::HttpRequest),
-        other => {
-            let id = CustomToolId::new(other).map_err(|e| {
-                Error::new(
-                    Status::GenericFailure,
-                    format!("invalid tool id {other:?}: {e}"),
-                )
-            })?;
-            Ok(RustTool::Custom(id))
-        }
+    // Builtin names resolve through core so this binding cannot drift when
+    // core gains a Tool variant (#58); everything else is a custom tool.
+    if let Some(tool) = RustTool::from_builtin_name(tool_str) {
+        return Ok(tool);
     }
+    let id = CustomToolId::new(tool_str).map_err(|e| {
+        Error::new(
+            Status::GenericFailure,
+            format!("invalid tool id {tool_str:?}: {e}"),
+        )
+    })?;
+    Ok(RustTool::Custom(id))
 }
 
 // ── Payload Normalization ─────────────────────────────────────────────────────
@@ -700,7 +697,7 @@ pub fn verify_receipt(receipt_json: String, public_key_hex: String) -> Result<bo
 
 #[cfg(test)]
 mod tests {
-    use super::normalize_payload;
+    use super::{normalize_payload, parse_tool, RustTool, RustTrustLevel, TrustLevel};
 
     #[test]
     fn normalize_payload_wraps_shell_strings() {
@@ -725,5 +722,34 @@ mod tests {
             normalize_payload("read_file".to_string(), "/tmp/demo.txt".to_string()),
             r#"{"input":"/tmp/demo.txt"}"#
         );
+    }
+
+    /// Parity check (#58): every builtin tool name core knows about must
+    /// parse to its builtin variant here — never fall through to Custom.
+    #[test]
+    fn parse_tool_resolves_every_core_builtin_name() {
+        for name in RustTool::BUILTIN_NAMES {
+            let tool = parse_tool(name).expect("builtin name parses");
+            assert!(
+                !matches!(tool, RustTool::Custom(_)),
+                "builtin tool name {name:?} fell through to Custom"
+            );
+            assert_eq!(tool.name(), *name);
+        }
+    }
+
+    /// Drift tripwire (#58): the exhaustive match fails to compile when
+    /// core gains a TrustLevel variant, forcing the napi `TrustLevel` enum
+    /// and its `From` impl to grow with it.
+    #[test]
+    fn node_trust_level_covers_every_core_variant() {
+        for core_level in RustTrustLevel::ALL {
+            let node_level = match core_level {
+                RustTrustLevel::Untrusted => TrustLevel::Untrusted,
+                RustTrustLevel::Trusted => TrustLevel::Trusted,
+                RustTrustLevel::Admin => TrustLevel::Admin,
+            };
+            assert_eq!(RustTrustLevel::from(node_level), core_level);
+        }
     }
 }

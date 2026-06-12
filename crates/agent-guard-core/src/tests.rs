@@ -64,6 +64,58 @@ mod types_tests {
         let input = GuardInput::new(Tool::Bash, r#"{"command":"ls"}"#);
         assert_eq!(input.context.trust_level, TrustLevel::Untrusted);
     }
+
+    /// Drift tripwire (#58): the exhaustive match below fails to compile
+    /// when a `Tool` variant is added, forcing `BUILTIN_NAMES` and
+    /// `from_builtin_name` to be updated in the same change. The bindings
+    /// parse against these helpers, so keeping them complete here keeps
+    /// Python/Node parsing complete too.
+    #[test]
+    fn tool_builtin_names_cover_every_non_custom_variant() {
+        fn canonical(tool: &Tool) -> Option<&'static str> {
+            match tool {
+                Tool::Bash => Some("bash"),
+                Tool::ReadFile => Some("read_file"),
+                Tool::WriteFile => Some("write_file"),
+                Tool::HttpRequest => Some("http_request"),
+                Tool::Custom(_) => None,
+            }
+        }
+
+        let builtins = [
+            Tool::Bash,
+            Tool::ReadFile,
+            Tool::WriteFile,
+            Tool::HttpRequest,
+        ];
+        assert_eq!(builtins.len(), Tool::BUILTIN_NAMES.len());
+        for tool in builtins {
+            let name = canonical(&tool).expect("builtin variant has a canonical name");
+            assert!(Tool::BUILTIN_NAMES.contains(&name));
+            assert_eq!(tool.name(), name);
+            assert_eq!(Tool::from_builtin_name(name), Some(tool));
+        }
+        assert_eq!(Tool::from_builtin_name("not_a_builtin"), None);
+    }
+
+    /// Drift tripwire (#58): same pattern for `TrustLevel` — a new variant
+    /// breaks the exhaustive match here and the length check, keeping
+    /// `ALL` / `from_name` (and therefore binding parsing) complete.
+    #[test]
+    fn trust_level_all_round_trips_every_variant() {
+        fn assert_variant_known(level: &TrustLevel) {
+            match level {
+                TrustLevel::Untrusted | TrustLevel::Trusted | TrustLevel::Admin => {}
+            }
+        }
+
+        for level in TrustLevel::ALL {
+            assert_variant_known(&level);
+            assert_eq!(TrustLevel::from_name(level.name()), Some(level));
+        }
+        assert_eq!(TrustLevel::ALL.len(), 3);
+        assert_eq!(TrustLevel::from_name("root"), None);
+    }
 }
 
 #[cfg(test)]

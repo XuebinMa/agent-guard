@@ -475,17 +475,14 @@ pub fn decision_from_rust(
 
 pub fn parse_tool(tool_str: &str) -> PyResult<Tool> {
     use agent_guard_sdk::CustomToolId;
-    match tool_str {
-        "bash" => Ok(Tool::Bash),
-        "read_file" => Ok(Tool::ReadFile),
-        "write_file" => Ok(Tool::WriteFile),
-        "http_request" => Ok(Tool::HttpRequest),
-        other => {
-            let id = CustomToolId::new(other)
-                .map_err(|e| GuardError::new_err(format!("invalid tool id {other:?}: {e}")))?;
-            Ok(Tool::Custom(id))
-        }
+    // Builtin names resolve through core so this binding cannot drift when
+    // core gains a Tool variant (#58); everything else is a custom tool.
+    if let Some(tool) = Tool::from_builtin_name(tool_str) {
+        return Ok(tool);
     }
+    let id = CustomToolId::new(tool_str)
+        .map_err(|e| GuardError::new_err(format!("invalid tool id {tool_str:?}: {e}")))?;
+    Ok(Tool::Custom(id))
 }
 
 fn normalize_payload(tool: &Tool, payload: &str) -> String {
@@ -504,14 +501,14 @@ fn normalize_payload(tool: &Tool, payload: &str) -> String {
 // ── TrustLevel parsing ────────────────────────────────────────────────────────
 
 pub fn parse_trust(trust_str: &str) -> PyResult<TrustLevel> {
-    match trust_str {
-        "untrusted" => Ok(TrustLevel::Untrusted),
-        "trusted" => Ok(TrustLevel::Trusted),
-        "admin" => Ok(TrustLevel::Admin),
-        other => Err(GuardError::new_err(format!(
-            "unknown trust_level {other:?}; expected \"untrusted\", \"trusted\", or \"admin\""
-        ))),
-    }
+    // Resolves through core so this binding cannot drift when core gains a
+    // TrustLevel variant (#58).
+    TrustLevel::from_name(trust_str).ok_or_else(|| {
+        let expected: Vec<&str> = TrustLevel::ALL.iter().map(TrustLevel::name).collect();
+        GuardError::new_err(format!(
+            "unknown trust_level {trust_str:?}; expected one of {expected:?}"
+        ))
+    })
 }
 
 // ── PyGuard ───────────────────────────────────────────────────────────────────
