@@ -132,10 +132,13 @@ impl Guard {
 
     /// Set the Ed25519 signing key for provenance receipts.
     pub fn with_signing_key(&self, key: ed25519_dalek::SigningKey) {
-        let old_state = self.state.load();
-        let mut new_state = (**old_state).clone();
-        new_state.signing_key = Some(key);
-        self.state.store(Arc::new(new_state));
+        // RCU instead of load→clone→store: a plain store racing with a
+        // concurrent reload would silently drop one side's update (#56).
+        self.state.rcu(|current| {
+            let mut new_state = (**current).clone();
+            new_state.signing_key = Some(key.clone());
+            new_state
+        });
     }
 
     /// Construct a Guard from a YAML string with an Ed25519 signing key for provenance.
@@ -167,16 +170,21 @@ impl Guard {
         engine: PolicyEngine,
         policy_verification: PolicyVerification,
     ) -> Result<(), GuardInitError> {
-        let old_state = self.state.load();
-        let old_version = old_state.engine.version().to_string();
         let new_version = engine.version().to_string();
+        let base_state = GuardState::new(Arc::new(engine), policy_verification)?;
 
-        let mut new_state = GuardState::new(Arc::new(engine), policy_verification)?;
-        new_state.anomaly_detector = old_state.anomaly_detector.clone();
-        new_state.signing_key = old_state.signing_key.clone();
-        self.state.store(Arc::new(new_state));
+        // The carry-over fields must be copied from the state observed at
+        // swap time, not from a snapshot taken earlier: a `with_signing_key`
+        // landing between that snapshot and the store would be lost (#56).
+        // RCU retries the copy until the swap is uncontended.
+        let old_state = self.state.rcu(|current| {
+            let mut new_state = base_state.clone();
+            new_state.anomaly_detector = current.anomaly_detector.clone();
+            new_state.signing_key = current.signing_key.clone();
+            new_state
+        });
 
-        let event = ReloadEvent::success(old_version, new_version);
+        let event = ReloadEvent::success(old_state.engine.version().to_string(), new_version);
         self.write_reload_audit(&event, &old_state);
 
         Ok(())
@@ -555,5 +563,77 @@ impl GuardState {
             signing_key: None,
             policy_verification,
         })
+    }
+}
+
+// ── Tests ─────────────────────────────────────────────────────────────────────
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::Barrier;
+
+    const POLICY_A: &str = "version: 1\ndefault_mode: read_only\n";
+    const POLICY_B: &str = "version: 1\ndefault_mode: workspace_write\n";
+
+    fn test_signing_key() -> ed25519_dalek::SigningKey {
+        ed25519_dalek::SigningKey::from_bytes(&[7u8; 32])
+    }
+
+    /// Regression for #56: `with_signing_key` and policy reload are both
+    /// read-modify-write updates of `Guard::state`; whichever writer loses
+    /// the race has its update silently overwritten. The setter thread runs
+    /// a tight RMW loop so that at the instant the reload stores, a setter
+    /// iteration is almost certainly between its own load and store — its
+    /// store then resurrects the old engine, and no later iteration brings
+    /// the new one back. The final state must hold both the reloaded policy
+    /// and the signing key.
+    #[test]
+    fn concurrent_reload_and_signing_key_updates_are_not_lost() -> Result<(), GuardInitError> {
+        const TRIALS: usize = 20;
+        const SETTER_ITERATIONS: usize = 100_000;
+        const RELOAD_DELAY: std::time::Duration = std::time::Duration::from_millis(1);
+
+        let expected_hash = PolicyEngine::from_yaml_str(POLICY_B)?.hash().to_string();
+        // Built once: key derivation is ~100µs and would otherwise dominate
+        // each setter iteration, shrinking the load→store window to a sliver
+        // of the loop and letting the race go unexercised.
+        let key = test_signing_key();
+
+        for trial in 0..TRIALS {
+            let guard = Guard::from_yaml(POLICY_A)?;
+            let barrier = Barrier::new(2);
+
+            let reload_result = std::thread::scope(|s| {
+                let reloader = s.spawn(|| {
+                    barrier.wait();
+                    std::thread::sleep(RELOAD_DELAY);
+                    guard.reload_from_yaml(POLICY_B)
+                });
+                s.spawn(|| {
+                    barrier.wait();
+                    for _ in 0..SETTER_ITERATIONS {
+                        guard.with_signing_key(key.clone());
+                    }
+                });
+                match reloader.join() {
+                    Ok(result) => result,
+                    Err(panic) => std::panic::resume_unwind(panic),
+                }
+            });
+            reload_result?;
+
+            let state = guard.state.load();
+            assert_eq!(
+                state.engine.hash(),
+                expected_hash,
+                "policy reload lost to concurrent with_signing_key (trial {trial})"
+            );
+            assert!(
+                state.signing_key.is_some(),
+                "signing key lost to concurrent policy reload (trial {trial})"
+            );
+        }
+        Ok(())
     }
 }
