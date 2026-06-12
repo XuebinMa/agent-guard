@@ -383,7 +383,7 @@ pub fn runtime_outcome_from_rust(
 /// of the audit `ExecutionEvent` schema and is dropped after the call. This
 /// keeps the Python surface symmetric with future SDK growth without locking
 /// hosts into a Node-vs-Python diff today.
-#[pyclass(module = "agent_guard")]
+#[pyclass(module = "agent_guard", from_py_object)]
 #[derive(Clone)]
 pub struct HandoffResult {
     #[pyo3(get, set)]
