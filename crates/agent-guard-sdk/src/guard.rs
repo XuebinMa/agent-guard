@@ -54,6 +54,32 @@ pub struct Guard {
     pub(crate) state: ArcSwap<GuardState>,
 }
 
+/// Destination for non-file audit lines. Defaults to stdout; hosts and
+/// tests can redirect it via `Guard::set_audit_sink` so the library never
+/// owns the process stdout outright.
+pub(crate) type AuditSink = Arc<std::sync::Mutex<Box<dyn std::io::Write + Send>>>;
+
+fn stdout_audit_sink() -> AuditSink {
+    Arc::new(std::sync::Mutex::new(Box::new(std::io::stdout())))
+}
+
+/// Write one audit line to the sink. An unwritable sink must not panic or
+/// abort the decision path; the failure is surfaced via tracing and the
+/// SIEM export remains the durable channel.
+fn write_to_audit_sink(sink: &AuditSink, line: &str) {
+    use std::io::Write;
+    match sink.lock() {
+        Ok(mut writer) => {
+            if let Err(error) = writeln!(writer, "{line}") {
+                tracing::error!(%error, "failed to write audit line to sink");
+            }
+        }
+        Err(_) => {
+            tracing::error!("audit sink mutex poisoned; audit line dropped from sink output");
+        }
+    }
+}
+
 #[derive(Clone)]
 pub(crate) struct GuardState {
     pub(crate) engine: Arc<PolicyEngine>,
@@ -63,6 +89,11 @@ pub(crate) struct GuardState {
     pub(crate) anomaly_detector: Arc<crate::anomaly::AnomalyDetector>,
     pub(crate) signing_key: Option<ed25519_dalek::SigningKey>,
     pub(crate) policy_verification: PolicyVerification,
+    /// Per-Guard metrics handle; defaults to the process-global registry so
+    /// existing scrape setups keep working, but two Guards in one process
+    /// can be given separate registries (#60).
+    pub(crate) metrics: Arc<crate::metrics::Metrics>,
+    pub(crate) audit_sink: AuditSink,
 }
 
 impl std::fmt::Debug for Guard {
@@ -141,6 +172,27 @@ impl Guard {
         });
     }
 
+    /// Route this Guard's metrics to a dedicated registry instead of the
+    /// process-global one, so co-resident Guards don't blend counters (#60).
+    pub fn set_metrics(&self, metrics: Arc<crate::metrics::Metrics>) {
+        self.state.rcu(|current| {
+            let mut new_state = (**current).clone();
+            new_state.metrics = metrics.clone();
+            new_state
+        });
+    }
+
+    /// Redirect non-file audit output (default: process stdout). Survives
+    /// policy reloads, like the signing key (#60).
+    pub fn set_audit_sink(&self, sink: Box<dyn std::io::Write + Send>) {
+        let sink: AuditSink = Arc::new(std::sync::Mutex::new(sink));
+        self.state.rcu(|current| {
+            let mut new_state = (**current).clone();
+            new_state.audit_sink = sink.clone();
+            new_state
+        });
+    }
+
     /// Construct a Guard from a YAML string with an Ed25519 signing key for provenance.
     pub fn from_yaml_with_key(
         yaml: &str,
@@ -181,6 +233,8 @@ impl Guard {
             let mut new_state = base_state.clone();
             new_state.anomaly_detector = current.anomaly_detector.clone();
             new_state.signing_key = current.signing_key.clone();
+            new_state.metrics = current.metrics.clone();
+            new_state.audit_sink = current.audit_sink.clone();
             new_state
         });
 
@@ -305,7 +359,7 @@ impl Guard {
         state: &GuardState,
         request_id: &str,
     ) -> GuardDecision {
-        let metrics = crate::metrics::get_metrics();
+        let metrics = &state.metrics;
         let agent_id = input
             .context
             .agent_id
@@ -368,7 +422,7 @@ impl Guard {
         outcome: &str,
         request_id: &str,
     ) -> GuardDecision {
-        let metrics = crate::metrics::get_metrics();
+        let metrics = &state.metrics;
 
         metrics
             .decision_total
@@ -511,7 +565,7 @@ impl Guard {
                 writer.send(line);
             }
         } else {
-            println!("{}", line);
+            write_to_audit_sink(&state.audit_sink, &line);
         }
     }
 
@@ -562,6 +616,8 @@ impl GuardState {
             anomaly_detector,
             signing_key: None,
             policy_verification,
+            metrics: crate::metrics::get_metrics(),
+            audit_sink: stdout_audit_sink(),
         })
     }
 }
@@ -633,6 +689,99 @@ mod tests {
                 state.signing_key.is_some(),
                 "signing key lost to concurrent policy reload (trial {trial})"
             );
+        }
+        Ok(())
+    }
+
+    /// A `Write` impl backed by a shared buffer so tests can observe what
+    /// the Guard sends to its audit sink.
+    #[derive(Clone)]
+    struct SharedBuf(Arc<std::sync::Mutex<Vec<u8>>>);
+
+    impl std::io::Write for SharedBuf {
+        fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+            match self.0.lock() {
+                Ok(mut inner) => {
+                    inner.extend_from_slice(buf);
+                    Ok(buf.len())
+                }
+                Err(_) => Err(std::io::Error::other("shared buffer poisoned")),
+            }
+        }
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+
+    /// #60: two Guards in one process must not blend counters once given
+    /// their own registries; the per-state handle (not the global) is what
+    /// the check path increments.
+    #[test]
+    fn injected_metrics_are_isolated_per_guard() -> Result<(), GuardInitError> {
+        let first = Guard::from_yaml(POLICY_A)?;
+        let second = Guard::from_yaml(POLICY_A)?;
+        let first_metrics = Arc::new(crate::metrics::Metrics::new());
+        let second_metrics = Arc::new(crate::metrics::Metrics::new());
+        first.set_metrics(first_metrics.clone());
+        second.set_metrics(second_metrics.clone());
+
+        let input = GuardInput::new(Tool::Bash, r#"{"command":"ls"}"#);
+        let _ = first.check(&input);
+
+        let labels = crate::metrics::ToolLabels {
+            agent_id: "default".to_string(),
+            tool: "bash".to_string(),
+        };
+        assert_eq!(
+            first_metrics
+                .policy_checks_total
+                .get_or_create(&labels)
+                .get(),
+            1
+        );
+        assert_eq!(
+            second_metrics
+                .policy_checks_total
+                .get_or_create(&labels)
+                .get(),
+            0,
+            "second guard's registry must not see the first guard's checks"
+        );
+        Ok(())
+    }
+
+    // Note: an absent `audit:` section disables auditing entirely
+    // (AuditConfig's derived Default), unlike an empty `audit:` section
+    // where serde field defaults enable it — so these spell it out.
+    const POLICY_AUDIT_A: &str =
+        "version: 1\ndefault_mode: read_only\naudit:\n  enabled: true\n  output: stdout\n";
+    const POLICY_AUDIT_B: &str =
+        "version: 1\ndefault_mode: workspace_write\naudit:\n  enabled: true\n  output: stdout\n";
+
+    /// #60: non-file audit output goes to the injectable sink (not raw
+    /// stdout), and the sink survives a policy reload like the signing key.
+    #[test]
+    fn audit_sink_receives_decision_lines_and_survives_reload() -> Result<(), GuardInitError> {
+        let guard = Guard::from_yaml(POLICY_AUDIT_A)?;
+        let buffer = Arc::new(std::sync::Mutex::new(Vec::new()));
+        guard.set_audit_sink(Box::new(SharedBuf(buffer.clone())));
+
+        let input = GuardInput::new(Tool::Bash, r#"{"command":"ls"}"#);
+        let _ = guard.check(&input);
+        guard.reload_from_yaml(POLICY_AUDIT_B)?;
+        let _ = guard.check(&input);
+
+        let captured = buffer.lock().expect("buffer lock").clone();
+        let captured = String::from_utf8(captured).expect("audit lines are utf-8");
+        let lines: Vec<&str> = captured.lines().collect();
+        assert_eq!(
+            lines.len(),
+            2,
+            "one audit line per check, before and after reload; captured: {captured:?}"
+        );
+        for line in lines {
+            assert!(line.starts_with('{'), "audit line is JSONL: {line}");
+            assert!(line.contains("bash"), "audit line names the tool: {line}");
         }
         Ok(())
     }

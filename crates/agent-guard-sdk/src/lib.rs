@@ -16,7 +16,7 @@ pub mod runtime;
 mod sandbox_resolution;
 pub mod siem;
 
-pub use anomaly::{get_detector, AnomalyDetector, AnomalyStatus};
+pub use anomaly::{AnomalyDetector, AnomalyStatus};
 pub use approval::{ApprovalConfig, ApprovalError, ApprovalLedger, ApprovalRecord, ApprovalStatus};
 pub use doctor::{collect_doctor_report, render_doctor_html, render_doctor_text, DoctorReport};
 pub use enforce::{ExecuteOutcome, ExecuteResult};

@@ -1,6 +1,6 @@
 use agent_guard_core::AnomalyConfig;
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
+use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
 pub struct ActorState {
@@ -199,14 +199,6 @@ fn compact_states(states: &mut HashMap<String, ActorState>, config: &AnomalyConf
         };
         states.remove(&oldest_key);
     }
-}
-
-pub static GLOBAL_DETECTOR: std::sync::OnceLock<Arc<AnomalyDetector>> = std::sync::OnceLock::new();
-
-pub fn get_detector() -> Arc<AnomalyDetector> {
-    GLOBAL_DETECTOR
-        .get_or_init(|| Arc::new(AnomalyDetector::new()))
-        .clone()
 }
 
 #[cfg(test)]
