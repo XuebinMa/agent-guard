@@ -25,9 +25,9 @@ use crate::sandbox_resolution::resolve_default_sandbox;
 pub use crate::sandbox_resolution::DefaultSandboxDiagnosis;
 use crate::siem::SiemExporter;
 
-// Backward-compatible re-exports: callers may still reference these via
-// `agent_guard_sdk::guard::*` even after the execute/run path moved to the
-// sibling `enforce` module.
+// The execute/run result types live in the sibling `enforce` and `runtime`
+// modules; re-export them here so `agent_guard_sdk::guard::*` exposes the full
+// decision surface from one path.
 pub use crate::enforce::{ExecuteOutcome, ExecuteResult};
 pub use crate::runtime::{HandoffResult, RuntimeOutcome, RuntimeResult};
 
@@ -296,7 +296,7 @@ impl Guard {
         self.reload_from_signed_yaml(&yaml, &public_key_hex, &signature_hex)
     }
 
-    /// Return the current policy version (alias for version)
+    /// Return the version string of the currently loaded policy.
     pub fn policy_version(&self) -> String {
         self.state.load().engine.version().to_string()
     }
