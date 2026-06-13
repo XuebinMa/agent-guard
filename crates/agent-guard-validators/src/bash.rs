@@ -4,14 +4,15 @@ use std::path::{Component, Path, PathBuf};
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
+/// Effective permission mode for a bash command, mirroring the policy
+/// engine's `PolicyMode`. These are *modes*, not verdicts: the validator
+/// maps each to an `Allow`/`Block`/`Warn` `ValidationResult`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PermissionMode {
     Blocked,
     ReadOnly,
     WorkspaceWrite,
     DangerFullAccess,
-    Allow,
-    Prompt,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -896,15 +897,11 @@ pub fn validate_bash_command(
             reason: "tool is in blocked mode".to_string(),
         };
     }
-    if mode == PermissionMode::Allow {
-        return ValidationResult::Allow;
-    }
 
     // Gate substitution before policy checks: if a substituted command or
     // path target is opaque to the validator, no downstream policy decision
     // can be trusted. Matches the scope of `validate_paths` (ReadOnly +
-    // WorkspaceWrite); DangerFullAccess / Prompt accept opaque payloads by
-    // design.
+    // WorkspaceWrite); DangerFullAccess accepts opaque payloads by design.
     if matches!(
         mode,
         PermissionMode::ReadOnly | PermissionMode::WorkspaceWrite
