@@ -236,7 +236,8 @@ impl Guard {
             .agent_id
             .clone()
             .unwrap_or_else(|| "default".to_string());
-        crate::metrics::get_metrics()
+        state
+            .metrics
             .execution_duration_seconds
             .get_or_create(&crate::metrics::ExecutionLabels {
                 agent_id: agent_id.clone(),
