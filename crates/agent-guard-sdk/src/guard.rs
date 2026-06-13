@@ -434,7 +434,16 @@ impl Guard {
 
             let command = match extract_core_bash_command(&input.payload) {
                 Ok(ExtractedPayload::Command(command)) => command,
-                Ok(_) => unreachable!("core bash extractor returned a non-command payload"),
+                // The core extractor only yields `Command` for a bash payload, so this
+                // arm is unreachable today. It lives in a security-critical evaluation
+                // path, so fail closed with a deny rather than panic if that invariant
+                // ever changes in the core crate. (Pre-1.0 cleanup, issue #61 item 3.)
+                Ok(_) => {
+                    return GuardDecision::deny(
+                        DecisionCode::InvalidPayload,
+                        "bash payload did not yield a command string".to_string(),
+                    );
+                }
                 Err(decision) => return decision,
             };
 

@@ -25,7 +25,13 @@ pub(crate) fn extract_bash_command_for_execution(payload: &str) -> Result<String
         Err(GuardDecision::Deny { reason }) | Err(GuardDecision::AskUser { reason, .. }) => {
             Err(SandboxError::InvalidPayload(reason.message))
         }
-        Err(GuardDecision::Allow) => unreachable!("core bash extractor cannot return Allow"),
+        // The core extractor never returns an `Allow` decision, so this arm is
+        // unreachable today. This is a security-critical execution path, so fail
+        // closed with an invalid-payload error rather than panic if that invariant
+        // ever changes in the core crate. (Pre-1.0 cleanup, issue #61 item 3.)
+        Err(GuardDecision::Allow) => Err(SandboxError::InvalidPayload(
+            "core bash extractor returned an Allow decision with no command".to_string(),
+        )),
     }
 }
 
