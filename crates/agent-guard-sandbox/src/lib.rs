@@ -32,7 +32,7 @@ use std::path::PathBuf;
 use serde::Serialize;
 use thiserror::Error;
 
-use agent_guard_core::PolicyMode;
+use agent_guard_core::{DecisionCode, PolicyMode};
 
 // ── SandboxContext ────────────────────────────────────────────────────────────
 
@@ -128,9 +128,12 @@ pub enum SandboxError {
     /// The tool payload could not be parsed or did not contain what the
     /// executor needs (malformed JSON, missing command, invalid URL or
     /// method). Distinct from `ExecutionFailed` so callers can tell a bad
-    /// request from a failed execution.
-    #[error("invalid payload: {0}")]
-    InvalidPayload(String),
+    /// request from a failed execution. Carries the originating
+    /// `DecisionCode` so callers can distinguish, e.g., a missing field
+    /// (`MissingPayloadField`) from malformed JSON (`InvalidPayload`)
+    /// without parsing the message string.
+    #[error("invalid payload: {message}")]
+    InvalidPayload { code: DecisionCode, message: String },
     #[error("timeout after {ms}ms")]
     Timeout { ms: u64 },
     #[error("seccomp filter setup failed: {0}")]

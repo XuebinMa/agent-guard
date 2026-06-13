@@ -196,10 +196,10 @@ fn e6_missing_command_field_in_payload() {
         Ok(ExecuteOutcome::Denied { .. }) => {
             // Policy denied due to MISSING_PAYLOAD_FIELD.
         }
-        Err(agent_guard_sdk::SandboxError::InvalidPayload(msg)) => {
+        Err(agent_guard_sdk::SandboxError::InvalidPayload { message, .. }) => {
             assert!(
-                msg.contains("command"),
-                "error should mention 'command' field, got: {msg}"
+                message.contains("command"),
+                "error should mention 'command' field, got: {message}"
             );
         }
         Ok(other) => panic!("unexpected outcome: {other:?}"),
