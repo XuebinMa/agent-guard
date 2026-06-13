@@ -15,13 +15,15 @@ use serde::Deserialize;
 pub(crate) fn extract_bash_command_for_execution(payload: &str) -> Result<String, SandboxError> {
     match extract_core_bash_command(payload) {
         Ok(ExtractedPayload::Command(command)) => Ok(command),
-        Ok(_) => Err(SandboxError::ExecutionFailed(
+        Ok(_) => Err(SandboxError::InvalidPayload(
             "unexpected payload variant while extracting bash command".to_string(),
         )),
         // Execution reuses the core payload parser, then adapts decision-shaped errors
         // into execution errors for the call sites that need a concrete command string.
+        // The core extractor only emits these for payload problems (invalid JSON,
+        // missing `command` field), so they map to `InvalidPayload`, not a failed run.
         Err(GuardDecision::Deny { reason }) | Err(GuardDecision::AskUser { reason, .. }) => {
-            Err(SandboxError::ExecutionFailed(reason.message))
+            Err(SandboxError::InvalidPayload(reason.message))
         }
         Err(GuardDecision::Allow) => unreachable!("core bash extractor cannot return Allow"),
     }
@@ -40,9 +42,9 @@ pub(crate) fn execute_write_file(
     working_directory: Option<&Path>,
 ) -> Result<SandboxOutput, SandboxError> {
     let request: WriteFileRequest = serde_json::from_str(payload)
-        .map_err(|_| SandboxError::ExecutionFailed("invalid payload JSON".to_string()))?;
+        .map_err(|_| SandboxError::InvalidPayload("invalid payload JSON".to_string()))?;
     let resolved_path = resolve_tool_path(&request.path, working_directory)
-        .map_err(|decision| SandboxError::ExecutionFailed(decision.to_string()))?;
+        .map_err(|decision| SandboxError::InvalidPayload(decision.to_string()))?;
 
     let mut options = std::fs::OpenOptions::new();
     options.create(true).write(true);
@@ -79,10 +81,10 @@ const HTTP_CONNECT_TIMEOUT: Duration = Duration::from_secs(5);
 
 pub(crate) fn execute_http_request(payload: &str) -> Result<SandboxOutput, SandboxError> {
     let request: HttpRequestExecution = serde_json::from_str(payload)
-        .map_err(|_| SandboxError::ExecutionFailed("invalid payload JSON".to_string()))?;
+        .map_err(|_| SandboxError::InvalidPayload("invalid payload JSON".to_string()))?;
 
     let url = reqwest::Url::parse(&request.url)
-        .map_err(|e| SandboxError::ExecutionFailed(format!("invalid URL: {e}")))?;
+        .map_err(|e| SandboxError::InvalidPayload(format!("invalid URL: {e}")))?;
     let (pin_host, pin_addr) = resolve_url_to_safe_addr(&url)?;
 
     let method = request
@@ -630,5 +632,72 @@ mod tests {
         // `null` parses successfully as serde_json::Value::Null, but has
         // no `method` field. The fail-closed path still applies.
         assert!(payload_declares_mutation_http("null"));
+    }
+
+    // ── pre-1.0 API cleanup: bad-request errors map to `InvalidPayload` ─────
+    //
+    // The three executors distinguish a malformed/incomplete request from a
+    // failed execution by returning `SandboxError::InvalidPayload` (rather
+    // than `ExecutionFailed`) when the payload cannot be parsed or is missing
+    // the field the executor needs. These tests pin that contract so a future
+    // change cannot silently fold bad requests back into `ExecutionFailed`.
+
+    use super::{execute_http_request, execute_write_file, extract_bash_command_for_execution};
+    use agent_guard_sandbox::SandboxError;
+
+    #[test]
+    fn bash_extract_malformed_json_is_invalid_payload() {
+        let err = extract_bash_command_for_execution("not valid json").unwrap_err();
+        assert!(
+            matches!(err, SandboxError::InvalidPayload(_)),
+            "got {err:?}"
+        );
+    }
+
+    #[test]
+    fn bash_extract_missing_command_is_invalid_payload() {
+        let err = extract_bash_command_for_execution(r#"{"not_command":"echo hi"}"#).unwrap_err();
+        match err {
+            SandboxError::InvalidPayload(msg) => {
+                assert!(
+                    msg.contains("command"),
+                    "error should mention command: {msg}"
+                );
+            }
+            other => panic!("expected InvalidPayload, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn write_file_malformed_json_is_invalid_payload() {
+        let err = execute_write_file("not valid json", None).unwrap_err();
+        assert!(
+            matches!(err, SandboxError::InvalidPayload(_)),
+            "got {err:?}"
+        );
+    }
+
+    #[test]
+    fn http_request_malformed_json_is_invalid_payload() {
+        let err = execute_http_request("not valid json").unwrap_err();
+        assert!(
+            matches!(err, SandboxError::InvalidPayload(_)),
+            "got {err:?}"
+        );
+    }
+
+    #[test]
+    fn http_request_invalid_url_is_invalid_payload() {
+        // Valid JSON, but the URL cannot be parsed → bad request, not a failed run.
+        let err = execute_http_request(r#"{"method":"POST","url":"not a url"}"#).unwrap_err();
+        match err {
+            SandboxError::InvalidPayload(msg) => {
+                assert!(
+                    msg.contains("invalid URL"),
+                    "error should mention URL: {msg}"
+                );
+            }
+            other => panic!("expected InvalidPayload, got {other:?}"),
+        }
     }
 }

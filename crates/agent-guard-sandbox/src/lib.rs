@@ -125,6 +125,12 @@ pub enum SandboxError {
     NotAvailable(String),
     #[error("execution failed: {0}")]
     ExecutionFailed(String),
+    /// The tool payload could not be parsed or did not contain what the
+    /// executor needs (malformed JSON, missing command, invalid URL or
+    /// method). Distinct from `ExecutionFailed` so callers can tell a bad
+    /// request from a failed execution.
+    #[error("invalid payload: {0}")]
+    InvalidPayload(String),
     #[error("timeout after {ms}ms")]
     Timeout { ms: u64 },
     #[error("seccomp filter setup failed: {0}")]

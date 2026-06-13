@@ -181,9 +181,9 @@ fn e5_full_access_executes() {
 // ── E6: Missing 'command' field in payload ────────────────────────────────
 //
 // When check() allows the call (policy passes) but the payload has no "command"
-// field, execute() cannot extract the command and returns SandboxError::ExecutionFailed.
+// field, execute() cannot extract the command and returns SandboxError::InvalidPayload.
 // This is distinct from a policy deny: the policy evaluated the raw payload and
-// allowed it, but execution-time extraction failed.
+// allowed it, but execution-time extraction failed because the payload was bad.
 #[test]
 fn e6_missing_command_field_in_payload() {
     let guard = Guard::from_yaml(POLICY_FULL_ACCESS).expect("guard init");
@@ -191,12 +191,12 @@ fn e6_missing_command_field_in_payload() {
     // Two valid outcomes:
     // 1. check() returns Deny(MissingPayloadField) → Ok(Denied)
     // 2. check() allows (full_access, payload is valid JSON) → execute() fails to extract
-    //    "command" → Err(SandboxError::ExecutionFailed)
+    //    "command" → Err(SandboxError::InvalidPayload)
     match execute_noop(&guard, &inp) {
         Ok(ExecuteOutcome::Denied { .. }) => {
             // Policy denied due to MISSING_PAYLOAD_FIELD.
         }
-        Err(agent_guard_sdk::SandboxError::ExecutionFailed(msg)) => {
+        Err(agent_guard_sdk::SandboxError::InvalidPayload(msg)) => {
             assert!(
                 msg.contains("command"),
                 "error should mention 'command' field, got: {msg}"
@@ -277,7 +277,7 @@ fn e9_non_bash_tool_denied_or_allowed_by_policy() {
     };
     // Non-bash tool: check() runs, result is some form of decision.
     // execute() will try to extract "command" from the payload, which is missing →
-    // SandboxError::ExecutionFailed (only reached if policy Allow).
+    // SandboxError::InvalidPayload (only reached if policy Allow).
     let result = execute_noop(&guard, &inp);
     // We don't assert a specific outcome here — this is a contract sanity check.
     // The important invariant: no panic, no undefined behaviour.
