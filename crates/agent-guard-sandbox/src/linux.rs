@@ -277,6 +277,20 @@ fn add_common_dangerous_syscall_denies(filter: &mut ScmpFilterContext) -> Result
         "bpf",
         "unshare",
         "setns",
+        // io_uring submits socket/connect and file-write operations through a
+        // shared ring buffer, so they never issue the classic syscalls the
+        // network/write deny-lists match. Deny the ring itself in every mode —
+        // there is no way to inspect individual ring ops from seccomp, and no
+        // normal shell command needs io_uring. Denying io_uring_setup alone
+        // prevents creating a ring; enter/register are belt-and-suspenders.
+        // (Issue #54.)
+        "io_uring_setup",
+        "io_uring_enter",
+        "io_uring_register",
+        // process_vm_writev writes directly into another process's address
+        // space — a memory-injection primitive in the same class as ptrace
+        // (already denied above), not needed by ordinary commands.
+        "process_vm_writev",
     ] {
         add_deny_rule(filter, name)?;
     }
@@ -290,6 +304,17 @@ fn add_read_only_write_denies(filter: &mut ScmpFilterContext) -> Result<(), Stri
     }
 
     for name in [
+        // openat2 (Linux 5.6+) is a modern open variant whose access mode lives
+        // behind the `struct open_how` pointer, so the flag-masked deny used for
+        // open/openat above cannot inspect it. Deny it outright in ReadOnly:
+        // ordinary reads go through open/openat, not openat2. (Issue #54.)
+        "openat2",
+        // memfd_create stages a new binary in writable anonymous memory, which
+        // execveat(AT_EMPTY_PATH) can then run — a write+exec evasion that never
+        // touches the path-based write denies. Blocking the staging closes it;
+        // executing an already-present binary stays allowed in ReadOnly, so
+        // execveat itself is intentionally not denied. (Issue #54.)
+        "memfd_create",
         "creat",
         "truncate",
         "ftruncate",
