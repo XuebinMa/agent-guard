@@ -69,6 +69,7 @@ fn decision_label(d: &GuardDecision) -> &'static str {
         GuardDecision::Allow => "allow",
         GuardDecision::Deny { .. } => "deny",
         GuardDecision::AskUser { .. } => "ask_user",
+        _ => "unknown",
     }
 }
 
@@ -77,6 +78,7 @@ fn decision_code(d: &GuardDecision) -> Option<String> {
         GuardDecision::Allow => None,
         GuardDecision::Deny { reason } => Some(format!("{:?}", reason.code)),
         GuardDecision::AskUser { reason, .. } => Some(format!("{:?}", reason.code)),
+        _ => None,
     }
 }
 
@@ -86,6 +88,7 @@ fn runtime_label(d: &RuntimeDecision) -> &'static str {
         RuntimeDecision::Handoff => "handoff",
         RuntimeDecision::Deny { .. } => "deny",
         RuntimeDecision::AskForApproval { .. } => "ask_for_approval",
+        _ => "unknown",
     }
 }
 
@@ -94,6 +97,7 @@ fn runtime_code(d: &RuntimeDecision) -> Option<String> {
         RuntimeDecision::Execute | RuntimeDecision::Handoff => None,
         RuntimeDecision::Deny { reason } => Some(format!("{:?}", reason.code)),
         RuntimeDecision::AskForApproval { reason, .. } => Some(format!("{:?}", reason.code)),
+        _ => None,
     }
 }
 

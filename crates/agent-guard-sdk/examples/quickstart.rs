@@ -104,6 +104,7 @@ fn main() {
             GuardDecision::Allow => "ALLOW    ",
             GuardDecision::Deny { .. } => "DENY     ",
             GuardDecision::AskUser { .. } => "ASK_USER ",
+            _ => "UNKNOWN  ",
         };
 
         // Special case for our demo: if it's ALLOW but the name is "Safe read", we keep it.

@@ -7,8 +7,13 @@ use serde::{Deserialize, Serialize};
 // let untrusted JSON (`{"decision":"allow"}`) synthesize an `Allow` without
 // passing through the policy engine. Audit/receipt consumers read the
 // serialized form; they never deserialize it back to drive a decision.
+// `#[non_exhaustive]`: pre-1.0 is the only window to reserve room for new
+// decision kinds without a breaking change. Cross-crate `match` must carry a
+// wildcard arm; constructing and destructuring the existing variants is
+// unaffected.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(tag = "decision", rename_all = "snake_case")]
+#[non_exhaustive]
 pub enum GuardDecision {
     Allow,
     Deny {
@@ -96,8 +101,11 @@ impl GuardDecision {
 
 // ── RuntimeDecision ──────────────────────────────────────────────────────────
 
+// `#[non_exhaustive]`: reserve room for new runtime dispositions before 1.0.
+// Cross-crate `match` must carry a wildcard arm.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "decision", rename_all = "snake_case")]
+#[non_exhaustive]
 pub enum RuntimeDecision {
     Execute,
     Handoff,

@@ -4,7 +4,8 @@
 //! `Guard` API rather than these primitives.
 
 use agent_guard_core::{
-    Context, DecisionCode, GuardDecision, GuardInput, PolicyMode, RuntimeDecision, Tool,
+    Context, DecisionCode, DecisionReason, GuardDecision, GuardInput, PolicyMode, RuntimeDecision,
+    Tool,
 };
 use agent_guard_validators::bash::PermissionMode;
 
@@ -30,6 +31,13 @@ pub(crate) fn runtime_decision_for_input(
         GuardDecision::AskUser { message, reason } => {
             RuntimeDecision::AskForApproval { message, reason }
         }
+        // Fail closed: an unrecognized decision kind maps to a deny, never Execute.
+        _ => RuntimeDecision::Deny {
+            reason: DecisionReason::new(
+                DecisionCode::InternalError,
+                "unrecognized guard decision; failing closed",
+            ),
+        },
     }
 }
 

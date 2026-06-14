@@ -112,6 +112,17 @@ fn decision_from_rust(
             policy_verification_status: verification_status,
             policy_verification_error: verification_error,
         },
+        // Fail closed: surface an unrecognized decision kind as a deny.
+        _ => Decision {
+            outcome: "deny".to_string(),
+            message: Some("unrecognized guard decision".to_string()),
+            code: None,
+            matched_rule: None,
+            ask_prompt: None,
+            policy_version,
+            policy_verification_status: verification_status,
+            policy_verification_error: verification_error,
+        },
     }
 }
 
@@ -159,6 +170,17 @@ fn runtime_decision_from_rust(
             code: Some(format!("{:?}", reason.code)),
             matched_rule: reason.matched_rule,
             ask_prompt: Some(message),
+            policy_version,
+            policy_verification_status: verification_status,
+            policy_verification_error: verification_error,
+        },
+        // Fail closed: surface an unrecognized disposition as a deny.
+        _ => RuntimeDecision {
+            outcome: "deny".to_string(),
+            message: Some("unrecognized runtime decision".to_string()),
+            code: None,
+            matched_rule: None,
+            ask_prompt: None,
             policy_version,
             policy_verification_status: verification_status,
             policy_verification_error: verification_error,

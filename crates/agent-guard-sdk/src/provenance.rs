@@ -55,6 +55,8 @@ impl ExecutionReceipt {
             GuardDecision::Allow => "allow",
             GuardDecision::Deny { .. } => "deny",
             GuardDecision::AskUser { .. } => "ask",
+            // Fail closed: record an unrecognized decision as a denial, never allow.
+            _ => "deny",
         };
 
         let mut receipt = Self {

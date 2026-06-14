@@ -89,6 +89,7 @@ fn print_decision(name: &str, decision: &GuardDecision) {
         GuardDecision::Allow => "ALLOW   ",
         GuardDecision::Deny { .. } => "DENY    ",
         GuardDecision::AskUser { .. } => "ASK     ",
+        _ => "UNKNOWN ",
     };
     println!("[{label}] {name}");
     match decision {

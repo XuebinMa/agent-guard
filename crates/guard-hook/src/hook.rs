@@ -234,6 +234,8 @@ pub fn run_check(stdin_buf: &str, policy_path: &Path, agent_id: &str, out: &mut 
             let label = format_reason(&reason.code, &message, reason.matched_rule.as_deref());
             emit_ask(out, label);
         }
+        // Fail closed: an unrecognized decision kind must block, never approve.
+        _ => emit_block(out, "unrecognized guard decision; blocking".to_string()),
     }
 }
 

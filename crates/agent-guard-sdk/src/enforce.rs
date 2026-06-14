@@ -105,6 +105,14 @@ impl Guard {
                     policy_verification: state.policy_verification.clone(),
                 });
             }
+            // Fail closed: an unrecognized decision kind must never execute.
+            _ => {
+                return Ok(ExecuteOutcome::Denied {
+                    decision,
+                    policy_version,
+                    policy_verification: state.policy_verification.clone(),
+                });
+            }
         }
 
         self.execute_allowed(
@@ -423,6 +431,16 @@ impl Guard {
                     policy_verification: state.policy_verification.clone(),
                 })
             }
+            // Fail closed: an unrecognized runtime disposition is denied.
+            _ => Ok(RuntimeOutcome::Denied {
+                request_id,
+                reason: DecisionReason::new(
+                    DecisionCode::InternalError,
+                    "unrecognized runtime decision; failing closed",
+                ),
+                policy_version,
+                policy_verification: state.policy_verification.clone(),
+            }),
         }
     }
 
