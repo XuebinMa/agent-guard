@@ -59,6 +59,55 @@ const COMMAND_WRAPPERS: &[CommandWrapper] = &[
         arg_short_flags: &['s', 'k'],
         leading_operands: 1,
     },
+    // ── irregular spawners with a regular-enough grammar (issue #55) ──────────
+    // These run an arbitrary sub-command after their own flags. `find -exec`
+    // and `xargs` are handled separately (their command word is mid-arguments
+    // or their target comes from stdin); the rest fit the flag-skip model.
+    CommandWrapper {
+        // strace -o file -e expr -p pid CMD
+        name: "strace",
+        arg_short_flags: &['o', 'e', 'p', 'E', 's', 'a'],
+        leading_operands: 0,
+    },
+    CommandWrapper {
+        name: "ltrace",
+        arg_short_flags: &['o', 'e', 'p', 's', 'a', 'u'],
+        leading_operands: 0,
+    },
+    CommandWrapper {
+        // nsenter -t pid -S uid -G gid CMD (option-arg flags only; the rare
+        // `-r[dir]`/`-w[dir]` optional-arg forms are treated as boolean).
+        name: "nsenter",
+        arg_short_flags: &['t', 'S', 'G'],
+        leading_operands: 0,
+    },
+    CommandWrapper {
+        // unshare's short flags are all boolean (-m/-u/-i/-n/-p/-U/-C/-T/-r/-f).
+        name: "unshare",
+        arg_short_flags: &[],
+        leading_operands: 0,
+    },
+    CommandWrapper {
+        // watch -n SECS CMD
+        name: "watch",
+        arg_short_flags: &['n'],
+        leading_operands: 0,
+    },
+    CommandWrapper {
+        // flock [-w secs] [-E code] <lockfile|fd> CMD — the lock target is a
+        // leading operand before the command word.
+        name: "flock",
+        arg_short_flags: &['w', 'E'],
+        leading_operands: 1,
+    },
+    CommandWrapper {
+        // xargs [-I repl] [-n N] [-P N] [-d delim] CMD — the command word
+        // follows the flags; its *operands* come from stdin (see
+        // `leads_with_target_hiding_spawner`).
+        name: "xargs",
+        arg_short_flags: &['I', 'i', 'E', 'e', 'd', 'n', 'P', 's', 'a', 'L', 'l'],
+        leading_operands: 0,
+    },
 ];
 
 /// `NAME=value` shell variable-assignment prefix (e.g. `FOO=bar cmd`, or the
@@ -132,6 +181,30 @@ pub(crate) fn unwrap_command_wrappers<S: AsRef<str>>(tokens: &[S]) -> &[S] {
         let Some(first) = slice.first().map(AsRef::as_ref) else {
             return slice;
         };
+        // `find ... -exec CMD ... ;` / `-execdir CMD ... +`: the sub-command is
+        // mid-arguments, after the path and predicates, so the regular flag-skip
+        // model cannot reach it. Extract the tokens between `-exec(dir)` and the
+        // `;`/`+` terminator and continue unwrapping (handles `find -exec sudo
+        // rm`). A `find` with no `-exec` is a plain read traversal.
+        if first == "find" {
+            if let Some(pos) = slice.iter().position(|t| {
+                let s = t.as_ref();
+                s == "-exec" || s == "-execdir"
+            }) {
+                let sub = &slice[pos + 1..];
+                let end = sub
+                    .iter()
+                    .position(|t| {
+                        let s = t.as_ref();
+                        s == ";" || s == "+"
+                    })
+                    .unwrap_or(sub.len());
+                slice = &sub[..end];
+                continue;
+            }
+            return slice;
+        }
+
         let Some(wrapper) = COMMAND_WRAPPERS.iter().find(|w| w.name == first) else {
             return slice; // real command word reached
         };
@@ -140,5 +213,26 @@ pub(crate) fn unwrap_command_wrappers<S: AsRef<str>>(tokens: &[S]) -> &[S] {
         // Defensive: every wrapper consumes at least its own name, so `slice`
         // strictly shrinks and the loop always terminates.
         slice = &slice[skipped.min(slice.len())..];
+    }
+}
+
+/// Whether the segment is launched through a spawner that supplies the
+/// wrapped command's *operands* from somewhere the validator cannot see —
+/// `find ... -exec` (paths from the filesystem traversal, e.g. `{}`) or
+/// `xargs` (operands from stdin). When such a spawner wraps a write/state
+/// command the write target is unverifiable, so the path gate must fail
+/// closed rather than trust the (placeholder or absent) visible operands.
+pub(crate) fn leads_with_target_hiding_spawner<S: AsRef<str>>(tokens: &[S]) -> bool {
+    let mut i = 0;
+    while i < tokens.len() && is_env_assignment(tokens[i].as_ref()) {
+        i += 1;
+    }
+    match tokens.get(i).map(AsRef::as_ref) {
+        Some("xargs") => true,
+        Some("find") => tokens[i..].iter().any(|t| {
+            let s = t.as_ref();
+            s == "-exec" || s == "-execdir"
+        }),
+        _ => false,
     }
 }
