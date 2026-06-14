@@ -72,8 +72,19 @@ impl AppContainerSandbox {
             .collect();
         let pcw_name = PCWSTR(name_u16.as_ptr());
 
-        // Ignore error if exists
-        let _ = CreateAppContainerProfile(pcw_name, pcw_name, pcw_name, None, 0);
+        // Create the profile. "Already exists" is the expected benign case on a
+        // re-run; any other HRESULT is a real failure and must surface here
+        // rather than masquerading later as a misleading SID-derivation error.
+        match CreateAppContainerProfile(pcw_name, pcw_name, pcw_name, None, 0) {
+            Ok(_) => {}
+            Err(e) if e.code() == ERROR_ALREADY_EXISTS.to_hresult() => {}
+            Err(e) => {
+                return Err(SandboxError::ExecutionFailed(format!(
+                    "AppContainer: CreateAppContainerProfile failed: {}",
+                    e
+                )));
+            }
+        }
 
         let sid = DeriveAppContainerSidFromAppContainerName(pcw_name).map_err(|e| {
             SandboxError::ExecutionFailed(format!("AppContainer: Failed to derive SID: {}", e))
@@ -259,11 +270,28 @@ impl AppContainerSandbox {
         }
 
         let mut exit_code: u32 = 0;
-        let _ = GetExitCodeProcess(pi.hProcess, &mut exit_code);
+        // A failed read leaves `exit_code` at 0, which would report success for a
+        // process whose status was never read. Surface the failure instead.
+        if !GetExitCodeProcess(pi.hProcess, &mut exit_code).as_bool() {
+            return Err(SandboxError::ExecutionFailed(format!(
+                "AppContainer: GetExitCodeProcess failed (code {})",
+                GetLastError().0
+            )));
+        }
+
+        // A panicked reader thread must not be silently substituted with an empty
+        // string, which would make a failed read indistinguishable from no output
+        // and hide the I/O error from the audit record.
+        let stdout = t1.join().map_err(|_| {
+            SandboxError::ExecutionFailed("AppContainer: stdout reader thread panicked".to_string())
+        })?;
+        let stderr = t2.join().map_err(|_| {
+            SandboxError::ExecutionFailed("AppContainer: stderr reader thread panicked".to_string())
+        })?;
 
         Ok(SandboxOutput {
-            stdout: t1.join().unwrap_or_default(),
-            stderr: t2.join().unwrap_or_default(),
+            stdout,
+            stderr,
             exit_code: exit_code as i32,
         })
     }
