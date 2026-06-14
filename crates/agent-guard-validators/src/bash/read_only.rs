@@ -5,6 +5,7 @@ use super::tables::{
 };
 use super::tokenize::shell_split;
 use super::types::{PermissionMode, ValidationResult};
+use super::wrappers::unwrap_command_wrappers;
 
 #[must_use]
 pub fn validate_read_only(command: &str, mode: PermissionMode) -> ValidationResult {
@@ -65,9 +66,7 @@ fn check_command_segment(parts: &[String]) -> Option<ValidationResult> {
         return None;
     }
 
-    let first_command = &parts[0];
-
-    // Detect process substitution (CWE-78)
+    // Detect process substitution (CWE-78) over the full, un-unwrapped segment.
     for part in parts {
         if part.contains("<(") || part.contains(">(") {
             return Some(ValidationResult::Block {
@@ -75,6 +74,14 @@ fn check_command_segment(parts: &[String]) -> Option<ValidationResult> {
             });
         }
     }
+
+    // Strip transparent wrappers (`sudo`/`env`/`nice`/`nohup`/`timeout`/`doas`)
+    // and `NAME=value` prefixes so the *real* command word — not a wrapper flag
+    // or operand — drives the checks below. Without this, `sudo -u root rm`,
+    // `env FOO=1 rm`, or `FOO=1 rm` hid the destructive command from this gate
+    // (audit 2026-05-18 / 2026-05-19 / 2026-06-08).
+    let parts = unwrap_command_wrappers(parts);
+    let first_command = parts.first()?;
 
     if first_command == "git" {
         if parts.len() > 1 {
@@ -123,10 +130,8 @@ fn check_command_segment(parts: &[String]) -> Option<ValidationResult> {
         }
     }
 
-    if first_command == "sudo" && parts.len() > 1 {
-        let inner = parts[1..].to_vec();
-        return check_command_segment(&inner);
-    }
+    // Wrapper layers (`sudo`/`env`/…) are stripped up front by
+    // `unwrap_command_wrappers`, so `first_command` is already the real command.
 
     // Interpreter-laundering check lives in `validate_bash_command`'s
     // early gate (see `contains_interpreter_with_inline_code`); it now

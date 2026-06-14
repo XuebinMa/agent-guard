@@ -1,6 +1,7 @@
 //! Shell tokenisation, heredoc masking, and injection-detection helpers.
 
 use super::tables::{CODE_LAUNDERING_COMMANDS, INLINE_CODE_FLAGS, INLINE_CODE_INTERPRETERS};
+use super::wrappers::unwrap_command_wrappers;
 
 /// Simple shell splitter that respects single and double quotes.
 pub(crate) fn shell_split(s: &str) -> Vec<String> {
@@ -327,31 +328,13 @@ pub(crate) fn contains_interpreter_with_inline_code(command: &str) -> Option<(St
     let parts = shell_split(command);
 
     let scan = |segment: &[&String]| -> Option<(String, String)> {
-        // Skip variable-assignment prefixes, then optionally one `sudo`.
-        let mut idx = 0;
-        while idx < segment.len() {
-            let token = segment[idx];
-            if token.contains('=')
-                && token
-                    .as_bytes()
-                    .iter()
-                    .take_while(|&&b| b != b'=')
-                    .all(|&b| b.is_ascii_alphanumeric() || b == b'_')
-            {
-                idx += 1;
-                continue;
-            }
-            break;
-        }
-        if idx < segment.len() && segment[idx].as_str() == "sudo" {
-            idx += 1;
-        }
+        let rest = unwrap_command_wrappers(segment);
 
-        let first = segment.get(idx)?;
+        let first = rest.first()?;
         if !INLINE_CODE_INTERPRETERS.contains(&first.as_str()) {
             return None;
         }
-        for arg in &segment[idx + 1..] {
+        for arg in &rest[1..] {
             if INLINE_CODE_FLAGS.contains(&arg.as_str()) {
                 return Some((first.as_str().to_string(), arg.as_str().to_string()));
             }

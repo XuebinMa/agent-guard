@@ -13,6 +13,7 @@ mod read_only;
 mod tables;
 mod tokenize;
 mod types;
+mod wrappers;
 
 #[cfg(test)]
 mod tests;
