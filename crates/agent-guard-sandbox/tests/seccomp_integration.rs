@@ -164,6 +164,35 @@ mod seccomp_tests {
         );
     }
 
+    // ── C2b: ReadOnly — modern write/exec-staging syscalls are denied (#54) ──
+    //
+    // memfd_create stages a binary in writable anonymous memory that
+    // execveat(AT_EMPTY_PATH) can run, bypassing the path-based write denies.
+    // The deny-list now blocks memfd_create in ReadOnly, so the staging fails.
+    // (If python3 is absent the command exits non-zero anyway, which still
+    // satisfies the "did not succeed" assertion — never a false failure.)
+    #[test]
+    fn c2b_read_only_blocks_memfd_create() {
+        let sandbox = SeccompSandbox::strict();
+        let cmd = "python3 -c 'import os; os.memfd_create(\"x\", 0); print(\"STAGED\")'";
+        let result = sandbox.execute(cmd, &ctx(PolicyMode::ReadOnly));
+
+        match result {
+            Err(SandboxError::KilledByFilter { .. }) => {}
+            Ok(out) => {
+                assert_ne!(
+                    out.exit_code, 0,
+                    "memfd_create should not succeed in read_only mode; output: {out:?}"
+                );
+                assert!(
+                    !out.stdout.contains("STAGED"),
+                    "memfd_create staging must not complete; output: {out:?}"
+                );
+            }
+            Err(e) => panic!("unexpected error: {e}"),
+        }
+    }
+
     // ── C3: WorkspaceWrite — write allowed, networking still blocked ──────
 
     #[test]
