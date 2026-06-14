@@ -23,12 +23,12 @@ fn invalid_payload_from_decision(decision: GuardDecision) -> SandboxError {
                 message: reason.message,
             }
         }
-        // The core extractors never return `Allow`, so this is unreachable today.
-        // Fail closed with a generic invalid-payload code rather than panic if
-        // that invariant ever changes. (Pre-1.0 cleanup, issue #61 item 3.)
-        GuardDecision::Allow => SandboxError::InvalidPayload {
+        // The core extractors only deny or ask; `Allow` (and any future variant)
+        // is unreachable today. Fail closed with a generic invalid-payload code
+        // rather than panic if that invariant ever changes. (Issues #61, #42.)
+        _ => SandboxError::InvalidPayload {
             code: DecisionCode::InvalidPayload,
-            message: "core extractor returned an Allow decision with no value".to_string(),
+            message: "core extractor returned a non-deny decision with no value".to_string(),
         },
     }
 }

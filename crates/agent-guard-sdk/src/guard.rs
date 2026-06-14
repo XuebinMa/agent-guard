@@ -409,6 +409,8 @@ impl Guard {
                 "deny"
             }
             GuardDecision::AskUser { .. } => "ask",
+            // Fail closed: label an unrecognized decision as a denial, never allow.
+            _ => "deny",
         };
         self.finalize_check(input, &decision, state, &agent_id, outcome, request_id)
     }
