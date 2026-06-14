@@ -1742,3 +1742,156 @@ mod bash_interpreter_in_workspace_write_tests {
         assert!(matches!(r, ValidationResult::Block { .. }));
     }
 }
+
+// ── #55: irregular-spawner command-word bypass ───────────────────────────────
+// strace/ltrace/nsenter/unshare/watch/flock run a sub-command after their own
+// flags; `find -exec` runs one mid-arguments; `xargs` reads operands from
+// stdin. Each previously hid the real command word (and, for find -exec/xargs,
+// the write target) from the bash gates. The wrappers module now resolves the
+// command word for all of them, and fails closed on find -exec / xargs that
+// wrap a write/state command (target unverifiable).
+mod bash_irregular_spawner_tests {
+    use crate::bash::{validate_bash_command, PermissionMode, ValidationResult};
+    use std::path::Path;
+
+    fn ro() -> PermissionMode {
+        PermissionMode::ReadOnly
+    }
+    fn ws() -> PermissionMode {
+        PermissionMode::WorkspaceWrite
+    }
+    fn workspace() -> &'static Path {
+        Path::new("/workspace")
+    }
+    fn blocks(cmd: &str, mode: PermissionMode) {
+        let r = validate_bash_command(cmd, mode, workspace(), &[]);
+        assert!(
+            matches!(r, ValidationResult::Block { .. }),
+            "expected Block for `{cmd}`, got {r:?}"
+        );
+    }
+    fn allows(cmd: &str, mode: PermissionMode) {
+        let r = validate_bash_command(cmd, mode, workspace(), &[]);
+        assert_eq!(r, ValidationResult::Allow, "expected Allow for `{cmd}`");
+    }
+
+    // ── regular-grammar spawners: real command word reaches the ReadOnly gate ─
+
+    #[test]
+    fn blocks_strace_then_write_command_in_readonly() {
+        blocks("strace -f -o out.txt rm /etc/passwd", ro());
+    }
+
+    #[test]
+    fn blocks_ltrace_then_write_command_in_readonly() {
+        blocks("ltrace rm /etc/passwd", ro());
+    }
+
+    #[test]
+    fn blocks_nsenter_target_flag_then_write_command_in_readonly() {
+        blocks("nsenter -t 123 rm /etc/passwd", ro());
+    }
+
+    #[test]
+    fn blocks_unshare_flags_then_write_command_in_readonly() {
+        blocks("unshare -rm rm /etc/passwd", ro());
+    }
+
+    #[test]
+    fn blocks_watch_interval_flag_then_write_command_in_readonly() {
+        blocks("watch -n 5 rm /etc/passwd", ro());
+    }
+
+    #[test]
+    fn blocks_flock_lockfile_operand_then_write_command_in_readonly() {
+        // flock's lock target is a leading operand before the command word.
+        blocks("flock /tmp/lock rm /etc/passwd", ro());
+    }
+
+    #[test]
+    fn blocks_flock_write_target_outside_workspace() {
+        // flock does not hide the target: `/etc/passwd` stays visible.
+        blocks("flock /tmp/lock rm /etc/passwd", ws());
+    }
+
+    #[test]
+    fn blocks_strace_interpreter_inline_code_in_workspace_write() {
+        blocks(
+            "strace python3 -c 'import os; os.unlink(\"/etc/passwd\")'",
+            ws(),
+        );
+    }
+
+    // ── find -exec: sub-command is mid-arguments ─────────────────────────────
+
+    #[test]
+    fn blocks_find_exec_write_command_in_readonly() {
+        blocks("find /tmp -type f -exec rm {} ;", ro());
+    }
+
+    #[test]
+    fn blocks_find_execdir_write_command_in_readonly() {
+        blocks("find /tmp -type f -execdir rm {} +", ro());
+    }
+
+    #[test]
+    fn blocks_find_exec_write_target_in_workspace_write() {
+        // Target comes from the traversal (`{}`), so fail closed.
+        blocks("find / -type f -exec rm {} ;", ws());
+    }
+
+    #[test]
+    fn blocks_find_exec_nested_sudo_write_command_in_readonly() {
+        blocks("find /tmp -exec sudo rm {} ;", ro());
+    }
+
+    #[test]
+    fn blocks_find_exec_interpreter_inline_code_in_workspace_write() {
+        blocks("find . -exec python3 -c 'open(\"/etc/x\",\"w\")' ;", ws());
+    }
+
+    // ── xargs: operands come from stdin ──────────────────────────────────────
+
+    #[test]
+    fn blocks_xargs_write_command_in_readonly() {
+        blocks("xargs rm", ro());
+    }
+
+    #[test]
+    fn blocks_xargs_replace_flag_then_write_command_in_readonly() {
+        blocks("xargs -I {} rm {}", ro());
+    }
+
+    #[test]
+    fn blocks_xargs_write_command_in_workspace_write() {
+        // The operand is read from stdin, so the target is unverifiable.
+        blocks("xargs rm", ws());
+    }
+
+    // ── must not over-block benign uses ──────────────────────────────────────
+
+    #[test]
+    fn allows_find_exec_read_command_in_readonly() {
+        allows("find /workspace -type f -exec cat {} ;", ro());
+    }
+
+    #[test]
+    fn allows_find_without_exec_in_readonly() {
+        allows("find /workspace -type f -name *.rs", ro());
+    }
+
+    #[test]
+    fn allows_strace_read_command_in_readonly() {
+        allows("strace -f ls", ro());
+    }
+
+    #[test]
+    fn allows_watch_benign_command_in_workspace_write() {
+        allows("watch -n 5 echo hi", ws());
+    }
+
+    #[test]
+    fn allows_xargs_benign_command_in_workspace_write() {
+        allows("xargs echo", ws());
+    }
+}

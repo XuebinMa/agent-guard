@@ -2,10 +2,18 @@
 
 use std::path::{Component, Path, PathBuf};
 
-use super::tables::{READ_PATH_REDIRECTIONS, WRITE_REDIRECTIONS};
+use super::tables::{
+    READ_PATH_REDIRECTIONS, STATE_MODIFYING_COMMANDS, WRITE_COMMANDS, WRITE_REDIRECTIONS,
+};
 use super::tokenize::shell_split;
 use super::types::{PermissionMode, ValidationResult};
-use super::wrappers::unwrap_command_wrappers;
+use super::wrappers::{leads_with_target_hiding_spawner, unwrap_command_wrappers};
+
+/// Relative parent-escape sentinel emitted when a target-hiding spawner
+/// (`find -exec` / `xargs`) wraps a write command. `validate_paths` rejects
+/// `../` escapes regardless of the policy escape list, so this cannot be
+/// allow-listed away — the right posture when the real target is unverifiable.
+const UNVERIFIABLE_WRAPPER_TARGET: &str = "../agent-guard-unverifiable-wrapper-write-target";
 
 pub fn validate_paths(
     command: &str,
@@ -151,10 +159,23 @@ fn write_targets_for_segment(segment: &[String]) -> Vec<String> {
         return Vec::new();
     }
 
+    let original = segment;
     // Strip transparent wrappers (`sudo`/`env`/…) and `NAME=value` prefixes so
     // the real command word and its write operands are what we reason about
     // (e.g. `sudo -u root rm /etc/passwd`, `env FOO=1 tee /etc/passwd`).
     let segment = unwrap_command_wrappers(segment);
+
+    // Fail closed for `find -exec` / `xargs` wrapping a write/state command:
+    // the operand comes from the traversal or stdin, so the visible token
+    // (`{}`, or nothing) is not the real target. Emit the unverifiable sentinel
+    // so the path gate blocks rather than trusting a placeholder. Issue #55.
+    if leads_with_target_hiding_spawner(original) {
+        if let Some(cmd) = segment.first().map(|s| s.as_str()) {
+            if WRITE_COMMANDS.contains(&cmd) || STATE_MODIFYING_COMMANDS.contains(&cmd) {
+                return vec![UNVERIFIABLE_WRAPPER_TARGET.to_string()];
+            }
+        }
+    }
 
     let mut targets = Vec::new();
 
