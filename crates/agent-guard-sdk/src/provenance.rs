@@ -49,7 +49,14 @@ impl ExecutionReceipt {
         let timestamp = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .map(|d| d.as_secs())
-            .unwrap_or(0);
+            .unwrap_or_else(|_| {
+                // A pre-epoch clock would silently stamp the receipt with 0,
+                // weakening the execution-proof attestation. Make it observable.
+                tracing::warn!(
+                    "system clock is before UNIX_EPOCH; execution receipt timestamp falls back to 0"
+                );
+                0
+            });
 
         let outcome = match decision {
             GuardDecision::Allow => "allow",

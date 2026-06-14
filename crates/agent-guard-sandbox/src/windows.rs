@@ -601,7 +601,14 @@ fn spawn_low_integrity_process(
         }
 
         let mut exit_code: u32 = 0;
-        GetExitCodeProcess(pi.hProcess, &mut exit_code);
+        // A failed call leaves exit_code at 0, reporting a false success for a
+        // process whose status was never read. Mirror the other Win32 guards in
+        // this file and fail closed. (#43)
+        if GetExitCodeProcess(pi.hProcess, &mut exit_code) == 0 {
+            return Err(SandboxError::ExecutionFailed(
+                "Windows Sandbox: GetExitCodeProcess failed".to_string(),
+            ));
+        }
 
         let stdout = stdout_thread
             .join()
