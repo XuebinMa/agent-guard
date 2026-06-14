@@ -191,6 +191,23 @@ The Node test suite exercises real `DynamicTool` objects and real OpenAI Agents 
 - if the default sandbox falls back to `NoopSandbox`, the policy gate still runs but OS-level isolation is not equivalent
 - Bash still has the deepest validator path today; file and HTTP controls remain more policy-centric than Bash validation
 
+## Dependency audit posture
+
+The published `@agent-guard/node` package ships a **compiled native `.node` binary with no runtime npm dependencies** — `package.json` declares only `devDependencies`. Those dev dependencies (`@langchain/core`, `@openai/agents`, `@napi-rs/cli`, `zod`) exist to build the binding and to run the framework-parity tests; they are **not distributed to consumers**.
+
+Consequently:
+
+- **Dev-only advisories are accepted.** `npm audit` reports transitive advisories from the LangChain / OpenAI agent SDKs (e.g. `langsmith`, `qs`, `uuid`, `ws`). These are reachable only from the test/build tooling, never from the shipped surface, so they do not gate releases. Run `npm audit fix` opportunistically to reduce noise.
+- **Production dependencies are gated in CI.** The Node CI job runs `npm audit --omit=dev --audit-level=moderate`. Because there are no runtime dependencies today, this is currently empty/clean; if a real runtime dependency is ever added, a `moderate`+ advisory there fails CI.
+
+To reproduce locally:
+
+```bash
+cd crates/agent-guard-node
+npm audit --omit=dev --audit-level=moderate   # production tree — must be clean
+npm audit                                       # full tree — dev advisories are informational
+```
+
 ## Demos
 
 - `npm run demo:quickstart --prefix crates/agent-guard-node`

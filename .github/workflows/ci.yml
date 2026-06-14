@@ -138,6 +138,16 @@ jobs:
         run: |
           npm run demo:quickstart --prefix crates/agent-guard-node
           npm run demo:flow --prefix crates/agent-guard-node
+      # Posture (#41): the published surface is the compiled .node binary with
+      # no runtime npm dependencies; the JS devDependencies (LangChain / OpenAI
+      # agent SDKs) exist only for framework-parity tests and are not shipped, so
+      # advisories there are accepted (documented in the crate README). Gate the
+      # production dependency tree only, so a real shipped vulnerability fails CI
+      # while dev-only advisories do not block.
+      - name: Audit production dependencies
+        run: |
+          cd crates/agent-guard-node
+          npm audit --omit=dev --audit-level=moderate
 
   cargo-deny:
     name: cargo-deny
