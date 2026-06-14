@@ -5,6 +5,7 @@ use std::path::{Component, Path, PathBuf};
 use super::tables::{READ_PATH_REDIRECTIONS, WRITE_REDIRECTIONS};
 use super::tokenize::shell_split;
 use super::types::{PermissionMode, ValidationResult};
+use super::wrappers::unwrap_command_wrappers;
 
 pub fn validate_paths(
     command: &str,
@@ -150,13 +151,10 @@ fn write_targets_for_segment(segment: &[String]) -> Vec<String> {
         return Vec::new();
     }
 
-    // Unwrap one leading `sudo` layer so the real command word and its args
-    // are what we reason about.
-    let segment = if segment.first().is_some_and(|token| token == "sudo") && segment.len() > 1 {
-        &segment[1..]
-    } else {
-        segment
-    };
+    // Strip transparent wrappers (`sudo`/`env`/…) and `NAME=value` prefixes so
+    // the real command word and its write operands are what we reason about
+    // (e.g. `sudo -u root rm /etc/passwd`, `env FOO=1 tee /etc/passwd`).
+    let segment = unwrap_command_wrappers(segment);
 
     let mut targets = Vec::new();
 
