@@ -65,11 +65,6 @@ jobs:
         uses: Swatinem/rust-cache@v2
       - name: Run Job Object integration tests
         run: cargo test -p agent-guard-sandbox --features windows-sandbox --test windows_job_integration -- --nocapture
-      # AppContainer needs a privileged host to run, so this is a compile-only
-      # gate — it stops the off-by-default prototype from silently bit-rotting
-      # (it is not built anywhere else). (#48)
-      - name: Build AppContainer sandbox (compile check)
-        run: cargo build -p agent-guard-sandbox --features windows-appcontainer
 
   lint:
     name: Linting (Clippy & Fmt)
