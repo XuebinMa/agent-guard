@@ -8,7 +8,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash .claude/workflows/pre-commit-review.sh",
+            "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/workflows/pre-commit-review.sh\"",
             "timeout": 300
           }
         ]
@@ -20,7 +20,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash .claude/workflows/post-edit-review.sh",
+            "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/workflows/post-edit-review.sh\"",
             "timeout": 30
           }
         ]
