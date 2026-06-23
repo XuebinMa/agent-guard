@@ -48,6 +48,33 @@ fn validate_paths_blocks_absolute_path_outside_workspace() {
 }
 
 #[test]
+fn validate_paths_blocks_noclobber_override_redirect_outside_workspace() {
+    // `>|` forces a write even under `set -o noclobber`. Before `>|` was
+    // tokenized as a single redirection operator it split into `>` then `|`,
+    // so the path landed in a fresh pipeline segment with no write target and
+    // escaped confinement. Regression for the workspace-escape bypass.
+    let result = validate_paths(
+        "echo pwned >| /etc/cron.d/x",
+        PermissionMode::WorkspaceWrite,
+        Path::new("/workspace"),
+        &[],
+    );
+    assert!(matches!(result, ValidationResult::Block { .. }));
+}
+
+#[test]
+fn validate_paths_blocks_glued_noclobber_override_redirect() {
+    // Glued form `>|path` with no surrounding spaces must also be caught.
+    let result = validate_paths(
+        "echo pwned >|/etc/passwd",
+        PermissionMode::WorkspaceWrite,
+        Path::new("/workspace"),
+        &[],
+    );
+    assert!(matches!(result, ValidationResult::Block { .. }));
+}
+
+#[test]
 fn validate_paths_blocks_parent_dir_escape() {
     let result = validate_paths(
         "echo ok > ../outside.txt",

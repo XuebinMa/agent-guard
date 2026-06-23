@@ -83,9 +83,10 @@ pub(crate) fn shell_split(s: &str) -> Vec<String> {
             }
             '>' if !in_single_quote && !in_double_quote => {
                 // Split on unquoted `>` so glued forms like `tee>/etc/passwd`
-                // reach the write-target scan. Coalesce `>>` (append). `>&`
-                // remains two tokens (`>` then `&`); the redirection-target
-                // collector already skips `&`-prefixed next tokens.
+                // reach the write-target scan. Coalesce `>>` (append) and `>|`
+                // (noclobber-override force-write). `>&` remains two tokens
+                // (`>` then `&`); the redirection-target collector already
+                // skips `&`-prefixed next tokens.
                 if !current.is_empty() {
                     parts.push(current.clone());
                     current.clear();
@@ -93,6 +94,14 @@ pub(crate) fn shell_split(s: &str) -> Vec<String> {
                 if chars.peek() == Some(&'>') {
                     let _ = chars.next();
                     parts.push(">>".to_string());
+                } else if chars.peek() == Some(&'|') {
+                    // `>|` forces a write even under `set -o noclobber`. Coalesce
+                    // it into a single token so the trailing `|` is not treated
+                    // as a pipeline separator — otherwise the write target after
+                    // `>|` lands in the next segment and escapes the
+                    // write-target scan (workspace-escape bypass).
+                    let _ = chars.next();
+                    parts.push(">|".to_string());
                 } else {
                     parts.push(">".to_string());
                 }
