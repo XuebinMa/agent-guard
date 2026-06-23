@@ -175,20 +175,49 @@ fn finding_spans(detectors: &[ContentDetector], text: &str) -> Vec<SensitiveSpan
 /// Rewrite the tool payload's scannable field with masked text.
 ///
 /// Returns `None` (caller falls back to the original payload) if the payload
-/// is not a JSON object — no panic path.
+/// is not a JSON object — no panic path. Every `None` on the Mask path means
+/// the ORIGINAL unmasked payload executes, so each failure is logged at
+/// `error` level: a silent fallback would defeat Mask-mode content policy
+/// without any signal (#88).
 fn rewrite_field(tool: &Tool, payload: &str, masked: &str) -> Option<String> {
     let field = match tool {
         Tool::WriteFile => "content",
         Tool::HttpRequest => "body",
         _ => return None,
     };
-    let mut value: serde_json::Value = serde_json::from_str(payload).ok()?;
-    let obj = value.as_object_mut()?;
+    let mut value: serde_json::Value = match serde_json::from_str(payload) {
+        Ok(value) => value,
+        Err(error) => {
+            tracing::error!(
+                tool = ?tool,
+                %error,
+                "content mask: payload is not parseable JSON; executing ORIGINAL unmasked payload"
+            );
+            return None;
+        }
+    };
+    let Some(obj) = value.as_object_mut() else {
+        tracing::error!(
+            tool = ?tool,
+            "content mask: payload JSON is not an object; executing ORIGINAL unmasked payload"
+        );
+        return None;
+    };
     obj.insert(
         field.to_string(),
         serde_json::Value::String(masked.to_string()),
     );
-    serde_json::to_string(&value).ok()
+    match serde_json::to_string(&value) {
+        Ok(rewritten) => Some(rewritten),
+        Err(error) => {
+            tracing::error!(
+                tool = ?tool,
+                %error,
+                "content mask: failed to re-serialize masked payload; executing ORIGINAL unmasked payload"
+            );
+            None
+        }
+    }
 }
 
 #[cfg(test)]

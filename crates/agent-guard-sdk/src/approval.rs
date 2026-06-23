@@ -345,9 +345,15 @@ impl ApprovalLedger {
                 continue;
             }
             // Skip unparseable lines rather than aborting — a partially-written
-            // tail line should not make the whole ledger unreadable.
-            let Ok(event) = serde_json::from_str::<LedgerEvent>(line) else {
-                continue;
+            // tail line should not make the whole ledger unreadable. Log the
+            // skip so a corrupt or tampered line produces a signal instead of
+            // silently vanishing from the reconstructed state (#88).
+            let event = match serde_json::from_str::<LedgerEvent>(line) {
+                Ok(event) => event,
+                Err(error) => {
+                    tracing::warn!(%line, %error, "approval ledger: skipping unparseable line");
+                    continue;
+                }
             };
             apply_event(&mut state, event);
         }
