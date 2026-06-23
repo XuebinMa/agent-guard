@@ -1,0 +1,18 @@
+# Standalone spike (own [workspace] root) so it never adds ES256/JCS deps to the
+# shipped agent-guard crates or to CI. See README.md for what it proves.
+[package]
+name = "sep2828-x402-recompute"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[workspace]
+
+[dependencies]
+agent-guard-core = { path = "../../crates/agent-guard-core" }
+p256 = { version = "0.13", features = ["ecdsa", "pem", "pkcs8"] }
+serde_json = "1"
+serde_jcs = "0.1"
+sha2 = "0.10"
+hex = "0.4"
+rand_core = { version = "0.6", features = ["getrandom"] }

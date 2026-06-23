@@ -1,0 +1,8 @@
+/target
+/.venv
+Cargo.lock
+
+# The root .gitignore ignores *.pem to keep private keys out. This file is a
+# PUBLIC ES256 key and the checker needs it to verify the committed receipts,
+# so re-include it explicitly.
+!vectors/keys/es256_public.pem

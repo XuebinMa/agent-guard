@@ -1,0 +1,32 @@
+{
+  "alg": "ES256",
+  "backLink": {
+    "attestationDigest": "sha256:7d19121e6ad3c6243e92f7177a38a1740de422947541492104f8b42314edf18b",
+    "attestationNonce": "agent-guard:sha256:42f279db7f430127d682f1ccf6acdf90e679086b3c78b38fa30085cd6addc2f3"
+  },
+  "decisionDerived": {
+    "decidedAt": "2026-06-23T16:40:00Z",
+    "decision": "allow",
+    "evidenceRef": {
+      "canonicalization": "JCS",
+      "digest": "sha256:d10cc62bb210d5c5a82eab9151c5ab49616faae45eeb66a704bf04de53ace7c2",
+      "ref": "x402:action_ref/sha256:42f279db7f430127d682f1ccf6acdf90e679086b3c78b38fa30085cd6addc2f3",
+      "schema": "x402.settlement.sui/v0"
+    },
+    "policyId": "policy:x402-fulfillment/1",
+    "reason": "agent acted within the authorized, gated scope of the settled order",
+    "riskScore": "0.10",
+    "thresholdAllow": "0.30",
+    "thresholdBlock": "0.80"
+  },
+  "issuerAsserted": {
+    "alg": "ES256",
+    "iat": "2026-06-23T16:40:00Z",
+    "iss": "issuer://agent-guard",
+    "nonce": "ag-sha256:42f279db7f430127d682f1ccf6acdf90e679086b3c78b38fa30085cd6addc2f3",
+    "secretVersion": "v1",
+    "sub": "agent:checkout-bot"
+  },
+  "signature": "6a1638f46f237360b1999299dbce554617e19d2473592b2a924c98c3a896b85884ce27e395203d9d3ee8464c5a4d2211674d8531569cf224a5ca2df77b2fde0b",
+  "version": 1
+}
