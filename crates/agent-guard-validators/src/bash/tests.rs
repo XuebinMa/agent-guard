@@ -75,6 +75,47 @@ fn validate_paths_blocks_glued_noclobber_override_redirect() {
 }
 
 #[test]
+fn validate_paths_blocks_ampersand_redirect_to_file_outside_workspace() {
+    // `>&file` (non-numeric target) redirects stdout+stderr to `file` in bash.
+    // Before `>&` was coalesced into one token it split into `>` then `&`, and
+    // `&` is a segment separator, so the path landed in a fresh segment with no
+    // write target. Regression for the workspace-escape bypass.
+    let result = validate_paths(
+        "echo pwned >&/etc/passwd",
+        PermissionMode::WorkspaceWrite,
+        Path::new("/workspace"),
+        &[],
+    );
+    assert!(matches!(result, ValidationResult::Block { .. }));
+}
+
+#[test]
+fn validate_paths_blocks_spaced_ampersand_redirect_to_file() {
+    let result = validate_paths(
+        "echo pwned >& /etc/cron.d/x",
+        PermissionMode::WorkspaceWrite,
+        Path::new("/workspace"),
+        &[],
+    );
+    assert!(matches!(result, ValidationResult::Block { .. }));
+}
+
+#[test]
+fn validate_paths_allows_fd_duplication_redirect() {
+    // `>&N` / `N>&M` duplicate a file descriptor — the numeric target is not a
+    // filesystem path and must not trip the workspace check (no false positive).
+    for cmd in ["echo hi >&2", "echo hi 2>&1", "make 2>&1"] {
+        let result = validate_paths(
+            cmd,
+            PermissionMode::WorkspaceWrite,
+            Path::new("/workspace"),
+            &[],
+        );
+        assert_eq!(result, ValidationResult::Allow, "fd-dup should pass: {cmd}");
+    }
+}
+
+#[test]
 fn validate_paths_blocks_parent_dir_escape() {
     let result = validate_paths(
         "echo ok > ../outside.txt",
