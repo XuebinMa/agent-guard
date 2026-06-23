@@ -76,8 +76,8 @@ fn decision_label(d: &GuardDecision) -> &'static str {
 fn decision_code(d: &GuardDecision) -> Option<String> {
     match d {
         GuardDecision::Allow => None,
-        GuardDecision::Deny { reason } => Some(format!("{:?}", reason.code)),
-        GuardDecision::AskUser { reason, .. } => Some(format!("{:?}", reason.code)),
+        GuardDecision::Deny { reason } => Some(format!("{:?}", reason.code())),
+        GuardDecision::AskUser { reason, .. } => Some(format!("{:?}", reason.code())),
         _ => None,
     }
 }
@@ -95,8 +95,8 @@ fn runtime_label(d: &RuntimeDecision) -> &'static str {
 fn runtime_code(d: &RuntimeDecision) -> Option<String> {
     match d {
         RuntimeDecision::Execute | RuntimeDecision::Handoff => None,
-        RuntimeDecision::Deny { reason } => Some(format!("{:?}", reason.code)),
-        RuntimeDecision::AskForApproval { reason, .. } => Some(format!("{:?}", reason.code)),
+        RuntimeDecision::Deny { reason } => Some(format!("{:?}", reason.code())),
+        RuntimeDecision::AskForApproval { reason, .. } => Some(format!("{:?}", reason.code())),
         _ => None,
     }
 }

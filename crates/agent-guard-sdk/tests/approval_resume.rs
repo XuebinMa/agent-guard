@@ -116,7 +116,7 @@ fn denied_request_is_denied() {
 
     match outcome {
         RuntimeOutcome::Denied { reason, .. } => {
-            assert_eq!(reason.code, DecisionCode::ApprovalDenied);
+            assert_eq!(reason.code(), DecisionCode::ApprovalDenied);
         }
         other => panic!("expected Denied, got {other:?}"),
     }
@@ -140,7 +140,7 @@ fn timeout_denies_and_marks_expired() {
         RuntimeOutcome::Denied {
             request_id, reason, ..
         } => {
-            assert_eq!(reason.code, DecisionCode::ApprovalDenied);
+            assert_eq!(reason.code(), DecisionCode::ApprovalDenied);
             request_id
         }
         other => panic!("expected Denied, got {other:?}"),

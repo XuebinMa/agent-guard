@@ -19,8 +19,8 @@ fn invalid_payload_from_decision(decision: GuardDecision) -> SandboxError {
     match decision {
         GuardDecision::Deny { reason } | GuardDecision::AskUser { reason, .. } => {
             SandboxError::InvalidPayload {
-                code: reason.code,
-                message: reason.message,
+                code: reason.code(),
+                message: reason.message().to_string(),
             }
         }
         // The core extractors only deny or ask; `Allow` (and any future variant)

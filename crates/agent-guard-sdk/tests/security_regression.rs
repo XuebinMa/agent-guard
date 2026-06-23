@@ -67,9 +67,11 @@ fn ctx_workspace(workspace: &std::path::Path) -> Context {
 fn assert_deny_with_code(d: &GuardDecision, expected: DecisionCode) {
     match d {
         GuardDecision::Deny { reason } => assert_eq!(
-            reason.code, expected,
+            reason.code(),
+            expected,
             "expected {expected:?}, got {:?}: {}",
-            reason.code, reason.message
+            reason.code(),
+            reason.message()
         ),
         other => panic!("expected Deny({expected:?}), got {other:?}"),
     }
@@ -306,7 +308,7 @@ fn sec11_runtime_outcome_for_blocked_call_carries_reason() {
     match g.run(&input, &sandbox).expect("runtime run") {
         RuntimeOutcome::Denied { reason, .. } => {
             assert!(
-                !reason.message.is_empty(),
+                !reason.message().is_empty(),
                 "denied runtime outcome must carry a non-empty reason"
             );
         }

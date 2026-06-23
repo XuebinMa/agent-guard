@@ -52,7 +52,7 @@ tools:
     println!("[block] POST with a secret in the body");
     match decision {
         GuardDecision::Deny { reason } => {
-            println!("        -> DENY: {}", reason.message);
+            println!("        -> DENY: {}", reason.message());
         }
         other => println!("        -> unexpected: {other}"),
     }

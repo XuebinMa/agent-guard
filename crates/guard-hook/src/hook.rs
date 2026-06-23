@@ -223,15 +223,11 @@ pub fn run_check(stdin_buf: &str, policy_path: &Path, agent_id: &str, out: &mut 
     match guard.check(&guard_input) {
         GuardDecision::Allow => emit_approve(out),
         GuardDecision::Deny { reason } => {
-            let label = format_reason(
-                &reason.code,
-                &reason.message,
-                reason.matched_rule.as_deref(),
-            );
+            let label = format_reason(&reason.code(), reason.message(), reason.matched_rule());
             emit_block(out, label);
         }
         GuardDecision::AskUser { message, reason } => {
-            let label = format_reason(&reason.code, &message, reason.matched_rule.as_deref());
+            let label = format_reason(&reason.code(), &message, reason.matched_rule());
             emit_ask(out, label);
         }
         // Fail closed: an unrecognized decision kind must block, never approve.

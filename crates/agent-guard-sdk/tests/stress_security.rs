@@ -42,17 +42,17 @@ anomaly:
 
         let res1 = guard.execute(&input, &_sandbox).unwrap();
         assert!(
-            matches!(res1, ExecuteOutcome::Denied { decision: GuardDecision::Deny { reason, .. }, .. } if reason.code == DecisionCode::DeniedByRule)
+            matches!(res1, ExecuteOutcome::Denied { decision: GuardDecision::Deny { reason, .. }, .. } if reason.code() == DecisionCode::DeniedByRule)
         );
 
         let res2 = guard.execute(&input, &_sandbox).unwrap();
         assert!(
-            matches!(res2, ExecuteOutcome::Denied { decision: GuardDecision::Deny { reason, .. }, .. } if reason.code == DecisionCode::DeniedByRule)
+            matches!(res2, ExecuteOutcome::Denied { decision: GuardDecision::Deny { reason, .. }, .. } if reason.code() == DecisionCode::DeniedByRule)
         );
 
         let res3 = guard.execute(&input, &_sandbox).unwrap();
         assert!(
-            matches!(res3, ExecuteOutcome::Denied { decision: GuardDecision::Deny { reason, .. }, .. } if reason.code == DecisionCode::AgentLocked),
+            matches!(res3, ExecuteOutcome::Denied { decision: GuardDecision::Deny { reason, .. }, .. } if reason.code() == DecisionCode::AgentLocked),
             "Actor '{}' should be locked",
             actor
         );
@@ -106,7 +106,7 @@ anomaly:
             } = res
             {
                 if let GuardDecision::Deny { reason, .. } = decision {
-                    if reason.code == DecisionCode::AgentLocked {
+                    if reason.code() == DecisionCode::AgentLocked {
                         locked_at_version = Some(policy_version);
                         break;
                     }
@@ -158,7 +158,7 @@ anomaly:
     if let ExecuteOutcome::Denied { decision, .. } = res {
         if let GuardDecision::Deny { reason, .. } = decision {
             assert_eq!(
-                reason.code,
+                reason.code(),
                 DecisionCode::AgentLocked,
                 "Priority failure: AGENT_LOCKED must come first"
             );
@@ -256,7 +256,7 @@ anomaly:
     if let ExecuteOutcome::Denied { decision, .. } = res {
         if let GuardDecision::Deny { reason, .. } = decision {
             assert_eq!(
-                reason.code,
+                reason.code(),
                 DecisionCode::AgentLocked,
                 "Local locking failed due to webhook error?"
             );
