@@ -83,9 +83,15 @@ pub(crate) fn shell_split(s: &str) -> Vec<String> {
             }
             '>' if !in_single_quote && !in_double_quote => {
                 // Split on unquoted `>` so glued forms like `tee>/etc/passwd`
-                // reach the write-target scan. Coalesce `>>` (append). `>&`
-                // remains two tokens (`>` then `&`); the redirection-target
-                // collector already skips `&`-prefixed next tokens.
+                // reach the write-target scan. Coalesce the multi-char write
+                // redirections `>>` (append), `>|` (noclobber-override
+                // force-write), and `>&` (redirect stdout+stderr to the
+                // following file, or duplicate a fd when the target is a
+                // number) into single tokens so their trailing operator char is
+                // not mistaken for a pipeline separator (`|`) or a
+                // background/segment separator (`&`) — either of which strands
+                // the write target in a fresh segment and bypasses the
+                // write-target scan.
                 if !current.is_empty() {
                     parts.push(current.clone());
                     current.clear();
@@ -93,6 +99,23 @@ pub(crate) fn shell_split(s: &str) -> Vec<String> {
                 if chars.peek() == Some(&'>') {
                     let _ = chars.next();
                     parts.push(">>".to_string());
+                } else if chars.peek() == Some(&'|') {
+                    // `>|` forces a write even under `set -o noclobber`. Coalesce
+                    // it so the trailing `|` is not treated as a pipeline
+                    // separator — otherwise the write target after `>|` lands in
+                    // the next segment and escapes the scan (workspace escape).
+                    let _ = chars.next();
+                    parts.push(">|".to_string());
+                } else if chars.peek() == Some(&'&') {
+                    // `>&file` (non-numeric target) redirects both stdout and
+                    // stderr to `file` in bash. Coalesce so the trailing `&` is
+                    // not treated as a background/segment separator — otherwise
+                    // the file target lands in the next segment and escapes the
+                    // scan. fd-duplication forms (`>&2`, `2>&1`) collect the
+                    // numeric token as a harmless relative-path "target" that
+                    // never trips the workspace check.
+                    let _ = chars.next();
+                    parts.push(">&".to_string());
                 } else {
                     parts.push(">".to_string());
                 }

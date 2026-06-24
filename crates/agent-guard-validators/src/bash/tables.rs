@@ -17,7 +17,7 @@ pub(crate) const STATE_MODIFYING_COMMANDS: &[&str] = &[
     "su",
 ];
 
-pub(crate) const WRITE_REDIRECTIONS: &[&str] = &[">", ">>", ">&"];
+pub(crate) const WRITE_REDIRECTIONS: &[&str] = &[">", ">>", ">&", ">|"];
 
 /// Redirections that consume the next token as a filesystem path.
 pub(crate) const READ_PATH_REDIRECTIONS: &[&str] = &["<"];
