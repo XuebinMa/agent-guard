@@ -1,0 +1,14 @@
+# Standalone fidelity harness (own [workspace] root) — proves the documented
+# agent-guard-unwrap-v1 normalization matches the SHIPPED gate's real verdicts,
+# via the public validator API only (no pub(crate) access, no prod-code change).
+[package]
+name = "agent-guard-unwrap-v1-fidelity"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[workspace]
+
+[dependencies]
+agent-guard-validators = { path = "../../../crates/agent-guard-validators" }
+serde_json = "1"

@@ -1,0 +1,3 @@
+/.venv
+fidelity/target
+fidelity/Cargo.lock

@@ -1,0 +1,57 @@
+{
+  "normalization_id": "agent-guard-unwrap-v1",
+  "note": "Conformance vectors for crewAI #5888 / PR #6030. Inputs are pre-tokenized argv (tokenization is the runtime's job, upstream of this normalization). Each form normalizes by stripping transparent wrappers/spawners + NAME=value prefixes down to the real executable+argv (see agent-guard-unwrap-v1.md). gate_read_only records the real agent-guard verdict class used by the Rust fidelity harness.",
+  "equivalence_classes": [
+    {
+      "name": "rm-rf-tmp-build",
+      "canonical_argv": ["rm", "-rf", "/tmp/build"],
+      "forms": [
+        ["rm", "-rf", "/tmp/build"],
+        ["sudo", "rm", "-rf", "/tmp/build"],
+        ["doas", "-u", "root", "rm", "-rf", "/tmp/build"],
+        ["env", "FOO=1", "rm", "-rf", "/tmp/build"],
+        ["FOO=1", "rm", "-rf", "/tmp/build"],
+        ["nice", "-n", "10", "rm", "-rf", "/tmp/build"],
+        ["nohup", "rm", "-rf", "/tmp/build"],
+        ["timeout", "5", "rm", "-rf", "/tmp/build"],
+        ["timeout", "-s", "KILL", "30", "rm", "-rf", "/tmp/build"],
+        ["nice", "-n", "10", "nohup", "rm", "-rf", "/tmp/build"],
+        ["FOO=1", "sudo", "-u", "root", "env", "BAR=2", "rm", "-rf", "/tmp/build"]
+      ],
+      "gate_read_only": "block"
+    },
+    {
+      "name": "ls-tmp-build",
+      "canonical_argv": ["ls", "/tmp/build"],
+      "forms": [
+        ["ls", "/tmp/build"],
+        ["env", "LC_ALL=C", "ls", "/tmp/build"],
+        ["timeout", "2", "ls", "/tmp/build"],
+        ["nice", "-n", "5", "ls", "/tmp/build"]
+      ],
+      "gate_read_only": "allow"
+    }
+  ],
+  "divergence_pairs": [
+    {
+      "a": ["timeout", "5", "rm", "-rf", "/tmp/x"],
+      "b": ["timeout", "5", "ls", "/tmp/x"],
+      "note": "same wrapper, different real executable -> different normalized body -> different digest -> different gate verdict"
+    },
+    {
+      "a": ["env", "X=1", "rm", "-rf", "/tmp/x"],
+      "b": ["env", "X=1", "rm", "-rf", "/tmp/y"],
+      "note": "same executable, different argv -> different normalized body -> different digest"
+    }
+  ],
+  "fail_closed_target_hiding": [
+    {
+      "argv": ["xargs", "rm", "-rf"],
+      "reason": "xargs supplies the operands (paths) from stdin -> write target unverifiable at authorization time -> fail closed"
+    },
+    {
+      "argv": ["find", ".", "-name", "*.tmp", "-exec", "rm", "-rf", "{}", ";"],
+      "reason": "find -exec supplies the operands from the filesystem traversal ({}) -> write target unverifiable -> fail closed"
+    }
+  ]
+}
