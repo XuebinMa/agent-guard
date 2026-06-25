@@ -150,19 +150,22 @@ impl RuntimeDecision {
 
 // ── DecisionReason ────────────────────────────────────────────────────────────
 
-// `#[non_exhaustive]` forces cross-crate callers through `DecisionReason::new`
-// (and its builders), which always supply a non-empty `message`, instead of a
-// struct literal that could set `message: ""` and bypass that guarantee.
+// Fields are `pub(crate)` so an emitted reason is immutable to external
+// callers: once a `Deny`/`AskUser` is produced, downstream code can read its
+// parts through the accessors below but cannot swap `code` or blank `message`
+// to undermine the audit trail. Construction goes through `new` and the
+// `with_*` builders (which always supply a non-empty `message`); `#[non_exhaustive]`
+// additionally blocks cross-crate struct literals that could bypass them.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[non_exhaustive]
 pub struct DecisionReason {
-    pub code: DecisionCode,
-    pub message: String,
+    pub(crate) code: DecisionCode,
+    pub(crate) message: String,
     /// Structured extension fields for tooling, UI, and audit consumers.
-    pub details: Option<serde_json::Value>,
+    pub(crate) details: Option<serde_json::Value>,
     /// Which policy rule triggered this decision, e.g. "tools.bash.deny[0]".
     /// For Allow decisions, the matching allow rule is recorded in audit details instead.
-    pub matched_rule: Option<String>,
+    pub(crate) matched_rule: Option<String>,
 }
 
 impl DecisionReason {
@@ -175,8 +178,33 @@ impl DecisionReason {
         }
     }
 
-    pub fn matched_rule(mut self, rule: impl Into<String>) -> Self {
+    /// The decision code. `DecisionCode` is `Copy`, so this returns by value.
+    pub fn code(&self) -> DecisionCode {
+        self.code
+    }
+
+    /// The human-readable reason message (always non-empty for emitted reasons).
+    pub fn message(&self) -> &str {
+        &self.message
+    }
+
+    /// Structured extension details for tooling, UI, and audit consumers.
+    pub fn details(&self) -> Option<&serde_json::Value> {
+        self.details.as_ref()
+    }
+
+    /// The policy rule that triggered this decision, e.g. "tools.bash.deny[0]".
+    pub fn matched_rule(&self) -> Option<&str> {
+        self.matched_rule.as_deref()
+    }
+
+    pub fn with_matched_rule(mut self, rule: impl Into<String>) -> Self {
         self.matched_rule = Some(rule.into());
+        self
+    }
+
+    pub fn with_details(mut self, details: serde_json::Value) -> Self {
+        self.details = Some(details);
         self
     }
 
@@ -200,7 +228,7 @@ impl DecisionReason {
 // Codes are part of the public contract — they appear in audit logs and
 // bindings. Rename values only with a major version bump.
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum DecisionCode {
     #[serde(rename = "INSUFFICIENT_PERMISSION_MODE")]
     InsufficientPermissionMode,
@@ -242,4 +270,41 @@ pub enum DecisionCode {
     SensitiveContentBlocked,
     #[serde(rename = "APPROVAL_DENIED")]
     ApprovalDenied,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn reason_accessors_expose_constructed_parts() {
+        let reason = DecisionReason::new(DecisionCode::DeniedByRule, "blocked");
+
+        assert_eq!(reason.code(), DecisionCode::DeniedByRule);
+        assert_eq!(reason.message(), "blocked");
+        assert_eq!(reason.details(), None);
+        assert_eq!(reason.matched_rule(), None);
+    }
+
+    #[test]
+    fn builders_attach_rule_and_details_without_mutating_message() {
+        let details = serde_json::json!({ "k": "v" });
+        let reason = DecisionReason::new(DecisionCode::PathOutsideWorkspace, "escape")
+            .with_matched_rule("tools.bash.deny[0]")
+            .with_details(details.clone());
+
+        // Builders consume `self` by value and return a new reason; the
+        // load-bearing `message` is never blanked along the way.
+        assert_eq!(reason.message(), "escape");
+        assert_eq!(reason.matched_rule(), Some("tools.bash.deny[0]"));
+        assert_eq!(reason.details(), Some(&details));
+    }
+
+    #[test]
+    fn decision_code_is_copy() {
+        let code = DecisionCode::AgentLocked;
+        let copied = code;
+        // Both bindings remain usable: `DecisionCode` is `Copy`.
+        assert_eq!(code, copied);
+    }
 }

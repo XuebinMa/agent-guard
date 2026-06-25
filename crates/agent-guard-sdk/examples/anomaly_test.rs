@@ -24,8 +24,8 @@ anomaly:
             // The 6th call should trigger the anomaly detection
             match decision {
                 GuardDecision::Deny { reason } => {
-                    assert_eq!(reason.code, DecisionCode::AnomalyDetected);
-                    println!("  Expected Deny: {}", reason.message);
+                    assert_eq!(reason.code(), DecisionCode::AnomalyDetected);
+                    println!("  Expected Deny: {}", reason.message());
                 }
                 _ => panic!("Call #{} expected Deny, but was allowed", i),
             }

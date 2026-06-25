@@ -114,7 +114,7 @@ audit:
 
     if let ExecuteOutcome::Denied { decision, .. } = res {
         if let GuardDecision::Deny { reason } = decision {
-            assert_eq!(reason.code, DecisionCode::DeniedByRule);
+            assert_eq!(reason.code(), DecisionCode::DeniedByRule);
         } else {
             panic!("Should be a Deny decision");
         }
@@ -179,7 +179,7 @@ anomaly:
     let res1 = guard.execute(&input, &sandbox).unwrap();
     if let ExecuteOutcome::Denied { decision, .. } = res1 {
         if let GuardDecision::Deny { reason } = decision {
-            assert_eq!(reason.code, DecisionCode::DeniedByRule);
+            assert_eq!(reason.code(), DecisionCode::DeniedByRule);
         }
     }
 
@@ -187,7 +187,7 @@ anomaly:
     let res2 = guard.execute(&input, &sandbox).unwrap();
     if let ExecuteOutcome::Denied { decision, .. } = res2 {
         if let GuardDecision::Deny { reason } = decision {
-            assert_eq!(reason.code, DecisionCode::DeniedByRule);
+            assert_eq!(reason.code(), DecisionCode::DeniedByRule);
         }
     }
 
@@ -195,7 +195,7 @@ anomaly:
     let res3 = guard.execute(&input, &sandbox).unwrap();
     if let ExecuteOutcome::Denied { decision, .. } = res3 {
         if let GuardDecision::Deny { reason } = decision {
-            assert_eq!(reason.code, DecisionCode::AgentLocked);
+            assert_eq!(reason.code(), DecisionCode::AgentLocked);
         } else {
             panic!("Should be AgentLocked");
         }

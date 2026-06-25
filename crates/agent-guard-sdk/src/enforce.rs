@@ -65,7 +65,7 @@ impl Guard {
         let policy_version = state.engine.version().to_string();
 
         if state.policy_verification.should_fail_closed() {
-            let mut reason = DecisionReason::new(
+            let reason = DecisionReason::new(
                 DecisionCode::PolicyVerificationFailed,
                 "policy signature verification failed; enforce mode is blocked until the policy is verified",
             );
@@ -80,7 +80,7 @@ impl Guard {
                     serde_json::Value::String(error.clone()),
                 );
             }
-            reason.details = Some(serde_json::Value::Object(details));
+            let reason = reason.with_details(serde_json::Value::Object(details));
             return Ok(ExecuteOutcome::Denied {
                 decision: GuardDecision::Deny { reason },
                 policy_version,
@@ -330,7 +330,7 @@ impl Guard {
         let policy_version = state.engine.version().to_string();
 
         if state.policy_verification.should_fail_closed() {
-            let mut reason = DecisionReason::new(
+            let reason = DecisionReason::new(
                 DecisionCode::PolicyVerificationFailed,
                 "policy signature verification failed; runtime execution is blocked until the policy is verified",
             );
@@ -345,7 +345,7 @@ impl Guard {
                     serde_json::Value::String(error.clone()),
                 );
             }
-            reason.details = Some(serde_json::Value::Object(details));
+            let reason = reason.with_details(serde_json::Value::Object(details));
             return Ok(RuntimeOutcome::Denied {
                 request_id,
                 reason,

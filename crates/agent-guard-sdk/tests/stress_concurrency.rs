@@ -146,7 +146,7 @@ anomaly:
                         }
                         ExecuteOutcome::Denied { decision, .. } => {
                             if let GuardDecision::Deny { reason } = decision {
-                                match reason.code {
+                                match reason.code() {
                                     DecisionCode::DeniedByRule
                                     | DecisionCode::WriteInReadOnlyMode => {
                                         stats.actual_denies.fetch_add(1, Ordering::SeqCst);
@@ -164,7 +164,7 @@ anomaly:
                                         stats.actual_locks.fetch_add(1, Ordering::SeqCst);
                                         shadow.is_locked = true;
                                     }
-                                    _ => panic!("Unexpected decision code: {:?}", reason.code),
+                                    _ => panic!("Unexpected decision code: {:?}", reason.code()),
                                 }
                             }
                         }

@@ -58,8 +58,8 @@ fn outbound_preset_denies_secret_in_http_body() {
 
     match guard.check_tool(SdkTool::HttpRequest, payload, Context::default()) {
         GuardDecision::Deny { reason } => {
-            assert_eq!(reason.code, DecisionCode::SensitiveContentBlocked);
-            assert!(!reason.message.contains("AKIAIOSFODNN7EXAMPLE"));
+            assert_eq!(reason.code(), DecisionCode::SensitiveContentBlocked);
+            assert!(!reason.message().contains("AKIAIOSFODNN7EXAMPLE"));
         }
         other => panic!("expected deny, got {other:?}"),
     }

@@ -94,7 +94,7 @@ fn print_decision(name: &str, decision: &GuardDecision) {
     println!("[{label}] {name}");
     match decision {
         GuardDecision::Deny { reason } => {
-            println!("         → {}", reason.message);
+            println!("         → {}", reason.message());
         }
         GuardDecision::AskUser { message, .. } => {
             println!("         → prompt: {}", message);

@@ -576,7 +576,7 @@ impl PolicyEngine {
                         DecisionCode::DeniedByRule,
                         format!("payload matched deny rule: {}", pattern_display(rule)),
                     )
-                    .matched_rule(rule_ref);
+                    .with_matched_rule(rule_ref);
 
                     if let Some(cond) = res.condition {
                         reason = reason.with_condition(cond);
@@ -596,7 +596,7 @@ impl PolicyEngine {
                         DecisionCode::PathOutsideWorkspace,
                         format!("path matched deny_paths rule: {}", glob_pattern),
                     )
-                    .matched_rule(rule_ref);
+                    .with_matched_rule(rule_ref);
                     return GuardDecision::Deny { reason };
                 }
             }
@@ -609,7 +609,7 @@ impl PolicyEngine {
                         DecisionCode::AskRequired,
                         format!("ask rule matched: {}", pattern_display(rule)),
                     )
-                    .matched_rule(rule_ref);
+                    .with_matched_rule(rule_ref);
 
                     if let Some(cond) = res.condition {
                         reason = reason.with_condition(cond);

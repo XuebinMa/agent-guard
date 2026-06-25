@@ -163,7 +163,7 @@ fn run_maps_ask_to_ask_for_approval() {
             message, reason, ..
         } => {
             assert!(!message.is_empty(), "ask message should be set");
-            assert!(!reason.message.is_empty(), "reason message should be set");
+            assert!(!reason.message().is_empty(), "reason message should be set");
         }
         other => panic!("expected AskForApproval, got {other:?}"),
     }
@@ -328,9 +328,9 @@ fn run_denied_exposes_reason_directly() {
             request_id, reason, ..
         } => {
             assert!(!request_id.is_empty());
-            assert_eq!(reason.code, DecisionCode::DeniedByRule);
+            assert_eq!(reason.code(), DecisionCode::DeniedByRule);
             assert!(
-                !reason.message.is_empty(),
+                !reason.message().is_empty(),
                 "denied reason should carry a message"
             );
         }

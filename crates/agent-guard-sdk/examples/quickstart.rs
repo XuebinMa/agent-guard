@@ -115,12 +115,12 @@ fn main() {
             GuardDecision::Deny { reason } => {
                 println!(
                     "          reason: {} ({})",
-                    reason.message,
-                    serde_json::to_string(&reason.code)
+                    reason.message(),
+                    serde_json::to_string(&reason.code())
                         .unwrap_or_default()
                         .trim_matches('"')
                 );
-                if let Some(ref rule) = reason.matched_rule {
+                if let Some(rule) = reason.matched_rule() {
                     println!("          rule  : {}", rule);
                 }
             }

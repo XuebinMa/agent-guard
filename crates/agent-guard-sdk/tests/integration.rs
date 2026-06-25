@@ -147,7 +147,7 @@ fn deny_sets_matched_rule() {
         trusted(),
     );
     if let GuardDecision::Deny { reason } = d {
-        assert_eq!(reason.matched_rule.as_deref(), Some("tools.bash.deny[1]"));
+        assert_eq!(reason.matched_rule(), Some("tools.bash.deny[1]"));
     } else {
         panic!("expected Deny");
     }
@@ -161,7 +161,7 @@ fn ask_sets_matched_rule() {
         trusted(),
     );
     if let GuardDecision::AskUser { reason, .. } = d {
-        assert_eq!(reason.matched_rule.as_deref(), Some("tools.bash.ask[0]"));
+        assert_eq!(reason.matched_rule(), Some("tools.bash.ask[0]"));
     } else {
         panic!("expected AskUser");
     }
@@ -199,7 +199,7 @@ fn read_file_json_safe_path_is_allowed() {
 fn read_file_invalid_json_is_denied() {
     let d = guard().check_tool(Tool::ReadFile, "not json", trusted());
     if let GuardDecision::Deny { reason } = d {
-        assert_eq!(reason.code, agent_guard_sdk::DecisionCode::InvalidPayload);
+        assert_eq!(reason.code(), agent_guard_sdk::DecisionCode::InvalidPayload);
     } else {
         panic!("expected Deny(InvalidPayload)");
     }
@@ -210,7 +210,7 @@ fn read_file_missing_path_field_is_denied() {
     let d = guard().check_tool(Tool::ReadFile, r#"{"file":"/etc/passwd"}"#, trusted());
     if let GuardDecision::Deny { reason } = d {
         assert_eq!(
-            reason.code,
+            reason.code(),
             agent_guard_sdk::DecisionCode::MissingPayloadField
         );
     } else {
@@ -275,7 +275,7 @@ fn write_file_json_etc_is_denied() {
 fn write_file_invalid_json_is_denied() {
     let d = guard().check_tool(Tool::WriteFile, "{bad json", trusted());
     if let GuardDecision::Deny { reason } = &d {
-        assert_eq!(reason.code, agent_guard_sdk::DecisionCode::InvalidPayload);
+        assert_eq!(reason.code(), agent_guard_sdk::DecisionCode::InvalidPayload);
     } else {
         panic!("expected Deny(InvalidPayload), got {:?}", d);
     }
@@ -302,7 +302,7 @@ fn write_file_outside_allowlist_is_denied() {
         trusted(),
     );
     if let GuardDecision::Deny { reason } = d {
-        assert_eq!(reason.code, agent_guard_sdk::DecisionCode::NotInAllowList);
+        assert_eq!(reason.code(), agent_guard_sdk::DecisionCode::NotInAllowList);
     } else {
         panic!("expected Deny(NotInAllowList)");
     }
@@ -334,7 +334,7 @@ fn http_request_json_normal_url_allowed() {
 fn http_request_invalid_json_is_denied() {
     let d = guard().check_tool(Tool::HttpRequest, "https://example.com", trusted());
     if let GuardDecision::Deny { reason } = d {
-        assert_eq!(reason.code, agent_guard_sdk::DecisionCode::InvalidPayload);
+        assert_eq!(reason.code(), agent_guard_sdk::DecisionCode::InvalidPayload);
     } else {
         panic!("expected Deny(InvalidPayload)");
     }
@@ -349,7 +349,7 @@ fn http_request_missing_url_field_is_denied() {
     );
     if let GuardDecision::Deny { reason } = d {
         assert_eq!(
-            reason.code,
+            reason.code(),
             agent_guard_sdk::DecisionCode::MissingPayloadField
         );
     } else {
@@ -575,7 +575,7 @@ fn allow_paths_with_deny_paths_hit_denies_before_allowlist_check() {
     if let GuardDecision::Deny { reason } = d {
         // Either PathOutsideWorkspace or DeniedByRule — the key is: deny_paths fires.
         assert_ne!(
-            reason.code,
+            reason.code(),
             agent_guard_sdk::DecisionCode::NotInAllowList,
             "deny_paths must trigger before allow_paths check"
         );
@@ -601,7 +601,7 @@ fn allow_paths_non_empty_rejects_unlisted_path() {
         trusted(),
     );
     if let GuardDecision::Deny { reason } = d {
-        assert_eq!(reason.code, agent_guard_sdk::DecisionCode::NotInAllowList);
+        assert_eq!(reason.code(), agent_guard_sdk::DecisionCode::NotInAllowList);
     } else {
         panic!("expected Deny(NotInAllowList), got {:?}", d);
     }
@@ -627,7 +627,7 @@ fn allow_paths_exact_prefix_does_not_match_sibling() {
         trusted(),
     );
     if let GuardDecision::Deny { reason } = d {
-        assert_eq!(reason.code, agent_guard_sdk::DecisionCode::NotInAllowList);
+        assert_eq!(reason.code(), agent_guard_sdk::DecisionCode::NotInAllowList);
     } else {
         panic!(
             "expected Deny(NotInAllowList) for sibling prefix, got {:?}",
@@ -730,7 +730,7 @@ fn audit_event_jsonl_is_valid_json() {
             agent_guard_sdk::DecisionCode::DeniedByRule,
             "test",
         )
-        .matched_rule("tools.read_file.deny[0]"),
+        .with_matched_rule("tools.read_file.deny[0]"),
     };
     let event = AuditEvent::from_decision(
         "req-3".to_string(),
@@ -853,10 +853,10 @@ fn bash_validator_read_only_block_produces_write_in_read_only_code() {
     let d = guard().check_tool(Tool::Bash, r#"{"command":"touch /tmp/file"}"#, untrusted());
     if let GuardDecision::Deny { reason } = d {
         assert_eq!(
-            reason.code,
+            reason.code(),
             agent_guard_sdk::DecisionCode::WriteInReadOnlyMode,
             "touch in read-only mode must produce WriteInReadOnlyMode, got {:?}",
-            reason.code
+            reason.code()
         );
     } else {
         panic!("expected Deny, got {:?}", d);
@@ -869,7 +869,7 @@ fn bash_validator_fork_bomb_produces_ask_user_with_destructive_code() {
     let d = guard().check_tool(Tool::Bash, r#"{"command":":(){ :|:& };:"}"#, trusted());
     if let GuardDecision::AskUser { reason, .. } = d {
         assert_eq!(
-            reason.code,
+            reason.code(),
             agent_guard_sdk::DecisionCode::DestructiveCommand
         );
     } else {
@@ -1051,8 +1051,8 @@ anomaly:
     // Call 3: Deny
     let d = g.check(&input);
     if let GuardDecision::Deny { reason } = d {
-        assert_eq!(reason.code, DecisionCode::AnomalyDetected);
-        assert!(reason.message.contains("2 calls / 1s"));
+        assert_eq!(reason.code(), DecisionCode::AnomalyDetected);
+        assert!(reason.message().contains("2 calls / 1s"));
     } else {
         panic!("Expected anomaly deny, got {:?}", d);
     }
@@ -1107,7 +1107,7 @@ anomaly:
 
     let d = g.check(&input_a);
     if let GuardDecision::Deny { reason } = d {
-        assert_eq!(reason.code, DecisionCode::AnomalyDetected);
+        assert_eq!(reason.code(), DecisionCode::AnomalyDetected);
     } else {
         panic!(
             "Expected anomaly deny for repeated agent-a traffic, got {:?}",

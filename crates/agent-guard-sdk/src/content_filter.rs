@@ -258,8 +258,8 @@ mod tests {
 
         match decision {
             Some(GuardDecision::Deny { reason }) => {
-                assert!(reason.message.contains("AWS Access Key"));
-                assert!(!reason.message.contains("AKIAIOSFODNN7EXAMPLE"));
+                assert!(reason.message().contains("AWS Access Key"));
+                assert!(!reason.message().contains("AKIAIOSFODNN7EXAMPLE"));
             }
             other => panic!("expected deny, got {other:?}"),
         }

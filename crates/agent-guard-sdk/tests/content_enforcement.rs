@@ -45,9 +45,9 @@ fn block_mode_denies_http_body_with_secret() {
 
     match decision {
         GuardDecision::Deny { reason } => {
-            assert_eq!(reason.code, DecisionCode::SensitiveContentBlocked);
+            assert_eq!(reason.code(), DecisionCode::SensitiveContentBlocked);
             // The deny message must never echo the raw secret.
-            assert!(!reason.message.contains("AKIAIOSFODNN7EXAMPLE"));
+            assert!(!reason.message().contains("AKIAIOSFODNN7EXAMPLE"));
         }
         other => panic!("expected deny, got {other:?}"),
     }

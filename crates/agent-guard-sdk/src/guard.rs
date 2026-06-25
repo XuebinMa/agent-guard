@@ -436,7 +436,7 @@ impl Guard {
             .inc();
 
         if outcome == "deny"
-            && matches!(decision, GuardDecision::Deny { reason } if reason.code == DecisionCode::AnomalyDetected || reason.code == DecisionCode::AgentLocked)
+            && matches!(decision, GuardDecision::Deny { reason } if reason.code() == DecisionCode::AnomalyDetected || reason.code() == DecisionCode::AgentLocked)
         {
             metrics
                 .anomaly_triggered_total
@@ -451,11 +451,11 @@ impl Guard {
                 agent_id: Some(agent_id.to_string()),
                 actor: input.context.actor.clone(),
                 reason: match decision {
-                    GuardDecision::Deny { reason } => reason.message.clone(),
+                    GuardDecision::Deny { reason } => reason.message().to_string(),
                     _ => "anomaly".to_string(),
                 },
             };
-            let record = if matches!(decision, GuardDecision::Deny { reason } if reason.code == DecisionCode::AgentLocked)
+            let record = if matches!(decision, GuardDecision::Deny { reason } if reason.code() == DecisionCode::AgentLocked)
             {
                 agent_guard_core::AuditRecord::AgentLocked(event)
             } else {

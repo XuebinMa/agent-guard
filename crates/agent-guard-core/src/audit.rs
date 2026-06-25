@@ -133,14 +133,14 @@ impl AuditEvent {
             GuardDecision::Allow => (AuditDecision::Allow, None, None, None, None),
             GuardDecision::Deny { reason } => (
                 AuditDecision::Deny,
-                Some(reason.code.clone()),
+                Some(reason.code),
                 Some(reason.message.clone()),
                 reason.details.clone(),
                 reason.matched_rule.clone(),
             ),
             GuardDecision::AskUser { message, reason } => (
                 AuditDecision::AskUser,
-                Some(reason.code.clone()),
+                Some(reason.code),
                 Some(message.clone()),
                 reason.details.clone(),
                 reason.matched_rule.clone(),
