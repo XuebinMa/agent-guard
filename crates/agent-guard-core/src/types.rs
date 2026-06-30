@@ -99,7 +99,9 @@ pub enum CustomToolIdError {
 // Any context without an explicit trust_level MUST be treated as Untrusted.
 // Bindings and integrations MUST NOT assume a higher trust level.
 
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+// Variants are ordered by increasing privilege so the derived `Ord` supports
+// threshold checks (`trust >= TrustLevel::Trusted`).
+#[derive(Debug, Clone, Default, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum TrustLevel {
     #[default]

@@ -521,15 +521,17 @@ impl Guard {
 
             match status {
                 ApprovalStatus::Approved => {
-                    // `record` is `Some` whenever a status was read from it.
-                    let approval =
-                        record
-                            .map(approval_proof_from_record)
-                            .unwrap_or(ApprovalProof {
-                                request_id: request_id.clone(),
-                                decided_by: None,
-                                decided_at: 0,
-                            });
+                    // `record` is `Some` whenever a status was read (a `None`
+                    // record yields `Pending` above, never `Approved`). If that
+                    // invariant is ever violated, fail closed rather than
+                    // fabricating an unauthenticated proof (`decided_by: None,
+                    // decided_at: 0`) that would execute with no human attribution.
+                    let Some(record) = record else {
+                        return Err(SandboxError::ExecutionFailed(format!(
+                            "approval ledger inconsistency: status Approved but no record for '{request_id}'"
+                        )));
+                    };
+                    let approval = approval_proof_from_record(record);
                     return self.resume_execution(input, sandbox, request_id, approval);
                 }
                 ApprovalStatus::Denied => {
@@ -556,7 +558,7 @@ impl Guard {
                             Some("timeout".to_string()),
                         ) {
                             if !matches!(e, ApprovalError::AlreadyDecided { .. }) {
-                                tracing::warn!(
+                                tracing::error!(
                                     request_id = %request_id,
                                     error = %e,
                                     "failed to mark approval request Expired in ledger; state/audit may be inconsistent"

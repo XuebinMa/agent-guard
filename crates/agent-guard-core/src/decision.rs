@@ -37,12 +37,7 @@ impl std::fmt::Display for GuardDecision {
 impl GuardDecision {
     pub fn deny(code: DecisionCode, message: impl Into<String>) -> Self {
         Self::Deny {
-            reason: DecisionReason {
-                code,
-                message: message.into(),
-                details: None,
-                matched_rule: None,
-            },
+            reason: DecisionReason::new(code, message),
         }
     }
 
@@ -52,12 +47,7 @@ impl GuardDecision {
         rule: impl Into<String>,
     ) -> Self {
         Self::Deny {
-            reason: DecisionReason {
-                code,
-                message: message.into(),
-                details: None,
-                matched_rule: Some(rule.into()),
-            },
+            reason: DecisionReason::new(code, message).with_matched_rule(rule),
         }
     }
 
@@ -66,15 +56,7 @@ impl GuardDecision {
         code: DecisionCode,
         reason_msg: impl Into<String>,
     ) -> Self {
-        Self::AskUser {
-            message: message.into(),
-            reason: DecisionReason {
-                code,
-                message: reason_msg.into(),
-                details: None,
-                matched_rule: None,
-            },
-        }
+        Self::ask_with_reason(message, DecisionReason::new(code, reason_msg))
     }
 
     pub fn ask_with_rule(
@@ -83,15 +65,25 @@ impl GuardDecision {
         reason_msg: impl Into<String>,
         rule: impl Into<String>,
     ) -> Self {
-        Self::AskUser {
-            message: message.into(),
-            reason: DecisionReason {
-                code,
-                message: reason_msg.into(),
-                details: None,
-                matched_rule: Some(rule.into()),
-            },
-        }
+        Self::ask_with_reason(
+            message,
+            DecisionReason::new(code, reason_msg).with_matched_rule(rule),
+        )
+    }
+
+    /// Build an `AskUser` decision from a pre-assembled [`DecisionReason`],
+    /// enforcing a non-empty user-facing prompt (a blank prompt would reach a
+    /// human as an empty approval request). This is the single chokepoint for
+    /// `AskUser` construction — callers must not build the variant via a struct
+    /// literal, so the invariant cannot be bypassed in-crate.
+    pub fn ask_with_reason(message: impl Into<String>, reason: DecisionReason) -> Self {
+        let message = message.into();
+        let message = if message.is_empty() {
+            format!("Confirmation required ({:?})", reason.code())
+        } else {
+            message
+        };
+        Self::AskUser { message, reason }
     }
 
     pub fn is_allowed(&self) -> bool {
@@ -103,7 +95,12 @@ impl GuardDecision {
 
 // `#[non_exhaustive]`: reserve room for new runtime dispositions before 1.0.
 // Cross-crate `match` must carry a wildcard arm.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+//
+// `Deserialize` is intentionally omitted (mirroring `GuardDecision`, see the
+// module-level rationale): `RuntimeDecision` carries `Deny`/`AskForApproval`, so
+// allowing untrusted JSON to synthesize one would let a caller forge a decision.
+// It is produced in-process from a `GuardDecision`, never parsed from input.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(tag = "decision", rename_all = "snake_case")]
 #[non_exhaustive]
 pub enum RuntimeDecision {
@@ -170,9 +167,21 @@ pub struct DecisionReason {
 
 impl DecisionReason {
     pub fn new(code: DecisionCode, message: impl Into<String>) -> Self {
+        // Enforce the always-non-empty invariant at the single construction
+        // chokepoint rather than leaving it as a doc comment: an empty message
+        // would surface as a blank deny reason or approval prompt and weaken the
+        // audit trail. Substitute a code-derived placeholder instead of
+        // panicking — constructors run on hot decision paths and must stay
+        // panic-free.
+        let message = message.into();
+        let message = if message.is_empty() {
+            format!("decision: {code:?}")
+        } else {
+            message
+        };
         Self {
             code,
-            message: message.into(),
+            message,
             details: None,
             matched_rule: None,
         }
@@ -306,5 +315,50 @@ mod tests {
         let copied = code;
         // Both bindings remain usable: `DecisionCode` is `Copy`.
         assert_eq!(code, copied);
+    }
+
+    #[test]
+    fn decision_reason_new_substitutes_empty_message() {
+        // The always-non-empty invariant is enforced at construction, not just
+        // documented.
+        assert!(!DecisionReason::new(DecisionCode::DeniedByRule, "")
+            .message()
+            .is_empty());
+    }
+
+    #[test]
+    fn deny_constructor_never_yields_empty_message() {
+        let decision = GuardDecision::deny(DecisionCode::DeniedByRule, "");
+        let message = match &decision {
+            GuardDecision::Deny { reason } => reason.message(),
+            _ => "",
+        };
+        assert!(!message.is_empty());
+    }
+
+    #[test]
+    fn ask_with_reason_enforces_non_empty_prompt() {
+        let reason = DecisionReason::new(DecisionCode::AskRequired, "needs review");
+        let decision = GuardDecision::ask_with_reason("", reason);
+        let prompt = match &decision {
+            GuardDecision::AskUser { message, .. } => message.as_str(),
+            _ => "",
+        };
+        assert!(!prompt.is_empty());
+    }
+
+    #[test]
+    fn trust_level_orders_by_privilege() {
+        use crate::types::TrustLevel;
+        assert!(TrustLevel::Admin > TrustLevel::Trusted);
+        assert!(TrustLevel::Trusted > TrustLevel::Untrusted);
+    }
+
+    #[test]
+    fn policy_mode_orders_by_permissiveness() {
+        use crate::policy::PolicyMode;
+        assert!(PolicyMode::FullAccess > PolicyMode::WorkspaceWrite);
+        assert!(PolicyMode::WorkspaceWrite > PolicyMode::ReadOnly);
+        assert!(PolicyMode::ReadOnly > PolicyMode::Blocked);
     }
 }
