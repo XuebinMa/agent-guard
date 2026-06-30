@@ -157,14 +157,19 @@ def _split_findings(text: str) -> list[tuple[str, str]]:
         if lines[i].startswith("- "):
             block = [lines[i]]
             i += 1
-            while i < n and not (
-                lines[i].startswith("- ")
-                or lines[i].startswith("#")
-                or lines[i].startswith("---")
-            ):
-                block.append(lines[i])
+            while i < n:
+                nxt = lines[i]
+                if nxt.startswith("- ") or nxt.startswith("#") or nxt.startswith("---"):
+                    break
+                # A continuation line is blank or indented. A non-indented,
+                # non-blank line (e.g. a trailing "Note: ..." paragraph) is NOT
+                # part of this finding — stop so its text is not matched against
+                # suppressions on the finding's behalf and wrongly suppress it.
+                if nxt.strip() and not (nxt.startswith(" ") or nxt.startswith("\t")):
+                    break
+                block.append(nxt)
                 i += 1
-            parts.append(("finding", "\n".join(block)))
+            parts.append(("finding", "\n".join(block).rstrip()))
         else:
             parts.append(("text", lines[i]))
             i += 1
