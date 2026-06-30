@@ -112,6 +112,10 @@ Policies are YAML files parsed into `PolicyFile`. Key sections:
 
 GitHub Actions (`.github/workflows/ci.yml`) uses `./scripts/verify.sh` as the shared verification entrypoint for Rust, Python, Node, and docs/version checks.
 
+## Testing Strategy
+
+This is a security boundary, so the test is the specification of the boundary: write the failing test first, lock every closed bypass with a permanent regression, and never weaken a release gate to make CI green. The full philosophy, the layer map (unit / integration / gate / security-regression / parity / per-OS sandbox), and the local-vs-CI gap live in [docs/concepts/testing-strategy.md](docs/concepts/testing-strategy.md). Heavy crates carry their own scoped `CLAUDE.md` for local gotchas — see `crates/agent-guard-sandbox/CLAUDE.md` (backend-selection invariants) and `crates/agent-guard-python/CLAUDE.md` (the PyO3 extension-module trap).
+
 ## Working Rules
 
 - State assumptions when they matter. If multiple interpretations exist, surface them instead of choosing silently.

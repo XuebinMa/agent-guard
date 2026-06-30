@@ -139,6 +139,8 @@ Then **all three runners must change in the same PR** and `parity-e2e` must stay
 
 ### Tests
 
+The full philosophy, layer map, and definition of done is in [Testing Strategy](docs/concepts/testing-strategy.md). The rules below are the minimum that every PR must meet.
+
 - Unit tests live next to the code (in `src/tests.rs` or `mod tests` blocks).
 - Integration tests live in `crates/<crate>/tests/`.
 - Security regression cases go in `crates/agent-guard-sdk/tests/security_regression.rs` — patterns we've explicitly chosen to defend against.
