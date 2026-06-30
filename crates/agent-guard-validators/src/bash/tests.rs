@@ -542,6 +542,70 @@ fn allows_tar_extract_reading_outside_workspace() {
 }
 
 #[test]
+fn blocks_cp_target_directory_flag_outside_workspace() {
+    // `cp -t DEST src` writes into DEST, which the old "last non-flag arg"
+    // heuristic never checked (the trailing `payload` looked benign).
+    assert!(matches!(
+        ws_paths("cp -t /etc/cron.d payload"),
+        ValidationResult::Block { .. }
+    ));
+}
+
+#[test]
+fn blocks_cp_target_directory_long_eq_outside_workspace() {
+    assert!(matches!(
+        ws_paths("cp --target-directory=/etc/cron.d payload"),
+        ValidationResult::Block { .. }
+    ));
+}
+
+#[test]
+fn blocks_mv_target_directory_flag_outside_workspace() {
+    assert!(matches!(
+        ws_paths("mv -t /root/.ssh id_rsa.pub"),
+        ValidationResult::Block { .. }
+    ));
+}
+
+#[test]
+fn blocks_cp_target_directory_in_short_bundle_outside_workspace() {
+    // Short-flag bundle ending in `t` (e.g. `-vt`): DEST is the next arg.
+    assert!(matches!(
+        ws_paths("cp -vt /etc/cron.d payload"),
+        ValidationResult::Block { .. }
+    ));
+}
+
+#[test]
+fn blocks_install_outside_workspace() {
+    // `install` (added to WRITE_COMMANDS) — trailing-positional destination.
+    assert!(matches!(
+        ws_paths("install -m 755 payload /etc/cron.d/x"),
+        ValidationResult::Block { .. }
+    ));
+}
+
+#[test]
+fn blocks_install_target_directory_flag_outside_workspace() {
+    assert!(matches!(
+        ws_paths("install -t /etc/cron.d payload"),
+        ValidationResult::Block { .. }
+    ));
+}
+
+#[test]
+fn allows_cp_target_directory_inside_workspace() {
+    // No FP: `-t` into a workspace-relative dir is allowed.
+    assert_eq!(ws_paths("cp -t subdir payload"), ValidationResult::Allow);
+}
+
+#[test]
+fn allows_plain_cp_inside_workspace() {
+    // Regression: normal `cp src dest` still allowed after `-t` parsing added.
+    assert_eq!(ws_paths("cp a.txt b.txt"), ValidationResult::Allow);
+}
+
+#[test]
 fn blocks_leading_read_redirect_outside_workspace() {
     // Symmetric `<` fix: `</etc/shadow cat` reads outside the workspace.
     assert!(matches!(

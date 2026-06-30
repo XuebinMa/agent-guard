@@ -1,9 +1,10 @@
 //! Denylist constant tables shared across the bash validation submodules.
 
 pub(crate) const WRITE_COMMANDS: &[&str] = &[
-    "rm", "mv", "cp", "touch", "mkdir", "rmdir", "chmod", "chown", "chgrp", "ln", "link", "unlink",
-    "dd", "mkfs", "mount", "umount", "tar", "zip", "unzip", "gzip", "gunzip", "bzip2", "bunzip2",
-    "7z", "xz", "unxz", "tee", "apt", "apt-get", "yum", "dnf", "npm", "pip", "pip3", "cargo",
+    "rm", "mv", "cp", "install", "touch", "mkdir", "rmdir", "chmod", "chown", "chgrp", "ln",
+    "link", "unlink", "dd", "mkfs", "mount", "umount", "tar", "zip", "unzip", "gzip", "gunzip",
+    "bzip2", "bunzip2", "7z", "xz", "unxz", "tee", "apt", "apt-get", "yum", "dnf", "npm", "pip",
+    "pip3", "cargo",
 ];
 
 pub(crate) const STATE_MODIFYING_COMMANDS: &[&str] = &[

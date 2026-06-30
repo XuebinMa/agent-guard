@@ -220,10 +220,16 @@ fn write_targets_for_segment(segment: &[String]) -> Vec<String> {
                     .map(|token| token.to_string()),
             );
         }
-        "mv" | "cp" => {
-            // Destination is the last non-flag arg; sources are read-only
-            // and not aliased post-op, so they remain out of scope here.
-            if let Some(last) = args.iter().rev().find(|token| !token.starts_with('-')) {
+        "mv" | "cp" | "install" => {
+            // GNU coreutils `-t DEST` / `--target-directory=DEST` write into DEST,
+            // not the trailing positional — closes the `cp -t /etc/cron.d payload`
+            // confinement bypass where the real destination was never checked.
+            // Without that flag the destination is the last non-flag arg (the
+            // arg-taking flags `-m MODE`/`-S SUFFIX`/`-o OWNER` sit mid-line, so
+            // the trailing token is the real target for cp/mv/install alike).
+            if let Some(dest) = target_directory_flag(args) {
+                targets.push(dest);
+            } else if let Some(last) = args.iter().rev().find(|token| !token.starts_with('-')) {
                 targets.push(last.to_string());
             }
         }
@@ -260,6 +266,45 @@ fn write_targets_for_segment(segment: &[String]) -> Vec<String> {
     }
 
     targets
+}
+
+/// Extract the destination from GNU coreutils target-directory flags
+/// (`cp`/`mv`/`install` accept `-t DEST` and `--target-directory[=]DEST`).
+///
+/// Returns the first destination found, or `None` when no such flag is present
+/// (the caller then falls back to the trailing positional). Recognises:
+/// `--target-directory=DEST`, `--target-directory DEST`, `-tDEST` (glued),
+/// `-t DEST`, and short-flag bundles ending in `t` (e.g. `-vt DEST`).
+fn target_directory_flag(args: &[&String]) -> Option<String> {
+    let mut iter = args.iter();
+    while let Some(arg) = iter.next() {
+        let s = arg.as_str();
+        if let Some(rest) = s.strip_prefix("--target-directory=") {
+            if !rest.is_empty() {
+                return Some(rest.to_string());
+            }
+        } else if s == "--target-directory" {
+            if let Some(dest) = iter.next() {
+                return Some(dest.to_string());
+            }
+        } else if let Some(rest) = s.strip_prefix("-t") {
+            // `-tDEST` glued vs `-t` taking the next arg.
+            if rest.is_empty() {
+                if let Some(dest) = iter.next() {
+                    return Some(dest.to_string());
+                }
+            } else {
+                return Some(rest.to_string());
+            }
+        } else if s.len() > 1 && s.starts_with('-') && !s.starts_with("--") && s.ends_with('t') {
+            // Short-flag bundle whose last char is `t` (e.g. `cp -vt DEST`):
+            // the destination is the following argument.
+            if let Some(dest) = iter.next() {
+                return Some(dest.to_string());
+            }
+        }
+    }
+    None
 }
 
 /// Extract the archive path that `tar` *writes* to, or an empty vec when the
