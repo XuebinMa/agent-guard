@@ -1,0 +1,71 @@
+# Weekly deep-audit suppressions.
+#
+# Findings listed here are already dispositioned. `weekly-deep-audit.sh` reads
+# this file (via .claude/workflows/audit_suppress.py) and:
+#   1. feed-forward: appends a "do NOT re-report" block to each agent prompt,
+#   2. post-filter:  moves any finding that still slips through into a collapsed
+#      "Suppressed (known)" footer in the report instead of the main list.
+#
+# Lives under .claude/ (tracked) rather than docs/audits/ (gitignored). Add an
+# entry ONLY for a finding that is intentionally not being fixed in code (a
+# justified design choice, a CI-guarded non-bug, or work tracked elsewhere).
+# Do NOT use this to silence a real bug — fix the code instead.
+#
+# Entry fields:
+#   id           stable kebab-case identifier (never reused)
+#   scope        which agent it applies to: silent-failure | security-bounty
+#                | type-design | all
+#   disposition  false-positive | justified | wontfix | tracked
+#   ref          related GitHub issue/PR (optional, e.g. "#80")
+#   rationale    one line: WHY this is not a code fix
+#   match        list of substrings; a finding is suppressed only when ALL of
+#                them appear in its text (case-insensitive). Prefer stable
+#                tokens (file name + symbol) over line numbers, which drift.
+#   expires      optional YYYY-MM-DD; re-validate the disposition after this date
+
+suppressions:
+  - id: validators-static-regex-filter-map-drop
+    scope: silent-failure
+    disposition: wontfix
+    rationale: "Static literals guarded by all_patterns_compile / all_named_patterns_compile CI tests, so a bad pattern cannot reach production; validators has no tracing dep and expect() would trip the panic-free precommit gate."
+    match: ["filter_map", "Regex::new"]
+
+  - id: validators-card-phone-regex-option
+    scope: silent-failure
+    disposition: wontfix
+    rationale: "Same CI compile-test guard as the other static detectors; a broken literal is caught in CI, never ships."
+    match: ["card_regex", "phone_regex"]
+
+  - id: windows-appcontainer-sethandleinformation
+    scope: silent-failure
+    disposition: tracked
+    ref: "#80"
+    rationale: "Windows-gated AppContainer prototype that does not compile locally; fixed during the full port tracked in #80."
+    match: ["windows_appcontainer.rs", "SetHandleInformation"]
+
+  - id: windows-job-object-reader-panic-swallow
+    scope: silent-failure
+    disposition: tracked
+    ref: "#80"
+    rationale: "Windows-gated Job Object path; cannot compile/verify on macOS/Linux CI. Addressed alongside the Windows sandbox port."
+    match: ["windows.rs", "reading stdout"]
+
+  - id: windows-test-setup-dir-let-underscore
+    scope: silent-failure
+    disposition: justified
+    rationale: "Test-only setup/teardown (cfg(test)); a create_dir_all failure surfaces as a test failure, not a production silent failure."
+    match: ["create_dir_all", "test setup"]
+
+  - id: enforce-timeout-deny-on-ledger-write-failure
+    scope: silent-failure
+    disposition: justified
+    ref: "#94"
+    rationale: "Deny-on-timeout is the correct fail-closed behavior; the ledger write failure is logged at error! level. Failing the whole call instead of denying would be worse."
+    match: ["approval request Expired", "ledger"]
+
+  - id: validators-archive-tool-out-of-workspace-output
+    scope: security-bounty
+    disposition: wontfix
+    ref: "#92"
+    rationale: "Best-effort denylist completeness. cp/mv/install -t fixed in #92; zip/7z/gzip -c/xz output extraction is fragile (arg-taking flags precede the archive name) and deferred. The redirect `> file` form is already covered."
+    match: ["zip", "unmodeled"]

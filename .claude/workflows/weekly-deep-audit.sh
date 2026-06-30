@@ -17,6 +17,15 @@
 # Can also be run manually any time. Designed to fail open: if a single
 # agent crashes, the other two still produce output.
 #
+# Suppressions (stop already-dispositioned findings from recurring every week):
+# `.claude/audit-suppressions.yaml` lists findings that are intentionally not
+# being fixed in code (CI-guarded non-bugs, Windows-gated items, tracked work).
+# Via `.claude/workflows/audit_suppress.py` the run (1) appends a "do NOT
+# re-report" block to each agent prompt and (2) post-filters the captured report,
+# moving any suppressed finding into a collapsed "Suppressed (known)" footer.
+# Both steps fail open. Add an entry there to retire a recurring non-bug; never
+# use it to hide a real bug — fix the code instead.
+#
 # Usage:
 #   .claude/workflows/weekly-deep-audit.sh                # all three agents
 #   .claude/workflows/weekly-deep-audit.sh --dry-run      # print prompts only
@@ -222,12 +231,25 @@ declare -a shorts
 declare -a status
 exit_code=0
 
+SUPPRESS_PY="$REPO_ROOT/.claude/workflows/audit_suppress.py"
+
 queue() {
     local short="$1" label="$2" prompt_var="$3"
     if [[ -z "$ONLY_AGENT" || "$ONLY_AGENT" == "$short" ]]; then
         labels+=("$label")
         shorts+=("$short")
-        if run_one "$short" "$label" "${!prompt_var}"; then
+        # Feed-forward: append the "do NOT re-report" block for already-
+        # dispositioned findings (.claude/audit-suppressions.yaml). Fail-open — a
+        # missing helper / file leaves the prompt unchanged.
+        local prompt="${!prompt_var}"
+        local block=""
+        if command -v python3 >/dev/null 2>&1; then
+            block="$(python3 "$SUPPRESS_PY" prompt-block "$short" 2>/dev/null || true)"
+        fi
+        if [[ -n "$block" ]]; then
+            prompt="$prompt"$'\n'"$block"
+        fi
+        if run_one "$short" "$label" "$prompt"; then
             status+=("ok")
         else
             status+=("fail")
@@ -277,7 +299,14 @@ EOF
     for sh in "${shorts[@]}"; do
         f="$TMPDIR_RUN/$sh.md"
         if [[ -f "$f" ]]; then
-            cat "$f"
+            # Post-filter safety net: move any finding matching a suppression
+            # into a collapsed "Suppressed (known)" footer. Fail-open to the raw
+            # report if the helper is unavailable.
+            if command -v python3 >/dev/null 2>&1; then
+                python3 "$SUPPRESS_PY" filter "$sh" "$f" 2>/dev/null || cat "$f"
+            else
+                cat "$f"
+            fi
             echo
         fi
     done
