@@ -286,8 +286,14 @@ pub struct RulePatternMap {
     pub condition: Option<Condition>,
 }
 
-#[derive(Debug, Deserialize, Clone, PartialEq, Eq, Default, Serialize)]
+// Variants are declared in increasing-permissiveness order so the derived
+// `Ord` is a meaningful permissiveness comparison
+// (`Blocked < ReadOnly < WorkspaceWrite < FullAccess`). Serde uses the explicit
+// `rename` strings, so reordering is wire-compatible.
+#[derive(Debug, Deserialize, Clone, PartialEq, Eq, PartialOrd, Ord, Default, Serialize)]
 pub enum PolicyMode {
+    #[serde(rename = "blocked")]
+    Blocked,
     #[default]
     #[serde(rename = "read_only")]
     ReadOnly,
@@ -295,8 +301,6 @@ pub enum PolicyMode {
     WorkspaceWrite,
     #[serde(rename = "full_access")]
     FullAccess,
-    #[serde(rename = "blocked")]
-    Blocked,
 }
 
 #[derive(Debug, Deserialize, Default, Clone)]
@@ -507,7 +511,7 @@ impl PolicyEngine {
                 .map(|tp| tp.mode.as_ref().unwrap_or(&self.policy.default_mode))
                 .unwrap_or(&self.policy.default_mode);
 
-            if *tool_mode == PolicyMode::WorkspaceWrite || *tool_mode == PolicyMode::FullAccess {
+            if *tool_mode >= PolicyMode::WorkspaceWrite {
                 return GuardDecision::deny(
                     DecisionCode::InsufficientPermissionMode,
                     format!(
@@ -614,13 +618,13 @@ impl PolicyEngine {
                     if let Some(cond) = res.condition {
                         reason = reason.with_condition(cond);
                     }
-                    return GuardDecision::AskUser {
-                        message: format!(
+                    return GuardDecision::ask_with_reason(
+                        format!(
                             "Confirmation required: rule '{}' matched",
                             pattern_display(rule)
                         ),
                         reason,
-                    };
+                    );
                 }
             }
 
