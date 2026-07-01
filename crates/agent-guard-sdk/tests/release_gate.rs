@@ -143,6 +143,67 @@ fn test_gate_platform_selection_consistency() {
     assert_eq!(s_type, "none");
 }
 
+/// GATE 5: By-Name Backend Selection Truthfulness (issue #100)
+/// Requesting a sandbox backend by name must never claim isolation the build
+/// or host does not provide: a known backend that is not compiled in / not
+/// functional resolves to the truthful "none" backend, and an unknown name is
+/// a hard error — never a silent noop.
+#[test]
+fn test_gate_by_name_selection_truthfulness() {
+    // "none" is always resolvable and always truthful.
+    let none = Guard::sandbox_by_name("none").expect("'none' resolves");
+    assert_eq!(none.sandbox_type(), "none");
+    // Known names are accepted case-insensitively.
+    let upper = Guard::sandbox_by_name("NONE").expect("case-insensitive");
+    assert_eq!(upper.sandbox_type(), "none");
+
+    // Every known backend name resolves to either its real type or the
+    // truthful "none" — never a third value, never a mismatched claim.
+    for name in [
+        "linux-seccomp",
+        "linux-landlock",
+        "macos-seatbelt",
+        "windows-job-object",
+        "windows-appcontainer",
+    ] {
+        let sb = Guard::sandbox_by_name(name).expect("known name resolves");
+        let ty = sb.sandbox_type();
+        assert!(
+            ty == name || ty == "none",
+            "requesting '{name}' must yield '{name}' or 'none', got '{ty}'"
+        );
+    }
+
+    // Platform-specific expectations mirror the default-selection gates.
+    #[cfg(all(target_os = "linux", feature = "seccomp"))]
+    assert_eq!(
+        Guard::sandbox_by_name("linux-seccomp")
+            .unwrap()
+            .sandbox_type(),
+        "linux-seccomp"
+    );
+    // Without the feature the compat shell must NOT be reported as seccomp.
+    #[cfg(all(target_os = "linux", not(feature = "seccomp")))]
+    assert_eq!(
+        Guard::sandbox_by_name("linux-seccomp")
+            .unwrap()
+            .sandbox_type(),
+        "none"
+    );
+
+    // A backend for another OS resolves to the truthful "none".
+    #[cfg(not(target_os = "macos"))]
+    assert_eq!(
+        Guard::sandbox_by_name("macos-seatbelt")
+            .unwrap()
+            .sandbox_type(),
+        "none"
+    );
+
+    // Unknown names are a hard error, distinct from known-but-unavailable.
+    assert!(Guard::sandbox_by_name("bogus-backend").is_err());
+}
+
 /// GATE 3: Negative Security Boundary
 /// Ensures that illegal operations (e.g., global filesystem writes) are strictly
 /// blocked by the OS-level sandbox, regardless of the policy outcome.

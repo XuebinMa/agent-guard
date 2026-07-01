@@ -635,6 +635,7 @@ impl PyGuard {
         session_id = None,
         actor = None,
         working_directory = None,
+        backend = None,
     ))]
     fn execute(
         &self,
@@ -645,6 +646,7 @@ impl PyGuard {
         session_id: Option<String>,
         actor: Option<String>,
         working_directory: Option<String>,
+        backend: Option<String>,
     ) -> PyResult<ExecuteResult> {
         let tool = parse_tool(tool)?;
         let payload = normalize_payload(&tool, payload);
@@ -662,9 +664,19 @@ impl PyGuard {
             context: ctx,
         };
 
+        // Explicit backend request resolves truthfully (a known-but-inactive
+        // backend yields "none", an unknown name is an error); otherwise the
+        // platform default. The label below reads the sandbox actually used.
+        let sandbox = match backend.as_deref() {
+            Some(name) => {
+                Guard::sandbox_by_name(name).map_err(|e| GuardError::new_err(e.to_string()))?
+            }
+            None => Guard::default_sandbox(),
+        };
+
         let result = self
             .inner
-            .execute_default(&input)
+            .execute(&input, sandbox.as_ref())
             .map_err(|e| GuardError::new_err(format!("Execution failed: {e}")))?;
 
         match result {
@@ -683,7 +695,7 @@ impl PyGuard {
                 decision: None,
                 policy_version,
                 receipt: receipt.map(|r| serde_json::to_string(&r).unwrap_or_default()),
-                sandbox_type: Some(Guard::default_sandbox().sandbox_type().to_string()),
+                sandbox_type: Some(sandbox.sandbox_type().to_string()),
                 policy_verification_status: policy_verification.status_label().to_string(),
                 policy_verification_error: policy_verification.error,
             }),
@@ -780,6 +792,7 @@ impl PyGuard {
         session_id = None,
         actor = None,
         working_directory = None,
+        backend = None,
     ))]
     fn run(
         &self,
@@ -790,6 +803,7 @@ impl PyGuard {
         session_id: Option<String>,
         actor: Option<String>,
         working_directory: Option<String>,
+        backend: Option<String>,
     ) -> PyResult<RuntimeOutcome> {
         let tool = parse_tool(tool)?;
         let payload = normalize_payload(&tool, payload);
@@ -807,7 +821,12 @@ impl PyGuard {
             context: ctx,
         };
 
-        let sandbox = Guard::default_sandbox();
+        let sandbox = match backend.as_deref() {
+            Some(name) => {
+                Guard::sandbox_by_name(name).map_err(|e| GuardError::new_err(e.to_string()))?
+            }
+            None => Guard::default_sandbox(),
+        };
         let sandbox_type = sandbox.sandbox_type().to_string();
 
         let outcome = self

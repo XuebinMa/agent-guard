@@ -15,6 +15,197 @@ pub struct DefaultSandboxDiagnosis {
     pub reason: String,
 }
 
+/// Error for a by-name backend request that names a backend the SDK does not
+/// know at all — distinct from a *known* backend that is not compiled in or
+/// not functional on this host, which resolves to the truthful `"none"`
+/// backend instead.
+#[derive(Debug, thiserror::Error)]
+#[error(
+    "unknown sandbox backend '{requested}'; known backends: none, linux-seccomp, \
+     linux-landlock, macos-seatbelt, windows-job-object, windows-appcontainer"
+)]
+pub struct UnknownBackendError {
+    pub requested: String,
+}
+
+/// Truthful fallback shared by every by-name arm whose backend is not active
+/// in this build/host: never claim isolation, always explain why.
+fn by_name_fallback(requested: &str, why: &str) -> (Box<dyn Sandbox>, DefaultSandboxDiagnosis) {
+    (
+        Box::new(agent_guard_sandbox::NoopSandbox),
+        DefaultSandboxDiagnosis {
+            selected_name: "none",
+            selected_sandbox_type: "none",
+            fallback_to_noop: true,
+            reason: format!(
+                "requested backend '{requested}' is not active: {why}; resolving to the \
+                 truthful 'none' backend rather than claiming isolation that is not present"
+            ),
+        },
+    )
+}
+
+/// Resolve a sandbox backend by its `sandbox_type()` name (issue #100).
+///
+/// Accepted names (case-insensitive): `none`, `linux-seccomp`,
+/// `linux-landlock`, `macos-seatbelt`, `windows-job-object`,
+/// `windows-appcontainer`. The gating mirrors [`resolve_default_sandbox`]
+/// exactly — in particular `linux-seccomp` is gated on the `seccomp` Cargo
+/// feature (NOT on `SeccompSandbox::is_available()`, which is `true` on any
+/// Linux host even when the unfiltered compat shell would run) — so a request
+/// can never report isolation the build does not provide (GATE 5).
+pub(crate) fn resolve_sandbox_by_name(
+    name: &str,
+) -> Result<(Box<dyn Sandbox>, DefaultSandboxDiagnosis), UnknownBackendError> {
+    let requested = name.to_ascii_lowercase();
+    match requested.as_str() {
+        "none" => Ok((
+            Box::new(agent_guard_sandbox::NoopSandbox),
+            DefaultSandboxDiagnosis {
+                selected_name: "none",
+                selected_sandbox_type: "none",
+                fallback_to_noop: false,
+                reason: "the 'none' backend was explicitly requested".to_string(),
+            },
+        )),
+        "linux-seccomp" => {
+            #[cfg(all(target_os = "linux", feature = "seccomp"))]
+            {
+                Ok((
+                    Box::new(agent_guard_sandbox::SeccompSandbox::new()),
+                    DefaultSandboxDiagnosis {
+                        selected_name: "seccomp",
+                        selected_sandbox_type: "linux-seccomp",
+                        fallback_to_noop: false,
+                        reason:
+                            "linux-seccomp was requested and the Seccomp-BPF filter is compiled in"
+                                .to_string(),
+                    },
+                ))
+            }
+            #[cfg(not(all(target_os = "linux", feature = "seccomp")))]
+            {
+                Ok(by_name_fallback(
+                    &requested,
+                    "the 'seccomp' Cargo feature is not compiled into this build for this target",
+                ))
+            }
+        }
+        "linux-landlock" => {
+            #[cfg(all(target_os = "linux", feature = "landlock"))]
+            {
+                let ll = agent_guard_sandbox::LandlockSandbox;
+                if ll.is_available() {
+                    Ok((
+                        Box::new(ll),
+                        DefaultSandboxDiagnosis {
+                            selected_name: "landlock",
+                            selected_sandbox_type: "linux-landlock",
+                            fallback_to_noop: false,
+                            reason: "linux-landlock was requested and Landlock is functional on this host".to_string(),
+                        },
+                    ))
+                } else {
+                    Ok(by_name_fallback(
+                        &requested,
+                        "Landlock is compiled in but not functional on this host",
+                    ))
+                }
+            }
+            #[cfg(not(all(target_os = "linux", feature = "landlock")))]
+            {
+                Ok(by_name_fallback(
+                    &requested,
+                    "the 'landlock' Cargo feature is not compiled into this build for this target",
+                ))
+            }
+        }
+        "macos-seatbelt" => {
+            #[cfg(all(target_os = "macos", feature = "macos-sandbox"))]
+            {
+                let sb = agent_guard_sandbox::SeatbeltSandbox;
+                if sb.is_available() {
+                    Ok((
+                        Box::new(sb),
+                        DefaultSandboxDiagnosis {
+                            selected_name: "seatbelt",
+                            selected_sandbox_type: "macos-seatbelt",
+                            fallback_to_noop: false,
+                            reason: "macos-seatbelt was requested and sandbox-exec is functional on this host".to_string(),
+                        },
+                    ))
+                } else {
+                    Ok(by_name_fallback(
+                        &requested,
+                        "Seatbelt is compiled in but sandbox-exec is not functional on this host",
+                    ))
+                }
+            }
+            #[cfg(not(all(target_os = "macos", feature = "macos-sandbox")))]
+            {
+                Ok(by_name_fallback(
+                    &requested,
+                    "the 'macos-sandbox' Cargo feature is not compiled into this build for this target",
+                ))
+            }
+        }
+        "windows-job-object" => {
+            #[cfg(all(target_os = "windows", feature = "windows-sandbox"))]
+            {
+                let sb = agent_guard_sandbox::JobObjectSandbox;
+                if sb.is_available() {
+                    Ok((
+                        Box::new(sb),
+                        DefaultSandboxDiagnosis {
+                            selected_name: "JobObject",
+                            selected_sandbox_type: "windows-job-object",
+                            fallback_to_noop: false,
+                            reason: "windows-job-object was requested and low-integrity process creation is functional".to_string(),
+                        },
+                    ))
+                } else {
+                    Ok(by_name_fallback(
+                        &requested,
+                        "Job Objects are compiled in but the low-integrity runtime is unavailable on this host",
+                    ))
+                }
+            }
+            #[cfg(not(all(target_os = "windows", feature = "windows-sandbox")))]
+            {
+                Ok(by_name_fallback(
+                    &requested,
+                    "the 'windows-sandbox' Cargo feature is not compiled into this build for this target",
+                ))
+            }
+        }
+        "windows-appcontainer" => {
+            #[cfg(all(target_os = "windows", feature = "windows-appcontainer"))]
+            {
+                Ok((
+                    Box::new(agent_guard_sandbox::AppContainerSandbox),
+                    DefaultSandboxDiagnosis {
+                        selected_name: "AppContainer",
+                        selected_sandbox_type: "windows-appcontainer",
+                        fallback_to_noop: false,
+                        reason: "windows-appcontainer was requested and the feature is compiled in"
+                            .to_string(),
+                    },
+                ))
+            }
+            #[cfg(not(all(target_os = "windows", feature = "windows-appcontainer")))]
+            {
+                Ok(by_name_fallback(
+                    &requested,
+                    "the 'windows-appcontainer' Cargo feature is not compiled into this build for this target",
+                ))
+            }
+        }
+        _ => Err(UnknownBackendError {
+            requested: name.to_string(),
+        }),
+    }
+}
+
 /// Pick the default sandbox for the current platform/feature set, alongside a
 /// diagnosis that callers (e.g. `guard-verify`, the doctor reports) can use to
 /// explain the choice to operators.

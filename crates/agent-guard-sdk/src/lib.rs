@@ -22,7 +22,7 @@ pub use approval::{ApprovalConfig, ApprovalError, ApprovalLedger, ApprovalRecord
 pub use content_filter::ContentCheckOutcome;
 pub use doctor::{collect_doctor_report, render_doctor_html, render_doctor_text, DoctorReport};
 pub use enforce::{ExecuteOutcome, ExecuteResult};
-pub use guard::{DefaultSandboxDiagnosis, Guard, GuardInitError};
+pub use guard::{DefaultSandboxDiagnosis, Guard, GuardInitError, UnknownBackendError};
 pub use metrics::{get_metrics, Metrics};
 pub use policy_signing::{
     load_policy_signature_file, load_public_key_file, parse_hex_signing_key, sign_policy,

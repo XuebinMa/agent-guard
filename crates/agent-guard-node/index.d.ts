@@ -96,10 +96,12 @@ export declare class Guard {
   decide(tool: string, payload: string, options?: Context | undefined | null): RuntimeDecision
   /**
    * High-level execution method.
-   * Uses the default sandbox implementation.
+   * Uses the default sandbox implementation, or the backend named by
+   * `backend` (resolved truthfully: a known-but-inactive backend yields
+   * the "none" sandbox; an unknown name rejects).
    */
-  execute(tool: string, payload: string, options?: Context | undefined | null): Promise<ExecuteOutcome>
-  run(tool: string, payload: string, options?: Context | undefined | null): Promise<RuntimeOutcome>
+  execute(tool: string, payload: string, options?: Context | undefined | null, backend?: string | undefined | null): Promise<ExecuteOutcome>
+  run(tool: string, payload: string, options?: Context | undefined | null, backend?: string | undefined | null): Promise<RuntimeOutcome>
   /**
    * Report the outcome of a host-executed handoff back into the audit stream.
    *

@@ -503,13 +503,16 @@ impl Guard {
     }
 
     /// High-level execution method.
-    /// Uses the default sandbox implementation.
+    /// Uses the default sandbox implementation, or the backend named by
+    /// `backend` (resolved truthfully: a known-but-inactive backend yields
+    /// the "none" sandbox; an unknown name rejects).
     #[napi]
     pub async fn execute(
         &self,
         tool: String,
         payload: String,
         options: Option<Context>,
+        backend: Option<String>,
     ) -> Result<ExecuteOutcome> {
         let normalized_payload = normalize_payload(tool.clone(), payload);
         let rust_tool = parse_tool(&tool)?;
@@ -521,7 +524,11 @@ impl Guard {
             context: rust_ctx,
         };
 
-        let sandbox = RustGuard::default_sandbox();
+        let sandbox = match backend.as_deref() {
+            Some(name) => RustGuard::sandbox_by_name(name)
+                .map_err(|e| Error::new(Status::InvalidArg, e.to_string()))?,
+            None => RustGuard::default_sandbox(),
+        };
         let sandbox_type = sandbox.sandbox_type().to_string();
 
         let result = self
@@ -538,6 +545,7 @@ impl Guard {
         tool: String,
         payload: String,
         options: Option<Context>,
+        backend: Option<String>,
     ) -> Result<RuntimeOutcome> {
         let normalized_payload = normalize_payload(tool.clone(), payload);
         let rust_tool = parse_tool(&tool)?;
@@ -549,7 +557,11 @@ impl Guard {
             context: rust_ctx,
         };
 
-        let sandbox = RustGuard::default_sandbox();
+        let sandbox = match backend.as_deref() {
+            Some(name) => RustGuard::sandbox_by_name(name)
+                .map_err(|e| Error::new(Status::InvalidArg, e.to_string()))?,
+            None => RustGuard::default_sandbox(),
+        };
         let sandbox_type = sandbox.sandbox_type().to_string();
 
         let result = self

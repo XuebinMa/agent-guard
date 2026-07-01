@@ -161,6 +161,32 @@ tools:
     assert.notEqual(deniedOutcome.status || deniedOutcome.outcome, 'executed')
     assert.ok(deniedOutcome.decision)
 
+    // Explicit backend selection (issue #100): "none" always resolves and is
+    // truthful; a known-but-inactive backend resolves truthfully to "none"
+    // (this binding compiles no Linux sandbox feature); unknown names reject.
+    const noneBackend = await guard.execute(
+      'bash',
+      normalizePayload('bash', 'echo backend'),
+      undefined,
+      'none'
+    )
+    assert.equal(noneBackend.status || noneBackend.outcome, 'executed')
+    assert.equal(noneBackend.sandboxType || noneBackend.sandbox_type, 'none')
+
+    const inactiveBackend = await guard.execute(
+      'bash',
+      normalizePayload('bash', 'echo backend'),
+      undefined,
+      'linux-seccomp'
+    )
+    assert.equal(inactiveBackend.sandboxType || inactiveBackend.sandbox_type, 'none')
+
+    await assert.rejects(
+      async () =>
+        guard.execute('bash', normalizePayload('bash', 'echo backend'), undefined, 'bogus-backend'),
+      /unknown sandbox backend/i
+    )
+
     const enforcedHandler = wrapOpenAITool(
       guard,
       async () => {

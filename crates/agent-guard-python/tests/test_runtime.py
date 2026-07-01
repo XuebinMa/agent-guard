@@ -330,3 +330,37 @@ def test_runtime_outcome_repr_contains_outcome_and_request_id(guard):
     text = repr(outcome)
     assert "executed" in text
     assert outcome.request_id in text
+
+
+# ── Explicit backend selection (issue #100) ───────────────────────────────────
+
+
+def test_execute_backend_none_is_truthful(guard):
+    result = guard.execute(
+        "bash", "echo backend", trust_level="trusted", backend="none"
+    )
+    assert result.is_executed()
+    assert result.sandbox_type == "none"
+
+
+def test_execute_backend_inactive_falls_back_to_none(guard):
+    # The Python binding does not compile any sandbox feature, so requesting
+    # linux-seccomp must truthfully resolve to "none" rather than claiming
+    # syscall isolation that is not present (on non-Linux hosts this also
+    # covers the cross-platform case).
+    result = guard.execute(
+        "bash", "echo backend", trust_level="trusted", backend="linux-seccomp"
+    )
+    assert result.is_executed()
+    assert result.sandbox_type == "none"
+
+
+def test_run_accepts_backend_kwarg(guard):
+    outcome = guard.run("bash", "echo backend", trust_level="trusted", backend="none")
+    assert outcome.is_executed()
+    assert outcome.sandbox_type == "none"
+
+
+def test_execute_backend_unknown_raises(guard):
+    with pytest.raises(Exception, match="unknown sandbox backend"):
+        guard.execute("bash", "echo backend", trust_level="trusted", backend="bogus")
