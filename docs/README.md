@@ -43,6 +43,7 @@ If you are new to the repo, start with the active docs first and only drop into 
 - **I want to deploy safely** → [Deployment Guide](guides/operations/deployment-guide.md)
 - **I want to audit security posture** → [Threat Model](concepts/threat-model.md)
 - **I want to understand the testing approach** → [Testing Strategy](concepts/testing-strategy.md)
+- **I want to see what's shipped vs planned** → [Roadmap](../ROADMAP.md)
 - **I want to know what frameworks are actually supported** → [Framework Support Matrix](reference/framework-support-matrix.md)
 - **I want to compare platform gaps** → [Capability Parity Matrix](concepts/capability-parity.md)
 - **I want historical strategy or release context** → [Document Archive](archive/README.md)
@@ -118,4 +119,5 @@ For security researchers and auditors reviewing the system's defensive posture.
 ## 📂 Project History
 For maintainers and reviewers who need archived strategy, release, or implementation history.
 
+- 🗺️ **[Roadmap](../ROADMAP.md)**: The current forward-looking view — shipped vs partial vs planned — distilled from the archive below.
 - 🏛️ **[Document Archive](archive/README.md)**: Historical design documents, archived release notes, and past roadmap context.

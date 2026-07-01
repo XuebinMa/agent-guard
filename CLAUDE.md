@@ -47,7 +47,7 @@ cd crates/agent-guard-node && npm run build
 
 ## Workspace Architecture
 
-Seven crates under `crates/`, layered bottom-up:
+Nine crates under `crates/`, layered bottom-up:
 
 ```
 agent-guard-core          ← foundational types, YAML policy engine, audit, attestation
@@ -59,7 +59,9 @@ agent-guard-sdk           ← main integration point: Guard struct, anomaly dete
   ↑
 agent-guard-python        ← PyO3 bindings (maturin, abi3-py310)
 agent-guard-node          ← napi-rs bindings
-guard-verify              ← CLI verification and host-boundary diagnostics
+guard-verify              ← CLI: execution-receipt verification + host-boundary doctor
+agent-guard-cli           ← CLI: interactive approval workflow (bin: agent-guard)
+guard-hook                ← Claude Code PreToolUse hook adapter (bin: guard-hook)
 ```
 
 ## Current Product Reality
@@ -114,7 +116,7 @@ GitHub Actions (`.github/workflows/ci.yml`) uses `./scripts/verify.sh` as the sh
 
 ## Testing Strategy
 
-This is a security boundary, so the test is the specification of the boundary: write the failing test first, lock every closed bypass with a permanent regression, and never weaken a release gate to make CI green. The full philosophy, the layer map (unit / integration / gate / security-regression / parity / per-OS sandbox), and the local-vs-CI gap live in [docs/concepts/testing-strategy.md](docs/concepts/testing-strategy.md). Heavy crates carry their own scoped `CLAUDE.md` for local gotchas — see `crates/agent-guard-sandbox/CLAUDE.md` (backend-selection invariants) and `crates/agent-guard-python/CLAUDE.md` (the PyO3 extension-module trap).
+This is a security boundary, so the test is the specification of the boundary: write the failing test first, lock every closed bypass with a permanent regression, and never weaken a release gate to make CI green. The full philosophy, the layer map (unit / integration / gate / security-regression / parity / per-OS sandbox), and the local-vs-CI gap live in [docs/concepts/testing-strategy.md](docs/concepts/testing-strategy.md). Heavy crates carry their own scoped `CLAUDE.md` for local gotchas — see the scoped files under `crates/agent-guard-sandbox/` (backend-selection invariants), `crates/agent-guard-python/` (the PyO3 extension-module trap), `crates/agent-guard-validators/` (the security-critical bash classification tables), and `crates/agent-guard-node/` (generated napi bindings + cross-language parity).
 
 ## Working Rules
 
