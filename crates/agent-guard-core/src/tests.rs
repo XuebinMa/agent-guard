@@ -2096,6 +2096,37 @@ tools:
     }
 
     #[test]
+    fn input_content_absent_by_default() {
+        let yaml = r#"
+version: 1
+default_mode: workspace_write
+"#;
+        let engine = PolicyEngine::from_yaml_str(yaml).expect("policy parses");
+        assert!(engine.input_content_policy().is_none());
+    }
+
+    #[test]
+    fn input_content_parses_mode_and_default_detectors() {
+        // Top-level `input_content:` block (issue #99) — the content policy for
+        // host-supplied input text (prompts), not tied to any tool.
+        let yaml = r#"
+version: 1
+default_mode: workspace_write
+input_content:
+  mode: block
+"#;
+        let engine = PolicyEngine::from_yaml_str(yaml).expect("policy parses");
+        let policy = engine
+            .input_content_policy()
+            .expect("input content policy present");
+        assert_eq!(policy.mode, ContentMode::Block);
+        assert_eq!(
+            policy.detect,
+            vec![ContentDetector::Secrets, ContentDetector::Pii]
+        );
+    }
+
+    #[test]
     fn content_policy_parses_mode_and_default_detectors() {
         let yaml = r#"
 version: 1

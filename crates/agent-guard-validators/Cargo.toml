@@ -6,8 +6,9 @@ license.workspace = true
 description = "Bash and path validators for agent-guard"
 
 [features]
-# S6-1 spike: content-layer secret detection. Off by default — this is a
-# feasibility PoC and is not wired into the main Guard pipeline yet.
+# Content-layer secret/PII detection (S6-1/S6-2 detectors). Off by default.
+# Enabled through the SDK's `content` feature, which wires these detectors
+# into the Guard pipeline (outbound write/http surfaces + input text).
 content = ["dep:regex"]
 
 [dependencies]

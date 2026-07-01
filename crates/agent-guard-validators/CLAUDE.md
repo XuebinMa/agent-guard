@@ -46,12 +46,14 @@ Module layout:
    gap (a destructive tool not listed) reads as "unknown/allowed". Adding a
    command means updating the table **and** adding a test.
 
-## The `content` feature is not wired in
+## The `content` feature is opt-in, spike-grade
 
 `src/content/` (secret/PII detection, redaction) is behind the off-by-default
-`content` feature — an S6-1 spike / PoC that is **not** part of the main `Guard`
-pipeline. Do not assume importing this crate gives you content scanning, and do
-not describe it as an active enforcement path.
+`content` feature. A default build carries no content scanning; the SDK's
+`content` feature wires these detectors into the Guard pipeline — `write_file`
+content and `http_request` body on the outbound path, plus input text via
+`Guard::check_content`. The detector set is spike-grade (named patterns +
+entropy, regex + Luhn) — do not describe it as a DLP engine.
 
 ## Testing
 

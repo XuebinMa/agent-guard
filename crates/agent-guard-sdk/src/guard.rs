@@ -354,6 +354,58 @@ impl Guard {
         self.decide(&input)
     }
 
+    /// Scan host-supplied input text (e.g. a prompt before it reaches the LLM
+    /// provider) against the top-level `input_content:` policy block.
+    ///
+    /// Unlike the per-tool outbound content path, the Guard does not perform
+    /// the call this input is destined for, so Mask mode hands the redacted
+    /// text back to the host via `ContentCheckOutcome::masked_text`. Findings
+    /// are audited as a `ContentFinding` record with tool label `"input"` for
+    /// every mode — including Block, since no ToolCall record exists to carry
+    /// an input-scan denial. With no `input_content:` block configured the
+    /// text is not scanned and a benign outcome is returned.
+    #[cfg(feature = "content")]
+    pub fn check_content(
+        &self,
+        text: &str,
+        context: &Context,
+    ) -> crate::content_filter::ContentCheckOutcome {
+        use crate::content_filter::ContentCheckOutcome;
+
+        let state = self.state.load();
+        let Some(policy) = state.engine.input_content_policy() else {
+            return ContentCheckOutcome::benign();
+        };
+        let Some(app) = crate::content_filter::apply_input_content(policy, text) else {
+            return ContentCheckOutcome::benign();
+        };
+
+        let mode_label = match app.mode {
+            agent_guard_core::ContentMode::Block => "block",
+            agent_guard_core::ContentMode::Mask => "mask",
+            agent_guard_core::ContentMode::Warn => "warn",
+        };
+        state
+            .siem_exporter
+            .export(agent_guard_core::AuditRecord::ContentFinding(
+                agent_guard_core::ContentFindingEvent {
+                    timestamp: chrono::Utc::now(),
+                    request_id: Uuid::new_v4().to_string(),
+                    agent_id: context.agent_id.clone(),
+                    tool: "input".to_string(),
+                    mode: mode_label.to_string(),
+                    count: app.labels.len(),
+                    labels: app.labels.clone(),
+                },
+            ));
+
+        ContentCheckOutcome {
+            blocked: app.mode == agent_guard_core::ContentMode::Block,
+            masked_text: app.masked_text,
+            labels: app.labels,
+        }
+    }
+
     pub(crate) fn check_internal(
         &self,
         input: &GuardInput,
