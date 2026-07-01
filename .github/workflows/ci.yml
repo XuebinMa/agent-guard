@@ -167,17 +167,13 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - run: cargo install cargo-audit --locked
-      # Ignored advisories are tracked as Sprint 4 follow-up; all reachable
-      # via reqwest 0.11 → rustls 0.21 (or async-std via httpmock dev-dep).
-      # Fix requires the reqwest 0.12 / rustls 0.22 migration in a dedicated PR.
-      - run: |
-          cargo audit \
-            --ignore RUSTSEC-2026-0104 \
-            --ignore RUSTSEC-2026-0099 \
-            --ignore RUSTSEC-2026-0098 \
-            --ignore RUSTSEC-2026-0097 \
-            --ignore RUSTSEC-2025-0134 \
-            --ignore RUSTSEC-2025-0052
+      # The reqwest/rustls migration the previous blanket ignore list was
+      # waiting on is done (now reqwest 0.13 / rustls 0.23 / hyper 1.x, and the
+      # async-std path via the httpmock dev-dep is gone), so those ignores were
+      # dropped and the audit runs unfiltered. If a new advisory surfaces, add a
+      # specific `--ignore RUSTSEC-YYYY-NNNN` here with a dated one-line
+      # justification rather than restoring a blanket list.
+      - run: cargo audit
 
   parity-e2e:
     name: Cross-language Parity E2E
