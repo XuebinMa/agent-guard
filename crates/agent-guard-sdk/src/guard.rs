@@ -8,6 +8,7 @@ use agent_guard_core::{
 };
 use agent_guard_sandbox::Sandbox;
 use agent_guard_validators::bash::{validate_bash_command, ValidationResult};
+use agent_guard_validators::http::validate_http_request;
 use arc_swap::ArcSwap;
 use thiserror::Error;
 use uuid::Uuid;
@@ -518,6 +519,15 @@ impl Guard {
                     );
                 }
                 ValidationResult::Allow => {}
+            }
+        }
+
+        // HttpRequest: block method-override smuggling before the policy engine
+        // sees the request, so a benign declared method can't carry a mutating
+        // override header past a method-aware rule.
+        if let Tool::HttpRequest = &input.tool {
+            if let ValidationResult::Block { reason } = validate_http_request(&input.payload) {
+                return GuardDecision::deny(DecisionCode::DeniedByRule, reason);
             }
         }
 

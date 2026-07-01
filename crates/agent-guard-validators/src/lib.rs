@@ -1,4 +1,5 @@
 pub mod bash;
+pub mod http;
 pub mod path;
 
 #[cfg(feature = "content")]
@@ -12,3 +13,4 @@ pub use bash::{
     validate_paths, validate_read_only, validate_sed, CommandIntent, PermissionMode,
     ValidationResult,
 };
+pub use http::validate_http_request;

@@ -107,7 +107,7 @@ Detection is spike-grade (named patterns + entropy fallback for secrets; regex +
 
 ### Known gaps in this preset
 
-1. **HTTP method-aware filtering.** The current `http_request` payload schema is URL-only; the validator cannot see whether a request is a `POST` vs `GET`. The preset compensates by URL-level denies for the highest-value destinations (cloud metadata, RFC1918, loopback). If you need true "ask before any non-local mutating method," do it host-side: wrap your HTTP tool to set a different `tool` name (e.g. `Custom("http.mutate")`) for non-`GET` calls, then add a per-tool rule in policy. The validator will be extended with a `method` matcher in a future sprint.
+1. **Cloud / environment awareness for HTTP.** Policy rules are now method-aware — add a `method:` constraint to an `http_request` rule (e.g. a `regex:` host rule with `method: DELETE`) so it only applies to that method, and an http validator blocks `X-HTTP-Method-Override`-style header smuggling. What the preset still cannot express is intent beyond method + URL (e.g. "allow POST to this host's `/safe` API but ask on everything else on the same host with a body") — layer that with per-tool `Custom` names host-side when you need it.
 
 2. **Cluster / environment awareness.** `kubectl apply`, `terraform apply`, `pulumi up`, etc. land in `ask` regardless of whether they target a dev cluster or production. There is no way to express "ask for prod, allow for dev" without parsing kubeconfig / state. Override per-environment in your own copy.
 
