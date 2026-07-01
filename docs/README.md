@@ -42,6 +42,8 @@ If you are new to the repo, start with the active docs first and only drop into 
 - **I want a fast attack demo for evaluation or sharing** → [Attack Demo Playbook](guides/getting-started/attack-demo-playbook.md)
 - **I want to deploy safely** → [Deployment Guide](guides/operations/deployment-guide.md)
 - **I want to audit security posture** → [Threat Model](concepts/threat-model.md)
+- **I want to understand the testing approach** → [Testing Strategy](concepts/testing-strategy.md)
+- **I want to see what's shipped vs planned** → [Roadmap](../ROADMAP.md)
 - **I want to know what frameworks are actually supported** → [Framework Support Matrix](reference/framework-support-matrix.md)
 - **I want to compare platform gaps** → [Capability Parity Matrix](concepts/capability-parity.md)
 - **I want historical strategy or release context** → [Document Archive](archive/README.md)
@@ -105,6 +107,7 @@ For security researchers and auditors reviewing the system's defensive posture.
 
 - 🏹 **[Threat Model](concepts/threat-model.md)**: Formal asset analysis and attack surface matrix.
 - 🧱 **[Enforcement Layers (ADR)](concepts/enforcement-layers.md)**: Which layer is the security boundary in which deployment shape, and how bypass reports are triaged.
+- 🧪 **[Testing Strategy](concepts/testing-strategy.md)**: Why the test is the specification of the boundary, the layer map, and what "done" means before a change can merge.
 - 🗺️ **[Capability Parity Matrix](concepts/capability-parity.md)**: Feature alignment across Linux, macOS, and Windows.
 - 🔍 **[Security Audit Report](reference/security-audit.md)**: Release-era self-audit checkpoint, useful after the primary threat-model review.
 - 🌐 **[Cross-Language Parity](concepts/cross-language-parity.md)**: API and decision identity across Rust / Python / Node bindings.
@@ -116,4 +119,5 @@ For security researchers and auditors reviewing the system's defensive posture.
 ## 📂 Project History
 For maintainers and reviewers who need archived strategy, release, or implementation history.
 
+- 🗺️ **[Roadmap](../ROADMAP.md)**: The current forward-looking view — shipped vs partial vs planned — distilled from the archive below.
 - 🏛️ **[Document Archive](archive/README.md)**: Historical design documents, archived release notes, and past roadmap context.

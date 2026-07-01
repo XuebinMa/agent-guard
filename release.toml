@@ -15,7 +15,7 @@
 # For now we ship release commits and tags but skip the actual `cargo publish`
 # step, since the crates aren't on crates.io yet.
 
-# Use a single shared version across all workspace crates so the seven
+# Use a single shared version across all workspace crates so the nine
 # crates always release together and inter-crate `version = "=0.2.0-rc1"`
 # pins stay consistent.
 shared-version = true

@@ -248,6 +248,7 @@ Additional references:
 - [Latest Release](https://github.com/XuebinMa/agent-guard/releases/tag/v0.2.0-rc1)
 - [Join the Discussion](https://github.com/XuebinMa/agent-guard/discussions/1)
 - [Deployment Guide](docs/guides/operations/deployment-guide.md)
+- [Roadmap](ROADMAP.md): what's shipped, partial, and planned
 - [Documentation Archive](docs/archive/README.md)
 - [Documentation Hub](docs/README.md)
 

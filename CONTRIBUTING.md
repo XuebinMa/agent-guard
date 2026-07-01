@@ -28,7 +28,7 @@ cargo install cargo-deny cargo-audit cargo-cyclonedx --locked
 
 ## Repository layout
 
-Seven crates under `crates/`, layered bottom-up:
+Nine crates under `crates/`, layered bottom-up:
 
 ```
 agent-guard-core          ← types, YAML policy engine, audit, attestation
@@ -40,7 +40,9 @@ agent-guard-sdk           ← Guard struct, anomaly detection, metrics, provenan
   ↑
 agent-guard-python        ← PyO3 bindings (maturin, abi3-py310)
 agent-guard-node          ← napi-rs bindings
-guard-verify              ← CLI verification
+guard-verify              ← CLI: receipt verification + host-boundary doctor
+agent-guard-cli           ← CLI: interactive approval workflow
+guard-hook                ← Claude Code PreToolUse hook adapter
 ```
 
 Cross-language e2e fixtures and runners live under [`tests/cross-language-parity/`](tests/cross-language-parity/).
@@ -139,6 +141,8 @@ Then **all three runners must change in the same PR** and `parity-e2e` must stay
 
 ### Tests
 
+The full philosophy, layer map, and definition of done is in [Testing Strategy](docs/concepts/testing-strategy.md). The rules below are the minimum that every PR must meet.
+
 - Unit tests live next to the code (in `src/tests.rs` or `mod tests` blocks).
 - Integration tests live in `crates/<crate>/tests/`.
 - Security regression cases go in `crates/agent-guard-sdk/tests/security_regression.rs` — patterns we've explicitly chosen to defend against.
@@ -172,11 +176,11 @@ git push origin main v<semver>         # push manually after review
 
 `<level>` is one of `patch`, `minor`, `major`, `alpha`, `beta`, `rc`, or `release`. The configuration:
 
-- Uses a **shared version** across all seven workspace crates so they always release together (matches the `version = "=0.2.0-rc1"` inter-crate pin in `Cargo.toml`).
+- Uses a **shared version** across all nine workspace crates so they always release together (matches the `version = "=0.2.0-rc1"` inter-crate pin in `Cargo.toml`).
 - Creates **one tag per workspace** (`v<semver>`) rather than a tag per crate.
 - **Skips `cargo publish`** for now (`publish = false` in `release.toml`) — flip to `true` when the crates are ready for crates.io.
 - **Does not auto-push** — you push the tag explicitly so the release becomes visible only after a final review.
-- **Does NOT roll `CHANGELOG.md`** automatically — `cargo-release`'s `pre-release-replacements` resolves paths per-crate, which would rewrite a workspace-level CHANGELOG seven times. Update `CHANGELOG.md` by hand before each release: rename the current `## [Unreleased]` heading to `## [<new-version>] — <date>` and add a fresh `## [Unreleased]` stub above it.
+- **Does NOT roll `CHANGELOG.md`** automatically — `cargo-release`'s `pre-release-replacements` resolves paths per-crate, which would rewrite a workspace-level CHANGELOG nine times. Update `CHANGELOG.md` by hand before each release: rename the current `## [Unreleased]` heading to `## [<new-version>] — <date>` and add a fresh `## [Unreleased]` stub above it.
 
 Recommended pre-release sequence:
 
