@@ -19,8 +19,9 @@ pub enum ExtractedPayload<'a> {
     Raw(&'a str),
     /// File path extracted from `{"path": "..."}`.
     Path(String),
-    /// URL extracted from `{"url": "..."}`.
-    Url(String),
+    /// URL + normalized HTTP method extracted from
+    /// `{"url": "...", "method": "..."}` (used by Tool::HttpRequest).
+    Http { url: String, method: String },
     /// Command extracted from `{"command": "..."}` (used by Tool::Bash).
     Command(String),
 }
@@ -30,7 +31,17 @@ impl<'a> ExtractedPayload<'a> {
     pub fn match_value(&self) -> &str {
         match self {
             Self::Raw(s) => s,
-            Self::Path(s) | Self::Url(s) | Self::Command(s) => s.as_str(),
+            Self::Path(s) | Self::Command(s) => s.as_str(),
+            Self::Http { url, .. } => url.as_str(),
+        }
+    }
+
+    /// The normalized (uppercase) HTTP method for an `HttpRequest` payload, or
+    /// `None` for any other tool. Consumed by method-aware policy matching.
+    pub fn http_method(&self) -> Option<&str> {
+        match self {
+            Self::Http { method, .. } => Some(method.as_str()),
+            _ => None,
         }
     }
 }
@@ -40,9 +51,38 @@ pub fn extract_path(payload: &str) -> Result<ExtractedPayload<'_>, GuardDecision
     extract_string_field(payload, "path").map(ExtractedPayload::Path)
 }
 
-/// Extract url from `{"url": "..."}` (used by HttpRequest).
-pub fn extract_url(payload: &str) -> Result<ExtractedPayload<'_>, GuardDecision> {
-    extract_string_field(payload, "url").map(ExtractedPayload::Url)
+/// Extract url + normalized method from `{"url": "...", "method": "..."}`
+/// (used by HttpRequest). `url` is required; `method` defaults to `GET` and is
+/// uppercased so policy rules can match on it case-insensitively.
+pub fn extract_http_request(payload: &str) -> Result<ExtractedPayload<'_>, GuardDecision> {
+    // CWE-770: bound payload size, mirroring extract_string_field.
+    if payload.len() > 1024 * 1024 {
+        return Err(GuardDecision::deny(
+            DecisionCode::InvalidPayload,
+            "payload exceeds maximum size of 1MB".to_string(),
+        ));
+    }
+    let v: serde_json::Value = serde_json::from_str(payload).map_err(|_| {
+        GuardDecision::deny(
+            DecisionCode::InvalidPayload,
+            "payload is not valid JSON (expected {\"url\":\"...\"})".to_string(),
+        )
+    })?;
+    let url = match v.get("url").and_then(|u| u.as_str()) {
+        Some(s) => s.to_string(),
+        None => {
+            return Err(GuardDecision::deny(
+                DecisionCode::MissingPayloadField,
+                "payload is missing required field 'url' (expected {\"url\":\"...\"})".to_string(),
+            ))
+        }
+    };
+    let method = v
+        .get("method")
+        .and_then(|m| m.as_str())
+        .map(|s| s.to_ascii_uppercase())
+        .unwrap_or_else(|| "GET".to_string());
+    Ok(ExtractedPayload::Http { url, method })
 }
 
 /// Extract command from `{"command": "..."}` (used by Tool::Bash).

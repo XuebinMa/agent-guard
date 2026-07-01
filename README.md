@@ -154,6 +154,7 @@ What is strong today (action layer):
 
 - the five outbound action categories — code egress, package release, artifact egress, remote mutation, destructive shell — are covered by a zero-config preset
 - shell / terminal, file write, and outbound mutation HTTP are the underlying runtime proof surfaces
+- HTTP policy rules are method-aware: a rule can carry a `method:` constraint (e.g. deny `POST`/`DELETE` to a host) instead of matching the URL alone
 - normalized runtime decisions, approval flows, and Ed25519-signed audit records are available now
 - the SDK already includes policy signing, execution receipts, metrics, anomaly detection, and SIEM export beyond the narrow wedge
 
@@ -164,7 +165,6 @@ What is experimental and opt-in (content layer):
 What is roadmap (content layer):
 
 - detection on tool *inputs* (prompts) before they reach the LLM provider, not just outbound effects
-- HTTP method matching in policy (today the schema is URL-only; method-aware filtering goes host-side — see [presets/README.md](presets/README.md))
 - distribution as a Claude Code plugin / ECC marketplace entry
 
 What to understand before integrating:

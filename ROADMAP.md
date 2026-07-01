@@ -37,8 +37,9 @@ per-surface, per-language reality.
   unwrapping, and write-target collection for compound commands.
 - **File-write + path validation** — workspace-confined normalisation with
   symlink-escape and `..`-traversal checks.
-- **Outbound HTTP control** — the runtime distinguishes mutation methods
-  (policy matching itself is still URL-centric — see *Partial*).
+- **Outbound HTTP control** — the runtime distinguishes mutation methods, and
+  policy rules are method-aware: a rule can carry a `method:` constraint, backed
+  by an http validator that blocks method-override-header smuggling.
 - **Sandbox backends, feature-gated and off by default** — a default build
   selects the noop backend and truthfully reports `"none"`. Opting into a
   feature enables the Linux seccomp backend (prototype/fallback), the macOS
@@ -71,8 +72,6 @@ These exist but are explicitly incomplete — do not describe them as finished.
   `"none"`; real isolation requires opting into the `seccomp` (or `landlock`)
   feature, and even then the Linux baseline is not a shipped production
   syscall-filtering enforcement path.
-- **HTTP policy matching is URL-centric.** Method-awareness is a runtime
-  distinction only; policy rules cannot yet match on HTTP method.
 - **Windows AppContainer is experimental / opt-in.** Job Object is the default.
 - **File and HTTP validators are thinner than bash.**
 - **Content layer is an off-by-default PoC.** Secret/PII detection and redaction
@@ -87,8 +86,6 @@ These exist but are explicitly incomplete — do not describe them as finished.
 
 Concrete items the current docs already frame as roadmap:
 
-- **HTTP method-aware policy matching** — let rules distinguish `POST`/`PUT`/
-  `DELETE` from `GET`, instead of URL-only matching.
 - **Content detection on tool inputs** — scan prompts before they reach the
   provider, not only outbound effects.
 - **Explicit sandbox backend selection in Python and Node** — today the binding

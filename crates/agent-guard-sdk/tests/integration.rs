@@ -330,6 +330,58 @@ fn http_request_json_normal_url_allowed() {
     assert_eq!(d, GuardDecision::Allow);
 }
 
+// ── Method-aware HTTP policy (issue #39) ─────────────────────────────────────
+
+const METHOD_POLICY: &str = r#"
+version: 1
+default_mode: workspace_write
+tools:
+  http_request:
+    deny:
+      - regex: "^https?://api\\.example\\.com/"
+        method: POST
+audit:
+  enabled: false
+anomaly:
+  enabled: false
+"#;
+
+#[test]
+fn http_method_aware_deny_post_allows_get() {
+    let guard = Guard::from_yaml(METHOD_POLICY).expect("load method-aware policy");
+    // POST to the host is denied by the method-aware deny rule.
+    let post = guard.check_tool(
+        Tool::HttpRequest,
+        r#"{"method":"POST","url":"https://api.example.com/publish","body":"{}"}"#,
+        trusted(),
+    );
+    assert!(
+        matches!(post, GuardDecision::Deny { .. }),
+        "POST must be denied"
+    );
+    // GET to the same host is allowed — the deny rule's `method: POST` constraint
+    // does not apply to a GET (before #39 the URL regex denied both).
+    let get = guard.check_tool(
+        Tool::HttpRequest,
+        r#"{"method":"GET","url":"https://api.example.com/status"}"#,
+        trusted(),
+    );
+    assert_eq!(get, GuardDecision::Allow, "GET must be allowed");
+}
+
+#[test]
+fn http_missing_method_defaults_to_get() {
+    // A payload with no `method` field is treated as GET, so the `method: POST`
+    // deny rule does not apply.
+    let guard = Guard::from_yaml(METHOD_POLICY).expect("load method-aware policy");
+    let d = guard.check_tool(
+        Tool::HttpRequest,
+        r#"{"url":"https://api.example.com/status"}"#,
+        trusted(),
+    );
+    assert_eq!(d, GuardDecision::Allow);
+}
+
 #[test]
 fn http_request_invalid_json_is_denied() {
     let d = guard().check_tool(Tool::HttpRequest, "https://example.com", trusted());

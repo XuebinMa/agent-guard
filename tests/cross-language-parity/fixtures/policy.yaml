@@ -33,6 +33,10 @@ tools:
     mode: workspace_write
     deny:
       - regex: "^https?://169\\.254\\.169\\.254"
+      # Method-aware rule (issue #39): DELETE to the internal API is denied,
+      # while GET to the same host stays allowed.
+      - regex: "^https?://api\\.internal\\.test/"
+        method: DELETE
 
 anomaly:
   enabled: false

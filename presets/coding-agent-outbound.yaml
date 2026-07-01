@@ -206,11 +206,10 @@ tools:
 
   http_request:
     mode: workspace_write
-    # The payload schema today is URL-only — there is no `method` field
-    # the validator can match on. So "ask on any non-local POST/PUT/
-    # PATCH/DELETE" is not expressible without a schema extension; the
-    # rules below cover the highest-value URL-only protections instead.
-    # See presets/README.md for the host-side method-aware pattern.
+    # Policy rules are method-aware (issue #39): a rule can carry a `method:`
+    # constraint to match a specific HTTP method. The URL-level denies below
+    # cover the highest-value SSRF / mutation-surface protections; add a
+    # `method:` to a rule to scope it to e.g. POST/PUT/PATCH/DELETE.
     deny:
       # Cloud / link-local metadata endpoints (IMDS classic, SSRF chain).
       - regex: "^https?://169\\.254\\.169\\.254"

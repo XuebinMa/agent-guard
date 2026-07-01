@@ -9,7 +9,7 @@ use thiserror::Error;
 
 use crate::decision::{DecisionCode, DecisionReason, GuardDecision};
 use crate::file_paths::{resolve_path_glob_pattern, resolve_tool_path};
-use crate::payload::{extract_bash_command, extract_path, extract_url, ExtractedPayload};
+use crate::payload::{extract_bash_command, extract_http_request, extract_path, ExtractedPayload};
 use crate::types::{Context, Tool, TrustLevel};
 
 // ── M3.1: Context-aware Condition ─────────────────────────────────────────────
@@ -282,6 +282,11 @@ pub struct RulePatternMap {
     pub prefix: Option<String>,
     pub regex: Option<String>,
     pub plain: Option<String>,
+    /// HTTP method constraint (e.g. `POST`). When set, the rule only applies to
+    /// an `HttpRequest` whose method matches (case-insensitive), and never
+    /// matches a tool that carries no method. `None` keeps the pre-existing,
+    /// method-agnostic (URL-only) behavior.
+    pub method: Option<String>,
     #[serde(rename = "if")]
     pub condition: Option<Condition>,
 }
@@ -358,6 +363,7 @@ struct CompiledRulePatternMap {
     regex_src: Option<String>,
     regex: Option<Regex>,
     plain: Option<String>,
+    method: Option<String>,
     condition: Option<Condition>,
 }
 
@@ -392,6 +398,7 @@ fn compile_rule(rule: &RulePattern) -> Result<CompiledRulePattern, PolicyError> 
                 regex_src: m.regex.clone(),
                 regex,
                 plain: m.plain.clone(),
+                method: m.method.as_ref().map(|s| s.to_ascii_uppercase()),
                 condition: m.condition.clone(),
             }))
         }
@@ -554,7 +561,7 @@ impl PolicyEngine {
                 Ok(_) => unreachable!("path extractor returned a non-path payload"),
                 Err(deny) => return deny,
             },
-            Tool::HttpRequest => match extract_url(payload) {
+            Tool::HttpRequest => match extract_http_request(payload) {
                 Ok(ep) => ep,
                 Err(deny) => return deny,
             },
@@ -565,6 +572,7 @@ impl PolicyEngine {
             _ => ExtractedPayload::Raw(payload),
         };
         let match_value = extracted.match_value();
+        let http_method = extracted.http_method();
 
         if let Some(tp) = tool_policy {
             let compiled_tp = self.compiled_tool_policy(tool);
@@ -573,7 +581,7 @@ impl PolicyEngine {
             let compiled_tp = compiled_tp.expect("compiled tool policy missing for known tool");
 
             for (i, rule) in compiled_tp.deny.iter().enumerate() {
-                let res = pattern_matches(rule, match_value, tool, context);
+                let res = pattern_matches(rule, match_value, http_method, tool, context);
                 if res.matched {
                     let rule_ref = format!("tools.{}.deny[{}]", tool_name, i);
                     let mut reason = DecisionReason::new(
@@ -606,7 +614,7 @@ impl PolicyEngine {
             }
 
             for (i, rule) in compiled_tp.ask.iter().enumerate() {
-                let res = pattern_matches(rule, match_value, tool, context);
+                let res = pattern_matches(rule, match_value, http_method, tool, context);
                 if res.matched {
                     let rule_ref = format!("tools.{}.ask[{}]", tool_name, i);
                     let mut reason = DecisionReason::new(
@@ -645,7 +653,7 @@ impl PolicyEngine {
             }
 
             for rule in compiled_tp.allow.iter() {
-                if pattern_matches(rule, match_value, tool, context).matched {
+                if pattern_matches(rule, match_value, http_method, tool, context).matched {
                     return GuardDecision::Allow;
                 }
             }
@@ -752,6 +760,7 @@ struct MatchResult {
 fn pattern_matches(
     rule: &CompiledRulePattern,
     value: &str,
+    http_method: Option<&str>,
     tool: &Tool,
     context: &Context,
 ) -> MatchResult {
@@ -772,6 +781,21 @@ fn pattern_matches(
                         matched: false,
                         condition: None,
                     };
+                }
+            }
+
+            // Method gate: a rule with `method:` applies only to a request whose
+            // method matches (case-insensitive). A method constraint never
+            // matches a tool that carries no method (anything but HttpRequest).
+            if let Some(ref want) = m.method {
+                match http_method {
+                    Some(got) if got.eq_ignore_ascii_case(want) => {}
+                    _ => {
+                        return MatchResult {
+                            matched: false,
+                            condition: None,
+                        }
+                    }
                 }
             }
 

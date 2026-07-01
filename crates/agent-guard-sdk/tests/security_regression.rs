@@ -328,3 +328,54 @@ fn sec12_decide_and_check_agree_on_block() {
     assert!(matches!(check_decision, GuardDecision::Deny { .. }));
     assert!(matches!(runtime_decision, RuntimeDecision::Deny { .. }));
 }
+
+// ─── 13. HTTP method-override smuggling cannot bypass a method-aware deny ─────
+
+/// Method-aware policy rules (issue #39) let a policy deny e.g. DELETE while
+/// leaving GET allowed. The obvious bypass is to declare a benign method and
+/// smuggle the real one in an `X-HTTP-Method-Override` header, which many
+/// servers honour. The http validator must block that before the request
+/// reaches the policy engine.
+#[test]
+fn sec13_http_method_override_cannot_bypass_method_deny() {
+    const P: &str = r#"
+version: 1
+default_mode: workspace_write
+tools:
+  http_request:
+    deny:
+      - regex: "^https?://internal\\.svc/"
+        method: DELETE
+audit:
+  enabled: false
+anomaly:
+  enabled: false
+"#;
+    let g = Guard::from_yaml(P).expect("load method-aware policy");
+    let ctx = || Context {
+        trust_level: TrustLevel::Trusted,
+        ..Default::default()
+    };
+
+    // A direct DELETE is denied by the method-aware rule.
+    let direct = g.check_tool(
+        Tool::HttpRequest,
+        r#"{"method":"DELETE","url":"https://internal.svc/records/42"}"#,
+        ctx(),
+    );
+    assert!(
+        matches!(direct, GuardDecision::Deny { .. }),
+        "direct DELETE must be denied, got {direct:?}"
+    );
+
+    // GET declared, DELETE smuggled via an override header → still denied.
+    let smuggled = g.check_tool(
+        Tool::HttpRequest,
+        r#"{"method":"GET","url":"https://internal.svc/records/42","headers":{"X-HTTP-Method-Override":"DELETE"}}"#,
+        ctx(),
+    );
+    assert!(
+        matches!(smuggled, GuardDecision::Deny { .. }),
+        "method-override smuggling must be denied, got {smuggled:?}"
+    );
+}
