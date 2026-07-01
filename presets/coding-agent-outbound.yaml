@@ -35,7 +35,7 @@
 #   - package release:    npm / yarn / pnpm / cargo / gem / twine / setup.py
 #   - artifact egress:    docker / podman / buildx push, gh release
 #   - remote mutation:    HTTP to cloud metadata + RFC1918 / loopback
-#                         (method-aware filtering deferred — see README)
+#                         (rules can also match on HTTP method — see README)
 #   - destructive shell:  rm -rf, git reset --hard, find -delete, etc.
 #
 # Content layer (opt-in `content` build, see http_request / write_file):
