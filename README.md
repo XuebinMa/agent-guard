@@ -13,7 +13,7 @@
 Two layers of outbound control, one decision surface:
 
 - **Action layer** (today): gate `git push`, `npm publish`, `docker push`, `gh release create`, non-local HTTP mutations, `rm -rf` — before they become real
-- **Content layer** (roadmap): detect credentials and PII in tool inputs and outputs before they reach the LLM provider or external API
+- **Content layer** (experimental, opt-in): detect credentials and PII in tool inputs and outputs before they reach the LLM provider or external API
 - **Audit layer**: every decision signed with Ed25519 — tamper-evident receipts usable as supporting evidence in compliance workflows
 
 Best fit: solo and small-team devs running coding agents in real workflows. **Local-first by design** — no cloud, no telemetry, no data leaves your machine.
@@ -161,10 +161,10 @@ What is strong today (action layer):
 What is experimental and opt-in (content layer):
 
 - credential / PII detection on outbound content — `write_file` content and `http_request` body — behind the off-by-default `content` feature, with three enforcement modes (`block` / `mask` / `warn`). See [Content layer](#content-layer-experimental) below.
+- the same detection on *input* text (prompts) before it reaches the LLM provider, via the top-level `input_content:` policy block and `Guard::check_content`
 
 What is roadmap (content layer):
 
-- detection on tool *inputs* (prompts) before they reach the LLM provider, not just outbound effects
 - distribution as a Claude Code plugin / ECC marketplace entry
 
 What to understand before integrating:
@@ -194,8 +194,8 @@ The through-line across the 🟡 rows is the Ed25519 execution-proof chain — a
 
 The action layer decides *whether* a call may leave. The content layer inspects
 *what* leaves with it. It is **off by default** — opt in with the `content`
-feature flag — and currently scans two surfaces: `write_file` content and
-`http_request` body.
+feature flag — and scans three surfaces: `write_file` content, `http_request`
+body, and host-supplied *input* text (prompts) via `Guard::check_content`.
 
 Add a `content` block to any tool rule:
 
@@ -215,6 +215,25 @@ The three modes:
 | `block` | Deny the call when sensitive content is detected (`SENSITIVE_CONTENT_BLOCKED`). |
 | `mask`  | Execute a redacted copy — each finding becomes `[REDACTED:<label>]` — and emit a `ContentFinding` audit record. |
 | `warn`  | Execute unchanged, but emit a `ContentFinding` audit record. |
+
+For *input* text the Guard never performs the downstream call, so the host
+consumes the outcome directly — configure a top-level `input_content:` block
+and call `check_content` on the text before forwarding it:
+
+```yaml
+input_content:
+  mode: mask               # block | mask | warn
+  detect: [secrets, pii]   # optional; defaults to both
+```
+
+```rust
+use agent_guard_sdk::{Context, Guard};
+
+let guard = Guard::from_yaml_file("policy.yaml")?;
+let outcome = guard.check_content(prompt, &Context::default());
+if outcome.blocked { /* refuse to forward the prompt */ }
+let safe_prompt = outcome.masked_text.as_deref().unwrap_or(prompt);
+```
 
 Findings only ever expose the *kind* of data (e.g. `AWS Access Key`, `Email`),
 never the raw matched substring — audit records carry labels and counts, not secrets.

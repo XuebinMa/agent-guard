@@ -97,6 +97,13 @@ pub struct PolicyFile {
     pub audit: AuditConfig,
     #[serde(default)]
     pub anomaly: AnomalyConfig,
+    /// Content policy for host-supplied input text (e.g. prompts scanned via
+    /// `Guard::check_content` before they reach an LLM provider). Top-level
+    /// because an input is not a tool call; same `mode`/`detect` shape as the
+    /// per-tool `content:` blocks. Parses on every build; enforced only when
+    /// the runtime is compiled with the `content` feature.
+    #[serde(default)]
+    pub input_content: Option<ContentPolicy>,
 }
 
 #[derive(Debug, Deserialize, Clone)]
@@ -738,6 +745,13 @@ impl PolicyEngine {
     /// consults this before running the content detectors.
     pub fn content_policy(&self, tool: &Tool) -> Option<&ContentPolicy> {
         self.tool_policy(tool).and_then(|tp| tp.content.as_ref())
+    }
+
+    /// Read-only accessor for the top-level `input_content:` policy (issue
+    /// #99) — the content policy applied to host-supplied input text via
+    /// `Guard::check_content`. `None` when the policy has no such block.
+    pub fn input_content_policy(&self) -> Option<&ContentPolicy> {
+        self.policy.input_content.as_ref()
     }
 
     fn compiled_tool_policy(&self, tool: &Tool) -> Option<&CompiledToolPolicy> {

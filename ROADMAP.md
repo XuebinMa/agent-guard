@@ -74,9 +74,10 @@ These exist but are explicitly incomplete — do not describe them as finished.
   syscall-filtering enforcement path.
 - **Windows AppContainer is experimental / opt-in.** Job Object is the default.
 - **File and HTTP validators are thinner than bash.**
-- **Content layer is an off-by-default PoC.** Secret/PII detection and redaction
-  live behind a feature flag and are not wired into the main `Guard` pipeline;
-  it is not a DLP engine.
+- **Content layer is off-by-default and spike-grade.** Behind the `content`
+  feature it scans `write_file` content, `http_request` body, and input text
+  (`Guard::check_content`); the detector set is named-patterns + entropy and
+  regex + Luhn — not a DLP engine.
 - **Python adapters are beta** — no CI framework-version matrix yet.
 - **The Claude Code plugin gates built-in tools** (`Bash`, `Write`, `Edit`,
   `WebFetch`); MCP tools (`mcp__*`) currently pass through ungated (upstream
@@ -86,8 +87,6 @@ These exist but are explicitly incomplete — do not describe them as finished.
 
 Concrete items the current docs already frame as roadmap:
 
-- **Content detection on tool inputs** — scan prompts before they reach the
-  provider, not only outbound effects.
 - **Explicit sandbox backend selection in Python and Node** — today the binding
   picks the platform default.
 - **Python CI framework-version matrix** — automate what is currently manual.

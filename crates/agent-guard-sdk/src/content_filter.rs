@@ -155,6 +155,70 @@ pub(crate) fn apply_content_for_execution(
     })
 }
 
+/// Outcome of `Guard::check_content` — the input-scanning surface (issue #99).
+///
+/// The host consumes this directly: on `blocked`, do not forward the input;
+/// when `masked_text` is `Some`, forward it instead of the original.
+#[derive(Debug, Clone)]
+pub struct ContentCheckOutcome {
+    /// `true` when the `input_content:` policy is in Block mode and sensitive
+    /// content was found in the input.
+    pub blocked: bool,
+    /// The redacted input (Mask mode with findings) for the host to forward
+    /// instead of the original. `None` in every other case.
+    pub masked_text: Option<String>,
+    /// Finding-kind labels (e.g. "AWS Access Key") — never the raw content.
+    pub labels: Vec<String>,
+}
+
+impl ContentCheckOutcome {
+    /// No findings / no policy configured: nothing blocked, nothing masked.
+    pub(crate) fn benign() -> Self {
+        Self {
+            blocked: false,
+            masked_text: None,
+            labels: Vec::new(),
+        }
+    }
+}
+
+/// Outcome of applying the top-level `input_content:` policy to host-supplied
+/// input text (issue #99). Unlike [`ContentApplication`], the masked result is
+/// plain text handed back to the host — the Guard never performs the LLM call,
+/// so there is no payload to rewrite or execute.
+pub(crate) struct InputContentApplication {
+    pub mode: ContentMode,
+    /// Finding-kind labels (no raw content) for auditing.
+    pub labels: Vec<String>,
+    /// The redacted text for the host to forward instead of the original.
+    /// `Some` only for `Mask` mode.
+    pub masked_text: Option<String>,
+}
+
+/// Apply the input content policy to a raw text (prompt). Returns `None` when
+/// no sensitive content is found. All three modes are handled here — there is
+/// no separate decision/execution split for inputs, because the host consumes
+/// the outcome directly.
+pub(crate) fn apply_input_content(
+    policy: &ContentPolicy,
+    text: &str,
+) -> Option<InputContentApplication> {
+    let spans = finding_spans(&policy.detect, text);
+    if spans.is_empty() {
+        return None;
+    }
+    let labels: Vec<String> = spans.iter().map(|s| s.label.to_string()).collect();
+    let masked_text = match policy.mode {
+        ContentMode::Mask => Some(redact_content(text, &spans, RedactionMode::Mask).content),
+        _ => None,
+    };
+    Some(InputContentApplication {
+        mode: policy.mode,
+        labels,
+        masked_text,
+    })
+}
+
 /// Collect sensitive spans for the configured detectors, ordered by position.
 fn finding_spans(detectors: &[ContentDetector], text: &str) -> Vec<SensitiveSpan> {
     let mut spans = Vec::new();

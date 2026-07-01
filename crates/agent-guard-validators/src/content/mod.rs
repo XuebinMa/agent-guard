@@ -6,8 +6,11 @@
 //! credentials/secrets ([`secrets`]) and personal data ([`pii`]) in text before
 //! it leaves for an LLM provider or a mutation HTTP call.
 //!
-//! This is a feasibility PoC: it is gated behind the off-by-default `content`
-//! feature and is intentionally *not* wired into the `Guard` pipeline yet.
+//! Gated behind the off-by-default `content` feature. When the SDK is built
+//! with its `content` feature, these detectors ARE wired into the `Guard`
+//! pipeline (S6-4b/c): `write_file` content and `http_request` body on the
+//! outbound path, and host-supplied input text via `Guard::check_content`.
+//! The detector set itself remains spike-grade, not a DLP engine.
 
 pub mod pii;
 pub mod redaction;

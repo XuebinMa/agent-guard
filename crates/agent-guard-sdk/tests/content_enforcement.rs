@@ -36,6 +36,106 @@ fn guard(yaml: &str) -> Guard {
     Guard::from_yaml(yaml).expect("policy parses")
 }
 
+// ── Input scanning (issue #99) ───────────────────────────────────────────────
+//
+// `Guard::check_content` scans host-supplied input text (e.g. a prompt before
+// it reaches the LLM provider) against the top-level `input_content:` policy
+// block. Unlike the outbound path, Mask hands the redacted text BACK to the
+// host — the Guard never performs the LLM call itself.
+
+const INPUT_BLOCK_POLICY: &str = r#"
+version: 1
+default_mode: workspace_write
+input_content:
+  mode: block
+audit:
+  enabled: false
+anomaly:
+  enabled: false
+"#;
+
+const INPUT_MASK_POLICY: &str = r#"
+version: 1
+default_mode: workspace_write
+input_content:
+  mode: mask
+audit:
+  enabled: false
+anomaly:
+  enabled: false
+"#;
+
+const INPUT_WARN_POLICY: &str = r#"
+version: 1
+default_mode: workspace_write
+input_content:
+  mode: warn
+audit:
+  enabled: false
+anomaly:
+  enabled: false
+"#;
+
+const SECRET_PROMPT: &str = "Summarize this config: aws_key=AKIAIOSFODNN7EXAMPLE region=us-east-1";
+
+#[test]
+fn input_block_flags_secret_in_prompt() {
+    let g = guard(INPUT_BLOCK_POLICY);
+    let outcome = g.check_content(SECRET_PROMPT, &Context::default());
+    assert!(outcome.blocked, "block mode must flag the prompt");
+    assert!(outcome.masked_text.is_none(), "block mode does not mask");
+    assert!(
+        outcome.labels.iter().any(|l| l == "AWS Access Key"),
+        "labels identify the finding kind: {:?}",
+        outcome.labels
+    );
+    // Labels only — the outcome must never echo the raw secret.
+    assert!(!outcome.labels.iter().any(|l| l.contains("AKIA")));
+}
+
+#[test]
+fn input_mask_returns_redacted_text_to_host() {
+    let g = guard(INPUT_MASK_POLICY);
+    let outcome = g.check_content(SECRET_PROMPT, &Context::default());
+    assert!(!outcome.blocked, "mask mode does not block");
+    let masked = outcome.masked_text.expect("mask returns redacted text");
+    assert!(masked.contains("[REDACTED:AWS Access Key]"));
+    assert!(!masked.contains("AKIAIOSFODNN7EXAMPLE"));
+    // The rest of the prompt survives.
+    assert!(masked.contains("Summarize this config"));
+}
+
+#[test]
+fn input_warn_reports_labels_without_masking() {
+    let g = guard(INPUT_WARN_POLICY);
+    let outcome = g.check_content(SECRET_PROMPT, &Context::default());
+    assert!(!outcome.blocked);
+    assert!(outcome.masked_text.is_none(), "warn mode does not mask");
+    assert!(
+        !outcome.labels.is_empty(),
+        "warn mode still reports findings"
+    );
+}
+
+#[test]
+fn input_clean_text_is_benign() {
+    let g = guard(INPUT_BLOCK_POLICY);
+    let outcome = g.check_content("What is the capital of France?", &Context::default());
+    assert!(!outcome.blocked);
+    assert!(outcome.masked_text.is_none());
+    assert!(outcome.labels.is_empty());
+}
+
+#[test]
+fn input_without_policy_is_benign() {
+    // No `input_content:` block configured → no scanning, even with a secret.
+    let g = guard(BLOCK_POLICY);
+    let outcome = g.check_content(SECRET_PROMPT, &Context::default());
+    assert!(!outcome.blocked);
+    assert!(outcome.masked_text.is_none());
+    assert!(outcome.labels.is_empty());
+}
+
 #[test]
 fn block_mode_denies_http_body_with_secret() {
     let g = guard(BLOCK_POLICY);
