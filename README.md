@@ -171,8 +171,8 @@ What to understand before integrating:
 
 - raw runtime APIs expose `execute | deny | ask_for_approval | handoff`
 - adapter `enforce` is still strongest on shell-like execution paths today
-- Bash has the deepest validator path; `read_file` / `write_file` normalize paths and fail closed on symlink escapes; HTTP policy matching is URL-centric (see roadmap)
-- Python and Node bindings use the SDK's default sandbox selection in the current release; explicit backend selection is deferred until pilot demand surfaces
+- Bash has the deepest validator path; `read_file` / `write_file` normalize paths and fail closed on symlink escapes; HTTP policy rules can match on URL and method
+- Python and Node bindings default to the SDK's platform sandbox selection; both also accept an explicit `backend` argument on `execute` / `run`, resolved truthfully (a backend that is not compiled in or not functional yields the `none` backend, never a false isolation claim)
 - broader capability coverage is intentionally narrow, not generic
 - broader policy workflow and control-plane ideas are future expansion paths, not the phase-one hook
 

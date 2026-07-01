@@ -22,8 +22,8 @@ use crate::policy_signing::{
     load_policy_signature_file, load_public_key_file, parse_hex_signing_key, verify_policy,
     PolicyVerification,
 };
-use crate::sandbox_resolution::resolve_default_sandbox;
-pub use crate::sandbox_resolution::DefaultSandboxDiagnosis;
+use crate::sandbox_resolution::{resolve_default_sandbox, resolve_sandbox_by_name};
+pub use crate::sandbox_resolution::{DefaultSandboxDiagnosis, UnknownBackendError};
 use crate::siem::SiemExporter;
 
 // The execute/run result types live in the sibling `enforce` and `runtime`
@@ -528,6 +528,19 @@ impl Guard {
 
     pub fn default_sandbox_diagnosis() -> DefaultSandboxDiagnosis {
         resolve_default_sandbox().1
+    }
+
+    /// Resolve a sandbox backend by its `sandbox_type()` name (issue #100).
+    ///
+    /// Known names (case-insensitive): `none`, `linux-seccomp`,
+    /// `linux-landlock`, `macos-seatbelt`, `windows-job-object`,
+    /// `windows-appcontainer`. A known backend that is not compiled into this
+    /// build, or not functional on this host, resolves to the truthful
+    /// `"none"` backend instead of claiming isolation it cannot provide —
+    /// the same rule as the default selection (GATE 2/5). An unknown name is
+    /// a hard error, never a silent noop.
+    pub fn sandbox_by_name(name: &str) -> Result<Box<dyn Sandbox>, UnknownBackendError> {
+        resolve_sandbox_by_name(name).map(|(sandbox, _)| sandbox)
     }
 
     fn evaluate(&self, input: &GuardInput, state: &GuardState) -> GuardDecision {

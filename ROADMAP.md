@@ -87,8 +87,6 @@ These exist but are explicitly incomplete — do not describe them as finished.
 
 Concrete items the current docs already frame as roadmap:
 
-- **Explicit sandbox backend selection in Python and Node** — today the binding
-  picks the platform default.
 - **Python CI framework-version matrix** — automate what is currently manual.
 - **Retire the stale `cargo-audit` ignore list** (#102) — the `reqwest`/`rustls`
   migration it was waiting on is already done (now `reqwest` 0.13 / `rustls`
