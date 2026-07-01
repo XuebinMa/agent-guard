@@ -94,8 +94,9 @@ Concrete items the current docs already frame as roadmap:
 - **Explicit sandbox backend selection in Python and Node** — today the binding
   picks the platform default.
 - **Python CI framework-version matrix** — automate what is currently manual.
-- **`reqwest` 0.12 / `rustls` 0.22 migration** — unblocks the RUSTSEC advisories
-  currently `--ignore`d in the `cargo-audit` CI job.
+- **Retire the stale `cargo-audit` ignore list** (#102) — the `reqwest`/`rustls`
+  migration it was waiting on is already done (now `reqwest` 0.13 / `rustls`
+  0.23), so the blanket `--ignore`s can be dropped and the audit run unfiltered.
 
 ## Later (v0.3.0+, draft)
 
@@ -115,9 +116,6 @@ change:
 
 ## Known debt
 
-- **`reqwest` 0.12 / `rustls` 0.22 migration** — several ignored RUSTSEC
-  advisories in CI are all reachable through the old `reqwest`/`rustls` chain and
-  clear once this lands (tracked as a dedicated PR).
 - **Global read access on macOS / Windows** is a v0.2 limitation of the sandbox
   capability model.
 
