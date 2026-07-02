@@ -54,8 +54,11 @@ section of the [Testing Strategy](../../docs/concepts/testing-strategy.md).
 ## Tests
 
 `tests/*.py` (pytest): `test_guard.py`, `test_runtime.py`,
-`test_langchain_adapter.py`, `real_runtime_validation.py`. They run against a
-real built module — do not stub the native layer; build it with maturin and
-test the real surface. Cross-language obligations are in
-[`CONTRIBUTING.md`](../../CONTRIBUTING.md).
+`test_langchain_adapter.py`, `test_openai_adapter.py`,
+`test_real_frameworks.py`. They run against a real built module — do not stub
+the native layer; build it with maturin and test the real surface.
+`test_real_frameworks.py` additionally needs real `langchain-core` installed
+and skips otherwise; the CI `python-framework-test` job matrixes it over
+framework versions via `AGENT_GUARD_PY_FRAMEWORKS` (see `scripts/verify.sh`).
+Cross-language obligations are in [`CONTRIBUTING.md`](../../CONTRIBUTING.md).
 </content>
