@@ -111,6 +111,34 @@ jobs:
       - name: Build and test
         run: ./scripts/verify.sh python
 
+  python-framework-test:
+    name: Python Framework Matrix
+    runs-on: ubuntu-latest
+    needs: rust-test
+    strategy:
+      fail-fast: false
+      matrix:
+        frameworks:
+          # Supported series, pinned (mirrors the Node side's ^0.3 pin) …
+          - "langchain-core>=0.3,<0.4"
+          # … plus latest, deliberately unpinned so ecosystem drift that will
+          # break the adapter surfaces here first instead of in user reports.
+          - "langchain-core"
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+      - name: Cache Rust
+        uses: Swatinem/rust-cache@v2
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Build and test against real frameworks
+        env:
+          AGENT_GUARD_PY_FRAMEWORKS: ${{ matrix.frameworks }}
+        run: ./scripts/verify.sh python
+
   node-framework-test:
     name: Node Binding & Framework Tests
     runs-on: ubuntu-latest

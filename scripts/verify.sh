@@ -55,6 +55,15 @@ run_python() {
   "$venv_python" -m pip install --upgrade pip
   "$venv_python" -m pip install maturin pytest
 
+  # Real-framework matrix leg (CI `python-framework-test`, issue #101): when
+  # AGENT_GUARD_PY_FRAMEWORKS is set, install the requested framework spec(s)
+  # so tests/test_real_frameworks.py runs against the real packages instead of
+  # skipping. Unquoted expansion is deliberate: multiple space-separated specs.
+  if [[ -n "${AGENT_GUARD_PY_FRAMEWORKS:-}" ]]; then
+    # shellcheck disable=SC2086
+    "$venv_python" -m pip install ${AGENT_GUARD_PY_FRAMEWORKS}
+  fi
+
   pushd "$ROOT_DIR/crates/agent-guard-python" >/dev/null
   env -u CONDA_DEFAULT_ENV -u CONDA_PREFIX \
     VIRTUAL_ENV="$tmpdir/venv" \

@@ -66,7 +66,7 @@ Narrower paths when you only changed one surface:
 ./scripts/verify.sh docs       # markdown link checker + content gates
 ```
 
-CI reproduces each of these, plus the Linux/macOS/Windows sandbox-integration jobs and the cross-language e2e job. **All mandatory checks must be green before merge.** As of Sprint 4 the mandatory bar is 14 jobs: Rust workspace, lint, three sandbox-OS integrations, two Node version matrices, Python, docs, parity-e2e, cargo-deny, cargo-audit, SBOM, plus the bench-artifact (non-blocking).
+CI reproduces each of these, plus the Linux/macOS/Windows sandbox-integration jobs and the cross-language e2e job. **All mandatory checks must be green before merge.** The mandatory bar is 16 jobs: Rust workspace, lint, three sandbox-OS integrations, two Node version matrices, Python, two Python framework-matrix legs, docs, parity-e2e, cargo-deny, cargo-audit, SBOM, plus the bench-artifact (non-blocking).
 
 ## Branch + PR workflow
 

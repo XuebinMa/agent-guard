@@ -85,12 +85,13 @@ These exist but are explicitly incomplete — do not describe them as finished.
 
 ## Next (near-term, 0.2.x)
 
-Concrete items the current docs already frame as roadmap:
-
-- **Python CI framework-version matrix** — automate what is currently manual.
-- **Retire the stale `cargo-audit` ignore list** (#102) — the `reqwest`/`rustls`
-  migration it was waiting on is already done (now `reqwest` 0.13 / `rustls`
-  0.23), so the blanket `--ignore`s can be dropped and the audit run unfiltered.
+The original near-term queue (HTTP method-aware matching, content-layer input
+scanning, explicit backend selection in the bindings, the Python
+framework-version CI matrix, and retiring the stale `cargo-audit` ignores) has
+shipped — see the tracking issue
+[#103](https://github.com/XuebinMa/agent-guard/issues/103) and the milestone
+for the item-by-item record. New near-term items land there first and get
+promoted into this file.
 
 ## Later (v0.3.0+, draft)
 

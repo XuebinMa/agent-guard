@@ -36,8 +36,8 @@ It is intentionally narrower than a broad platform map. The goal is to help a de
 | Node OpenAI-style adapter | ✅ Supported | Real runtime validation with `@openai/agents` | OpenAI Agents style handlers | `wrapOpenAITool()` available. |
 | Node ChatGPT Actions pattern | ✅ Example Available | Local end-to-end example server verified | Custom GPT / Actions prototypes | Uses an HTTP service behind GPT Actions. |
 | Python binding | ✅ Supported | Python tests and demos | Python hosts and wrappers | Build-from-source flow. |
-| Python LangChain adapter | 🟡 Beta | Wrapper + adapter tests, plus a real-package validation script | LangChain Python experiments | `wrap_langchain_tool()` available. A `tests/real_runtime_validation.py` script exercises the wrapper against real `langchain_core` `BaseTool`s, but CI does not yet run a framework version matrix automatically. |
-| Python OpenAI-style adapter | 🟡 Beta | Wrapper + adapter tests | OpenAI-style handler integration in Python apps | `wrap_openai_tool()` available. Adapter test suite covers the handoff / deny / ask / error paths end-to-end; no CI version matrix yet. |
+| Python LangChain adapter | 🟡 Beta | Wrapper + adapter tests, plus a CI framework-version matrix against real `langchain_core` | LangChain Python experiments | `wrap_langchain_tool()` available. `tests/test_real_frameworks.py` exercises the wrapper against real `langchain_core` `BaseTool`s; the CI `python-framework-test` job matrixes it over the pinned `>=0.3,<0.4` series plus latest. |
+| Python OpenAI-style adapter | 🟡 Beta | Wrapper + adapter tests | OpenAI-style handler integration in Python apps | `wrap_openai_tool()` available. Adapter test suite covers the handoff / deny / ask / error paths end-to-end. Unlike the Node adapter it wraps plain handler callables and imports no OpenAI package, so there is no framework package to version-matrix. |
 | AutoGen adapter | ⚪ Not shipped | No official adapter | No official adapter today | Still part of roadmap, not current official integration surface. |
 | Claude Code plugin | 🟡 Preview | Hook adapter + plugin install validated | Claude Code users wanting an outbound gate | Gates built-in tools only — `Bash`, `Write`, `Edit`, `WebFetch`. **MCP tools (`mcp__*`) are not gated** ([#33106](https://github.com/anthropics/claude-code/issues/33106)); use the SDK for those. See [Claude Code plugin guide](../guides/operations/claude-code-plugin.md). |
 
@@ -145,7 +145,7 @@ Best current fit:
 
 Important caveat:
 
-The Python adapter layer is now official, but still below the current Node surface in maturity. A real-package validation script (`tests/real_runtime_validation.py`) exercises `wrap_langchain_tool` against actual `langchain_core` types, and the adapter unit suite covers handoff / deny / ask / error paths end-to-end; the remaining gap is an automated CI matrix that pins specific framework package versions per release.
+The Python adapter layer is now official, but still below the current Node surface in maturity. `tests/test_real_frameworks.py` exercises `wrap_langchain_tool` against actual `langchain_core` types and runs in CI as a framework-version matrix (the pinned `>=0.3,<0.4` series plus an unpinned latest leg that surfaces ecosystem drift early); the adapter unit suite covers handoff / deny / ask / error paths end-to-end.
 
 Boundary note:
 
