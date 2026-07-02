@@ -901,26 +901,22 @@ fn read_only_tool_violation(tool: &Tool, payload: &str) -> Option<String> {
 }
 
 /// True when an `HttpRequest` payload declares a mutation method
-/// (POST/PUT/PATCH/DELETE). A missing or unparseable method is treated as
-/// non-mutation: the request defaults to GET at execution (a read), and a truly
-/// malformed payload is rejected downstream by `extract_url`. This is the
-/// inverse posture of the SDK's routing helper, which fails *closed* to the
-/// SSRF-guarded Execute path — here a GET is a legitimate read under read-only,
-/// so we only deny when the method is provably a mutation. Over-large payloads
-/// are left for the size guard in `extract_string_field`.
+/// (POST/PUT/PATCH/DELETE). Method parsing is delegated to the canonical
+/// [`extract_http_request`] extractor (normalization, `GET` default, size
+/// guard) so this predicate cannot drift from the rest of the HTTP path. A
+/// malformed payload yields `Err` here and is surfaced as `InvalidPayload` by
+/// the extraction step in `check`, so the gate reports no mutation for it; a
+/// missing method defaults to `GET` (a read). GET is a legitimate read under
+/// read-only, so this is intentionally not fail-closed — contrast the SDK's
+/// routing helper, which fails *closed* to the SSRF-guarded Execute path.
 fn http_method_is_mutation(payload: &str) -> bool {
-    if payload.len() > crate::payload::MAX_PAYLOAD_BYTES {
+    let Ok(extracted) = extract_http_request(payload) else {
         return false;
-    }
-    serde_json::from_str::<serde_json::Value>(payload)
-        .ok()
-        .and_then(|v| {
-            v.get("method")
-                .and_then(|m| m.as_str())
-                .map(|s| s.to_ascii_uppercase())
-        })
-        .map(|m| matches!(m.as_str(), "POST" | "PUT" | "PATCH" | "DELETE"))
-        .unwrap_or(false)
+    };
+    matches!(
+        extracted.http_method(),
+        Some("POST" | "PUT" | "PATCH" | "DELETE")
+    )
 }
 
 fn trust_level_str(level: &TrustLevel) -> &'static str {
