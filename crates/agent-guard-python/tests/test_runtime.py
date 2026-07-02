@@ -14,6 +14,7 @@ Run with (after `maturin develop`):
 """
 
 import json
+import os
 import time
 from pathlib import Path
 
@@ -343,16 +344,20 @@ def test_execute_backend_none_is_truthful(guard):
     assert result.sandbox_type == "none"
 
 
-def test_execute_backend_inactive_falls_back_to_none(guard):
-    # The Python binding does not compile any sandbox feature, so requesting
-    # linux-seccomp must truthfully resolve to "none" rather than claiming
-    # syscall isolation that is not present (on non-Linux hosts this also
-    # covers the cross-platform case).
+# In the default build (no sandbox feature) an explicit linux-seccomp request
+# must truthfully resolve to "none". The CI seccomp leg builds the module with
+# `--features seccomp` (AGENT_GUARD_PY_BUILD_FEATURES) and sets
+# AGENT_GUARD_EXPECT_BACKEND=linux-seccomp, proving the SAME request then
+# yields real isolation through the binding.
+EXPECTED_SECCOMP_RESOLUTION = os.environ.get("AGENT_GUARD_EXPECT_BACKEND", "none")
+
+
+def test_execute_backend_seccomp_resolves_truthfully(guard):
     result = guard.execute(
         "bash", "echo backend", trust_level="trusted", backend="linux-seccomp"
     )
     assert result.is_executed()
-    assert result.sandbox_type == "none"
+    assert result.sandbox_type == EXPECTED_SECCOMP_RESOLUTION
 
 
 def test_run_accepts_backend_kwarg(guard):
