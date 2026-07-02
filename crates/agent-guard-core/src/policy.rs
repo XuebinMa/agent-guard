@@ -521,6 +521,18 @@ impl PolicyEngine {
         let tool_name = tool.name();
 
         if effective_mode == PolicyMode::ReadOnly {
+            // Intrinsically mutating structured tools are denied in read-only
+            // mode regardless of per-tool configuration. `WriteFile` always
+            // mutates the filesystem; `HttpRequest` mutates when its method is a
+            // mutation verb. Without this, a bare `default_mode: read_only`
+            // policy (no tool block) lets these fall through to Allow, because
+            // the tool-mode gate below only fires for a *configured* mode
+            // `>= WorkspaceWrite`. Bash write-intent is classified separately by
+            // the validator layer, and Custom tools are opaque (rules only).
+            if let Some(reason) = read_only_tool_violation(tool, payload) {
+                return GuardDecision::deny(DecisionCode::WriteInReadOnlyMode, reason);
+            }
+
             let tool_mode = tool_policy
                 .map(|tp| tp.mode.as_ref().unwrap_or(&self.policy.default_mode))
                 .unwrap_or(&self.policy.default_mode);
@@ -867,6 +879,48 @@ fn path_glob_matches(pattern: &str, path: &str, working_directory: Option<&Path>
     } else {
         false
     }
+}
+
+/// A structured tool whose call intrinsically mutates state is not permitted in
+/// read-only mode. Returns a human-readable reason when the `(tool, payload)`
+/// pair is such a mutation. `WriteFile` always qualifies; `HttpRequest`
+/// qualifies when its method is a mutation verb. `Bash` is classified by the
+/// validator layer and `Custom` tools are opaque, so both return `None` here
+/// and are governed by explicit rules / the tool-mode gate instead.
+fn read_only_tool_violation(tool: &Tool, payload: &str) -> Option<String> {
+    match tool {
+        Tool::WriteFile => Some(
+            "write_file modifies the filesystem and is not allowed in read-only mode".to_string(),
+        ),
+        Tool::HttpRequest if http_method_is_mutation(payload) => Some(
+            "http_request with a mutation method (POST/PUT/PATCH/DELETE) is not allowed in read-only mode"
+                .to_string(),
+        ),
+        _ => None,
+    }
+}
+
+/// True when an `HttpRequest` payload declares a mutation method
+/// (POST/PUT/PATCH/DELETE). A missing or unparseable method is treated as
+/// non-mutation: the request defaults to GET at execution (a read), and a truly
+/// malformed payload is rejected downstream by `extract_url`. This is the
+/// inverse posture of the SDK's routing helper, which fails *closed* to the
+/// SSRF-guarded Execute path — here a GET is a legitimate read under read-only,
+/// so we only deny when the method is provably a mutation. Over-large payloads
+/// are left for the size guard in `extract_string_field`.
+fn http_method_is_mutation(payload: &str) -> bool {
+    if payload.len() > crate::payload::MAX_PAYLOAD_BYTES {
+        return false;
+    }
+    serde_json::from_str::<serde_json::Value>(payload)
+        .ok()
+        .and_then(|v| {
+            v.get("method")
+                .and_then(|m| m.as_str())
+                .map(|s| s.to_ascii_uppercase())
+        })
+        .map(|m| matches!(m.as_str(), "POST" | "PUT" | "PATCH" | "DELETE"))
+        .unwrap_or(false)
 }
 
 fn trust_level_str(level: &TrustLevel) -> &'static str {

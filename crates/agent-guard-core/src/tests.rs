@@ -1742,6 +1742,91 @@ tools:
         }
     }
 
+    // ── #109: read_only intrinsically denies the structured write tools ──────
+    //
+    // A bare `default_mode: read_only` policy (no per-tool block) must not let
+    // the dedicated write tools through. Previously WriteFile / mutation
+    // HttpRequest fell to Allow because the tool-mode gate only fires for a
+    // *configured* mode >= WorkspaceWrite.
+
+    fn read_only_engine() -> PolicyEngine {
+        PolicyEngine::from_yaml_str("version: 1\ndefault_mode: read_only\n").unwrap()
+    }
+
+    #[test]
+    fn read_only_denies_write_file_by_default() {
+        let d = read_only_engine().check(
+            &Tool::WriteFile,
+            r#"{"path":"/nonexistent/agent_guard_probe/x","content":"y"}"#,
+            &ctx(TrustLevel::Untrusted),
+        );
+        match d {
+            GuardDecision::Deny { reason } => {
+                assert_eq!(reason.code, DecisionCode::WriteInReadOnlyMode);
+            }
+            other => panic!("expected Deny(WriteInReadOnlyMode), got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn read_only_denies_mutation_http_request() {
+        for method in ["POST", "PUT", "PATCH", "DELETE", "post", "Delete"] {
+            let payload = format!(r#"{{"method":"{method}","url":"http://example.com/x"}}"#);
+            let d =
+                read_only_engine().check(&Tool::HttpRequest, &payload, &ctx(TrustLevel::Untrusted));
+            match d {
+                GuardDecision::Deny { reason } => {
+                    assert_eq!(
+                        reason.code,
+                        DecisionCode::WriteInReadOnlyMode,
+                        "method {method}"
+                    );
+                }
+                other => panic!("expected Deny for {method}, got {other:?}"),
+            }
+        }
+    }
+
+    #[test]
+    fn read_only_allows_get_http_request() {
+        // GET/HEAD/OPTIONS (and a missing method, which defaults to GET) are
+        // reads and remain allowed under read_only.
+        for payload in [
+            r#"{"method":"GET","url":"http://example.com/x"}"#,
+            r#"{"method":"HEAD","url":"http://example.com/x"}"#,
+            r#"{"url":"http://example.com/x"}"#,
+        ] {
+            let d =
+                read_only_engine().check(&Tool::HttpRequest, payload, &ctx(TrustLevel::Untrusted));
+            assert_eq!(d, GuardDecision::Allow, "payload {payload}");
+        }
+    }
+
+    #[test]
+    fn read_only_allows_read_file() {
+        // The new write gate must not catch reads. `/` always exists, so the
+        // nonexistent leaf resolves against it without a workspace bound.
+        let d = read_only_engine().check(
+            &Tool::ReadFile,
+            r#"{"path":"/nonexistent/agent_guard_probe/x"}"#,
+            &ctx(TrustLevel::Untrusted),
+        );
+        assert_eq!(d, GuardDecision::Allow);
+    }
+
+    #[test]
+    fn workspace_write_still_allows_write_file() {
+        // Regression guard: the read_only denial must not leak into higher modes.
+        let engine =
+            PolicyEngine::from_yaml_str("version: 1\ndefault_mode: workspace_write\n").unwrap();
+        let d = engine.check(
+            &Tool::WriteFile,
+            r#"{"path":"/nonexistent/agent_guard_probe/x","content":"y"}"#,
+            &ctx(TrustLevel::Trusted),
+        );
+        assert_eq!(d, GuardDecision::Allow);
+    }
+
     // ── Decision reason carries condition source when condition-gated rule fires
 
     #[test]

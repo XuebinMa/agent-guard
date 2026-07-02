@@ -12,6 +12,11 @@
 
 use crate::decision::{DecisionCode, GuardDecision};
 
+/// Upper bound on a tool payload we are willing to parse (CWE-770: prevent
+/// memory exhaustion). Shared by field extraction and the read-only intrinsic
+/// classification so both apply the same cap.
+pub const MAX_PAYLOAD_BYTES: usize = 1024 * 1024;
+
 /// Extracted, structured payload values used by the policy engine.
 #[derive(Debug, Clone)]
 pub enum ExtractedPayload<'a> {
@@ -92,7 +97,7 @@ pub fn extract_bash_command(payload: &str) -> Result<ExtractedPayload<'_>, Guard
 
 fn extract_string_field(payload: &str, field: &str) -> Result<String, GuardDecision> {
     // CWE-770: Limit payload size to 1MB to prevent memory exhaustion
-    if payload.len() > 1024 * 1024 {
+    if payload.len() > MAX_PAYLOAD_BYTES {
         return Err(GuardDecision::deny(
             DecisionCode::InvalidPayload,
             "payload exceeds maximum size of 1MB".to_string(),
