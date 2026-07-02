@@ -1,6 +1,6 @@
 {
   "name": "agent-guard-plugin",
-  "version": "0.2.0-rc1",
+  "version": "0.2.0-rc2",
   "description": "One-command setup for the agent-guard outbound gate in Claude Code: installs the guard-hook binary, the outbound policy, and a PreToolUse hook that gates git push, npm publish, docker push, gh release, non-local HTTP mutations, and rm -rf.",
   "bin": {
     "agent-guard-plugin": "bin/cli.js"

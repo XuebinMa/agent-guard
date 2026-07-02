@@ -3,7 +3,7 @@
 > Outbound change control for AI coding agents — action and content.
 > Your agent writes code and runs tests freely; the moment it tries to push, publish, deploy, or send a secret out, `agent-guard` is the gate.
 
-[![Version](https://img.shields.io/badge/Version-0.2.0--rc1-blue.svg)]()
+[![Version](https://img.shields.io/badge/Version-0.2.0--rc2-blue.svg)]()
 [![Focus](https://img.shields.io/badge/Focus-Outbound%20Control-green.svg)]()
 [![License](https://img.shields.io/badge/License-MIT-yellow.svg)]()
 [![MSRV](https://img.shields.io/badge/MSRV-1.79-orange.svg)]()
@@ -24,7 +24,7 @@ Why now: EU AI Act enforcement begins 2026-08-02. Claude Code's PreToolUse hook 
 
 ## Latest Release
 
-- **Prerelease**: [`v0.2.0-rc1`](https://github.com/XuebinMa/agent-guard/releases/tag/v0.2.0-rc1)
+- **Prerelease**: [`v0.2.0-rc2`](https://github.com/XuebinMa/agent-guard/releases/tag/v0.2.0-rc2)
 - **Announcement**: [GitHub Discussions #1](https://github.com/XuebinMa/agent-guard/discussions/1)
 
 ## Verify Locally
@@ -264,7 +264,7 @@ safety net, not the primary control.
 
 Additional references:
 
-- [Latest Release](https://github.com/XuebinMa/agent-guard/releases/tag/v0.2.0-rc1)
+- [Latest Release](https://github.com/XuebinMa/agent-guard/releases/tag/v0.2.0-rc2)
 - [Join the Discussion](https://github.com/XuebinMa/agent-guard/discussions/1)
 - [Deployment Guide](docs/guides/operations/deployment-guide.md)
 - [Roadmap](ROADMAP.md): what's shipped, partial, and planned

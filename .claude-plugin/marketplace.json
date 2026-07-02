@@ -12,7 +12,7 @@
       "name": "agent-guard",
       "source": "./",
       "description": "Gate git push, npm publish, docker push, gh release, non-local HTTP mutations, and rm -rf before they happen — a PreToolUse decision boundary for Claude Code backed by a YAML policy and Ed25519-signed audit receipts. Local-first: no cloud, no telemetry.",
-      "version": "0.2.0-rc1",
+      "version": "0.2.0-rc2",
       "author": {
         "name": "Xuebin Ma",
         "url": "https://github.com/XuebinMa"

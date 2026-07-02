@@ -12,7 +12,7 @@ description = "Bash and path validators for agent-guard"
 content = ["dep:regex"]
 
 [dependencies]
-agent-guard-core = { path = "../agent-guard-core", version = "=0.2.0-rc1" }
+agent-guard-core = { path = "../agent-guard-core", version = "=0.2.0-rc2" }
 glob.workspace = true
 serde.workspace = true
 serde_json.workspace = true

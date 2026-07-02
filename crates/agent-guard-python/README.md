@@ -72,7 +72,7 @@ Current boundary note:
 ## 🔧 Installation
 
 ```bash
-# Via Git (v0.2.0-rc1)
+# Via Git (v0.2.0-rc2)
 pip install git+https://github.com/XuebinMa/agent-guard.git#subdirectory=crates/agent-guard-python
 ```
 
