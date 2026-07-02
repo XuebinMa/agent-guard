@@ -1,3 +1,5 @@
+#[cfg(windows)]
+use crate::SandboxOutput;
 use crate::{Sandbox, SandboxCapabilities, SandboxContext, SandboxError, SandboxResult};
 
 /// Windows AppContainer sandbox.
@@ -62,7 +64,7 @@ impl AppContainerSandbox {
         use windows::Win32::Security::Authorization::*;
         use windows::Win32::Security::Isolation::*;
         use windows::Win32::Security::*;
-        use windows::Win32::Storage::FileSystem::ReadFile;
+        use windows::Win32::System::SystemServices::SE_GROUP_ENABLED;
         use windows::Win32::System::Threading::*;
 
         // 1. Ensure Profile Exists & Derive SID
@@ -75,7 +77,7 @@ impl AppContainerSandbox {
         // Create the profile. "Already exists" is the expected benign case on a
         // re-run; any other HRESULT is a real failure and must surface here
         // rather than masquerading later as a misleading SID-derivation error.
-        match CreateAppContainerProfile(pcw_name, pcw_name, pcw_name, None, 0) {
+        match CreateAppContainerProfile(pcw_name, pcw_name, pcw_name, None) {
             Ok(_) => {}
             Err(e) if e.code() == ERROR_ALREADY_EXISTS.to_hresult() => {}
             Err(e) => {
@@ -118,13 +120,14 @@ impl AppContainerSandbox {
         explicit_access.Trustee.ptstrName = PWSTR(sid.0 as *mut _);
 
         let mut acl: *mut ACL = std::ptr::null_mut();
-        if SetEntriesInAclW(Some(&[explicit_access]), None, &mut acl) != ERROR_SUCCESS.0 {
-            return Err(SandboxError::ExecutionFailed(
-                "AppContainer: Failed to create ACL".to_string(),
-            ));
+        if let Err(e) = SetEntriesInAclW(Some(&[explicit_access]), None, &mut acl) {
+            return Err(SandboxError::ExecutionFailed(format!(
+                "AppContainer: Failed to create ACL: {}",
+                e
+            )));
         }
 
-        if SetNamedSecurityInfoW(
+        if let Err(e) = SetNamedSecurityInfoW(
             PCWSTR(ws_u16.as_ptr()),
             SE_FILE_OBJECT,
             DACL_SECURITY_INFORMATION,
@@ -132,14 +135,14 @@ impl AppContainerSandbox {
             None,
             Some(acl),
             None,
-        ) != ERROR_SUCCESS.0
-        {
-            LocalFree(HLOCAL(acl as *mut _));
-            return Err(SandboxError::ExecutionFailed(
-                "AppContainer: Failed to set ACL on workspace".to_string(),
-            ));
+        ) {
+            let _ = LocalFree(HLOCAL(acl as *mut _));
+            return Err(SandboxError::ExecutionFailed(format!(
+                "AppContainer: Failed to set ACL on workspace: {}",
+                e
+            )));
         }
-        LocalFree(HLOCAL(acl as *mut _));
+        let _ = LocalFree(HLOCAL(acl as *mut _));
 
         // 3. Setup Pipes for Output Capture
         let (stdout_read, stdout_write) = create_pipe_win()?;
@@ -155,11 +158,13 @@ impl AppContainerSandbox {
             .encode_wide()
             .chain(std::iter::once(0))
             .collect();
-        if !ConvertStringSidToSidW(PCWSTR(ic_sid_str.as_ptr()), &mut internet_client_sid).as_bool()
+        if let Err(e) =
+            ConvertStringSidToSidW(PCWSTR(ic_sid_str.as_ptr()), &mut internet_client_sid)
         {
-            return Err(SandboxError::ExecutionFailed(
-                "AppContainer: Failed to build capability SID".to_string(),
-            ));
+            return Err(SandboxError::ExecutionFailed(format!(
+                "AppContainer: Failed to build capability SID: {}",
+                e
+            )));
         }
         let _ic_sid_guard = SidGuard(internet_client_sid);
 
@@ -168,7 +173,7 @@ impl AppContainerSandbox {
             Attributes: SE_GROUP_ENABLED as u32,
         }];
 
-        let mut security_caps = SECURITY_CAPABILITIES {
+        let security_caps = SECURITY_CAPABILITIES {
             AppContainerSid: sid,
             Capabilities: caps.as_mut_ptr(),
             CapabilityCount: caps.len() as u32,
@@ -225,7 +230,7 @@ impl AppContainerSandbox {
             .collect();
         let mut pi = PROCESS_INFORMATION::default();
 
-        let success = CreateProcessW(
+        if let Err(e) = CreateProcessW(
             None,
             PWSTR(cmd_vec.as_mut_ptr()),
             None,
@@ -236,12 +241,10 @@ impl AppContainerSandbox {
             PCWSTR(ws_u16.as_ptr()),
             &si.StartupInfo,
             &mut pi,
-        );
-
-        if !success.as_bool() {
+        ) {
             return Err(SandboxError::ExecutionFailed(format!(
-                "AppContainer: CreateProcessW failed (code {})",
-                GetLastError().0
+                "AppContainer: CreateProcessW failed: {}",
+                e
             )));
         }
 
@@ -272,10 +275,10 @@ impl AppContainerSandbox {
         let mut exit_code: u32 = 0;
         // A failed read leaves `exit_code` at 0, which would report success for a
         // process whose status was never read. Surface the failure instead.
-        if !GetExitCodeProcess(pi.hProcess, &mut exit_code).as_bool() {
+        if let Err(e) = GetExitCodeProcess(pi.hProcess, &mut exit_code) {
             return Err(SandboxError::ExecutionFailed(format!(
-                "AppContainer: GetExitCodeProcess failed (code {})",
-                GetLastError().0
+                "AppContainer: GetExitCodeProcess failed: {}",
+                e
             )));
         }
 
@@ -330,13 +333,15 @@ unsafe fn create_pipe_win() -> Result<
         bInheritHandle: true.into(),
     };
 
-    if !CreatePipe(&mut read_pipe, &mut write_pipe, Some(&sa), 0).as_bool() {
-        return Err(SandboxError::ExecutionFailed(
-            "AppContainer: Failed to create pipe".to_string(),
-        ));
+    if let Err(e) = CreatePipe(&mut read_pipe, &mut write_pipe, Some(&sa), 0) {
+        return Err(SandboxError::ExecutionFailed(format!(
+            "AppContainer: Failed to create pipe: {}",
+            e
+        )));
     }
 
-    let _ = SetHandleInformation(read_pipe, 1, 0); // HANDLE_FLAG_INHERIT = 1, off
+    // HANDLE_FLAG_INHERIT (mask 1), cleared: the read end stays parent-only.
+    let _ = SetHandleInformation(read_pipe, 1, HANDLE_FLAGS(0));
     Ok((read_pipe, write_pipe))
 }
 
@@ -347,7 +352,7 @@ unsafe fn read_handle_to_string_win(handle: windows::Win32::Foundation::HANDLE) 
     let mut buffer = [0u8; 4096];
     let mut bytes_read = 0;
     loop {
-        if !ReadFile(handle, Some(&mut buffer), Some(&mut bytes_read), None).as_bool() {
+        if ReadFile(handle, Some(&mut buffer), Some(&mut bytes_read), None).is_err() {
             break;
         }
         if bytes_read == 0 {
