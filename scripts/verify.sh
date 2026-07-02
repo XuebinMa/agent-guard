@@ -65,10 +65,13 @@ run_python() {
   fi
 
   pushd "$ROOT_DIR/crates/agent-guard-python" >/dev/null
+  # AGENT_GUARD_PY_BUILD_FEATURES appends extra Cargo features (e.g. `seccomp`)
+  # to the module build — used by the CI sandbox-backend leg so an explicit
+  # `backend=` request can resolve to real isolation.
   env -u CONDA_DEFAULT_ENV -u CONDA_PREFIX \
     VIRTUAL_ENV="$tmpdir/venv" \
     PATH="$tmpdir/venv/bin:$PATH" \
-    "$venv_maturin" develop --features extension-module
+    "$venv_maturin" develop --features "extension-module${AGENT_GUARD_PY_BUILD_FEATURES:+,$AGENT_GUARD_PY_BUILD_FEATURES}"
   env -u CONDA_DEFAULT_ENV -u CONDA_PREFIX \
     VIRTUAL_ENV="$tmpdir/venv" \
     PATH="$tmpdir/venv/bin:$PATH" \

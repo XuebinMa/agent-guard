@@ -188,6 +188,7 @@ The Node test suite exercises real `DynamicTool` objects and real OpenAI Agents 
 - adapter `enforce` remains the strongest shell-first path in the higher-level wrappers
 - if your host runtime adds its own execution boundary, you can combine that with `agent-guard` policy decisions
 - the binding uses the SDK default sandbox selection, or an explicit backend name passed as the fourth argument to `execute` / `run` (e.g. `guard.execute(tool, payload, options, 'none')`); a backend that is not compiled in or not functional resolves truthfully to `'none'`, and an unknown name rejects
+- to get real isolation through the backend argument, build the addon with the matching feature forwarded, e.g. `npm run build:debug -- --features seccomp` (requires libseccomp on Linux); the default build carries no sandbox feature
 - if the default sandbox falls back to `NoopSandbox`, the policy gate still runs but OS-level isolation is not equivalent
 - Bash still has the deepest validator path today; file and HTTP controls remain more policy-centric than Bash validation
 

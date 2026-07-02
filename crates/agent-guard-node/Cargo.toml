@@ -9,8 +9,14 @@ description = "Node.js binding for agent-guard via napi-rs"
 name = "agent_guard_node"
 crate-type = ["cdylib"]
 
+# Platform sandbox features, forwarded to the SDK (off by default, like the
+# workspace). Build the addon with one of these to let an explicit `backend`
+# request resolve to real isolation instead of the truthful "none", e.g.:
+# npm run build:debug -- --features seccomp
 [features]
 macos-sandbox = ["agent-guard-sdk/macos-sandbox"]
+seccomp = ["agent-guard-sdk/seccomp"]
+landlock = ["agent-guard-sdk/landlock"]
 
 [dependencies]
 agent-guard-sdk = { path = "../agent-guard-sdk", version = "=0.2.0-rc1" }

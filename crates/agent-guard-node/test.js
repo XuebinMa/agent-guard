@@ -173,13 +173,21 @@ tools:
     assert.equal(noneBackend.status || noneBackend.outcome, 'executed')
     assert.equal(noneBackend.sandboxType || noneBackend.sandbox_type, 'none')
 
-    const inactiveBackend = await guard.execute(
+    // Default build (no sandbox feature): linux-seccomp truthfully resolves to
+    // 'none'. The CI seccomp leg builds the addon with `--features seccomp`
+    // and sets AGENT_GUARD_EXPECT_BACKEND=linux-seccomp, proving the same
+    // request then yields real isolation through the binding.
+    const expectedSeccompResolution = process.env.AGENT_GUARD_EXPECT_BACKEND || 'none'
+    const seccompBackend = await guard.execute(
       'bash',
       normalizePayload('bash', 'echo backend'),
       undefined,
       'linux-seccomp'
     )
-    assert.equal(inactiveBackend.sandboxType || inactiveBackend.sandbox_type, 'none')
+    assert.equal(
+      seccompBackend.sandboxType || seccompBackend.sandbox_type,
+      expectedSeccompResolution
+    )
 
     await assert.rejects(
       async () =>

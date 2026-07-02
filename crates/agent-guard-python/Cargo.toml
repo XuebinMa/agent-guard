@@ -19,4 +19,11 @@ ed25519-dalek.workspace = true
 
 [features]
 extension-module = ["pyo3/extension-module"]
+# Platform sandbox features, forwarded to the SDK (off by default, like the
+# workspace). Build the module with one of these to let an explicit
+# `backend=` request resolve to real isolation instead of the truthful
+# "none", e.g.: maturin develop --features extension-module,seccomp
+seccomp = ["agent-guard-sdk/seccomp"]
+landlock = ["agent-guard-sdk/landlock"]
+macos-sandbox = ["agent-guard-sdk/macos-sandbox"]
 default = []
