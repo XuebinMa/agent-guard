@@ -35,6 +35,14 @@ pub struct ExecutionReceipt {
     pub signature: String,
 }
 
+/// Append `field` to `buf` as an 8-byte little-endian length prefix followed by
+/// the field's bytes. The prefix makes a concatenation of fields injective, so
+/// no two distinct field sequences can produce the same byte string.
+fn push_len_prefixed(buf: &mut Vec<u8>, field: &str) {
+    buf.extend_from_slice(&(field.len() as u64).to_le_bytes());
+    buf.extend_from_slice(field.as_bytes());
+}
+
 impl ExecutionReceipt {
     /// Create and sign a new execution receipt.
     pub fn sign(
@@ -79,9 +87,9 @@ impl ExecutionReceipt {
             signature: String::new(),
         };
 
-        // Canonical message to sign: concatenating key fields
+        // Canonical, injective message to sign (see `to_signing_payload`).
         let message = receipt.to_signing_payload();
-        let signature = signing_key.sign(message.as_bytes());
+        let signature = signing_key.sign(&message);
         receipt.signature = hex::encode(signature.to_bytes());
 
         receipt
@@ -93,7 +101,7 @@ impl ExecutionReceipt {
     pub fn with_approval(mut self, approval: ApprovalProof, signing_key: &SigningKey) -> Self {
         self.approval = Some(approval);
         let message = self.to_signing_payload();
-        let signature = signing_key.sign(message.as_bytes());
+        let signature = signing_key.sign(&message);
         self.signature = hex::encode(signature.to_bytes());
         self
     }
@@ -115,32 +123,51 @@ impl ExecutionReceipt {
         };
 
         let message = self.to_signing_payload();
-        verifying_key.verify(message.as_bytes(), &signature).is_ok()
+        verifying_key.verify(&message, &signature).is_ok()
     }
 
-    fn to_signing_payload(&self) -> String {
-        let base = format!(
-            "{}:{}:{}:{}:{}:{}:{}:{}",
-            self.receipt_version,
-            self.agent_id,
-            self.tool,
-            self.policy_version,
-            self.sandbox_type,
-            self.decision,
-            self.command_hash,
-            self.timestamp
-        );
-        // Append approval fields only when present, so receipts without an
-        // approval sign and verify exactly as before this field existed.
-        match &self.approval {
-            None => base,
-            Some(approval) => format!(
-                "{base}:approved:{}:{}:{}",
-                approval.request_id,
-                approval.decided_by.as_deref().unwrap_or(""),
-                approval.decided_at
-            ),
+    fn to_signing_payload(&self) -> Vec<u8> {
+        // Injective, length-prefixed signing payload. Each field is written as
+        // its byte length (u64 LE) followed by its bytes, so an
+        // attacker-influenced field (e.g. `agent_id`, sourced from the untrusted
+        // Context) cannot be crafted to collide with a different field split —
+        // the previous colon-join let `{agent_id:"a:b", tool:"c"}` and
+        // `{agent_id:"a", tool:"b:c"}` sign to identical bytes. This is
+        // panic-free by construction (no fallible serialization step in a
+        // signing path). `approval` is bound with a presence byte, and its
+        // `decided_by` with its own presence byte so `None` and `Some("")` do
+        // not collide.
+        let mut buf = Vec::new();
+        for field in [
+            self.receipt_version.as_str(),
+            self.agent_id.as_str(),
+            self.tool.as_str(),
+            self.policy_version.as_str(),
+            self.sandbox_type.as_str(),
+            self.decision.as_str(),
+            self.command_hash.as_str(),
+        ] {
+            push_len_prefixed(&mut buf, field);
         }
+        buf.extend_from_slice(&self.timestamp.to_le_bytes());
+
+        match &self.approval {
+            None => buf.push(0),
+            Some(approval) => {
+                buf.push(1);
+                push_len_prefixed(&mut buf, &approval.request_id);
+                match &approval.decided_by {
+                    None => buf.push(0),
+                    Some(decided_by) => {
+                        buf.push(1);
+                        push_len_prefixed(&mut buf, decided_by);
+                    }
+                }
+                buf.extend_from_slice(&approval.decided_at.to_le_bytes());
+            }
+        }
+
+        buf
     }
 }
 
@@ -250,25 +277,35 @@ mod tests {
     }
 
     #[test]
-    fn receipt_without_approval_signs_identically_to_before() {
-        // A receipt with no approval must produce the same signing payload as
-        // the pre-S7-5 format, so existing receipts still verify.
+    fn colon_in_agent_id_cannot_forge_field_boundaries() {
+        // Regression for the non-injective signing payload. `agent_id` is
+        // attacker-influenced and may contain ':'. Under the old colon-join,
+        // {agent_id:"acme:bash", tool:"write_file"} and
+        // {agent_id:"acme", tool:"bash:write_file"} produced byte-identical
+        // signed messages, so one signature validated both. The JSON-tuple
+        // payload binds field boundaries, so reusing r1's signature on the
+        // re-split must now fail to verify.
         let signing_key = SigningKey::generate(&mut OsRng);
-        let receipt = ExecutionReceipt::sign(
-            "agent-1",
-            "bash",
-            "v1.0.0",
+        let public_key = signing_key.verifying_key().to_bytes();
+
+        let r1 = ExecutionReceipt::sign(
+            "acme:bash",
+            "write_file",
+            "polv2",
             "linux-seccomp",
             &GuardDecision::Allow,
-            "hash123",
+            "deadbeef",
             &signing_key,
         );
+        assert!(r1.verify(&public_key));
 
-        assert!(receipt.approval.is_none());
-        assert_eq!(
-            receipt.to_signing_payload(),
-            "1.0:agent-1:bash:v1.0.0:linux-seccomp:allow:hash123:".to_string()
-                + &receipt.timestamp.to_string()
+        // Same signature, different (agent_id, tool) split.
+        let mut forged = r1.clone();
+        forged.agent_id = "acme".to_string();
+        forged.tool = "bash:write_file".to_string();
+        assert!(
+            !forged.verify(&public_key),
+            "re-split (agent_id, tool) must not verify under r1's signature"
         );
     }
 }

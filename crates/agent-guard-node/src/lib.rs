@@ -664,22 +664,15 @@ pub fn normalize_payload(tool: String, raw_input: String) -> String {
 /// public_key_hex: 64 hex chars (32 bytes) of the Ed25519 public key.
 #[napi]
 pub fn verify_receipt(receipt_json: String, public_key_hex: String) -> Result<bool> {
-    use ed25519_dalek::{Signature, Verifier, VerifyingKey};
+    // Delegate to the SDK's `ExecutionReceipt::verify` rather than
+    // reconstructing the signing payload here. The previous hand-rolled
+    // colon-join both shared the non-injectivity of the old SDK encoding and
+    // silently ignored the `approval` field, so approved receipts never
+    // verified through this binding. Reusing the canonical impl keeps the two
+    // languages byte-for-byte in agreement.
+    use agent_guard_sdk::provenance::ExecutionReceipt;
 
-    #[derive(serde::Deserialize)]
-    struct Receipt {
-        receipt_version: String,
-        agent_id: String,
-        tool: String,
-        policy_version: String,
-        sandbox_type: String,
-        decision: String,
-        command_hash: String,
-        timestamp: u64,
-        signature: String,
-    }
-
-    let receipt: Receipt = serde_json::from_str(&receipt_json)
+    let receipt: ExecutionReceipt = serde_json::from_str(&receipt_json)
         .map_err(|e| Error::new(Status::InvalidArg, format!("invalid receipt JSON: {e}")))?;
 
     let key_bytes = hex::decode(&public_key_hex)
@@ -691,30 +684,7 @@ pub fn verify_receipt(receipt_json: String, public_key_hex: String) -> Result<bo
         )
     })?;
 
-    let Ok(verifying_key) = VerifyingKey::from_bytes(&key_array) else {
-        return Ok(false);
-    };
-
-    let payload = format!(
-        "{}:{}:{}:{}:{}:{}:{}:{}",
-        receipt.receipt_version,
-        receipt.agent_id,
-        receipt.tool,
-        receipt.policy_version,
-        receipt.sandbox_type,
-        receipt.decision,
-        receipt.command_hash,
-        receipt.timestamp,
-    );
-
-    let Ok(sig_bytes) = hex::decode(&receipt.signature) else {
-        return Ok(false);
-    };
-    let Ok(signature) = Signature::from_slice(&sig_bytes) else {
-        return Ok(false);
-    };
-
-    Ok(verifying_key.verify(payload.as_bytes(), &signature).is_ok())
+    Ok(receipt.verify(&key_array))
 }
 
 #[cfg(test)]
