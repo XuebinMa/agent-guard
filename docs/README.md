@@ -1,4 +1,4 @@
-# agent-guard Documentation Hub (v0.2.0-rc1)
+# agent-guard Documentation Hub (v0.2.0-rc2)
 
 `agent-guard` is an execution control layer for agent side effects. This hub is organized around the current developer path first: understand the short-term wedge, get a real execution boundary in place, then go deeper into reference, operations, and historical or maintainer-only material when needed.
 
@@ -8,7 +8,7 @@
 
 ## 📣 Latest Activity
 
-- **Latest Release** → [`v0.2.0-rc1`](https://github.com/XuebinMa/agent-guard/releases/tag/v0.2.0-rc1)
+- **Latest Release** → [`v0.2.0-rc2`](https://github.com/XuebinMa/agent-guard/releases/tag/v0.2.0-rc2)
 - **Community Thread** → [GitHub Discussions #1](https://github.com/XuebinMa/agent-guard/discussions/1)
 
 If you are arriving from GitHub or social posts, these are the two best entry points before you dive deeper into the docs.

@@ -10,14 +10,14 @@ name = "guard-hook"
 path = "src/main.rs"
 
 [dependencies]
-agent-guard-core = { path = "../agent-guard-core", version = "=0.2.0-rc1" }
+agent-guard-core = { path = "../agent-guard-core", version = "=0.2.0-rc2" }
 # `content` enables the content-layer check stage so a policy with a
 # `content:` block (e.g. `write_file.content: { mode: block }`) is enforced
 # through the hook. With the shipped outbound preset this is a no-op (its
 # write_file content mode is `warn`, which the check-only hook does not act
 # on, and WebFetch carries no HTTP body to scan) — it makes the capability
 # present for policies that opt into Block-mode content rules.
-agent-guard-sdk = { path = "../agent-guard-sdk", version = "=0.2.0-rc1", features = [
+agent-guard-sdk = { path = "../agent-guard-sdk", version = "=0.2.0-rc2", features = [
     "content",
 ] }
 clap.workspace = true

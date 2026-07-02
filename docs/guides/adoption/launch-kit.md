@@ -289,7 +289,7 @@ Discussion prompts:
 
 Shared links:
 
-- Release: `https://github.com/XuebinMa/agent-guard/releases/tag/v0.2.0-rc1`
+- Release: `https://github.com/XuebinMa/agent-guard/releases/tag/v0.2.0-rc2`
 - Discussion: `https://github.com/XuebinMa/agent-guard/discussions/1`
 - Three-Minute Proof: `https://github.com/XuebinMa/agent-guard/blob/main/docs/guides/getting-started/three-minute-proof.md`
 - Node Quickstart: `https://github.com/XuebinMa/agent-guard/blob/main/crates/agent-guard-node/examples/quickstart/README.md`

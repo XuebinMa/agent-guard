@@ -1,7 +1,7 @@
 # Roadmap
 
 This is the current, living forward-looking view for `agent-guard` as of
-**0.2.0-rc1**. It distills the historical phase designs under
+**0.2.0-rc2**. It distills the historical phase designs under
 [`docs/archive/`](docs/archive/README.md) and the current code into one place
 that separates *shipped* from *partial* from *planned*.
 
@@ -24,7 +24,7 @@ matching than on runtime validation. See the "Current boundary note" in
 [Framework Support Matrix](docs/reference/framework-support-matrix.md) for the
 per-surface, per-language reality.
 
-## Shipped (0.2.0-rc1)
+## Shipped (0.2.0-rc2)
 
 - **Unified decision model** — `allow` / `deny` / `ask_for_approval` / `handoff`
   with normalised decision codes, exposed identically across the Rust SDK, the

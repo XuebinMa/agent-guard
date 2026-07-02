@@ -176,7 +176,7 @@ git push origin main v<semver>         # push manually after review
 
 `<level>` is one of `patch`, `minor`, `major`, `alpha`, `beta`, `rc`, or `release`. The configuration:
 
-- Uses a **shared version** across all nine workspace crates so they always release together (matches the `version = "=0.2.0-rc1"` inter-crate pin in `Cargo.toml`).
+- Uses a **shared version** across all nine workspace crates so they always release together (matches the `version = "=0.2.0-rc2"` inter-crate pin in `Cargo.toml`).
 - Creates **one tag per workspace** (`v<semver>`) rather than a tag per crate.
 - **Skips `cargo publish`** for now (`publish = false` in `release.toml`) — flip to `true` when the crates are ready for crates.io.
 - **Does not auto-push** — you push the tag explicitly so the release becomes visible only after a final review.

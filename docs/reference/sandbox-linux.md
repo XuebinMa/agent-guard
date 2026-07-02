@@ -23,7 +23,7 @@ With the `seccomp` feature enabled, read-only executions now install a syscall f
 
 ```toml
 [dependencies]
-agent-guard-sandbox = { version = "0.2.0-rc1", features = ["seccomp"] }
+agent-guard-sandbox = { version = "0.2.0-rc2", features = ["seccomp"] }
 ```
 
 ## Current Behavior

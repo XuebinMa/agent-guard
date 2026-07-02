@@ -16,7 +16,7 @@
 # step, since the crates aren't on crates.io yet.
 
 # Use a single shared version across all workspace crates so the nine
-# crates always release together and inter-crate `version = "=0.2.0-rc1"`
+# crates always release together and inter-crate `version = "=0.2.0-rc2"`
 # pins stay consistent.
 shared-version = true
 

@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0-rc2] - 2026-07-02
+
 ### Added
 - **Method-aware HTTP policy rules** (#39, #105): an `http_request` rule can carry an optional `method:` constraint (case-insensitive; e.g. deny `POST` to a host while leaving `GET` allowed). Rules without `method:` behave exactly as before. A new `http` validator blocks `X-HTTP-Method-Override`-style header smuggling before the policy decision, locked by a `sec13` security regression; two cross-language parity scenarios verify identical decisions across Rust / Python / Node.
 - **Content-layer input scanning** (#99, #106): a top-level `input_content:` policy block (same `mode: block | mask | warn` shape as per-tool `content:`) plus the feature-gated `Guard::check_content(text, &Context) -> ContentCheckOutcome { blocked, masked_text, labels }`, so a host can scan input text (e.g. a prompt) before it reaches the LLM provider. Mask hands the redacted text back to the host; findings audit as `ContentFinding` with tool label `"input"`, labels only.
