@@ -17,14 +17,20 @@ hanging off it:
   (`check` / `decide` / `run` / `execute`, `RuntimeDecision`, the execute
   result types).
 - `sandbox_resolution.rs` — default backend selection + diagnosis (feeds
-  `GATE 2`; must report `"none"` when no real backend is compiled in).
+  `GATE 2`; must report `"none"` when no real backend is compiled in), plus
+  `resolve_sandbox_by_name` (feeds `GATE 5`; mirrors the default gating
+  exactly — notably `linux-seccomp` gates on the Cargo feature, NOT on
+  `is_available()`, which is `true` on any Linux host).
 - `anomaly.rs` — rate limiting + the deny fuse (agent lock-out).
 - `audit_writer.rs`, `siem.rs` — append-only JSONL audit records and webhook
   export (async; uses the tokio runtime).
 - `provenance.rs`, `policy_signing.rs` — opt-in Ed25519 execution receipts
   (require a signing key) and policy signing/verification.
 - `content_filter.rs` — content-layer stage, behind the off-by-default
-  `content` feature.
+  `content` feature: outbound (`write_file` content / `http_request` body,
+  rewritten on the execution path) and input (`Guard::check_content` over the
+  top-level `input_content:` block; Mask hands the redacted text back to the
+  host — the Guard never performs the downstream LLM call).
 - `metrics.rs` — Prometheus metrics. `doctor.rs` — host-boundary report.
 
 ## Invariants
@@ -52,7 +58,8 @@ Most of the project's behavioural contract is the integration suite here — new
 behaviour lands as a test in the right file, not a new bespoke harness:
 
 - [`tests/release_gate.rs`](tests/release_gate.rs) — release-blocking invariants
-  (`GATE 1-4`). Add an invariant as the next `GATE`.
+  (`GATE 1-5`; 5 = by-name backend selection truthfulness). Add an invariant
+  as the next `GATE`.
 - [`tests/security_regression.rs`](tests/security_regression.rs) — one test per
   closed attack class; cite the PR. **Every closed bypass gets a lock here.**
 - `tests/parity.rs`, `tests/content_enforcement.rs`, `tests/approval_resume.rs`,

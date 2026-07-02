@@ -25,10 +25,12 @@ the isolation it actually compiled in, never more.
 
 ## Invariants you must not break
 
-These are locked by `GATE 2` and `GATE 3` in
+These are locked by `GATE 2`, `GATE 3`, and `GATE 5` (by-name selection) in
 [`agent-guard-sdk/tests/release_gate.rs`](../../crates/agent-guard-sdk/tests/release_gate.rs).
 If you change backend selection or what a backend blocks, those tests must stay
-green and stay honest.
+green and stay honest. The SDK's by-name resolver (`Guard::sandbox_by_name`)
+mirrors the same cfg gating — a new backend must be added to BOTH resolution
+paths.
 
 1. **Truthful backend selection.** Priority is: Linux → `landlock` if its
    feature is on *and* available, else `seccomp` if compiled, else `"none"`;
