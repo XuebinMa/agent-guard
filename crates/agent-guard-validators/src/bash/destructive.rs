@@ -3,6 +3,7 @@
 use super::tables::{ALWAYS_DESTRUCTIVE_COMMANDS, DESTRUCTIVE_PATTERNS};
 use super::tokenize::extract_first_command;
 use super::types::ValidationResult;
+use super::wrappers::command_name;
 
 #[must_use]
 pub fn check_destructive(command: &str) -> ValidationResult {
@@ -16,7 +17,8 @@ pub fn check_destructive(command: &str) -> ValidationResult {
     }
 
     let first = extract_first_command(command);
-    if ALWAYS_DESTRUCTIVE_COMMANDS.contains(&&*first) {
+    let first = command_name(&first);
+    if ALWAYS_DESTRUCTIVE_COMMANDS.contains(&first) {
         return ValidationResult::Warn {
             message: format!("Command '{first}' is inherently destructive and dangerous"),
         };

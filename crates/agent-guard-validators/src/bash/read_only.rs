@@ -5,7 +5,7 @@ use super::tables::{
 };
 use super::tokenize::shell_split;
 use super::types::{PermissionMode, ValidationResult};
-use super::wrappers::unwrap_command_wrappers;
+use super::wrappers::{command_name, unwrap_command_wrappers};
 
 #[must_use]
 pub fn validate_read_only(command: &str, mode: PermissionMode) -> ValidationResult {
@@ -81,7 +81,7 @@ fn check_command_segment(parts: &[String]) -> Option<ValidationResult> {
     // `env FOO=1 rm`, or `FOO=1 rm` hid the destructive command from this gate
     // (audit 2026-05-18 / 2026-05-19 / 2026-06-08).
     let parts = unwrap_command_wrappers(parts);
-    let first_command = parts.first()?;
+    let first_command = command_name(parts.first()?);
 
     if first_command == "git" {
         if parts.len() > 1 {

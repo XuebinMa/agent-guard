@@ -24,9 +24,12 @@ pub use read_only::validate_read_only;
 pub use types::{CommandIntent, PermissionMode, ValidationResult};
 
 use tokenize::{
-    contains_code_laundering_command, contains_command_substitution,
-    contains_interpreter_with_inline_code, extract_first_command,
+    contains_code_laundering_command, contains_command_substitution, contains_dynamic_command_word,
+    contains_env_split_string, contains_interpreter_with_inline_code,
+    contains_multiple_find_exec_actions, contains_opaque_interpreter_execution,
+    contains_shell_grouping, extract_first_command, reparsed_watch_commands,
 };
+use wrappers::command_name;
 
 pub fn validate_bash_command(
     command: &str,
@@ -69,6 +72,43 @@ pub fn validate_bash_command(
                 ),
             };
         }
+        if let Some(interpreter) = contains_opaque_interpreter_execution(command) {
+            return ValidationResult::Block {
+                reason: format!(
+                    "Interpreter '{interpreter}' would execute code the validator cannot inspect in this mode"
+                ),
+            };
+        }
+        if contains_dynamic_command_word(command) {
+            return ValidationResult::Block {
+                reason:
+                    "A shell parameter expansion cannot be used as the command word in this mode"
+                        .to_string(),
+            };
+        }
+        if contains_shell_grouping(command) {
+            return ValidationResult::Block {
+                reason: "Parenthesized shell grouping is not supported in this mode".to_string(),
+            };
+        }
+        if contains_multiple_find_exec_actions(command) {
+            return ValidationResult::Block {
+                reason: "Multiple find -exec/-execdir actions are not supported in this mode"
+                    .to_string(),
+            };
+        }
+        if contains_env_split_string(command) {
+            return ValidationResult::Block {
+                reason: "env -S/--split-string can inject an opaque command and is not supported in this mode"
+                    .to_string(),
+            };
+        }
+        for inner in reparsed_watch_commands(command) {
+            let result = validate_bash_command(&inner, mode, workspace_path, escape_paths);
+            if result != ValidationResult::Allow {
+                return result;
+            }
+        }
     }
 
     let res = validate_read_only(command, mode);
@@ -86,7 +126,7 @@ pub fn validate_bash_command(
 
 pub fn classify_intent(command: &str) -> CommandIntent {
     let first = extract_first_command(command);
-    match first.as_str() {
+    match command_name(&first) {
         "ls" | "cat" | "pwd" | "git" => {
             if command.contains("push")
                 || command.contains("commit")

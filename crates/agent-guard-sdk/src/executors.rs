@@ -56,17 +56,31 @@ pub(crate) struct WriteFileRequest {
     append: bool,
 }
 
+/// Filesystem authority supplied to the guard-owned WriteFile executor.
+///
+/// WorkspaceWrite must carry a concrete root; FullAccess is the only mode that
+/// may intentionally opt out of confinement. Encoding that distinction as an
+/// enum prevents an accidental `None` from meaning "allow the whole host".
+pub(crate) enum WriteFileScope<'a> {
+    Workspace(&'a Path),
+    Unrestricted,
+}
+
 pub(crate) fn execute_write_file(
     payload: &str,
-    working_directory: Option<&Path>,
+    scope: WriteFileScope<'_>,
 ) -> Result<SandboxOutput, SandboxError> {
     let request: WriteFileRequest =
         serde_json::from_str(payload).map_err(|_| SandboxError::InvalidPayload {
             code: DecisionCode::InvalidPayload,
             message: "invalid payload JSON".to_string(),
         })?;
-    let resolved_path = resolve_tool_path(&request.path, working_directory)
-        .map_err(invalid_payload_from_decision)?;
+    let workspace_bound = match scope {
+        WriteFileScope::Workspace(path) => Some(path),
+        WriteFileScope::Unrestricted => None,
+    };
+    let resolved_path =
+        resolve_tool_path(&request.path, workspace_bound).map_err(invalid_payload_from_decision)?;
 
     let mut options = std::fs::OpenOptions::new();
     options.create(true).write(true);
@@ -671,7 +685,10 @@ mod tests {
     // These tests pin that contract so a future change cannot silently fold bad
     // requests back into `ExecutionFailed` or drop the code.
 
-    use super::{execute_http_request, execute_write_file, extract_bash_command_for_execution};
+    use super::{
+        execute_http_request, execute_write_file, extract_bash_command_for_execution,
+        WriteFileScope,
+    };
     use agent_guard_core::DecisionCode;
     use agent_guard_sandbox::SandboxError;
 
@@ -709,7 +726,7 @@ mod tests {
 
     #[test]
     fn write_file_malformed_json_is_invalid_payload() {
-        let err = execute_write_file("not valid json", None).unwrap_err();
+        let err = execute_write_file("not valid json", WriteFileScope::Unrestricted).unwrap_err();
         assert!(
             matches!(err, SandboxError::InvalidPayload { .. }),
             "got {err:?}"

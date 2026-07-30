@@ -7,7 +7,7 @@ use std::path::PathBuf;
 use std::time::Instant;
 
 use agent_guard_core::{
-    DecisionCode, DecisionReason, GuardDecision, GuardInput, RuntimeDecision, Tool,
+    DecisionCode, DecisionReason, GuardDecision, GuardInput, PolicyMode, RuntimeDecision, Tool,
 };
 use agent_guard_sandbox::{Sandbox, SandboxContext, SandboxError, SandboxOutput};
 use serde::Serialize;
@@ -15,7 +15,7 @@ use uuid::Uuid;
 
 use crate::approval::{ApprovalConfig, ApprovalError, ApprovalRecord, ApprovalStatus};
 use crate::executors::{
-    execute_http_request, execute_write_file, extract_bash_command_for_execution,
+    execute_http_request, execute_write_file, extract_bash_command_for_execution, WriteFileScope,
 };
 use crate::guard::Guard;
 use crate::guard_helpers::sha256_hash;
@@ -161,7 +161,7 @@ impl Guard {
             .unwrap_or_else(|| PathBuf::from("."));
 
         let ctx = SandboxContext {
-            mode,
+            mode: mode.clone(),
             working_directory,
             timeout_ms: None,
         };
@@ -199,7 +199,26 @@ impl Guard {
                 sandbox.execute(&command, &ctx)
             }
             Tool::WriteFile => {
-                execute_write_file(exec_payload, input.context.working_directory.as_deref())
+                let scope = match mode {
+                    PolicyMode::WorkspaceWrite => {
+                        let workspace =
+                            input.context.working_directory.as_deref().ok_or_else(|| {
+                                SandboxError::InvalidPayload {
+                                    code: DecisionCode::InvalidPayload,
+                                    message: "working_directory is required for WriteFile in workspace_write mode"
+                                        .to_string(),
+                                }
+                            })?;
+                        WriteFileScope::Workspace(workspace)
+                    }
+                    PolicyMode::FullAccess => WriteFileScope::Unrestricted,
+                    PolicyMode::ReadOnly | PolicyMode::Blocked => {
+                        return Err(SandboxError::ExecutionFailed(
+                            "WriteFile execution reached a non-writable policy mode".to_string(),
+                        ));
+                    }
+                };
+                execute_write_file(exec_payload, scope)
             }
             Tool::HttpRequest => execute_http_request(exec_payload),
             _ => unreachable!("unsupported tool already returned above"),

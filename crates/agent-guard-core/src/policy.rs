@@ -520,6 +520,20 @@ impl PolicyEngine {
         let tool_policy = self.tool_policy(tool);
         let tool_name = tool.name();
 
+        // Guard-owned WriteFile execution in WorkspaceWrite mode requires an
+        // explicit workspace capability. Treating a missing bound as
+        // "unrestricted" silently turns Context::default() into host-wide
+        // write access. FullAccess remains the explicit opt-out.
+        if matches!(tool, Tool::WriteFile)
+            && effective_mode == PolicyMode::WorkspaceWrite
+            && context.working_directory.is_none()
+        {
+            return GuardDecision::deny(
+                DecisionCode::InvalidPayload,
+                "working_directory is required for WriteFile in workspace_write mode",
+            );
+        }
+
         if effective_mode == PolicyMode::ReadOnly {
             // Intrinsically mutating structured tools are denied in read-only
             // mode regardless of per-tool configuration. `WriteFile` always

@@ -58,10 +58,12 @@ fn decide_returns_execute_for_allowed_bash() {
 
 #[test]
 fn decide_returns_execute_for_allowed_write_file() {
+    let mut context = trusted();
+    context.working_directory = Some("/workspace".into());
     let decision = guard().decide_tool(
         Tool::WriteFile,
         r#"{"path":"/workspace/output.txt","content":"hello"}"#,
-        trusted(),
+        context,
     );
     assert_eq!(decision, RuntimeDecision::Execute);
 }

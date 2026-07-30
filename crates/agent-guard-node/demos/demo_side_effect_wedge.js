@@ -61,8 +61,9 @@ tools:
       path: artifactPath,
       content: shellOutcome.output.stdout.trim(),
     })
-    const fileDecision = guard.decide('write_file', filePayload)
-    const fileOutcome = await guard.run('write_file', filePayload)
+    const fileContext = { workingDirectory: workspace }
+    const fileDecision = guard.decide('write_file', filePayload, fileContext)
+    const fileOutcome = await guard.run('write_file', filePayload, fileContext)
 
     const httpPayload = JSON.stringify({
       method: 'POST',

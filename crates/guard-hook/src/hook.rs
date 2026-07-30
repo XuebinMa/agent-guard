@@ -378,6 +378,7 @@ tools:
         std::fs::write(&policy_path, policy).expect("write policy");
 
         let stdin = serde_json::json!({
+            "cwd": dir.path().to_string_lossy(),
             "tool_name": "Write",
             "tool_input": {
                 "file_path": target.to_string_lossy(),

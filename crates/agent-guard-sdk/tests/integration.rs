@@ -64,6 +64,16 @@ fn trusted() -> Context {
     }
 }
 
+fn trusted_with_host_root() -> Context {
+    Context {
+        trust_level: TrustLevel::Trusted,
+        // These policy-only tests use fixed absolute paths. Root is an
+        // explicit capability here so the tests isolate allow/deny path rules.
+        working_directory: Some("/".into()),
+        ..Default::default()
+    }
+}
+
 fn untrusted() -> Context {
     Context {
         trust_level: TrustLevel::Untrusted,
@@ -266,7 +276,7 @@ fn write_file_json_etc_is_denied() {
     let d = guard().check_tool(
         Tool::WriteFile,
         r#"{"path":"/etc/cron.d/evil","content":"* * * * * root id"}"#,
-        trusted(),
+        trusted_with_host_root(),
     );
     assert!(matches!(d, GuardDecision::Deny { .. }));
 }
@@ -288,7 +298,7 @@ fn write_file_in_allowlist_is_allowed() {
     let d = guard().check_tool(
         Tool::WriteFile,
         r#"{"path":"/workspace/output.txt","content":"hello"}"#,
-        trusted(),
+        trusted_with_host_root(),
     );
     assert_eq!(d, GuardDecision::Allow);
 }
@@ -299,7 +309,7 @@ fn write_file_outside_allowlist_is_denied() {
     let d = guard().check_tool(
         Tool::WriteFile,
         r#"{"path":"/tmp/evil.sh","content":"id"}"#,
-        trusted(),
+        trusted_with_host_root(),
     );
     if let GuardDecision::Deny { reason } = d {
         assert_eq!(reason.code(), agent_guard_sdk::DecisionCode::NotInAllowList);
@@ -622,7 +632,7 @@ fn allow_paths_with_deny_paths_hit_denies_before_allowlist_check() {
     let d = guard().check_tool(
         Tool::WriteFile,
         r#"{"path":"/etc/passwd","content":"x"}"#,
-        trusted(),
+        trusted_with_host_root(),
     );
     if let GuardDecision::Deny { reason } = d {
         // Either PathOutsideWorkspace or DeniedByRule — the key is: deny_paths fires.
@@ -650,7 +660,7 @@ fn allow_paths_non_empty_rejects_unlisted_path() {
     let d = guard().check_tool(
         Tool::WriteFile,
         r#"{"path":"/var/log/app.log","content":"data"}"#,
-        trusted(),
+        trusted_with_host_root(),
     );
     if let GuardDecision::Deny { reason } = d {
         assert_eq!(reason.code(), agent_guard_sdk::DecisionCode::NotInAllowList);
@@ -665,7 +675,7 @@ fn allow_paths_glob_matches_nested_path() {
     let d = guard().check_tool(
         Tool::WriteFile,
         r#"{"path":"/workspace/a/b/c/deep.txt","content":"ok"}"#,
-        trusted(),
+        trusted_with_host_root(),
     );
     assert_eq!(d, GuardDecision::Allow);
 }
@@ -676,7 +686,7 @@ fn allow_paths_exact_prefix_does_not_match_sibling() {
     let d = guard().check_tool(
         Tool::WriteFile,
         r#"{"path":"/workspaceX/evil.txt","content":"x"}"#,
-        trusted(),
+        trusted_with_host_root(),
     );
     if let GuardDecision::Deny { reason } = d {
         assert_eq!(reason.code(), agent_guard_sdk::DecisionCode::NotInAllowList);

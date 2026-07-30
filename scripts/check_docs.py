@@ -31,8 +31,12 @@ STALE_PATTERNS = [
     (r'While Seccomp blocks writes globally', 'Current Linux prototype fallback does not yet block writes globally'),
     (r'provides OS-level process isolation on Linux using `seccomp-bpf`', 'The Linux sandbox doc should describe the current prototype wrapper, not shipped seccomp-bpf enforcement'),
     
-    # Result schema drifts
-    (r'\.outcome', 'Use .status for execution results in Node/Python'),
+    # Result schema drifts. Check/decision objects intentionally expose
+    # `.outcome`; only execution/runtime result types use `.status`.
+    (
+        r'(?:ExecuteResult|ExecuteOutcome|RuntimeOutcome)\.outcome',
+        'Use .status for execution results in Node/Python',
+    ),
 ]
 
 FENCED_BLOCK_PATTERN = re.compile(r"```(?P<lang>[A-Za-z0-9_+-]*)\n(?P<body>.*?)```", re.DOTALL)

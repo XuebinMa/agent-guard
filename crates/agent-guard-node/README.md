@@ -43,7 +43,7 @@ The repository CI validates the Node binding and framework wrappers against:
 
 - Node `20`
 - Node `22`
-- `@langchain/core` `^0.3.75`
+- `@langchain/core` `^1.2.3`
 - `@openai/agents` `^0.8.3`
 
 That is the published support floor for the current adapter layer.
@@ -119,7 +119,8 @@ const shellOutcome = await guard.run('bash', JSON.stringify({ command: 'echo sum
 
 const fileDecision = guard.decide(
   'write_file',
-  JSON.stringify({ path: '/workspace/summary.txt', content: shellOutcome.output.stdout.trim() })
+  JSON.stringify({ path: '/workspace/summary.txt', content: shellOutcome.output.stdout.trim() }),
+  { workingDirectory: '/workspace' }
 )
 
 const httpDecision = guard.decide(
@@ -198,7 +199,7 @@ The published `@agent-guard/node` package ships a **compiled native `.node` bina
 
 Consequently:
 
-- **Dev-only advisories are accepted.** `npm audit` reports transitive advisories from the LangChain / OpenAI agent SDKs (e.g. `langsmith`, `qs`, `uuid`, `ws`). These are reachable only from the test/build tooling, never from the shipped surface, so they do not gate releases. Run `npm audit fix` opportunistically to reduce noise.
+- **Dev-only advisories do not gate releases.** They are reachable only from the test/build tooling, never from the shipped surface. Keep them patched when compatible framework releases are available; the checked-in lockfile currently audits clean.
 - **Production dependencies are gated in CI.** The Node CI job runs `npm audit --omit=dev --audit-level=moderate`. Because there are no runtime dependencies today, this is currently empty/clean; if a real runtime dependency is ever added, a `moderate`+ advisory there fails CI.
 
 To reproduce locally:

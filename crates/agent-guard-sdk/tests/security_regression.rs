@@ -16,6 +16,8 @@
 //! 8. HttpRequest mutation to AWS/GCP metadata link-local (SSRF, PR #7).
 //! 9. `git push` triggers approval flow (policy ask).
 //! 10. `sudo` shell command rejected.
+//! 11. Shell parser bypasses from Codex Security scan f23c3b38.
+//! 12. Guard-owned WriteFile requires an explicit workspace capability.
 
 use agent_guard_sdk::{
     guard::{Guard, RuntimeOutcome},
@@ -56,12 +58,36 @@ fn guard() -> Guard {
     Guard::from_yaml(REGRESSION_POLICY).expect("guard init")
 }
 
+fn readonly_guard() -> Guard {
+    Guard::from_yaml(
+        r#"
+version: 1
+default_mode: read_only
+audit:
+  enabled: false
+anomaly:
+  enabled: false
+"#,
+    )
+    .expect("read-only guard init")
+}
+
 fn ctx_workspace(workspace: &std::path::Path) -> Context {
     Context {
         trust_level: TrustLevel::Trusted,
         working_directory: Some(workspace.to_path_buf()),
         ..Default::default()
     }
+}
+
+fn assert_bash_denied(g: &Guard, command: &str) {
+    let workspace = std::path::Path::new("/workspace");
+    let payload = serde_json::json!({ "command": command }).to_string();
+    let decision = g.check_tool(Tool::Bash, &payload, ctx_workspace(workspace));
+    assert!(
+        matches!(decision, GuardDecision::Deny { .. }),
+        "shell payload must be denied: `{command}`, got {decision:?}"
+    );
 }
 
 fn assert_deny_with_code(d: &GuardDecision, expected: DecisionCode) {
@@ -377,5 +403,114 @@ anomaly:
     assert!(
         matches!(smuggled, GuardDecision::Deny { .. }),
         "method-override smuggling must be denied, got {smuggled:?}"
+    );
+}
+
+// ─── 14–24. Codex Security shell Critical findings ─────────────────────────
+
+#[test]
+fn sec14_command_builtin_wrappers_cannot_hide_write_commands() {
+    let g = guard();
+    assert_bash_denied(&g, "command rm /etc/passwd");
+    assert_bash_denied(&g, "exec rm /etc/passwd");
+}
+
+#[test]
+fn sec15_env_long_option_value_cannot_hide_write_command() {
+    let g = guard();
+    assert_bash_denied(&g, "env --chdir /tmp rm /etc/passwd");
+    assert_bash_denied(&g, "env --split-string='rm /etc/passwd'");
+    assert_bash_denied(&g, "env -S 'rm /etc/passwd'");
+}
+
+#[test]
+fn sec16_multiple_find_exec_actions_cannot_hide_later_write() {
+    let g = guard();
+    assert_bash_denied(&g, "find /workspace -exec echo {} + -exec rm /etc/passwd +");
+    assert_bash_denied(
+        &g,
+        r"find /workspace -exec echo {} \; -exec rm /etc/passwd \;",
+    );
+}
+
+#[test]
+fn sec17_wrapped_xargs_cannot_hide_unverifiable_write_target() {
+    let g = guard();
+    assert_bash_denied(&g, "env xargs rm");
+    assert_bash_denied(&g, "env xargs --replace rm");
+    assert_bash_denied(&g, "env xargs -l rm");
+}
+
+#[test]
+fn sec18_interpreter_script_file_is_opaque_code() {
+    assert_bash_denied(&guard(), "python3 script.py");
+}
+
+#[test]
+fn sec19_watch_reparsed_shell_string_is_validated() {
+    assert_bash_denied(&guard(), "watch 'echo ok; rm /etc/passwd'");
+}
+
+#[test]
+fn sec20_heredoc_opener_substitution_is_not_skipped() {
+    assert_bash_denied(&guard(), "cat <<'EOF' $(rm /etc/passwd)\nliteral\nEOF");
+}
+
+#[test]
+fn sec21_parameter_expansion_cannot_supply_command_word() {
+    let g = guard();
+    assert_bash_denied(&g, "$CMD /etc/passwd");
+    assert_bash_denied(&g, "${CMD} /etc/passwd");
+}
+
+#[test]
+fn sec22_shell_negation_cannot_hide_write_command() {
+    assert_bash_denied(&readonly_guard(), "! rm /etc/passwd");
+}
+
+#[test]
+fn sec23_subshell_grouping_cannot_hide_write_command() {
+    assert_bash_denied(&readonly_guard(), "( rm /etc/passwd )");
+    assert_bash_denied(&guard(), "( rm /etc/passwd )");
+}
+
+#[test]
+fn sec24_absolute_command_path_is_classified_by_basename() {
+    assert_bash_denied(&readonly_guard(), "/bin/rm /etc/passwd");
+}
+
+// ─── 25. Missing working directory cannot disable WriteFile confinement ─────
+
+#[test]
+fn sec25_write_file_without_working_directory_is_denied_without_writing() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let target = dir.path().join("must-not-exist.txt");
+    let input = GuardInput {
+        tool: Tool::WriteFile,
+        payload: serde_json::json!({
+            "path": target,
+            "content": "unauthorized"
+        })
+        .to_string(),
+        context: Context {
+            trust_level: TrustLevel::Trusted,
+            working_directory: None,
+            ..Default::default()
+        },
+    };
+
+    let outcome = guard()
+        .run(&input, &agent_guard_sandbox::NoopSandbox)
+        .expect("missing workspace must produce a decision, not an execution error");
+    match outcome {
+        RuntimeOutcome::Denied { reason, .. } => {
+            assert_eq!(reason.code(), DecisionCode::InvalidPayload);
+            assert!(reason.message().contains("working_directory"));
+        }
+        other => panic!("expected Denied for missing working_directory, got {other:?}"),
+    }
+    assert!(
+        !target.exists(),
+        "WriteFile must not create a file without an explicit workspace"
     );
 }

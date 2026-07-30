@@ -25,6 +25,8 @@ paths:
     post:
       operationId: runShellCommand
       summary: Execute a shell-like command through agent-guard
+      security:
+        - bearerAuth: []
       requestBody:
         required: true
         content:
@@ -39,6 +41,8 @@ paths:
                   description: The shell command to evaluate and execute.
                   example: echo hello from ChatGPT
       responses:
+        '401':
+          description: Missing or invalid Bearer API key
         '200':
           description: Command was handled by the action server
           content:
@@ -59,3 +63,10 @@ paths:
                     type: string
                   message:
                     type: string
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: API key
+      description: Dedicated API key configured in CHATGPT_ACTIONS_API_KEY.

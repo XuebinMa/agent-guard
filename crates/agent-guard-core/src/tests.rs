@@ -1611,11 +1611,9 @@ tools:
       - "/etc/**"
 "#;
         let engine = PolicyEngine::from_yaml_str(yaml).unwrap();
-        let d = engine.check(
-            &Tool::WriteFile,
-            r#"{"path":"/etc/hosts"}"#,
-            &ctx(TrustLevel::Trusted),
-        );
+        let mut context = ctx(TrustLevel::Trusted);
+        context.working_directory = Some(std::path::PathBuf::from("/"));
+        let d = engine.check(&Tool::WriteFile, r#"{"path":"/etc/hosts"}"#, &context);
         if let GuardDecision::Deny { reason } = d {
             assert_eq!(reason.code, DecisionCode::PathOutsideWorkspace);
         } else {
@@ -1816,15 +1814,37 @@ tools:
 
     #[test]
     fn workspace_write_still_allows_write_file() {
-        // Regression guard: the read_only denial must not leak into higher modes.
+        // Regression guard: WorkspaceWrite remains usable when its required
+        // workspace capability is present.
+        let workspace = tempfile::tempdir().expect("tempdir");
+        let engine =
+            PolicyEngine::from_yaml_str("version: 1\ndefault_mode: workspace_write\n").unwrap();
+        let mut context = ctx(TrustLevel::Trusted);
+        context.working_directory = Some(workspace.path().to_path_buf());
+        let d = engine.check(
+            &Tool::WriteFile,
+            r#"{"path":"output.txt","content":"y"}"#,
+            &context,
+        );
+        assert_eq!(d, GuardDecision::Allow);
+    }
+
+    #[test]
+    fn workspace_write_denies_write_file_without_workspace_capability() {
         let engine =
             PolicyEngine::from_yaml_str("version: 1\ndefault_mode: workspace_write\n").unwrap();
         let d = engine.check(
             &Tool::WriteFile,
-            r#"{"path":"/nonexistent/agent_guard_probe/x","content":"y"}"#,
+            r#"{"path":"/tmp/unbounded-write.txt","content":"y"}"#,
             &ctx(TrustLevel::Trusted),
         );
-        assert_eq!(d, GuardDecision::Allow);
+        match d {
+            GuardDecision::Deny { reason } => {
+                assert_eq!(reason.code, DecisionCode::InvalidPayload);
+                assert!(reason.message.contains("working_directory"));
+            }
+            other => panic!("expected Deny(InvalidPayload), got {other:?}"),
+        }
     }
 
     // ── Decision reason carries condition source when condition-gated rule fires

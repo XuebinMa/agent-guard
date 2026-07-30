@@ -7,7 +7,7 @@ use super::tables::{
 };
 use super::tokenize::shell_split;
 use super::types::{PermissionMode, ValidationResult};
-use super::wrappers::{leads_with_target_hiding_spawner, unwrap_command_wrappers};
+use super::wrappers::{command_name, leads_with_target_hiding_spawner, unwrap_command_wrappers};
 
 /// Relative parent-escape sentinel emitted when a target-hiding spawner
 /// (`find -exec` / `xargs`) wraps a write command. `validate_paths` rejects
@@ -170,7 +170,7 @@ fn write_targets_for_segment(segment: &[String]) -> Vec<String> {
     // (`{}`, or nothing) is not the real target. Emit the unverifiable sentinel
     // so the path gate blocks rather than trusting a placeholder. Issue #55.
     if leads_with_target_hiding_spawner(original) {
-        if let Some(cmd) = segment.first().map(|s| s.as_str()) {
+        if let Some(cmd) = segment.first().map(|s| command_name(s.as_str())) {
             if WRITE_COMMANDS.contains(&cmd) || STATE_MODIFYING_COMMANDS.contains(&cmd) {
                 return vec![UNVERIFIABLE_WRAPPER_TARGET.to_string()];
             }
@@ -207,7 +207,7 @@ fn write_targets_for_segment(segment: &[String]) -> Vec<String> {
 
     // Pass 2: command-specific write operands. The command word is the first
     // positional token (redirections/targets already stripped above).
-    let Some(command) = positional.first().map(|token| token.as_str()) else {
+    let Some(command) = positional.first().map(|token| command_name(token.as_str())) else {
         return targets;
     };
     let args = &positional[1..];

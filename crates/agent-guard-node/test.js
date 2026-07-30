@@ -72,9 +72,17 @@ tools:
       - "${writeRoot}/**"
 `
     const writeGuard = Guard.fromYaml(writePolicy)
+    const missingWorkspaceDecision = writeGuard.decide(
+      'write_file',
+      JSON.stringify({ path: writeTarget, content: 'must not write' })
+    )
+    assert.equal(missingWorkspaceDecision.outcome, 'deny')
+
+    const writeContext = { workingDirectory: writeRoot }
     const writeDecision = writeGuard.decide(
       'write_file',
-      JSON.stringify({ path: writeTarget, content: 'hello from node' })
+      JSON.stringify({ path: writeTarget, content: 'hello from node' }),
+      writeContext
     )
     assert.equal(writeDecision.outcome, 'execute')
 
@@ -123,7 +131,8 @@ tools:
 
     const writeOutcome = await writeGuard.run(
       'write_file',
-      JSON.stringify({ path: writeTarget, content: 'hello from node' })
+      JSON.stringify({ path: writeTarget, content: 'hello from node' }),
+      writeContext
     )
     assert.equal(writeOutcome.status || writeOutcome.outcome, 'executed')
     assert.equal(readFileSync(writeTarget, 'utf8'), 'hello from node')

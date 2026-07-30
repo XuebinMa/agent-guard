@@ -130,10 +130,14 @@ This example is intentionally small so a new user can see the pattern quickly.
 From the repository root:
 
 ```bash
+export CHATGPT_ACTIONS_API_KEY="$(openssl rand -hex 32)"
 npm ci --prefix crates/agent-guard-node
 npm run build:debug --prefix crates/agent-guard-node
 npm run demo:chatgpt-actions --prefix crates/agent-guard-node
 ```
+
+The server refuses to start unless `CHATGPT_ACTIONS_API_KEY` contains at least
+32 characters. Keep this value secret; do not commit it to the repository.
 
 That starts a local HTTP server with:
 
@@ -152,6 +156,8 @@ Typical choices:
 - or tunnel your local machine using a temporary HTTPS endpoint
 
 Your final Action base URL must match the `servers` section in the OpenAPI schema you import into ChatGPT.
+Do not expose the endpoint over plain HTTP: Bearer credentials must be
+protected in transit.
 
 ---
 
@@ -187,17 +193,16 @@ If you change the server base URL, update the schema first.
 
 ## Step 5: Configure Authentication
 
-For the local demo, the example schema uses:
+The example schema requires Bearer API-key authentication for `/run-shell`.
+In the GPT Action authentication settings:
 
-- no authentication
+1. choose **API key**
+2. choose **Bearer** as the authentication type
+3. enter the same secret stored in `CHATGPT_ACTIONS_API_KEY`
 
-For real deployments, choose one of the supported GPT Action auth models:
-
-- none
-- API key
-- OAuth
-
-If you want a quick internal proof-of-concept, API key auth is often the simplest next step.
+Authentication is mandatory even for a temporary tunnel. The API key proves
+which client may reach the endpoint; the agent-guard policy independently
+decides which commands that authenticated client may execute.
 
 ---
 

@@ -15,12 +15,14 @@ This example demonstrates the practical architecture for using `agent-guard` wit
 From the repository root:
 
 ```bash
+export CHATGPT_ACTIONS_API_KEY="$(openssl rand -hex 32)"
 npm ci --prefix crates/agent-guard-node
 npm run build:debug --prefix crates/agent-guard-node
 npm run demo:chatgpt-actions --prefix crates/agent-guard-node
 ```
 
-The server listens on `http://127.0.0.1:8787`.
+The server refuses to start without a dedicated API key of at least 32
+characters. It listens on `http://127.0.0.1:8787`.
 
 ## Local Test
 
@@ -34,6 +36,7 @@ Allowed command:
 
 ```bash
 curl -s http://127.0.0.1:8787/run-shell \
+  -H "Authorization: Bearer ${CHATGPT_ACTIONS_API_KEY}" \
   -H 'content-type: application/json' \
   -d '{"command":"echo hello from chatgpt action"}'
 ```
@@ -42,6 +45,7 @@ Blocked command:
 
 ```bash
 curl -s http://127.0.0.1:8787/run-shell \
+  -H "Authorization: Bearer ${CHATGPT_ACTIONS_API_KEY}" \
   -H 'content-type: application/json' \
   -d '{"command":"git push origin main"}'
 ```
@@ -53,7 +57,12 @@ curl -s http://127.0.0.1:8787/run-shell \
 3. Create a GPT and add a new Action.
 4. Paste or import `openapi.yaml`.
 5. Update the `servers` URL in the schema to your reachable host.
-6. Test in GPT Preview.
+6. Configure the Action authentication as an API key using Bearer
+   authentication, and enter the same value as `CHATGPT_ACTIONS_API_KEY`.
+7. Test in GPT Preview.
+
+Never expose this endpoint without HTTPS. The API key authenticates the caller;
+the agent-guard policy separately authorizes each requested command.
 
 ## Expected Behavior
 

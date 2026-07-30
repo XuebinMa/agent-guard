@@ -22,11 +22,11 @@
     "demo:wedge": "node demos/demo_side_effect_wedge.js",
     "prepublishOnly": "napi prepublish",
     "test:frameworks": "node test-frameworks.js",
-    "test": "node test-adapters.js && node test-frameworks.js && node test.js",
+    "test": "node test-adapters.js && node test-frameworks.js && node test.js && node --test examples/chatgpt-actions/auth.test.js examples/chatgpt-actions/server.test.js",
     "version": "napi version"
   },
   "devDependencies": {
-    "@langchain/core": "^0.3.75",
+    "@langchain/core": "^1.2.3",
     "@napi-rs/cli": "^2.18.4",
     "@openai/agents": "^0.8.3",
     "zod": "^4.3.6"

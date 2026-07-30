@@ -1401,12 +1401,11 @@ mod bash_interpreter_and_env_injection_tests {
     }
 
     #[test]
-    fn allows_python3_running_a_script_in_readonly() {
-        // No `-c` / `-e` / `-r`: running a script file is treated as a
-        // process invocation, not arbitrary inline code. The wedge does
-        // not introspect script contents.
+    fn blocks_python3_running_a_script_in_readonly() {
+        // A script file is opaque executable code just like `python3 -c`.
+        // Allowing it would let a script mutate files despite ReadOnly mode.
         let r = validate_bash_command("python3 script.py", ro(), workspace(), &[]);
-        assert_eq!(r, ValidationResult::Allow);
+        assert!(matches!(r, ValidationResult::Block { .. }));
     }
 
     #[test]
@@ -1715,11 +1714,11 @@ mod bash_interpreter_in_workspace_write_tests {
     }
 
     #[test]
-    fn allows_python3_running_script_in_workspace_write() {
-        // No inline-code flag — running a script file remains allowed
-        // (the wedge does not introspect script contents).
+    fn blocks_python3_running_script_in_workspace_write() {
+        // The script contents are opaque, so the validator cannot prove its
+        // writes stay inside the workspace.
         let r = validate_bash_command("python3 script.py", ws(), workspace(), &[]);
-        assert_eq!(r, ValidationResult::Allow);
+        assert!(matches!(r, ValidationResult::Block { .. }));
     }
 
     #[test]
@@ -1893,5 +1892,99 @@ mod bash_irregular_spawner_tests {
     #[test]
     fn allows_xargs_benign_command_in_workspace_write() {
         allows("xargs echo", ws());
+    }
+}
+
+// ── Codex Security f23c3b38: shell critical regression locks ────────────────
+//
+// These payloads were independently reported as Critical because each made a
+// mutating command invisible to one or more restricted-mode gates. Keep one
+// lock per attack class so future parser changes cannot silently reopen them.
+mod bash_codex_security_critical_tests {
+    use crate::bash::{validate_bash_command, PermissionMode, ValidationResult};
+    use std::path::Path;
+
+    fn ro() -> PermissionMode {
+        PermissionMode::ReadOnly
+    }
+
+    fn ws() -> PermissionMode {
+        PermissionMode::WorkspaceWrite
+    }
+
+    fn workspace() -> &'static Path {
+        Path::new("/workspace")
+    }
+
+    fn blocks(cmd: &str, mode: PermissionMode) {
+        let result = validate_bash_command(cmd, mode, workspace(), &[]);
+        assert!(
+            matches!(result, ValidationResult::Block { .. }),
+            "expected Block for `{cmd}`, got {result:?}"
+        );
+    }
+
+    #[test]
+    fn command_and_exec_builtin_wrappers_cannot_hide_write_commands() {
+        blocks("command rm /etc/passwd", ws());
+        blocks("exec rm /etc/passwd", ws());
+    }
+
+    #[test]
+    fn env_long_option_value_cannot_become_the_apparent_command() {
+        blocks("env --chdir /tmp rm /etc/passwd", ws());
+        blocks("env --split-string='rm /etc/passwd'", ws());
+        blocks("env -S 'rm /etc/passwd'", ws());
+    }
+
+    #[test]
+    fn multiple_find_exec_actions_cannot_hide_a_later_write() {
+        blocks(
+            "find /workspace -exec echo {} + -exec rm /etc/passwd +",
+            ws(),
+        );
+        blocks(
+            r"find /workspace -exec echo {} \; -exec rm /etc/passwd \;",
+            ws(),
+        );
+    }
+
+    #[test]
+    fn transparent_wrapper_cannot_hide_xargs_target_source() {
+        blocks("env xargs rm", ws());
+        blocks("env xargs --replace rm", ws());
+        blocks("env xargs -l rm", ws());
+    }
+
+    #[test]
+    fn watch_reparsed_shell_string_is_validated() {
+        blocks("watch 'echo ok; rm /etc/passwd'", ws());
+    }
+
+    #[test]
+    fn heredoc_opener_command_substitution_is_not_skipped() {
+        blocks("cat <<'EOF' $(rm /etc/passwd)\nliteral\nEOF", ws());
+    }
+
+    #[test]
+    fn parameter_expansion_cannot_supply_the_command_word() {
+        blocks("$CMD /etc/passwd", ws());
+        blocks("${CMD} /etc/passwd", ws());
+    }
+
+    #[test]
+    fn shell_negation_prefix_cannot_hide_write_command() {
+        blocks("! rm /etc/passwd", ro());
+    }
+
+    #[test]
+    fn subshell_grouping_cannot_hide_write_command() {
+        blocks("( rm /etc/passwd )", ro());
+        blocks("( rm /etc/passwd )", ws());
+    }
+
+    #[test]
+    fn absolute_command_path_is_classified_by_basename() {
+        blocks("/bin/rm /etc/passwd", ro());
     }
 }

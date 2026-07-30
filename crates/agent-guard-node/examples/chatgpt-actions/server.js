@@ -4,6 +4,10 @@ const { createServer } = require('http')
 const { readFileSync } = require('fs')
 const { join } = require('path')
 const {
+  loadRequiredApiKey,
+  requestHasValidBearerToken,
+} = require('./auth')
+const {
   Guard,
   wrapOpenAITool,
   AgentGuardDeniedError,
@@ -11,6 +15,7 @@ const {
 } = require('../..')
 
 const port = Number(process.env.PORT || 8787)
+const apiKey = loadRequiredApiKey()
 const policyPath = join(__dirname, 'policy.yaml')
 const policyYaml = readFileSync(policyPath, 'utf8')
 const guard = Guard.fromYaml(policyYaml)
@@ -31,12 +36,13 @@ const guardedShell = wrapOpenAITool(
   }
 )
 
-function sendJson(response, statusCode, body) {
+function sendJson(response, statusCode, body, extraHeaders = {}) {
   response.writeHead(statusCode, {
     'content-type': 'application/json; charset=utf-8',
     'access-control-allow-origin': '*',
     'access-control-allow-methods': 'GET, POST, OPTIONS',
-    'access-control-allow-headers': 'content-type',
+    'access-control-allow-headers': 'authorization, content-type',
+    ...extraHeaders,
   })
   response.end(JSON.stringify(body, null, 2))
 }
@@ -78,6 +84,21 @@ const server = createServer(async (request, response) => {
   }
 
   if (request.method === 'POST' && request.url === '/run-shell') {
+    if (!requestHasValidBearerToken(request, apiKey)) {
+      sendJson(
+        response,
+        401,
+        {
+          status: 'error',
+          message: 'authentication required',
+        },
+        {
+          'www-authenticate': 'Bearer realm="agent-guard-chatgpt-actions"',
+        }
+      )
+      return
+    }
+
     let body
     try {
       body = await readJson(request)
@@ -134,6 +155,12 @@ const server = createServer(async (request, response) => {
 })
 
 server.listen(port, '127.0.0.1', () => {
-  console.log(`ChatGPT Actions demo server listening on http://127.0.0.1:${port}`)
+  const address = server.address()
+  const listeningPort =
+    typeof address === 'object' && address !== null ? address.port : port
+  console.log(
+    `ChatGPT Actions demo server listening on http://127.0.0.1:${listeningPort}`
+  )
   console.log(`Policy version: ${guard.policyVersion()}`)
+  console.log('Bearer authentication: required')
 })
