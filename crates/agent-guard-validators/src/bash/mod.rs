@@ -7,6 +7,7 @@
 
 use std::path::Path;
 
+mod ast;
 mod destructive;
 mod paths;
 mod read_only;
