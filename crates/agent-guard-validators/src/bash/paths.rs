@@ -29,68 +29,77 @@ pub fn validate_paths(
     }
 
     let workspace = normalize_path(workspace);
+
     for target in collect_write_targets(command) {
-        let candidate = target.trim_matches(|c| c == '"' || c == '\'');
-        if candidate.is_empty() || candidate.starts_with('$') || candidate == "/dev/null" {
-            continue;
-        }
-
-        let path = Path::new(candidate);
-        if path.is_absolute() && !path_stays_within_workspace(path, &workspace) {
-            // Absolute path outside the workspace gets one last chance via the
-            // policy-declared escape list. Relative `../` escape (below) does
-            // not — that vector is always suspicious regardless of policy.
-            if matches_escape_glob(candidate, escape_paths) {
-                continue;
-            }
-            return ValidationResult::Block {
-                reason: format!(
-                    "write target '{}' is outside the configured workspace",
-                    candidate
-                ),
-            };
-        }
-
-        if !path.is_absolute() && has_parent_dir_escape(path) {
-            return ValidationResult::Block {
-                reason: format!(
-                    "write target '{}' escapes the configured workspace",
-                    candidate
-                ),
-            };
+        if let Some(block) = check_target(&target, "write", &workspace, escape_paths) {
+            return block;
         }
     }
 
     for target in collect_read_targets(command) {
-        let candidate = target.trim_matches(|c| c == '"' || c == '\'');
-        if candidate.is_empty() || candidate.starts_with('$') || candidate == "/dev/null" {
-            continue;
-        }
-
-        let path = Path::new(candidate);
-        if path.is_absolute() && !path_stays_within_workspace(path, &workspace) {
-            if matches_escape_glob(candidate, escape_paths) {
-                continue;
-            }
-            return ValidationResult::Block {
-                reason: format!(
-                    "read target '{}' is outside the configured workspace",
-                    candidate
-                ),
-            };
-        }
-
-        if !path.is_absolute() && has_parent_dir_escape(path) {
-            return ValidationResult::Block {
-                reason: format!(
-                    "read target '{}' escapes the configured workspace",
-                    candidate
-                ),
-            };
+        if let Some(block) = check_target(&target, "read", &workspace, escape_paths) {
+            return block;
         }
     }
 
     ValidationResult::Allow
+}
+
+/// Verify one extracted target against the workspace boundary.
+///
+/// Returns `Some(Block)` when the target may not be touched, `None` when it is
+/// inside the workspace or is not a path this gate governs.
+fn check_target(
+    target: &str,
+    kind: &str,
+    workspace: &Path,
+    escape_paths: &[String],
+) -> Option<ValidationResult> {
+    let candidate = target.trim_matches(|c| c == '"' || c == '\'');
+    if candidate.is_empty() || candidate.starts_with('$') || candidate == "/dev/null" {
+        return None;
+    }
+
+    let path = Path::new(candidate);
+
+    if path.is_absolute() {
+        // The policy-declared escape list is stated in absolute terms, so it
+        // stands on its own and is consulted before the workspace comparison.
+        if matches_escape_glob(candidate, escape_paths) {
+            return None;
+        }
+
+        // A workspace root that does not normalise to an absolute path yields
+        // no containment boundary at all: `Path::starts_with` against the
+        // empty prefix left by `.` (or by an absent working directory) is
+        // vacuously true, which silently accepts every absolute target. An
+        // unverifiable bound must fail closed, not degrade to "unrestricted".
+        if !workspace.is_absolute() {
+            return Some(ValidationResult::Block {
+                reason: format!(
+                    "{kind} target '{candidate}' cannot be verified: no absolute workspace root is configured"
+                ),
+            });
+        }
+
+        if !path_stays_within_workspace(path, workspace) {
+            return Some(ValidationResult::Block {
+                reason: format!("{kind} target '{candidate}' is outside the configured workspace"),
+            });
+        }
+
+        return None;
+    }
+
+    // Relative `../` escape is always suspicious regardless of policy, so it
+    // is never rescued by the escape list.
+    if has_parent_dir_escape(path) {
+        return Some(ValidationResult::Block {
+            reason: format!("{kind} target '{candidate}' escapes the configured workspace"),
+        });
+    }
+
+    None
 }
 
 fn matches_escape_glob(candidate: &str, escape_paths: &[String]) -> bool {

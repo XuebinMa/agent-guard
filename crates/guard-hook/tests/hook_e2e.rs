@@ -106,11 +106,24 @@ fn destructive_validator_short_circuits_to_ask() {
     // as DESTRUCTIVE_COMMAND → AskUser. This is by design: validator
     // detections take precedence over policy rules so users can't
     // accidentally allow inherently destructive commands. Pin the behaviour.
+    //
+    // The event must carry `cwd` and the target must sit INSIDE that
+    // workspace: `validate_paths` runs ahead of `check_destructive`
+    // (`bash/mod.rs`), so an out-of-workspace — or unverifiable — target is
+    // denied by the path gate and never reaches the destructive classifier.
+    // Before sec26 this case reached `ask` only because a missing `cwd`
+    // silently disabled that gate.
     let dir = TempDir::new().unwrap();
     let audit = dir.path().join("audit.jsonl");
     let policy = write_policy(&dir, audit.to_str().unwrap());
-    let stdin = r#"{"tool_name":"Bash","tool_input":{"command":"rm -rf /tmp/foo"}}"#;
-    let (stdout, _stderr, code) = run_hook(&policy, stdin);
+    let target = dir.path().join("foo");
+    let stdin = serde_json::json!({
+        "cwd": dir.path().to_string_lossy(),
+        "tool_name": "Bash",
+        "tool_input": { "command": format!("rm -rf {}", target.to_string_lossy()) },
+    })
+    .to_string();
+    let (stdout, _stderr, code) = run_hook(&policy, &stdin);
     assert_eq!(code, 0);
     assert!(
         stdout.contains("\"permissionDecision\":\"ask\""),

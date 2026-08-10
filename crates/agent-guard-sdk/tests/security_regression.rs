@@ -479,6 +479,55 @@ fn sec24_absolute_command_path_is_classified_by_basename() {
     assert_bash_denied(&readonly_guard(), "/bin/rm /etc/passwd");
 }
 
+// ─── 26. Missing working directory cannot disable the bash path gate ────────
+
+/// The WriteFile half of this hazard is locked by `sec25`. The shell half was
+/// still fail-open: `Guard::evaluate` substituted `Path::new(".")` for an
+/// absent `working_directory`, and `validate_paths` normalises `.` to an empty
+/// path — against which `Path::starts_with` is vacuously true, so every
+/// absolute write target counted as "inside the workspace".
+///
+/// A missing workspace bound is an unverifiable gate, not an unrestricted one.
+#[test]
+fn sec26_bash_without_working_directory_cannot_escape_the_workspace() {
+    let g = guard();
+    let ctx = || Context {
+        trust_level: TrustLevel::Trusted,
+        working_directory: None,
+        ..Default::default()
+    };
+
+    for command in [
+        "touch /etc/agent-guard-probe",
+        "echo pwned > /etc/agent-guard-probe",
+        "cp /tmp/x /etc/agent-guard-probe",
+    ] {
+        let payload = serde_json::json!({ "command": command }).to_string();
+        let decision = g.check_tool(Tool::Bash, &payload, ctx());
+        assert!(
+            matches!(decision, GuardDecision::Deny { .. }),
+            "missing working_directory must not disable the path gate: `{command}`, got {decision:?}"
+        );
+    }
+}
+
+/// A relative workspace root cannot be resolved to a containment boundary
+/// either — it must fail closed for the same reason.
+#[test]
+fn sec26_relative_workspace_root_cannot_escape_the_workspace() {
+    let g = guard();
+    let payload = serde_json::json!({ "command": "touch /etc/agent-guard-probe" }).to_string();
+    let decision = g.check_tool(
+        Tool::Bash,
+        &payload,
+        ctx_workspace(std::path::Path::new(".")),
+    );
+    assert!(
+        matches!(decision, GuardDecision::Deny { .. }),
+        "relative workspace root must not disable the path gate, got {decision:?}"
+    );
+}
+
 // ─── 25. Missing working directory cannot disable WriteFile confinement ─────
 
 #[test]
