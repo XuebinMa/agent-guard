@@ -27,13 +27,6 @@
 //! grammar can emit, so a grammar upgrade that introduces a kind is a test
 //! failure rather than a silent behaviour change.
 
-// P1 lands the front-end and its anti-drift lock; P2 re-points the read-only,
-// path, and destructive gates at `parse_shell` and removes this allow. The
-// module is exercised by its own tests today, so it is verified but not yet
-// on the decision path — the corpus in `tests/shell_bypass_corpus.json` is the
-// oracle that migration is checked against.
-#![allow(dead_code)]
-
 use tree_sitter::{Node, Parser};
 
 /// Node kinds the walker understands and traverses.
@@ -244,10 +237,36 @@ fn argv_of(node: Node, src: &str) -> Vec<String> {
             _ => {}
         }
         if let Ok(text) = child.utf8_text(src.as_bytes()) {
-            argv.push(text.to_string());
+            argv.push(word_value(child.kind(), text));
         }
     }
     argv
+}
+
+/// The value of a word, with the shell's outer quoting removed.
+///
+/// `argv` must carry word *values*, not source spans: the tables and wrapper
+/// grammars downstream compare against unquoted words, and a re-parsed payload
+/// (`watch 'echo ok; rm /etc/passwd'`) is a command list, not a string
+/// literal. Expansions inside the quotes are deliberately preserved, so
+/// `"$CMD"` still reads as a dynamic command word.
+fn word_value(kind: &str, text: &str) -> String {
+    let unquoted = match kind {
+        "string" => text
+            .strip_prefix('"')
+            .and_then(|rest| rest.strip_suffix('"')),
+        "raw_string" => text
+            .strip_prefix('\'')
+            .and_then(|rest| rest.strip_suffix('\'')),
+        "ansi_c_string" => text
+            .strip_prefix("$'")
+            .and_then(|rest| rest.strip_suffix('\'')),
+        "translated_string" => text
+            .strip_prefix("$\"")
+            .and_then(|rest| rest.strip_suffix('"')),
+        _ => None,
+    };
+    unquoted.unwrap_or(text).to_string()
 }
 
 #[cfg(test)]

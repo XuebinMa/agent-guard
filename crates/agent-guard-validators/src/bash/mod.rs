@@ -24,11 +24,12 @@ pub use paths::{validate_paths, validate_sed};
 pub use read_only::validate_read_only;
 pub use types::{CommandIntent, PermissionMode, ValidationResult};
 
+use ast::{parse_shell, ShellParse};
 use tokenize::{
     contains_code_laundering_command, contains_command_substitution, contains_dynamic_command_word,
     contains_env_split_string, contains_interpreter_with_inline_code,
     contains_multiple_find_exec_actions, contains_opaque_interpreter_execution,
-    contains_shell_grouping, extract_first_command, reparsed_watch_commands,
+    extract_first_command, reparsed_watch_commands,
 };
 use wrappers::command_name;
 
@@ -52,6 +53,14 @@ pub fn validate_bash_command(
         mode,
         PermissionMode::ReadOnly | PermissionMode::WorkspaceWrite
     ) {
+        // Syntax the grammar cannot parse, or a construct the walker does not
+        // model, cannot be classified by any gate below — so no downstream
+        // decision would be truthful. Reject before anything else runs.
+        if let ShellParse::TooComplex(reason) = parse_shell(command) {
+            return ValidationResult::Block {
+                reason: format!("Command cannot be validated in this mode: {reason}"),
+            };
+        }
         if let Some(pat) = contains_command_substitution(command) {
             return ValidationResult::Block {
                 reason: format!(
@@ -87,11 +96,10 @@ pub fn validate_bash_command(
                         .to_string(),
             };
         }
-        if contains_shell_grouping(command) {
-            return ValidationResult::Block {
-                reason: "Parenthesized shell grouping is not supported in this mode".to_string(),
-            };
-        }
+        // Parenthesized grouping used to be rejected outright, because the flat
+        // segment validator could not see inside it. The grammar models it as a
+        // `subshell` node, so the commands within are classified like any
+        // others and the blanket rejection is no longer needed.
         if contains_multiple_find_exec_actions(command) {
             return ValidationResult::Block {
                 reason: "Multiple find -exec/-execdir actions are not supported in this mode"

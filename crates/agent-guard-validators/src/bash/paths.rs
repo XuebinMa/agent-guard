@@ -2,6 +2,7 @@
 
 use std::path::{Component, Path, PathBuf};
 
+use super::ast::{parse_shell, ShellParse};
 use super::tables::{
     READ_PATH_REDIRECTIONS, STATE_MODIFYING_COMMANDS, WRITE_COMMANDS, WRITE_REDIRECTIONS,
 };
@@ -146,21 +147,50 @@ fn path_stays_within_workspace(path: &Path, workspace: &Path) -> bool {
 }
 
 fn collect_write_targets(command: &str) -> Vec<String> {
-    let tokens = shell_split(command);
-    let mut targets = Vec::new();
-    let mut current_segment = Vec::new();
+    let mut targets = flat_segments(command)
+        .iter()
+        .flat_map(|segment| write_targets_for_segment(segment))
+        .collect::<Vec<_>>();
+    targets.extend(
+        resolved_argvs(command)
+            .iter()
+            .flat_map(|argv| write_targets_for_segment(argv)),
+    );
+    targets
+}
 
-    for token in tokens {
+/// Segments produced by the legacy flat split.
+///
+/// Redirection operators are literal tokens wherever they appear, so this pass
+/// still sees `>` / `>>` / `<` targets inside a grouping construct that the
+/// command-word logic could not reach. It is kept as the redirection sweep;
+/// [`resolved_argvs`] supplies the command positions.
+fn flat_segments(command: &str) -> Vec<Vec<String>> {
+    let mut segments = Vec::new();
+    let mut current = Vec::new();
+    for token in shell_split(command) {
         if matches!(token.as_str(), "|" | "||" | "&&" | ";" | "&") {
-            targets.extend(write_targets_for_segment(&current_segment));
-            current_segment.clear();
+            segments.push(std::mem::take(&mut current));
             continue;
         }
-        current_segment.push(token);
+        current.push(token);
     }
+    segments.push(current);
+    segments
+}
 
-    targets.extend(write_targets_for_segment(&current_segment));
-    targets
+/// Command positions recovered from the grammar.
+///
+/// Returns nothing when the input does not parse; `validate_bash_command`
+/// rejects that case up front, so an unparseable command never reaches a
+/// decision through this path.
+fn resolved_argvs(command: &str) -> Vec<Vec<String>> {
+    match parse_shell(command) {
+        ShellParse::Understood(commands) => {
+            commands.into_iter().map(|resolved| resolved.argv).collect()
+        }
+        ShellParse::TooComplex(_) => Vec::new(),
+    }
 }
 
 fn write_targets_for_segment(segment: &[String]) -> Vec<String> {
@@ -379,20 +409,15 @@ fn tar_archive_write_target(args: &[&String]) -> Vec<String> {
 }
 
 fn collect_read_targets(command: &str) -> Vec<String> {
-    let tokens = shell_split(command);
-    let mut targets = Vec::new();
-    let mut current_segment = Vec::new();
-
-    for token in tokens {
-        if matches!(token.as_str(), "|" | "||" | "&&" | ";" | "&") {
-            targets.extend(read_targets_for_segment(&current_segment));
-            current_segment.clear();
-            continue;
-        }
-        current_segment.push(token);
-    }
-
-    targets.extend(read_targets_for_segment(&current_segment));
+    let mut targets = flat_segments(command)
+        .iter()
+        .flat_map(|segment| read_targets_for_segment(segment))
+        .collect::<Vec<_>>();
+    targets.extend(
+        resolved_argvs(command)
+            .iter()
+            .flat_map(|argv| read_targets_for_segment(argv)),
+    );
     targets
 }
 
