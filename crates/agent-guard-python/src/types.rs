@@ -388,7 +388,7 @@ pub fn runtime_outcome_from_rust(
 
 /// Result reported by the host after executing a `RuntimeOutcome::Handoff`
 /// action. Pass to `Guard.report_handoff_result(request_id, result)` to emit
-/// a matching `ExecutionFinished` audit record and close the audit loop.
+/// an `ExecutionReported` audit record, distinct from a witnessed finish.
 ///
 /// `stdout` is accepted for forward-compatibility but is currently not part
 /// of the audit `ExecutionEvent` schema and is dropped after the call. This
@@ -840,7 +840,7 @@ impl PyGuard {
     /// Report the outcome of a host-executed handoff back into the audit
     /// stream. Call this after the host runs an action returned by `run()`
     /// as `RuntimeOutcome::Handoff` so the audit log records a matching
-    /// `ExecutionFinished` event with `tool == "handoff"`.
+    /// `ExecutionReported` event with `tool == "handoff"`.
     fn report_handoff_result(&self, request_id: &str, result: &HandoffResult) {
         let rust_result = handoff_result_to_rust(result);
         self.inner.report_handoff_result(request_id, rust_result);

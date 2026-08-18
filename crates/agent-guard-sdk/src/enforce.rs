@@ -680,8 +680,10 @@ impl Guard {
     /// When `Guard::run` returns `RuntimeOutcome::Handoff`, the host executes
     /// the action itself; the SDK therefore does not emit an
     /// `ExecutionFinished` audit record for that path. Hosts call this method
-    /// after the handoff executes to close the audit loop with a matching
-    /// record. `request_id` must be the one returned by the prior `run` call
+    /// after the handoff executes to record the host's claim as
+    /// `ExecutionReported`. This keeps transcribed outcomes distinct from
+    /// finishes the Guard witnessed. `request_id` must be the one returned by
+    /// the prior `run` call
     /// so that the `ExecutionStarted` intent (if any) and this finish event
     /// can be correlated downstream.
     ///
@@ -704,13 +706,13 @@ impl Guard {
 
         state
             .siem_exporter
-            .export(agent_guard_core::AuditRecord::ExecutionFinished(
+            .export(agent_guard_core::AuditRecord::ExecutionReported(
                 event.clone(),
             ));
 
         if state.audit_cfg.enabled && state.audit_cfg.output == "file" {
             if let Some(ref writer) = state.audit_file_writer {
-                let record = agent_guard_core::AuditRecord::ExecutionFinished(event);
+                let record = agent_guard_core::AuditRecord::ExecutionReported(event);
                 let line = serde_json::to_string(&record).unwrap_or_else(|e| {
                     format!("{{\"error\":\"audit serialization failed: {e}\"}}")
                 });

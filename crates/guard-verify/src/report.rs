@@ -48,6 +48,8 @@ pub struct ComplianceReport {
     /// Execution and safety-net evidence.
     pub executions_started: usize,
     pub executions_finished: usize,
+    /// Host-reported outcomes that were not witnessed by the Guard.
+    pub executions_reported: usize,
     pub sandbox_failures: usize,
     pub anomalies_triggered: usize,
     pub agents_locked: usize,
@@ -146,6 +148,7 @@ pub fn build_report(
             }
             AuditRecord::ExecutionStarted(_) => report.executions_started += 1,
             AuditRecord::ExecutionFinished(_) => report.executions_finished += 1,
+            AuditRecord::ExecutionReported(_) => report.executions_reported += 1,
             AuditRecord::SandboxFailure(_) => report.sandbox_failures += 1,
             AuditRecord::AnomalyTriggered(_) => report.anomalies_triggered += 1,
             AuditRecord::AgentLocked(_) => report.agents_locked += 1,
@@ -166,7 +169,9 @@ fn record_meta(record: &AuditRecord) -> (DateTime<Utc>, Option<&str>) {
     match record {
         AuditRecord::ToolCall(e) => (e.timestamp, e.agent_id.as_deref()),
         AuditRecord::ContentFinding(e) => (e.timestamp, e.agent_id.as_deref()),
-        AuditRecord::ExecutionStarted(e) | AuditRecord::ExecutionFinished(e) => {
+        AuditRecord::ExecutionStarted(e)
+        | AuditRecord::ExecutionFinished(e)
+        | AuditRecord::ExecutionReported(e) => {
             (e.timestamp, e.agent_id.as_deref())
         }
         AuditRecord::SandboxFailure(e) => (e.timestamp, e.agent_id.as_deref()),
@@ -220,8 +225,11 @@ pub fn print_text(report: &ComplianceReport) {
 
     println!();
     println!(
-        "executions:  {} started · {} finished · {} sandbox failure(s)",
-        report.executions_started, report.executions_finished, report.sandbox_failures
+        "executions:  {} started · {} finished · {} host-reported · {} sandbox failure(s)",
+        report.executions_started,
+        report.executions_finished,
+        report.executions_reported,
+        report.sandbox_failures
     );
     println!(
         "anomalies:   {} triggered · {} agent lock(s)",
