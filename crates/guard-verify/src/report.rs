@@ -171,9 +171,7 @@ fn record_meta(record: &AuditRecord) -> (DateTime<Utc>, Option<&str>) {
         AuditRecord::ContentFinding(e) => (e.timestamp, e.agent_id.as_deref()),
         AuditRecord::ExecutionStarted(e)
         | AuditRecord::ExecutionFinished(e)
-        | AuditRecord::ExecutionReported(e) => {
-            (e.timestamp, e.agent_id.as_deref())
-        }
+        | AuditRecord::ExecutionReported(e) => (e.timestamp, e.agent_id.as_deref()),
         AuditRecord::SandboxFailure(e) => (e.timestamp, e.agent_id.as_deref()),
         AuditRecord::AnomalyTriggered(e) | AuditRecord::AgentLocked(e) => {
             (e.timestamp, e.agent_id.as_deref())
