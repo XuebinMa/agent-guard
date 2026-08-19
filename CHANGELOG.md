@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **Grouping constructs can no longer hide a command from the shell gates.** The bash validator split a command on `| ; && || &` and treated the first token of each segment as the command word. Shell grammar is not flat, so `{ …; }`, `( … )`, `if/then`, `while/do`, `until/do`, `for/do`, `case`, and function bodies each presented `{`, `then`, or `do` in that position, and the command underneath was never classified — in `workspace_write`, `{ touch /etc/x; }` was allowed while `touch /etc/x` was denied. Commands are now recovered from a real syntax tree (`tree-sitter-bash`, new `bash::ast` module), so nesting cannot conceal one. This closes the bug class behind roughly fifteen previous point fixes rather than adding one more instance to them. Locked by `sec27` and by a 51-case corpus (`agent-guard-validators/tests/fixtures/shell_bypass_corpus.json`) that replays every historically closed bypass.
+- **The bash path gate no longer fails open when the workspace root is unverifiable.** An absent or relative `working_directory` normalised to an empty path, and `Path::starts_with` against an empty prefix is vacuously true, so every absolute write/read target counted as "inside the workspace" — the gate silently permitted host-wide writes. Absolute targets now fail closed when no absolute workspace root is configured (after the policy-declared escape list is consulted). Commands with no absolute target, such as `ls`, are unaffected. Locked by `sec26`.
+
+### Changed
+- **Restricted modes now reject shell input the grammar cannot parse.** If the front-end cannot parse a command, or meets a construct it does not model, `ReadOnly` and `WorkspaceWrite` deny it: no gate could classify it, so no decision drawn from it would be truthful. This inverts the previous default, under which unrecognised syntax fell through to allow. `DangerFullAccess` is unaffected.
+- **`write_file` requires an explicit workspace in `workspace_write` mode** (shipped in `72b633b`, recorded here retroactively). A missing `working_directory` is denied with `INVALID_PAYLOAD` rather than treated as unrestricted host access. **Breaking for binding users:** two-argument `decide('write_file', payload)` / `run('write_file', payload)` calls in Python and Node must now pass a context carrying `working_directory`.
+- **Additional restricted-mode rejections** (shipped in `72b633b`, recorded here retroactively): opaque interpreter execution (e.g. `python3 script.py`), a parameter expansion used as the command word (`$CMD …`), multiple `find -exec`/`-execdir` actions in one command, and `env -S` / `--split-string`. `watch` payloads are re-validated as shell commands.
+
 ## [0.2.0-rc2] - 2026-07-02
 
 ### Added

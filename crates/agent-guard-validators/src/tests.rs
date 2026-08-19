@@ -961,12 +961,30 @@ mod bash_substitution_and_separator_tests {
     }
 
     #[test]
-    fn allows_escaped_dollar_paren_outside_quotes() {
+    fn allows_escaped_dollar_outside_quotes() {
+        // A backslash-escaped `$` is a literal dollar, not the opening of a
+        // command substitution, and must not be classified as one.
+        for cmd in ["echo \\$HOME", "echo \"\\$(date)\""] {
+            let r = validate_bash_command(cmd, ws(), workspace(), &[]);
+            assert_eq!(
+                r,
+                ValidationResult::Allow,
+                "escaped $ is not substitution: {cmd:?}; got {r:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn rejects_unparseable_escaped_dollar_paren() {
+        // `echo \$(date)` is not valid bash. The escape breaks up `$(`, leaving
+        // a bare `(` in the middle of a word — the same syntax error bash
+        // reports for `echo a(b)`. The grammar front-end reports invalid syntax
+        // and the restricted-mode gate fails closed instead of guessing at what
+        // the shell would have done.
         let r = validate_bash_command("echo \\$(date)", ws(), workspace(), &[]);
-        assert_eq!(
-            r,
-            ValidationResult::Allow,
-            "escaped $ is not substitution; got {r:?}"
+        assert!(
+            matches!(r, ValidationResult::Block { .. }),
+            "unparseable input must fail closed; got {r:?}"
         );
     }
 

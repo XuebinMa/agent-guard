@@ -479,6 +479,131 @@ fn sec24_absolute_command_path_is_classified_by_basename() {
     assert_bash_denied(&readonly_guard(), "/bin/rm /etc/passwd");
 }
 
+// ─── 26. Missing working directory cannot disable the bash path gate ────────
+
+/// The WriteFile half of this hazard is locked by `sec25`. The shell half was
+/// still fail-open: `Guard::evaluate` substituted `Path::new(".")` for an
+/// absent `working_directory`, and `validate_paths` normalises `.` to an empty
+/// path — against which `Path::starts_with` is vacuously true, so every
+/// absolute write target counted as "inside the workspace".
+///
+/// A missing workspace bound is an unverifiable gate, not an unrestricted one.
+#[test]
+fn sec26_bash_without_working_directory_cannot_escape_the_workspace() {
+    let g = guard();
+    let ctx = || Context {
+        trust_level: TrustLevel::Trusted,
+        working_directory: None,
+        ..Default::default()
+    };
+
+    for command in [
+        "touch /etc/agent-guard-probe",
+        "echo pwned > /etc/agent-guard-probe",
+        "cp /tmp/x /etc/agent-guard-probe",
+    ] {
+        let payload = serde_json::json!({ "command": command }).to_string();
+        let decision = g.check_tool(Tool::Bash, &payload, ctx());
+        assert!(
+            matches!(decision, GuardDecision::Deny { .. }),
+            "missing working_directory must not disable the path gate: `{command}`, got {decision:?}"
+        );
+    }
+}
+
+/// A relative workspace root cannot be resolved to a containment boundary
+/// either — it must fail closed for the same reason.
+#[test]
+fn sec26_relative_workspace_root_cannot_escape_the_workspace() {
+    let g = guard();
+    let payload = serde_json::json!({ "command": "touch /etc/agent-guard-probe" }).to_string();
+    let decision = g.check_tool(
+        Tool::Bash,
+        &payload,
+        ctx_workspace(std::path::Path::new(".")),
+    );
+    assert!(
+        matches!(decision, GuardDecision::Deny { .. }),
+        "relative workspace root must not disable the path gate, got {decision:?}"
+    );
+}
+
+// ─── 27. Grouping constructs cannot hide a command ──────────────────────────
+
+/// Shell grammar nests; the previous validator split on `| ; && || &` and read
+/// the first token of each segment as the command word. Every construct that
+/// nests commands therefore presented `{`, `then`, or `do` in that position and
+/// hid the real command. Closed by the tree-sitter front-end (`bash::ast`),
+/// which recovers commands from the syntax tree instead.
+///
+/// The full historical corpus lives in
+/// `agent-guard-validators/tests/fixtures/shell_bypass_corpus.json`; these lock
+/// the classes at the Guard decision layer.
+#[test]
+fn sec27_grouping_constructs_cannot_hide_a_write_in_read_only() {
+    let g = readonly_guard();
+    for command in [
+        "{ touch /workspace/f; }",
+        "( touch /workspace/f )",
+        "if true; then touch /workspace/f; fi",
+        "while true; do touch /workspace/f; done",
+        "until false; do touch /workspace/f; done",
+        "for i in 1 2; do touch /workspace/f; done",
+        "case x in x) touch /workspace/f;; esac",
+        "f() { touch /workspace/f; }; f",
+        "echo ok && { touch /workspace/f; }",
+    ] {
+        let payload = serde_json::json!({ "command": command }).to_string();
+        let decision = g.check_tool(
+            Tool::Bash,
+            &payload,
+            ctx_workspace(std::path::Path::new("/workspace")),
+        );
+        assert!(
+            matches!(decision, GuardDecision::Deny { .. }),
+            "grouping must not hide a write in read-only mode: `{command}`, got {decision:?}"
+        );
+    }
+}
+
+#[test]
+fn sec27_grouping_constructs_cannot_hide_a_workspace_escape() {
+    let g = guard();
+    for command in [
+        "{ touch /etc/agent-guard-probe; }",
+        "if true; then touch /etc/agent-guard-probe; fi",
+        "while true; do touch /etc/agent-guard-probe; done",
+        "for i in 1 2; do touch /etc/agent-guard-probe; done",
+        "case x in x) touch /etc/agent-guard-probe;; esac",
+        "f() { touch /etc/agent-guard-probe; }; f",
+    ] {
+        assert_bash_denied(&g, command);
+    }
+}
+
+#[test]
+fn sec27_grouping_cannot_hide_code_laundering() {
+    let g = readonly_guard();
+    assert_bash_denied(&g, "{ eval \"$CMD\"; }");
+    assert_bash_denied(&g, "if true; then eval 'whoami'; fi");
+}
+
+/// Input the grammar cannot parse cannot be classified by any gate, so no
+/// decision drawn from it would be truthful. Restricted modes reject it rather
+/// than guessing — the inverse of the previous default, where unrecognised
+/// syntax fell through to allow.
+#[test]
+fn sec27_unparseable_shell_input_fails_closed() {
+    let g = guard();
+    for command in [
+        "this is ( not valid bash",
+        "echo \\$(date)",
+        "if true; then",
+    ] {
+        assert_bash_denied(&g, command);
+    }
+}
+
 // ─── 25. Missing working directory cannot disable WriteFile confinement ─────
 
 #[test]
