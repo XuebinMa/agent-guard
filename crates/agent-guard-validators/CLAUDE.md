@@ -17,8 +17,18 @@ can act on. The public surface (see `src/lib.rs`) is `classify_intent`,
 
 Module layout:
 
-- `src/bash/tokenize.rs` — splits a command line into tokens/segments. Bash is
-  **parsed here, not regex-matched** — most bypasses are tokenizer edge cases.
+- `src/bash/ast.rs` — the shell syntax front-end (tree-sitter-bash). Parses the
+  command and recovers every command position from the syntax tree, so a
+  command nested in `{ …; }`, `( … )`, `if`, `while`, `for`, `case`, or a
+  function body is still classified. **Fail-closed on syntax:** an unparseable
+  input, or a node kind outside `STRUCTURAL_KINDS`, yields `TooComplex`, which
+  restricted modes deny. Teaching the walker a new kind is a deliberate
+  security decision — `grammar_kinds_are_all_classified` fails the build if a
+  grammar upgrade introduces one you have not classified.
+- `src/bash/tokenize.rs` — quote-aware token splitting (`shell_split`) plus the
+  per-command scanners (code laundering, inline-code interpreters, dynamic
+  command words, …). The scanners iterate the command positions `ast.rs`
+  recovers; they no longer do their own flat segmentation.
 - `src/bash/tables.rs` — the allow / read-only / destructive command tables.
 - `src/bash/wrappers.rs` — transparent wrappers (`sudo`, `env`, `xargs`,
   `timeout`, `nice`, …) that must be unwrapped to reach the real command.
@@ -29,10 +39,14 @@ Module layout:
 
 ## Where bypasses hide (the things to get right)
 
-1. **Chaining and separators.** A deny must not be escapable by `|`, `;`,
-   `&&`, `||`, command substitution, or a newline. Every segment is classified;
-   if a new construct can smuggle a second command past the tokenizer, that is a
-   bypass.
+1. **Chaining, separators, and nesting.** A deny must not be escapable by `|`,
+   `;`, `&&`, `||`, command substitution, a newline, or by nesting the command
+   inside a grouping construct. Command positions come from the grammar
+   (`ast.rs`), so classify from `ResolvedCommand::argv` — never re-derive a
+   command word by splitting a string, which is what made this a recurring bug
+   class across fifteen fixes. The historical corpus is
+   `tests/fixtures/shell_bypass_corpus.json`; run it before and after any
+   change here.
 2. **Transparent wrappers.** `sudo rm -rf …`, `env X=1 curl … | bash`,
    `xargs rm` — if the wrapper is not unwrapped in `wrappers.rs`, the inner
    command is misclassified. Adding a wrapper means teaching `wrappers.rs` its

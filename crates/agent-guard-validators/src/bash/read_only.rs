@@ -1,5 +1,6 @@
 //! Read-only mode validation: rejects filesystem/state-mutating commands.
 
+use super::ast::{parse_shell, ShellParse};
 use super::tables::{
     DANGEROUS_ENV_VAR_PREFIXES, STATE_MODIFYING_COMMANDS, WRITE_COMMANDS, WRITE_REDIRECTIONS,
 };
@@ -32,20 +33,23 @@ pub fn validate_read_only(command: &str, mode: PermissionMode) -> ValidationResu
         }
     }
 
-    let mut current_cmd_parts = Vec::new();
-    for part in parts {
-        if part == "|" || part == ";" || part == "&&" || part == "||" || part == "&" {
-            if let Some(res) = check_command_segment(&current_cmd_parts) {
-                return res;
-            }
-            current_cmd_parts.clear();
-        } else {
-            current_cmd_parts.push(part);
+    // Command positions come from the grammar, not from splitting on
+    // `| ; && || &`. A flat split makes `{`, `then`, and `do` look like the
+    // command word, which hid every command nested inside a grouping
+    // construct from the checks below.
+    match parse_shell(command) {
+        ShellParse::TooComplex(reason) => {
+            return ValidationResult::Block {
+                reason: format!("Command cannot be validated in read-only mode: {reason}"),
+            };
         }
-    }
-
-    if let Some(res) = check_command_segment(&current_cmd_parts) {
-        return res;
+        ShellParse::Understood(commands) => {
+            for resolved in &commands {
+                if let Some(res) = check_command_segment(&resolved.argv) {
+                    return res;
+                }
+            }
+        }
     }
 
     for &redir in WRITE_REDIRECTIONS {

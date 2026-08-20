@@ -1,5 +1,6 @@
 //! Shell tokenisation, heredoc masking, and injection-detection helpers.
 
+use super::ast::{parse_shell, ShellParse};
 use super::tables::{CODE_LAUNDERING_COMMANDS, INLINE_CODE_FLAGS, INLINE_CODE_INTERPRETERS};
 use super::wrappers::{
     command_name, has_env_split_string, has_multiple_find_exec_actions, reparsed_watch_command,
@@ -374,36 +375,40 @@ pub(crate) fn contains_command_substitution(command: &str) -> Option<&'static st
 /// `contains_code_laundering_command`), unwraps one `sudo` layer, then
 /// checks `first_command` against `INLINE_CODE_INTERPRETERS`. Returns
 /// `Some((interpreter, flag))` on the first hit.
+/// Apply `scan` to every command position the grammar recovers, returning the
+/// first hit.
+///
+/// This replaced eight copies of a hand-rolled "split on `| ; && || &`, then
+/// scan each segment" loop. That split treated `{`, `then`, and `do` as
+/// command words, so every scanner below silently skipped commands nested in a
+/// grouping construct. Unparseable input yields no commands here;
+/// `validate_bash_command` rejects it before these scanners run.
+fn find_in_commands<T>(command: &str, mut scan: impl FnMut(&[String]) -> Option<T>) -> Option<T> {
+    match parse_shell(command) {
+        ShellParse::Understood(commands) => {
+            commands.iter().find_map(|resolved| scan(&resolved.argv))
+        }
+        ShellParse::TooComplex(_) => None,
+    }
+}
+
+/// Apply `predicate` to every command position the grammar recovers.
+fn any_command(command: &str, mut predicate: impl FnMut(&[String]) -> bool) -> bool {
+    find_in_commands(command, |argv| predicate(argv).then_some(())).is_some()
+}
+
 pub(crate) fn contains_interpreter_with_inline_code(command: &str) -> Option<(String, String)> {
-    let parts = shell_split(command);
-
-    let scan = |segment: &[&String]| -> Option<(String, String)> {
-        let rest = unwrap_command_wrappers(segment);
-
+    find_in_commands(command, |argv| {
+        let rest = unwrap_command_wrappers(argv);
         let first = command_name(rest.first()?.as_str());
         if !INLINE_CODE_INTERPRETERS.contains(&first) {
             return None;
         }
-        for arg in &rest[1..] {
-            if INLINE_CODE_FLAGS.contains(&arg.as_str()) {
-                return Some((first.to_string(), arg.as_str().to_string()));
-            }
-        }
-        None
-    };
-
-    let mut segment: Vec<&String> = Vec::new();
-    for part in &parts {
-        if part == "|" || part == ";" || part == "&&" || part == "||" || part == "&" {
-            if let Some(hit) = scan(&segment) {
-                return Some(hit);
-            }
-            segment.clear();
-        } else {
-            segment.push(part);
-        }
-    }
-    scan(&segment)
+        rest[1..]
+            .iter()
+            .find(|arg| INLINE_CODE_FLAGS.contains(&arg.as_str()))
+            .map(|arg| (first.to_string(), arg.to_string()))
+    })
 }
 
 /// Detect interpreter invocations whose program comes from a script, module,
@@ -413,9 +418,8 @@ pub(crate) fn contains_interpreter_with_inline_code(command: &str) -> Option<(St
 pub(crate) fn contains_opaque_interpreter_execution(command: &str) -> Option<String> {
     const INFORMATION_ONLY_FLAGS: &[&str] = &["--version", "-V", "--help", "-h"];
 
-    let parts = shell_split(command);
-    let scan = |segment: &[&String]| -> Option<String> {
-        let rest = unwrap_command_wrappers(segment);
+    find_in_commands(command, |argv| {
+        let rest = unwrap_command_wrappers(argv);
         let first = command_name(rest.first()?.as_str());
         if !INLINE_CODE_INTERPRETERS.contains(&first) {
             return None;
@@ -428,74 +432,18 @@ pub(crate) fn contains_opaque_interpreter_execution(command: &str) -> Option<Str
         } else {
             Some(first.to_string())
         }
-    };
-
-    let mut segment: Vec<&String> = Vec::new();
-    for part in &parts {
-        if matches!(part.as_str(), "|" | ";" | "&&" | "||" | "&") {
-            if let Some(hit) = scan(&segment) {
-                return Some(hit);
-            }
-            segment.clear();
-        } else {
-            segment.push(part);
-        }
-    }
-    scan(&segment)
+    })
 }
 
 /// Detect a parameter-expanded command word (`$CMD`, `${CMD}`, `"${CMD}"`).
 /// The expansion result is not available to the validator and may name any
 /// executable, so restricted modes must fail closed.
 pub(crate) fn contains_dynamic_command_word(command: &str) -> bool {
-    let parts = shell_split(command);
-    let scan = |segment: &[&String]| {
-        unwrap_command_wrappers(segment)
+    any_command(command, |argv| {
+        unwrap_command_wrappers(argv)
             .first()
-            .is_some_and(|token| token.as_str().contains('$'))
-    };
-
-    let mut segment: Vec<&String> = Vec::new();
-    for part in &parts {
-        if matches!(part.as_str(), "|" | ";" | "&&" | "||" | "&") {
-            if scan(&segment) {
-                return true;
-            }
-            segment.clear();
-        } else {
-            segment.push(part);
-        }
-    }
-    scan(&segment)
-}
-
-/// Detect a subshell/grouping construct in command position. Parenthesized
-/// groups introduce a nested shell grammar that the flat segment validator
-/// does not model, so restricted modes reject them instead of treating `(` as
-/// a harmless command word.
-pub(crate) fn contains_shell_grouping(command: &str) -> bool {
-    let parts = shell_split(command);
-    let scan = |segment: &[&String]| {
-        unwrap_command_wrappers(segment)
-            .first()
-            .is_some_and(|token| {
-                let token = token.as_str();
-                token == "(" || (token.starts_with('(') && !token.starts_with("$("))
-            })
-    };
-
-    let mut segment: Vec<&String> = Vec::new();
-    for part in &parts {
-        if matches!(part.as_str(), "|" | ";" | "&&" | "||" | "&") {
-            if scan(&segment) {
-                return true;
-            }
-            segment.clear();
-        } else {
-            segment.push(part);
-        }
-    }
-    scan(&segment)
+            .is_some_and(|token| token.contains('$'))
+    })
 }
 
 /// Detect unsupported multi-action `find` commands segment by segment.
@@ -519,85 +467,34 @@ pub(crate) fn contains_multiple_find_exec_actions(command: &str) -> bool {
         return true;
     }
 
-    let mut segment: Vec<&String> = Vec::new();
-    for part in &parts {
-        if matches!(part.as_str(), "|" | ";" | "&&" | "||" | "&") {
-            if has_multiple_find_exec_actions(&segment) {
-                return true;
-            }
-            segment.clear();
-        } else {
-            segment.push(part);
-        }
-    }
-    has_multiple_find_exec_actions(&segment)
+    any_command(command, has_multiple_find_exec_actions)
 }
 
 /// Detect wrapper options that inject a command through an opaque value.
 pub(crate) fn contains_env_split_string(command: &str) -> bool {
-    let parts = shell_split(command);
-    let mut segment: Vec<&String> = Vec::new();
-    for part in &parts {
-        if matches!(part.as_str(), "|" | ";" | "&&" | "||" | "&") {
-            if has_env_split_string(&segment) {
-                return true;
-            }
-            segment.clear();
-        } else {
-            segment.push(part);
-        }
-    }
-    has_env_split_string(&segment)
+    any_command(command, has_env_split_string)
 }
 
 /// Extract every `watch` payload that will be parsed again as a shell command.
 pub(crate) fn reparsed_watch_commands(command: &str) -> Vec<String> {
-    let parts = shell_split(command);
-    let mut commands = Vec::new();
-    let mut segment: Vec<&String> = Vec::new();
-    for part in &parts {
-        if matches!(part.as_str(), "|" | ";" | "&&" | "||" | "&") {
-            if let Some(inner) = reparsed_watch_command(&segment) {
-                commands.push(inner);
-            }
-            segment.clear();
-        } else {
-            segment.push(part);
-        }
+    match parse_shell(command) {
+        ShellParse::Understood(commands) => commands
+            .iter()
+            .filter_map(|resolved| reparsed_watch_command(&resolved.argv))
+            .collect(),
+        ShellParse::TooComplex(_) => Vec::new(),
     }
-    if let Some(inner) = reparsed_watch_command(&segment) {
-        commands.push(inner);
-    }
-    commands
 }
 
 pub(crate) fn contains_code_laundering_command(command: &str) -> Option<&'static str> {
-    let parts = shell_split(command);
-    let mut segment: Vec<&String> = Vec::new();
-
-    let flush = |segment: &[&String]| -> Option<&'static str> {
-        let rest = unwrap_command_wrappers(segment);
+    find_in_commands(command, |argv| {
+        let rest = unwrap_command_wrappers(argv);
         let first = command_name(rest.first()?.as_str());
         CODE_LAUNDERING_COMMANDS
             .iter()
             .copied()
             .find(|&builtin| first == builtin)
-    };
-
-    for part in &parts {
-        if part == "|" || part == ";" || part == "&&" || part == "||" || part == "&" {
-            if let Some(hit) = flush(&segment) {
-                return Some(hit);
-            }
-            segment.clear();
-        } else {
-            segment.push(part);
-        }
-    }
-    if let Some(hit) = flush(&segment) {
-        return Some(hit);
-    }
-    None
+    })
 }
 
 /// If `bytes[start..]` begins with a quoted heredoc delimiter

@@ -2,6 +2,7 @@
 
 use std::path::{Component, Path, PathBuf};
 
+use super::ast::{parse_shell, ShellParse};
 use super::tables::{
     READ_PATH_REDIRECTIONS, STATE_MODIFYING_COMMANDS, WRITE_COMMANDS, WRITE_REDIRECTIONS,
 };
@@ -29,68 +30,77 @@ pub fn validate_paths(
     }
 
     let workspace = normalize_path(workspace);
+
     for target in collect_write_targets(command) {
-        let candidate = target.trim_matches(|c| c == '"' || c == '\'');
-        if candidate.is_empty() || candidate.starts_with('$') || candidate == "/dev/null" {
-            continue;
-        }
-
-        let path = Path::new(candidate);
-        if path.is_absolute() && !path_stays_within_workspace(path, &workspace) {
-            // Absolute path outside the workspace gets one last chance via the
-            // policy-declared escape list. Relative `../` escape (below) does
-            // not — that vector is always suspicious regardless of policy.
-            if matches_escape_glob(candidate, escape_paths) {
-                continue;
-            }
-            return ValidationResult::Block {
-                reason: format!(
-                    "write target '{}' is outside the configured workspace",
-                    candidate
-                ),
-            };
-        }
-
-        if !path.is_absolute() && has_parent_dir_escape(path) {
-            return ValidationResult::Block {
-                reason: format!(
-                    "write target '{}' escapes the configured workspace",
-                    candidate
-                ),
-            };
+        if let Some(block) = check_target(&target, "write", &workspace, escape_paths) {
+            return block;
         }
     }
 
     for target in collect_read_targets(command) {
-        let candidate = target.trim_matches(|c| c == '"' || c == '\'');
-        if candidate.is_empty() || candidate.starts_with('$') || candidate == "/dev/null" {
-            continue;
-        }
-
-        let path = Path::new(candidate);
-        if path.is_absolute() && !path_stays_within_workspace(path, &workspace) {
-            if matches_escape_glob(candidate, escape_paths) {
-                continue;
-            }
-            return ValidationResult::Block {
-                reason: format!(
-                    "read target '{}' is outside the configured workspace",
-                    candidate
-                ),
-            };
-        }
-
-        if !path.is_absolute() && has_parent_dir_escape(path) {
-            return ValidationResult::Block {
-                reason: format!(
-                    "read target '{}' escapes the configured workspace",
-                    candidate
-                ),
-            };
+        if let Some(block) = check_target(&target, "read", &workspace, escape_paths) {
+            return block;
         }
     }
 
     ValidationResult::Allow
+}
+
+/// Verify one extracted target against the workspace boundary.
+///
+/// Returns `Some(Block)` when the target may not be touched, `None` when it is
+/// inside the workspace or is not a path this gate governs.
+fn check_target(
+    target: &str,
+    kind: &str,
+    workspace: &Path,
+    escape_paths: &[String],
+) -> Option<ValidationResult> {
+    let candidate = target.trim_matches(|c| c == '"' || c == '\'');
+    if candidate.is_empty() || candidate.starts_with('$') || candidate == "/dev/null" {
+        return None;
+    }
+
+    let path = Path::new(candidate);
+
+    if path.is_absolute() {
+        // The policy-declared escape list is stated in absolute terms, so it
+        // stands on its own and is consulted before the workspace comparison.
+        if matches_escape_glob(candidate, escape_paths) {
+            return None;
+        }
+
+        // A workspace root that does not normalise to an absolute path yields
+        // no containment boundary at all: `Path::starts_with` against the
+        // empty prefix left by `.` (or by an absent working directory) is
+        // vacuously true, which silently accepts every absolute target. An
+        // unverifiable bound must fail closed, not degrade to "unrestricted".
+        if !workspace.is_absolute() {
+            return Some(ValidationResult::Block {
+                reason: format!(
+                    "{kind} target '{candidate}' cannot be verified: no absolute workspace root is configured"
+                ),
+            });
+        }
+
+        if !path_stays_within_workspace(path, workspace) {
+            return Some(ValidationResult::Block {
+                reason: format!("{kind} target '{candidate}' is outside the configured workspace"),
+            });
+        }
+
+        return None;
+    }
+
+    // Relative `../` escape is always suspicious regardless of policy, so it
+    // is never rescued by the escape list.
+    if has_parent_dir_escape(path) {
+        return Some(ValidationResult::Block {
+            reason: format!("{kind} target '{candidate}' escapes the configured workspace"),
+        });
+    }
+
+    None
 }
 
 fn matches_escape_glob(candidate: &str, escape_paths: &[String]) -> bool {
@@ -137,21 +147,50 @@ fn path_stays_within_workspace(path: &Path, workspace: &Path) -> bool {
 }
 
 fn collect_write_targets(command: &str) -> Vec<String> {
-    let tokens = shell_split(command);
-    let mut targets = Vec::new();
-    let mut current_segment = Vec::new();
+    let mut targets = flat_segments(command)
+        .iter()
+        .flat_map(|segment| write_targets_for_segment(segment))
+        .collect::<Vec<_>>();
+    targets.extend(
+        resolved_argvs(command)
+            .iter()
+            .flat_map(|argv| write_targets_for_segment(argv)),
+    );
+    targets
+}
 
-    for token in tokens {
+/// Segments produced by the legacy flat split.
+///
+/// Redirection operators are literal tokens wherever they appear, so this pass
+/// still sees `>` / `>>` / `<` targets inside a grouping construct that the
+/// command-word logic could not reach. It is kept as the redirection sweep;
+/// [`resolved_argvs`] supplies the command positions.
+fn flat_segments(command: &str) -> Vec<Vec<String>> {
+    let mut segments = Vec::new();
+    let mut current = Vec::new();
+    for token in shell_split(command) {
         if matches!(token.as_str(), "|" | "||" | "&&" | ";" | "&") {
-            targets.extend(write_targets_for_segment(&current_segment));
-            current_segment.clear();
+            segments.push(std::mem::take(&mut current));
             continue;
         }
-        current_segment.push(token);
+        current.push(token);
     }
+    segments.push(current);
+    segments
+}
 
-    targets.extend(write_targets_for_segment(&current_segment));
-    targets
+/// Command positions recovered from the grammar.
+///
+/// Returns nothing when the input does not parse; `validate_bash_command`
+/// rejects that case up front, so an unparseable command never reaches a
+/// decision through this path.
+fn resolved_argvs(command: &str) -> Vec<Vec<String>> {
+    match parse_shell(command) {
+        ShellParse::Understood(commands) => {
+            commands.into_iter().map(|resolved| resolved.argv).collect()
+        }
+        ShellParse::TooComplex(_) => Vec::new(),
+    }
 }
 
 fn write_targets_for_segment(segment: &[String]) -> Vec<String> {
@@ -370,20 +409,15 @@ fn tar_archive_write_target(args: &[&String]) -> Vec<String> {
 }
 
 fn collect_read_targets(command: &str) -> Vec<String> {
-    let tokens = shell_split(command);
-    let mut targets = Vec::new();
-    let mut current_segment = Vec::new();
-
-    for token in tokens {
-        if matches!(token.as_str(), "|" | "||" | "&&" | ";" | "&") {
-            targets.extend(read_targets_for_segment(&current_segment));
-            current_segment.clear();
-            continue;
-        }
-        current_segment.push(token);
-    }
-
-    targets.extend(read_targets_for_segment(&current_segment));
+    let mut targets = flat_segments(command)
+        .iter()
+        .flat_map(|segment| read_targets_for_segment(segment))
+        .collect::<Vec<_>>();
+    targets.extend(
+        resolved_argvs(command)
+            .iter()
+            .flat_map(|argv| read_targets_for_segment(argv)),
+    );
     targets
 }
 
