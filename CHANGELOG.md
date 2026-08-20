@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- **BREAKING (audit wire format): host-reported handoff outcomes now audit as `execution_reported`, not `execution_finished`** (#119): `Guard::report_handoff_result` transcribes a host claim (`exit_code`, `duration_ms`) without the Guard observing execution, so it now emits the new `AuditRecord::ExecutionReported` variant; `ExecutionFinished` is reserved for executions the Guard witnessed. `guard-verify` counts the two separately. **Migration:** any consumer of the audit JSONL or SIEM stream that matches `type: "execution_finished"` will silently stop matching handoff records — those now arrive as `type: "execution_reported"` with `tool: "handoff"` and `sandbox_type: "host-handoff"`. Update matchers to handle both types; records for executions the Guard ran itself are unchanged. Locked by security regression `sec26` (no host-supplied `HandoffResult` can ever produce an `ExecutionFinished`).
+
 ## [0.2.0-rc2] - 2026-07-02
 
 ### Added
