@@ -39,6 +39,9 @@ pub enum AuditRecord {
     PolicyReload(ReloadEvent),
     ExecutionStarted(ExecutionEvent),
     ExecutionFinished(ExecutionEvent),
+    /// Outcome claimed by a host after execution left the Guard's boundary.
+    /// Unlike `ExecutionFinished`, this is transcribed rather than witnessed.
+    ExecutionReported(ExecutionEvent),
     SandboxFailure(SandboxFailureEvent),
     AnomalyTriggered(AnomalyEvent),
     AgentLocked(AnomalyEvent),

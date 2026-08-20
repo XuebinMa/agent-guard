@@ -40,7 +40,7 @@ pub enum RuntimeOutcome {
 ///
 /// Hosts execute handoff actions outside the SDK sandbox, so the audit stream
 /// otherwise goes blind after the handoff decision. `Guard::report_handoff_result`
-/// consumes this and emits a matching `AuditRecord::ExecutionFinished` through
+/// consumes this and emits a matching `AuditRecord::ExecutionReported` through
 /// the existing SIEM/audit pipeline, closing the audit loop.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HandoffResult {

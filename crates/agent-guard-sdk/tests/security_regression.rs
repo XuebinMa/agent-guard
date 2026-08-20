@@ -18,10 +18,12 @@
 //! 10. `sudo` shell command rejected.
 //! 11. Shell parser bypasses from Codex Security scan f23c3b38.
 //! 12. Guard-owned WriteFile requires an explicit workspace capability.
+//! 13. Host-reported handoff outcomes recorded as witnessed finishes (PR #119).
 
 use agent_guard_sdk::{
     guard::{Guard, RuntimeOutcome},
-    Context, DecisionCode, GuardDecision, GuardInput, RuntimeDecision, Tool, TrustLevel,
+    Context, DecisionCode, GuardDecision, GuardInput, HandoffResult, RuntimeDecision, Tool,
+    TrustLevel,
 };
 
 /// Representative production-ish policy. Mirrors `policy.example.yaml` so
@@ -637,5 +639,87 @@ fn sec25_write_file_without_working_directory_is_denied_without_writing() {
     assert!(
         !target.exists(),
         "WriteFile must not create a file without an explicit workspace"
+    );
+}
+
+// ─── 28. Host-reported handoff outcomes can never masquerade as witnessed ───
+
+/// A host-supplied `HandoffResult` must never produce an `ExecutionFinished`
+/// audit record (PR #119). `ExecutionFinished` is reserved for executions the
+/// Guard witnessed; `report_handoff_result` transcribes a host claim and must
+/// emit `ExecutionReported`. If a handoff report ever surfaces as
+/// `execution_finished`, a transcribed claim has become indistinguishable
+/// from a witnessed effect and the audit stream is no longer evidence.
+#[test]
+fn sec28_host_reported_handoff_never_emits_execution_finished() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let audit_path = dir.path().join("audit.jsonl");
+    let policy = format!(
+        r#"
+version: 1
+default_mode: workspace_write
+tools:
+  read_file: {{}}
+audit:
+  enabled: true
+  output: file
+  file_path: "{}"
+anomaly:
+  enabled: false
+"#,
+        audit_path.display()
+    );
+
+    let guard = Guard::from_yaml(&policy).expect("guard init");
+    let input = GuardInput {
+        tool: Tool::ReadFile,
+        payload: r#"{"path":"/workspace/README.md"}"#.to_string(),
+        context: Context {
+            trust_level: TrustLevel::Trusted,
+            working_directory: Some(std::path::PathBuf::from("/workspace")),
+            ..Default::default()
+        },
+    };
+
+    let request_id = match guard
+        .run(&input, &agent_guard_sandbox::NoopSandbox)
+        .expect("runtime run")
+    {
+        RuntimeOutcome::Handoff { request_id, .. } => request_id,
+        other => panic!("expected Handoff, got {other:?}"),
+    };
+
+    guard.report_handoff_result(
+        &request_id,
+        HandoffResult {
+            exit_code: 0,
+            duration_ms: 42,
+            stderr: None,
+        },
+    );
+
+    // Dropping the Guard joins the background audit writer so all pending
+    // lines are flushed before inspection.
+    drop(guard);
+
+    let contents = std::fs::read_to_string(&audit_path).expect("read audit file");
+    let records: Vec<serde_json::Value> = contents
+        .lines()
+        .filter_map(|line| serde_json::from_str::<serde_json::Value>(line).ok())
+        .collect();
+
+    assert!(
+        records
+            .iter()
+            .all(|r| r.get("type").and_then(|t| t.as_str()) != Some("execution_finished")),
+        "host-reported handoff outcome surfaced as execution_finished; \
+         transcribed claims must never be recorded as witnessed finishes:\n{contents}"
+    );
+    assert!(
+        records.iter().any(|r| {
+            r.get("type").and_then(|t| t.as_str()) == Some("execution_reported")
+                && r.get("request_id").and_then(|v| v.as_str()) == Some(request_id.as_str())
+        }),
+        "handoff report must still be auditable as execution_reported:\n{contents}"
     );
 }

@@ -575,7 +575,7 @@ impl Guard {
     /// Report the outcome of a host-executed handoff back into the audit stream.
     ///
     /// Call this after executing a handoff returned by `run()` to emit a
-    /// matching `ExecutionFinished` audit record (closing the audit loop).
+    /// `ExecutionReported` audit record, distinct from a witnessed finish.
     /// The `requestId` must be the value from the originating `RuntimeOutcome`.
     #[napi]
     pub fn report_handoff_result(&self, request_id: String, result: HandoffResult) {

@@ -341,7 +341,7 @@ fn run_denied_exposes_reason_directly() {
 }
 
 #[test]
-fn report_handoff_result_emits_execution_finished() {
+fn report_handoff_result_emits_execution_reported() {
     let dir = tempfile::tempdir().expect("tempdir");
     let audit_path = dir.path().join("audit.jsonl");
     let policy = format!(
@@ -388,18 +388,18 @@ anomaly:
     drop(guard);
 
     let contents = std::fs::read_to_string(&audit_path).expect("read audit file");
-    let execution_finished: Vec<serde_json::Value> = contents
+    let execution_reported: Vec<serde_json::Value> = contents
         .lines()
         .filter_map(|line| serde_json::from_str::<serde_json::Value>(line).ok())
-        .filter(|v| v.get("type").and_then(|t| t.as_str()) == Some("execution_finished"))
+        .filter(|v| v.get("type").and_then(|t| t.as_str()) == Some("execution_reported"))
         .collect();
 
     assert_eq!(
-        execution_finished.len(),
+        execution_reported.len(),
         1,
-        "expected one execution_finished record, got audit file:\n{contents}"
+        "expected one execution_reported record, got audit file:\n{contents}"
     );
-    let record = &execution_finished[0];
+    let record = &execution_reported[0];
     assert_eq!(record["request_id"].as_str(), Some(request_id.as_str()));
     assert_eq!(record["exit_code"].as_i64(), Some(0));
     assert_eq!(record["duration_ms"].as_i64(), Some(42));

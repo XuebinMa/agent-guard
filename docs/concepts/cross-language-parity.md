@@ -35,7 +35,7 @@ This document is the human-readable map of what's covered. The machine truth liv
 | Full sandbox execution | `guard.execute(&input, sandbox) → ExecuteOutcome` | `guard.execute(tool, payload, **ctx) → ExecuteResult` | `guard.execute(tool, payload, ctx) → ExecuteOutcome` |
 | Runtime orchestration (Check → Filter → Audit → Sandbox/Handoff) | `guard.run(&input, sandbox) → RuntimeOutcome` | `guard.run(tool, payload, **ctx) → RuntimeOutcome` | `guard.run(tool, payload, ctx) → RuntimeOutcome` |
 | Default sandbox factory | `Guard::default_sandbox()` | (built into `Guard.run` / `Guard.execute`) | (built into `guard.run` / `guard.execute`) |
-| Host-handoff audit closure | `guard.report_handoff_result(rid, HandoffResult{...})` | `guard.report_handoff_result(rid, HandoffResult(...))` | `guard.reportHandoffResult(rid, {...})` |
+| Host-handoff outcome claim (`execution_reported`, not witnessed `execution_finished`) | `guard.report_handoff_result(rid, HandoffResult{...})` | `guard.report_handoff_result(rid, HandoffResult(...))` | `guard.reportHandoffResult(rid, {...})` |
 | Atomic policy reload | `guard.reload_engine(engine)` / `guard.reload_from_yaml(s)` | `guard.reload_from_yaml(s)` | `guard.reloadFromYaml(s)` |
 | Policy version | `guard.policy_version() → String` | `guard.policy_version()` | `guard.policyVersion()` |
 | Policy hash (SHA-256) | `guard.policy_hash() → String` | `guard.policy_hash()` | `guard.policyHash()` |

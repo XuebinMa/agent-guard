@@ -6,7 +6,7 @@ runtime-API parity with the Node bindings:
 
   * ``Guard.decide``                    -> ``RuntimeDecision``
   * ``Guard.run``                       -> ``RuntimeOutcome``
-  * ``Guard.report_handoff_result``     -> emits ``ExecutionFinished`` audit
+  * ``Guard.report_handoff_result``     -> emits ``ExecutionReported`` audit
 
 Run with (after `maturin develop`):
 
@@ -186,7 +186,7 @@ def test_run_returns_handoff_for_read_file(guard):
     assert outcome.decision.is_handoff()
 
 
-# ── Guard.report_handoff_result → ExecutionFinished audit ─────────────────────
+# ── Guard.report_handoff_result → ExecutionReported audit ─────────────────────
 
 
 def _build_audit_policy(audit_path: Path) -> str:
@@ -213,7 +213,7 @@ def test_report_handoff_result_emits_audit_record(tmp_path):
     1. ``Guard.run`` returns ``RuntimeOutcome::Handoff`` with a request_id.
     2. The host (this test) executes the action.
     3. The host calls ``Guard.report_handoff_result(request_id, result)``.
-    4. A matching ``ExecutionFinished`` audit record lands in the JSONL log
+    4. A matching ``ExecutionReported`` audit record lands in the JSONL log
        with ``tool == "handoff"`` and the same ``request_id``.
 
     This locks in the audit closure contract that S3-2 exposes to Python.
@@ -245,7 +245,7 @@ def test_report_handoff_result_emits_audit_record(tmp_path):
                 lines = [line.strip() for line in fh if line.strip()]
             deadline_records = [json.loads(line) for line in lines]
             if any(
-                rec.get("type") == "execution_finished"
+                rec.get("type") == "execution_reported"
                 and rec.get("tool") == "handoff"
                 and rec.get("request_id") == outcome.request_id
                 for rec in deadline_records
@@ -255,18 +255,18 @@ def test_report_handoff_result_emits_audit_record(tmp_path):
 
     assert deadline_records, f"audit file at {audit_path} stayed empty"
 
-    finished = [
+    reported = [
         rec
         for rec in deadline_records
-        if rec.get("type") == "execution_finished"
+        if rec.get("type") == "execution_reported"
         and rec.get("tool") == "handoff"
         and rec.get("request_id") == outcome.request_id
     ]
-    assert finished, (
-        "expected an ExecutionFinished audit record with tool=handoff and "
+    assert reported, (
+        "expected an ExecutionReported audit record with tool=handoff and "
         f"matching request_id={outcome.request_id!r}; got: {deadline_records!r}"
     )
-    record = finished[0]
+    record = reported[0]
     assert record["sandbox_type"] == "host-handoff"
     assert record["exit_code"] == 0
     assert record["duration_ms"] == 42

@@ -106,7 +106,7 @@ export declare class Guard {
    * Report the outcome of a host-executed handoff back into the audit stream.
    *
    * Call this after executing a handoff returned by `run()` to emit a
-   * matching `ExecutionFinished` audit record (closing the audit loop).
+   * `ExecutionReported` audit record, distinct from a witnessed finish.
    * The `requestId` must be the value from the originating `RuntimeOutcome`.
    */
   reportHandoffResult(requestId: string, result: HandoffResult): void

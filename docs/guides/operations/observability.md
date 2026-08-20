@@ -56,10 +56,35 @@ audit:
 
 ### Supported Event Types
 - `tool_call`: Detailed tool evaluation result.
-- `execution_started` / `execution_finished`.
+- `execution_started` / `execution_finished`: executions the Guard witnessed.
+- `execution_reported`: a host-transcribed handoff outcome (see below).
 - `sandbox_failure`: Emitted on fail-closed errors.
 - `anomaly_triggered` / `agent_locked`.
 - `content_finding`: Content-layer detection on an executed call (opt-in `content` build). See below.
+
+### Host-reported handoff outcomes (`execution_reported`)
+
+When `Guard::run` returns a `Handoff`, the host executes the action itself and reports the outcome via `Guard::report_handoff_result`. The Guard did not observe that execution, so the record is transcribed rather than witnessed. These records carry `tool: "handoff"` and `sandbox_type: "host-handoff"`.
+
+```json
+{
+  "type": "execution_reported",
+  "timestamp": "2026-08-19T12:00:00Z",
+  "request_id": "5f1c…",
+  "tool": "handoff",
+  "sandbox_type": "host-handoff",
+  "duration_ms": 42,
+  "exit_code": 0
+}
+```
+
+> **Migration note (wire-format break, pre-1.0):** handoff outcomes previously
+> emitted `type: "execution_finished"`. A consumer of the audit JSONL or SIEM
+> stream matching only `execution_finished` will *silently* stop seeing handoff
+> records — they now arrive as `execution_reported`. Update matchers to handle
+> both types. `execution_finished` is now reserved for executions the Guard
+> itself performed and is unchanged for those. Treat an unrecognized `type`
+> value as a signal to update the consumer, not as noise to drop.
 
 ### Content findings (`content_finding`)
 
