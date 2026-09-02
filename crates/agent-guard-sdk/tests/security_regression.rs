@@ -19,6 +19,10 @@
 //! 11. Shell parser bypasses from Codex Security scan f23c3b38.
 //! 12. Guard-owned WriteFile requires an explicit workspace capability.
 //! 13. Host-reported handoff outcomes recorded as witnessed finishes (PR #119).
+//! 14. Equivalent `git push` spellings cannot bypass outbound authorization.
+//! 15. Modeled and explicitly listed process launchers preserve outbound
+//!     decisions; `git send-pack` enters the same authorization path.
+//! 16. Unknown outer commands cannot downgrade embedded Git outbound intent.
 
 use agent_guard_sdk::{
     guard::{Guard, RuntimeOutcome},
@@ -38,6 +42,8 @@ tools:
       - prefix: "rm -rf"
       - prefix: "sudo"
       - regex: "curl.*\\|.*bash"
+      - regex: "^git\\s+push\\s+--force(?:\\s|$)"
+      - prefix: "git push --mirror"
     ask:
       - prefix: "git push"
   read_file:
@@ -304,21 +310,252 @@ fn sec09_git_push_triggers_ask_for_approval() {
     );
 }
 
+#[test]
+fn sec29_equivalent_and_recoverable_git_push_forms_trigger_approval() {
+    let g = guard();
+    let workspace = std::env::temp_dir();
+
+    for command in [
+        "/usr/bin/git push origin main",
+        "env git push origin main",
+        "command git push origin main",
+        "stdbuf -o0 git push origin main",
+        "setsid -fw git push origin main",
+        r#""git" push origin main"#,
+        "'git' push origin main",
+        r#"g""it push origin main"#,
+        r#"g\it push origin main"#,
+        "git -C /workspace push origin main",
+        "git --git-dir=/workspace/.git push origin main",
+        "git push --force-if-includes origin main",
+        "git push --delete origin old-branch",
+        "git push origin :old-branch",
+        "git-push origin main",
+        "{ git push origin main; }",
+    ] {
+        let payload = serde_json::json!({ "command": command }).to_string();
+        let decision = g.check_tool(Tool::Bash, &payload, ctx_workspace(&workspace));
+        assert!(
+            matches!(&decision, GuardDecision::AskUser { .. }),
+            "equivalent git push must trigger approval: `{command}`, got {decision:?}"
+        );
+    }
+}
+
+#[test]
+fn sec29_destructive_git_push_forms_are_denied() {
+    let g = guard();
+    let workspace = std::env::temp_dir();
+
+    for command in [
+        "/usr/bin/git push --force origin main",
+        "env git push -f origin main",
+        "stdbuf -o0 git push --force origin main",
+        "setsid git push --force origin main",
+        r#""git" push --force origin main"#,
+        r#"g""it push --force origin main"#,
+        r#"g\it push --force origin main"#,
+        "git -C /workspace push --force-with-lease origin main",
+        "git push origin +main:main",
+        "git push --mirror origin",
+    ] {
+        let payload = serde_json::json!({ "command": command }).to_string();
+        let decision = g.check_tool(Tool::Bash, &payload, ctx_workspace(&workspace));
+        assert!(
+            matches!(&decision, GuardDecision::Deny { .. }),
+            "destructive git push must be denied: `{command}`, got {decision:?}"
+        );
+    }
+}
+
+#[test]
+fn sec30_modeled_process_launchers_preserve_inner_outbound_decisions() {
+    let g = guard();
+    let workspace = std::env::temp_dir();
+
+    for command in [
+        "ionice -c3 git push origin main",
+        "taskset -c 0 git push origin main",
+        "chrt -b 0 git push origin main",
+        "time git push origin main",
+        "proxychains git push origin main",
+        "eatmydata git push origin main",
+    ] {
+        let payload = serde_json::json!({ "command": command }).to_string();
+        let decision = g.check_tool(Tool::Bash, &payload, ctx_workspace(&workspace));
+        assert!(
+            matches!(&decision, GuardDecision::AskUser { .. }),
+            "modeled launcher must preserve inner approval: `{command}`, got {decision:?}"
+        );
+    }
+
+    for command in [
+        "ionice -c3 git push --force origin main",
+        "taskset -c 0 git push --force origin main",
+        "chrt -b 0 git push --force origin main",
+        "time git push --force origin main",
+        "proxychains git push --force origin main",
+        "eatmydata git push --force origin main",
+    ] {
+        let payload = serde_json::json!({ "command": command }).to_string();
+        let decision = g.check_tool(Tool::Bash, &payload, ctx_workspace(&workspace));
+        assert!(
+            matches!(&decision, GuardDecision::Deny { .. }),
+            "modeled launcher must preserve inner deny: `{command}`, got {decision:?}"
+        );
+    }
+}
+
+#[test]
+fn sec30_listed_opaque_process_launchers_fail_closed_in_restricted_modes() {
+    let g = guard();
+    let workspace = std::env::temp_dir();
+
+    for command in [
+        "numactl cargo build",
+        "prlimit cargo build",
+        "runuser -u nobody -- cargo build",
+        "systemd-run --user cargo build",
+    ] {
+        let payload = serde_json::json!({ "command": command }).to_string();
+        let decision = g.check_tool(Tool::Bash, &payload, ctx_workspace(&workspace));
+        assert!(
+            matches!(&decision, GuardDecision::Deny { .. }),
+            "listed opaque launcher must fail closed: `{command}`, got {decision:?}"
+        );
+    }
+}
+
+#[test]
+fn sec31_send_pack_is_governed_as_outbound_git() {
+    let g = guard();
+    let workspace = std::env::temp_dir();
+
+    for command in [
+        "git send-pack origin main",
+        "git-send-pack origin main",
+        "git -C repo send-pack origin main",
+    ] {
+        let payload = serde_json::json!({ "command": command }).to_string();
+        let decision = g.check_tool(Tool::Bash, &payload, ctx_workspace(&workspace));
+        assert!(
+            matches!(&decision, GuardDecision::AskUser { .. }),
+            "send-pack must require outbound approval: `{command}`, got {decision:?}"
+        );
+    }
+
+    for command in [
+        "git send-pack --force origin main",
+        "git-send-pack -f origin main",
+        "git send-pack --force-with-lease origin main",
+        "git send-pack --mirror origin",
+        "git send-pack origin +main:main",
+    ] {
+        let payload = serde_json::json!({ "command": command }).to_string();
+        let decision = g.check_tool(Tool::Bash, &payload, ctx_workspace(&workspace));
+        assert!(
+            matches!(&decision, GuardDecision::Deny { .. }),
+            "destructive send-pack must be denied: `{command}`, got {decision:?}"
+        );
+    }
+}
+
+#[test]
+fn sec32_unknown_prefix_cannot_downgrade_embedded_git_outbound_intent() {
+    let g = guard();
+    let workspace = std::env::temp_dir();
+
+    for command in [
+        "firejail --quiet git push origin main",
+        "bwrap --ro-bind / / git push origin main",
+        "torsocks git send-pack origin main",
+        "flatpak-spawn --host git push origin main",
+    ] {
+        let payload = serde_json::json!({ "command": command }).to_string();
+        let decision = g.check_tool(Tool::Bash, &payload, ctx_workspace(&workspace));
+        assert!(
+            matches!(&decision, GuardDecision::AskUser { .. }),
+            "embedded ordinary push must require approval: `{command}`, got {decision:?}"
+        );
+    }
+
+    for command in [
+        "firejail git push --force origin main",
+        "cpulimit -l 50 -- git push origin +main:main",
+        "catchsegv git send-pack --mirror origin",
+        "ssh-agent git push --force-with-lease origin main",
+        "flatpak-spawn --host git-push -f origin main",
+        // Accepted conservative ambiguity: separate bare argv words may be
+        // data to `echo`, but the validator cannot prove they will not execute.
+        "echo git push --force origin main",
+        "probe git status git push --force origin main",
+    ] {
+        let payload = serde_json::json!({ "command": command }).to_string();
+        let decision = g.check_tool(Tool::Bash, &payload, ctx_workspace(&workspace));
+        assert!(
+            matches!(&decision, GuardDecision::Deny { .. }),
+            "embedded destructive push must remain deny: `{command}`, got {decision:?}"
+        );
+    }
+
+    for command in [
+        "grep -r 'git push --force' src",
+        "echo 'git push origin main'",
+    ] {
+        let payload = serde_json::json!({ "command": command }).to_string();
+        let decision = g.check_tool(Tool::Bash, &payload, ctx_workspace(&workspace));
+        assert!(
+            matches!(&decision, GuardDecision::Allow),
+            "quoted Git text is data, not executable intent: `{command}`, got {decision:?}"
+        );
+    }
+
+    let payload = serde_json::json!({
+        "command": "shred ./tmp; git push --force origin main"
+    })
+    .to_string();
+    let decision = g.check_tool(Tool::Bash, &payload, ctx_workspace(&workspace));
+    assert!(
+        matches!(&decision, GuardDecision::Deny { .. }),
+        "an earlier validator warning must not hide a later policy deny: {decision:?}"
+    );
+
+    let payload = serde_json::json!({
+        "command": "firejail git push origin main"
+    })
+    .to_string();
+    let decision = g.check_tool(Tool::Bash, &payload, ctx_workspace(&workspace));
+    let GuardDecision::AskUser { message, reason } = decision else {
+        panic!("embedded ordinary push must ask")
+    };
+    assert!(message.contains("conservative argv candidate"));
+    let preview = &reason.details().expect("details")["git_push_intents"][0];
+    assert_eq!(preview["detection_kind"], "embedded_argv");
+    assert_eq!(preview["execution_semantics"], "unverified");
+    assert_eq!(preview["outer_command"], "firejail");
+    assert_eq!(preview["argument_index"], 1);
+}
+
 // ─── 10. sudo shell command ─────────────────────────────────────────────────
 
 #[test]
 fn sec10_sudo_command_is_denied() {
     let g = guard();
     let workspace = std::env::temp_dir();
-    let decision = g.check_tool(
-        Tool::Bash,
-        r#"{"command":"sudo cat /etc/shadow"}"#,
-        ctx_workspace(&workspace),
-    );
-    assert!(
-        matches!(&decision, GuardDecision::Deny { .. }),
-        "sudo must be denied, got {decision:?}"
-    );
+    for command in [
+        "sudo ls /etc",
+        r#""sudo" ls /etc"#,
+        "'sudo' ls /etc",
+        r#"s""udo ls /etc"#,
+        r#"s\udo ls /etc"#,
+    ] {
+        let payload = serde_json::json!({ "command": command }).to_string();
+        let decision = g.check_tool(Tool::Bash, payload, ctx_workspace(&workspace));
+        assert!(
+            matches!(&decision, GuardDecision::Deny { .. }),
+            "sudo spelling must be denied: `{command}`, got {decision:?}"
+        );
+    }
 }
 
 // ─── 11. Runtime layer — denied outcome surfaces reason directly ────────────

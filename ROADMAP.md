@@ -1,7 +1,7 @@
 # Roadmap
 
 This is the current, living forward-looking view for `agent-guard` as of
-**0.2.0-rc2**. It distills the historical phase designs under
+**0.2.0**. It distills the historical phase designs under
 [`docs/archive/`](docs/archive/README.md) and the current code into one place
 that separates *shipped* from *partial* from *planned*.
 
@@ -16,15 +16,16 @@ Two ground rules keep it honest:
 
 ## Where the boundary is today
 
-The adoption wedge is a narrow execution-control runtime for three side-effect
-surfaces: **shell / terminal**, **file write**, and **outbound mutation HTTP**.
-Bash has the deepest validator path; the file and HTTP paths lean more on policy
-matching than on runtime validation. See the "Current boundary note" in
+The codebase supports three side-effect surfaces: **shell / terminal**, **file
+write**, and **outbound mutation HTTP**. Product development is narrower: exact
+authorization for one broker-executed Git push transaction. Bash has the deepest
+validator path; the file and HTTP paths lean more on policy matching than on
+runtime validation. See the "Current boundary note" in
 [`docs/README.md`](docs/README.md) and the
 [Framework Support Matrix](docs/reference/framework-support-matrix.md) for the
 per-surface, per-language reality.
 
-## Shipped (0.2.0-rc2)
+## Shipped (0.2.0)
 
 - **Unified decision model** — `allow` / `deny` / `ask_for_approval` / `handoff`
   with normalised decision codes, exposed identically across the Rust SDK, the
@@ -34,7 +35,13 @@ per-surface, per-language reality.
   an agent after repeated denials.
 - **Bash execution control** — the deepest path: command-injection and
   path-traversal defenses, shell-separator awareness, transparent-wrapper
-  unwrapping, and write-target collection for compound commands.
+  unwrapping, write-target collection for compound commands, and structured
+  recognition that maps recognized direct `git push` forms, explicitly modeled
+  wrappers, and plumbing-level `git send-pack` calls to one policy subject.
+  Force, mirror, delete, and destructive refspec shorthand are classified
+  before raw policy matching. Adjacent standalone Git argv tokens under an
+  unknown outer command are governed conservatively and recorded as unverified
+  candidates, not asserted executions.
 - **File-write + path validation** — workspace-confined normalisation with
   symlink-escape and `..`-traversal checks.
 - **Outbound HTTP control** — the runtime distinguishes mutation methods, and
@@ -82,32 +89,47 @@ These exist but are explicitly incomplete — do not describe them as finished.
 - **The Claude Code plugin gates built-in tools** (`Bash`, `Write`, `Edit`,
   `WebFetch`); MCP tools (`mcp__*`) currently pass through ungated (upstream
   limitation).
+- **The hook is advisory and fail-open.** It does not own credentials or
+  execution, so an agent able to avoid the host hook can avoid this check.
+- **Shell argv does not prove arbitrary program semantics.** Dedicated parsers
+  unwrap supported launcher forms, while conservative embedded-Git detection
+  may reject bare words used as data and still cannot prove what an unknown
+  program will execute. The credential-isolated broker is the class-level
+  boundary.
+- **The local approval ledger is not authenticated.** Request binding and
+  execution-time policy revalidation close accidental/stale approval errors;
+  adversarial isolation still requires a separate broker process.
 
-## Next (near-term, 0.2.x)
+## One target: broker-enforced Git push
 
-The original near-term queue (HTTP method-aware matching, content-layer input
-scanning, explicit backend selection in the bindings, the Python
-framework-version CI matrix, and retiring the stale `cargo-audit` ignores) has
-shipped — see the tracking issue
-[#103](https://github.com/XuebinMa/agent-guard/issues/103) and the milestone
-for the item-by-item record. New near-term items land there first and get
-promoted into this file.
+The next product milestone is deliberately one vertical path, not another
+generic security platform. Success means the agent cannot perform a remote Git
+mutation without the Guard executing the exact, approved transaction.
 
-## Later (v0.3.0+, draft)
+1. **Exact intent** — normalize repository identity, resolved remote URL,
+   refspecs, old/new object IDs, force/lease/mirror/delete semantics, and the
+   relevant Git options into one immutable `GitPushIntent`.
+2. **Exact preview** — show the human the remote, branch/tag changes, commits,
+   deletions, and destructive semantics that the authorization will cover.
+3. **One-use authorization** — issue a short-lived grant bound to an intent
+   hash, nonce, policy hash, actor, and expiry; consume it atomically.
+4. **Broker-owned execution** — keep remote credentials outside the agent
+   process. Immediately before pushing, re-read local refs, query the remote,
+   re-evaluate policy, and reject any drift from the approved intent.
+5. **Receipt** — sign the final attempted/observed transaction and its outcome,
+   clearly distinguishing a Guard-witnessed push from a host-reported claim.
 
-From the Phase 8 design draft; explicitly out of 0.2.0 scope and subject to
-change:
+The first supported shape is intentionally small: GitHub, one repository, one
+branch, ordinary non-force push. Force, mirror, deletion, tags, multiple
+refspecs, and unsupported transports fail closed until explicitly designed.
 
-- **Hardware root of trust** — fold TPM 2.0 remote-attestation measurements into
-  execution proofs.
-- **Deeper Linux isolation** — Landlock filesystem access control plus namespace
-  (`unshare`) isolation to complement seccomp.
-- **OTLP / OpenTelemetry export** — a standard protocol path alongside today's
-  JSONL and webhook export.
-- **Stricter policy enforcement** — refuse unsigned or mismatched policy in a
-  high-trust mode; move Windows toward AppContainer-by-default.
-- **More adapters and presets** — additional framework surfaces (e.g. AutoGen)
-  and policy templates beyond the outbound preset.
+## Frozen expansion
+
+Until the broker-enforced path above is usable end to end, the following are
+maintenance-only: new generic agent frameworks, more policy categories, DLP
+detectors, TPM/remote attestation, OTLP, additional sandbox backends, and broad
+multi-agent governance. Security fixes and dependency maintenance remain in
+scope; new horizontal features do not.
 
 ## Known debt
 

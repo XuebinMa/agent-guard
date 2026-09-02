@@ -3,10 +3,14 @@ members = ["crates/*"]
 resolver = "2"
 
 [workspace.package]
-version = "0.2.0-rc2"
+version = "0.2.0"
 edition = "2021"
 license = "MIT"
 rust-version = "1.79"
+repository = "https://github.com/XuebinMa/agent-guard"
+homepage = "https://github.com/XuebinMa/agent-guard"
+keywords = ["security", "sandbox", "policy", "agent", "audit"]
+categories = ["development-tools", "command-line-utilities"]
 
 [workspace.dependencies]
 serde = { version = "1.0.228", features = ["derive"] }

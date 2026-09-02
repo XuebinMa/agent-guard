@@ -159,7 +159,7 @@ audit:
 
     // Wait a bit for the async threads to finish
     tokio::time::sleep(Duration::from_millis(500)).await;
-    delay_mock.assert_hits(30);
+    delay_mock.assert_calls(30);
 }
 
 /// SCENARIO 4: Soak Test (Condensed)

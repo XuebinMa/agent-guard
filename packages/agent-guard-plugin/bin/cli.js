@@ -8,10 +8,9 @@
 //   npx agent-guard-plugin init --binary-only   just install guard-hook
 //   npx agent-guard-plugin uninstall   remove the hook from settings.json
 //
-// Binary delivery is via `cargo install` (Rust toolchain required) — the
-// agreed S8-2 distribution mechanism. The CLI is fail-soft: if cargo is
-// missing it prints manual instructions and still wires the (fail-open) hook,
-// so a partial setup never leaves Claude Code blocked.
+// Binary delivery is via `cargo install` (Rust toolchain required). Install the
+// exact crate version paired with this npm package so a published installer
+// can never drift to unrelated code from the repository's main branch.
 
 const fs = require('node:fs');
 const os = require('node:os');
@@ -20,7 +19,6 @@ const { spawnSync } = require('node:child_process');
 
 const { HOOK_ID, withHook, withoutHook, policyWithFileAudit } = require('../lib/init.js');
 
-const REPO_URL = 'https://github.com/XuebinMa/agent-guard';
 const PKG = require('../package.json');
 
 function log(msg) {
@@ -57,10 +55,20 @@ function parseArgs(argv) {
 // Locate an executable `guard-hook`: PATH first, then the cargo bin dir.
 function resolveBinary() {
   const isWin = process.platform === 'win32';
-  const probe = spawnSync(isWin ? 'where' : 'command', isWin ? ['guard-hook'] : ['-v', 'guard-hook']);
-  if (probe.status === 0 && probe.stdout) {
-    const found = probe.stdout.toString().split(/\r?\n/)[0].trim();
-    if (found) return found;
+  const extensions = isWin
+    ? (process.env.PATHEXT || '.EXE;.CMD;.BAT').split(';')
+    : [''];
+  for (const dir of (process.env.PATH || '').split(path.delimiter)) {
+    if (!dir) continue;
+    for (const extension of extensions) {
+      const candidate = path.join(dir, `guard-hook${extension.toLowerCase()}`);
+      try {
+        fs.accessSync(candidate, fs.constants.X_OK);
+        return candidate;
+      } catch (_) {
+        // Keep searching PATH.
+      }
+    }
   }
   const cargoBin = path.join(os.homedir(), '.cargo', 'bin', `guard-hook${isWin ? '.exe' : ''}`);
   if (fs.existsSync(cargoBin)) return cargoBin;
@@ -75,19 +83,23 @@ function installBinary(dryRun) {
   }
   if (spawnSync('cargo', ['--version']).status !== 0) {
     warn('! cargo not found. Install Rust (https://rustup.rs) then run:');
-    warn(`    cargo install --git ${REPO_URL} guard-hook`);
+    warn(`    cargo install guard-hook --version ${PKG.version} --locked`);
     warn('  (the hook fails open until the binary is present, so nothing is blocked meanwhile)');
     return null;
   }
   if (dryRun) {
-    log(`[dry-run] would run: cargo install --git ${REPO_URL} guard-hook`);
+    log(`[dry-run] would run: cargo install guard-hook --version ${PKG.version} --locked`);
     return 'guard-hook';
   }
   log('Installing guard-hook via cargo (this can take a few minutes)…');
-  const r = spawnSync('cargo', ['install', '--git', REPO_URL, 'guard-hook'], { stdio: 'inherit' });
+  const r = spawnSync(
+    'cargo',
+    ['install', 'guard-hook', '--version', PKG.version, '--locked'],
+    { stdio: 'inherit' },
+  );
   if (r.status !== 0) {
     warn('! cargo install failed; install manually with:');
-    warn(`    cargo install --git ${REPO_URL} guard-hook`);
+    warn(`    cargo install guard-hook --version ${PKG.version} --locked`);
     return null;
   }
   return resolveBinary() || 'guard-hook';

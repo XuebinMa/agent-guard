@@ -84,10 +84,10 @@ def test_decide_returns_handoff_for_read_file(guard):
 
 def test_decide_returns_deny_for_blocked_bash(guard, tmp_path):
     # `rm -rf /` writes outside the configured workspace; the bash validator
-    # blocks before the policy rules even get a chance to weigh in. The
-    # working_directory pins a real workspace so the path-escape check fires
-    # (otherwise the default "." workspace lets the destructive check
-    # downgrade this to ask_for_approval).
+    # blocks before the policy rules get a chance to weigh in. The
+    # working_directory pins a real workspace so the path-escape check is the
+    # reason for this decision; a destructive warning without that path block
+    # would still be merged with policy, and a matching deny would win.
     d = guard.decide(
         "bash",
         "rm -rf /",

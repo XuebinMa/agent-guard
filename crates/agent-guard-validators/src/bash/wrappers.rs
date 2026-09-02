@@ -1,11 +1,12 @@
 //! Transparent command-wrapper unwrapping.
 //!
-//! Wrappers like `sudo`/`env`/`nice`/`nohup`/`timeout`/`doas` and bare
-//! `NAME=value` assignment prefixes run another command given after the
-//! wrapper's own options/operands. The validators must skip those tokens so
-//! the *wrapped* command word re-enters every gate; otherwise a wrapper flag
-//! (or its value) is mistaken for the command and the destructive sub-command
-//! becomes invisible (audit 2026-05-18 / 2026-06-08).
+//! Command launchers are deliberately split into three classes:
+//! modeled transparent wrappers, known-but-opaque spawners, and ordinary
+//! commands. Modeled wrappers are unwrapped so their child re-enters every
+//! gate. Listed opaque spawners are rejected in restricted modes because
+//! guessing their argument grammar would silently turn a parse error into an
+//! allow. Unknown commands remain ordinary; argv inspection alone cannot prove
+//! whether an arbitrary program will execute one of its arguments.
 
 /// A transparent command wrapper: a program that runs another command given
 /// after the wrapper's own options/operands (e.g. `sudo -u root rm`,
@@ -15,9 +16,8 @@
 /// destructive sub-command becomes invisible (audit 2026-05-18 / 2026-06-08).
 ///
 /// Only wrappers with a regular `<wrapper> [options] [operand]... COMMAND`
-/// grammar are modeled here. Irregular spawners (`xargs`, `find -exec`,
-/// `strace`, `nsenter`, `flock`, `unshare`, `watch`) need dedicated parsing
-/// and are tracked in the audit follow-up issue rather than half-handled.
+/// grammar are modeled here. Known launchers whose grammar is not modeled may
+/// be listed in `OPAQUE_COMMAND_LAUNCHERS` so restricted modes reject them.
 struct CommandWrapper {
     name: &'static str,
     /// Short option chars that consume the FOLLOWING token as their value
@@ -48,6 +48,34 @@ const COMMAND_WRAPPERS: &[CommandWrapper] = &[
             "other-user",
             "user",
         ],
+        leading_operands: 0,
+    },
+    CommandWrapper {
+        // POSIX/GNU `time` executes the remaining argv. GNU -o/-f and their
+        // long spellings consume values; the common -p/-a switches do not.
+        name: "time",
+        arg_short_flags: &['o', 'f'],
+        arg_long_flags: &["output", "format"],
+        leading_operands: 0,
+    },
+    CommandWrapper {
+        // proxychains[4] [-q] [-f CONFIG] COMMAND ...
+        name: "proxychains",
+        arg_short_flags: &['f'],
+        arg_long_flags: &[],
+        leading_operands: 0,
+    },
+    CommandWrapper {
+        name: "proxychains4",
+        arg_short_flags: &['f'],
+        arg_long_flags: &[],
+        leading_operands: 0,
+    },
+    CommandWrapper {
+        // eatmydata [COMMAND [ARG...]]
+        name: "eatmydata",
+        arg_short_flags: &[],
+        arg_long_flags: &[],
         leading_operands: 0,
     },
     CommandWrapper {
@@ -98,6 +126,21 @@ const COMMAND_WRAPPERS: &[CommandWrapper] = &[
         arg_short_flags: &['s', 'k'],
         arg_long_flags: &["signal", "kill-after"],
         leading_operands: 1,
+    },
+    CommandWrapper {
+        // GNU coreutils: stdbuf -o0 CMD / stdbuf --output=0 CMD.
+        name: "stdbuf",
+        arg_short_flags: &['i', 'o', 'e'],
+        arg_long_flags: &["input", "output", "error"],
+        leading_operands: 0,
+    },
+    CommandWrapper {
+        // util-linux setsid: all supported options are boolean; the first
+        // non-option token is the command to execute.
+        name: "setsid",
+        arg_short_flags: &[],
+        arg_long_flags: &[],
+        leading_operands: 0,
     },
     // ── irregular spawners with a regular-enough grammar (issue #55) ──────────
     // These run an arbitrary sub-command after their own flags. `find -exec`
@@ -164,6 +207,58 @@ const COMMAND_WRAPPERS: &[CommandWrapper] = &[
         leading_operands: 0,
     },
 ];
+
+/// Programs known to spawn a child command whose option/operand grammar is not
+/// modeled above. Restricted modes reject these listed launchers. Membership
+/// is deliberately conservative, but it is not an exhaustive launcher class.
+const OPAQUE_COMMAND_LAUNCHERS: &[&str] = &["numactl", "prlimit", "runuser", "systemd-run"];
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum SpecializedLauncherDisposition {
+    /// The launcher will exec the argv suffix beginning at this index.
+    ChildAt(usize),
+    /// The invocation operates on an existing process and never execs a child.
+    ExistingProcess(&'static str),
+    /// The invocation only prints metadata/help or has no child command.
+    NoChild,
+    /// The launcher was recognised but its option grammar was not understood.
+    Opaque(&'static str),
+}
+
+enum LauncherLayer<'a, S> {
+    Child(&'a [S]),
+    ExistingProcess(&'static str),
+    NoChild,
+    Opaque(&'static str),
+    NotLauncher,
+}
+
+enum ResolutionKind {
+    Command,
+    ExistingProcess(&'static str),
+    NoChild,
+    Opaque(&'static str),
+}
+
+struct CommandLayerResolution<'a, S> {
+    argv: &'a [S],
+    removed_any: bool,
+    kind: ResolutionKind,
+}
+
+/// Classification of the first executable layer in a resolved shell command.
+pub(crate) enum LauncherDisposition {
+    /// One or more modeled layers were removed.
+    Transparent,
+    /// A known child-process launcher has no trustworthy grammar model.
+    Opaque(&'static str),
+    /// A modeled launcher is operating on an existing process rather than
+    /// executing a child command. Restricted modes keep this control surface
+    /// closed until query and mutation forms are modeled separately.
+    ExistingProcess(&'static str),
+    /// The command is not a launcher known to this validator.
+    Ordinary,
+}
 
 /// Normalize a command token to the executable name used by policy tables.
 /// Shells accept path-qualified command words (`/bin/rm`, `./tool`); comparing
@@ -234,65 +329,377 @@ fn skip_wrapper_tokens<S: AsRef<str>>(args: &[S], wrapper: &CommandWrapper) -> u
     idx
 }
 
-/// Strip leading `NAME=value` assignments and transparent command-wrapper
-/// layers (`sudo`/`env`/`nice`/`nohup`/`timeout`/`doas`) so the returned slice
-/// starts at the real command word. Handles nesting (`sudo env rm`) and
-/// pre-/post-wrapper assignments (`FOO=1 sudo rm`, `env BAR=2 rm`).
-pub(crate) fn unwrap_command_wrappers<S: AsRef<str>>(tokens: &[S]) -> &[S] {
-    let mut slice = tokens;
-    loop {
-        // Skip leading assignments and shell negation prefixes. `!` changes
-        // only the exit status; the following command still executes and must
-        // pass the same policy gates.
-        loop {
-            let mut start = 0;
-            while start < slice.len() && is_env_assignment(slice[start].as_ref()) {
-                start += 1;
-            }
-            slice = &slice[start..];
-            if slice.first().is_some_and(|token| token.as_ref() == "!") {
-                slice = &slice[1..];
-                continue;
-            }
+fn parse_ionice_layer<S: AsRef<str>>(tokens: &[S]) -> SpecializedLauncherDisposition {
+    let mut index = 1;
+    while index < tokens.len() {
+        let token = tokens[index].as_ref();
+        if token == "--" {
+            index += 1;
+            break;
+        }
+        if token == "-" || !token.starts_with('-') {
             break;
         }
 
-        let Some(first) = slice.first().map(AsRef::as_ref) else {
-            return slice;
-        };
-        let first = command_name(first);
-        // `find ... -exec CMD ... ;` / `-execdir CMD ... +`: the sub-command is
-        // mid-arguments, after the path and predicates, so the regular flag-skip
-        // model cannot reach it. Extract the tokens between `-exec(dir)` and the
-        // `;`/`+` terminator and continue unwrapping (handles `find -exec sudo
-        // rm`). A `find` with no `-exec` is a plain read traversal.
-        if first == "find" {
-            if let Some(pos) = slice.iter().position(|t| {
-                let s = t.as_ref();
-                s == "-exec" || s == "-execdir"
-            }) {
-                let sub = &slice[pos + 1..];
-                let end = sub
-                    .iter()
-                    .position(|t| {
-                        let s = t.as_ref();
-                        s == ";" || s == "+"
-                    })
-                    .unwrap_or(sub.len());
-                slice = &sub[..end];
-                continue;
+        if let Some(option) = token.strip_prefix("--") {
+            let (name, attached) = option
+                .split_once('=')
+                .map_or((option, false), |(name, _)| (name, true));
+            match name {
+                "pid" | "pgid" | "uid" => {
+                    return SpecializedLauncherDisposition::ExistingProcess("ionice")
+                }
+                "class" | "classdata" => {
+                    if attached {
+                        index += 1;
+                    } else if index + 1 < tokens.len() {
+                        index += 2;
+                    } else {
+                        return SpecializedLauncherDisposition::Opaque("ionice");
+                    }
+                }
+                "ignore" => index += 1,
+                "help" | "version" => return SpecializedLauncherDisposition::NoChild,
+                _ => return SpecializedLauncherDisposition::Opaque("ionice"),
             }
-            return slice;
+            continue;
         }
 
-        let Some(wrapper) = COMMAND_WRAPPERS.iter().find(|w| w.name == first) else {
-            return slice; // real command word reached
-        };
+        let flags: Vec<char> = token.chars().skip(1).collect();
+        let mut position = 0;
+        let mut consumed_token = false;
+        while position < flags.len() {
+            match flags[position] {
+                'p' | 'P' | 'u' => {
+                    return SpecializedLauncherDisposition::ExistingProcess("ionice")
+                }
+                'c' | 'n' => {
+                    if position + 1 < flags.len() {
+                        index += 1;
+                    } else if index + 1 < tokens.len() {
+                        index += 2;
+                    } else {
+                        return SpecializedLauncherDisposition::Opaque("ionice");
+                    }
+                    consumed_token = true;
+                    break;
+                }
+                't' => position += 1,
+                'h' | 'V' => return SpecializedLauncherDisposition::NoChild,
+                _ => return SpecializedLauncherDisposition::Opaque("ionice"),
+            }
+        }
+        if !consumed_token {
+            index += 1;
+        }
+    }
 
-        let skipped = 1 + skip_wrapper_tokens(&slice[1..], wrapper);
-        // Defensive: every wrapper consumes at least its own name, so `slice`
-        // strictly shrinks and the loop always terminates.
-        slice = &slice[skipped.min(slice.len())..];
+    if index < tokens.len() {
+        SpecializedLauncherDisposition::ChildAt(index)
+    } else {
+        SpecializedLauncherDisposition::NoChild
+    }
+}
+
+fn parse_taskset_layer<S: AsRef<str>>(tokens: &[S]) -> SpecializedLauncherDisposition {
+    let mut index = 1;
+    while index < tokens.len() {
+        let token = tokens[index].as_ref();
+        if token == "--" {
+            index += 1;
+            break;
+        }
+        if token == "-" || !token.starts_with('-') {
+            break;
+        }
+
+        if let Some(option) = token.strip_prefix("--") {
+            let name = option.split_once('=').map_or(option, |(name, _)| name);
+            match name {
+                "pid" => return SpecializedLauncherDisposition::ExistingProcess("taskset"),
+                "all-tasks" | "cpu-list" => index += 1,
+                "help" | "version" => return SpecializedLauncherDisposition::NoChild,
+                _ => return SpecializedLauncherDisposition::Opaque("taskset"),
+            }
+            continue;
+        }
+
+        for flag in token.chars().skip(1) {
+            match flag {
+                'p' => return SpecializedLauncherDisposition::ExistingProcess("taskset"),
+                'a' | 'c' => {}
+                'h' | 'V' => return SpecializedLauncherDisposition::NoChild,
+                _ => return SpecializedLauncherDisposition::Opaque("taskset"),
+            }
+        }
+        index += 1;
+    }
+
+    if index + 1 < tokens.len() {
+        SpecializedLauncherDisposition::ChildAt(index + 1)
+    } else {
+        SpecializedLauncherDisposition::NoChild
+    }
+}
+
+fn parse_chrt_layer<S: AsRef<str>>(tokens: &[S]) -> SpecializedLauncherDisposition {
+    let mut index = 1;
+    let mut policy_requires_priority = true; // util-linux defaults to SCHED_RR.
+    let mut sticky_priority_requirement = false;
+
+    while index < tokens.len() {
+        let token = tokens[index].as_ref();
+        if token == "--" {
+            index += 1;
+            break;
+        }
+        if token == "-" || !token.starts_with('-') {
+            break;
+        }
+
+        if let Some(option) = token.strip_prefix("--") {
+            let (name, attached) = option
+                .split_once('=')
+                .map_or((option, false), |(name, _)| (name, true));
+            match name {
+                "pid" => return SpecializedLauncherDisposition::ExistingProcess("chrt"),
+                "help" | "version" | "max" => return SpecializedLauncherDisposition::NoChild,
+                "fifo" | "rr" => {
+                    policy_requires_priority = true;
+                    sticky_priority_requirement = true;
+                    index += 1;
+                }
+                "batch" | "deadline" | "ext" | "idle" | "other" => {
+                    policy_requires_priority = false;
+                    index += 1;
+                }
+                "all-tasks" | "deadline-overrun" | "reset-on-fork" | "reclaim-grub" | "verbose" => {
+                    index += 1
+                }
+                "sched-runtime" | "sched-period" | "sched-deadline" | "clamp-min" | "clamp-max" => {
+                    if attached {
+                        index += 1;
+                    } else if index + 1 < tokens.len() {
+                        index += 2;
+                    } else {
+                        return SpecializedLauncherDisposition::Opaque("chrt");
+                    }
+                }
+                _ => return SpecializedLauncherDisposition::Opaque("chrt"),
+            }
+            continue;
+        }
+
+        let flags: Vec<char> = token.chars().skip(1).collect();
+        let mut position = 0;
+        let mut consumed_token = false;
+        while position < flags.len() {
+            match flags[position] {
+                'p' => return SpecializedLauncherDisposition::ExistingProcess("chrt"),
+                'h' | 'V' | 'm' => return SpecializedLauncherDisposition::NoChild,
+                'f' | 'r' => {
+                    policy_requires_priority = true;
+                    sticky_priority_requirement = true;
+                    position += 1;
+                }
+                'b' | 'd' | 'e' | 'i' | 'o' => {
+                    policy_requires_priority = false;
+                    position += 1;
+                }
+                'a' | 'O' | 'R' | 'G' | 'v' => position += 1,
+                'D' | 'P' | 'T' | 'U' | 'X' => {
+                    if position + 1 < flags.len() {
+                        index += 1;
+                    } else if index + 1 < tokens.len() {
+                        index += 2;
+                    } else {
+                        return SpecializedLauncherDisposition::Opaque("chrt");
+                    }
+                    consumed_token = true;
+                    break;
+                }
+                _ => return SpecializedLauncherDisposition::Opaque("chrt"),
+            }
+        }
+        if !consumed_token {
+            index += 1;
+        }
+    }
+
+    if index >= tokens.len() {
+        return SpecializedLauncherDisposition::NoChild;
+    }
+
+    let requires_priority = sticky_priority_requirement || policy_requires_priority;
+    let first_is_priority = tokens[index]
+        .as_ref()
+        .chars()
+        .all(|character| character.is_ascii_digit());
+    let mut command_index = if first_is_priority {
+        index + 1
+    } else if requires_priority {
+        return SpecializedLauncherDisposition::Opaque("chrt");
+    } else {
+        index
+    };
+    if tokens
+        .get(command_index)
+        .is_some_and(|token| token.as_ref() == "--")
+    {
+        command_index += 1;
+    }
+
+    if command_index < tokens.len() {
+        SpecializedLauncherDisposition::ChildAt(command_index)
+    } else {
+        SpecializedLauncherDisposition::NoChild
+    }
+}
+
+fn specialized_launcher_layer<S: AsRef<str>>(
+    tokens: &[S],
+) -> Option<SpecializedLauncherDisposition> {
+    match tokens.first().map(|token| command_name(token.as_ref())) {
+        Some("ionice") => Some(parse_ionice_layer(tokens)),
+        Some("taskset") => Some(parse_taskset_layer(tokens)),
+        Some("chrt") => Some(parse_chrt_layer(tokens)),
+        _ => None,
+    }
+}
+
+fn strip_command_prefixes<S: AsRef<str>>(mut tokens: &[S]) -> (&[S], bool) {
+    let original_len = tokens.len();
+    loop {
+        while tokens
+            .first()
+            .is_some_and(|token| is_env_assignment(token.as_ref()))
+        {
+            tokens = &tokens[1..];
+        }
+        if tokens.first().is_some_and(|token| token.as_ref() == "!") {
+            tokens = &tokens[1..];
+            continue;
+        }
+        break;
+    }
+    (tokens, tokens.len() != original_len)
+}
+
+fn launcher_layer<S: AsRef<str>>(tokens: &[S]) -> LauncherLayer<'_, S> {
+    let Some(first) = tokens.first().map(|token| command_name(token.as_ref())) else {
+        return LauncherLayer::NotLauncher;
+    };
+
+    if first == "find" {
+        if let Some(position) = tokens
+            .iter()
+            .position(|token| matches!(token.as_ref(), "-exec" | "-execdir"))
+        {
+            let child = &tokens[position + 1..];
+            let end = child
+                .iter()
+                .position(|token| matches!(token.as_ref(), ";" | "+"))
+                .unwrap_or(child.len());
+            return LauncherLayer::Child(&child[..end]);
+        }
+        return LauncherLayer::NotLauncher;
+    }
+
+    if let Some(disposition) = specialized_launcher_layer(tokens) {
+        return match disposition {
+            SpecializedLauncherDisposition::ChildAt(index) => {
+                LauncherLayer::Child(&tokens[index.min(tokens.len())..])
+            }
+            SpecializedLauncherDisposition::ExistingProcess(name) => {
+                LauncherLayer::ExistingProcess(name)
+            }
+            SpecializedLauncherDisposition::NoChild => LauncherLayer::NoChild,
+            SpecializedLauncherDisposition::Opaque(name) => LauncherLayer::Opaque(name),
+        };
+    }
+
+    if let Some(name) = OPAQUE_COMMAND_LAUNCHERS
+        .iter()
+        .copied()
+        .find(|candidate| *candidate == first)
+    {
+        return LauncherLayer::Opaque(name);
+    }
+
+    let Some(wrapper) = COMMAND_WRAPPERS
+        .iter()
+        .find(|wrapper| wrapper.name == first)
+    else {
+        return LauncherLayer::NotLauncher;
+    };
+    let skipped = 1 + skip_wrapper_tokens(&tokens[1..], wrapper);
+    LauncherLayer::Child(&tokens[skipped.min(tokens.len())..])
+}
+
+fn resolve_command_layers<S: AsRef<str>>(tokens: &[S]) -> CommandLayerResolution<'_, S> {
+    let mut slice = tokens;
+    let mut removed_any = false;
+    loop {
+        let (stripped, removed_prefix) = strip_command_prefixes(slice);
+        slice = stripped;
+        removed_any |= removed_prefix;
+
+        match launcher_layer(slice) {
+            LauncherLayer::Child(child) => {
+                removed_any = true;
+                slice = child;
+            }
+            LauncherLayer::ExistingProcess(name) => {
+                return CommandLayerResolution {
+                    argv: slice,
+                    removed_any,
+                    kind: ResolutionKind::ExistingProcess(name),
+                }
+            }
+            LauncherLayer::NoChild => {
+                return CommandLayerResolution {
+                    argv: slice,
+                    removed_any,
+                    kind: ResolutionKind::NoChild,
+                }
+            }
+            LauncherLayer::Opaque(name) => {
+                return CommandLayerResolution {
+                    argv: slice,
+                    removed_any,
+                    kind: ResolutionKind::Opaque(name),
+                }
+            }
+            LauncherLayer::NotLauncher => {
+                return CommandLayerResolution {
+                    argv: slice,
+                    removed_any,
+                    kind: ResolutionKind::Command,
+                }
+            }
+        }
+    }
+}
+
+/// Strip leading assignments and modeled command-wrapper layers so the
+/// returned slice starts at the resolved command word. A listed opaque layer,
+/// an existing-process mode, or a no-child invocation stops resolution.
+pub(crate) fn unwrap_command_wrappers<S: AsRef<str>>(tokens: &[S]) -> &[S] {
+    resolve_command_layers(tokens).argv
+}
+
+/// Classify a resolved argv without guessing at unknown launcher grammars.
+/// Transparent layers are removed first, so nesting such as
+/// `env systemd-run ...` is still recognized as opaque.
+pub(crate) fn classify_command_launcher<S: AsRef<str>>(tokens: &[S]) -> LauncherDisposition {
+    let resolution = resolve_command_layers(tokens);
+    match resolution.kind {
+        ResolutionKind::ExistingProcess(name) => LauncherDisposition::ExistingProcess(name),
+        ResolutionKind::Opaque(name) => LauncherDisposition::Opaque(name),
+        ResolutionKind::Command | ResolutionKind::NoChild if resolution.removed_any => {
+            LauncherDisposition::Transparent
+        }
+        ResolutionKind::Command | ResolutionKind::NoChild => LauncherDisposition::Ordinary,
     }
 }
 
@@ -305,12 +712,7 @@ pub(crate) fn unwrap_command_wrappers<S: AsRef<str>>(tokens: &[S]) -> &[S] {
 pub(crate) fn leads_with_target_hiding_spawner<S: AsRef<str>>(tokens: &[S]) -> bool {
     let mut slice = tokens;
     loop {
-        while slice
-            .first()
-            .is_some_and(|token| is_env_assignment(token.as_ref()) || token.as_ref() == "!")
-        {
-            slice = &slice[1..];
-        }
+        slice = strip_command_prefixes(slice).0;
         let Some(first) = slice.first().map(|token| command_name(token.as_ref())) else {
             return false;
         };
@@ -323,14 +725,10 @@ pub(crate) fn leads_with_target_hiding_spawner<S: AsRef<str>>(tokens: &[S]) -> b
                 token == "-exec" || token == "-execdir"
             });
         }
-        let Some(wrapper) = COMMAND_WRAPPERS
-            .iter()
-            .find(|wrapper| wrapper.name == first)
-        else {
-            return false;
-        };
-        let skipped = 1 + skip_wrapper_tokens(&slice[1..], wrapper);
-        slice = &slice[skipped.min(slice.len())..];
+        match launcher_layer(slice) {
+            LauncherLayer::Child(child) => slice = child,
+            _ => return false,
+        }
     }
 }
 
@@ -341,12 +739,7 @@ pub(crate) fn leads_with_target_hiding_spawner<S: AsRef<str>>(tokens: &[S]) -> b
 pub(crate) fn has_multiple_find_exec_actions<S: AsRef<str>>(tokens: &[S]) -> bool {
     let mut slice = tokens;
     loop {
-        while slice
-            .first()
-            .is_some_and(|token| is_env_assignment(token.as_ref()) || token.as_ref() == "!")
-        {
-            slice = &slice[1..];
-        }
+        slice = strip_command_prefixes(slice).0;
         let Some(first) = slice.first().map(|token| command_name(token.as_ref())) else {
             return false;
         };
@@ -357,14 +750,10 @@ pub(crate) fn has_multiple_find_exec_actions<S: AsRef<str>>(tokens: &[S]) -> boo
                 .count()
                 > 1;
         }
-        let Some(wrapper) = COMMAND_WRAPPERS
-            .iter()
-            .find(|wrapper| wrapper.name == first)
-        else {
-            return false;
-        };
-        let skipped = 1 + skip_wrapper_tokens(&slice[1..], wrapper);
-        slice = &slice[skipped.min(slice.len())..];
+        match launcher_layer(slice) {
+            LauncherLayer::Child(child) => slice = child,
+            _ => return false,
+        }
     }
 }
 
@@ -375,12 +764,7 @@ pub(crate) fn has_multiple_find_exec_actions<S: AsRef<str>>(tokens: &[S]) -> boo
 pub(crate) fn has_env_split_string<S: AsRef<str>>(tokens: &[S]) -> bool {
     let mut slice = tokens;
     loop {
-        while slice
-            .first()
-            .is_some_and(|token| is_env_assignment(token.as_ref()) || token.as_ref() == "!")
-        {
-            slice = &slice[1..];
-        }
+        slice = strip_command_prefixes(slice).0;
         let Some(first) = slice.first().map(|token| command_name(token.as_ref())) else {
             return false;
         };
@@ -399,14 +783,10 @@ pub(crate) fn has_env_split_string<S: AsRef<str>>(tokens: &[S]) -> bool {
                 }
             }
         }
-        let Some(wrapper) = COMMAND_WRAPPERS
-            .iter()
-            .find(|wrapper| wrapper.name == first)
-        else {
-            return false;
-        };
-        let skipped = 1 + skip_wrapper_tokens(&slice[1..], wrapper);
-        slice = &slice[skipped.min(slice.len())..];
+        match launcher_layer(slice) {
+            LauncherLayer::Child(child) => slice = child,
+            _ => return false,
+        }
     }
 }
 
@@ -416,18 +796,11 @@ pub(crate) fn has_env_split_string<S: AsRef<str>>(tokens: &[S]) -> bool {
 pub(crate) fn reparsed_watch_command<S: AsRef<str>>(tokens: &[S]) -> Option<String> {
     let mut slice = tokens;
     loop {
-        while slice
-            .first()
-            .is_some_and(|token| is_env_assignment(token.as_ref()) || token.as_ref() == "!")
-        {
-            slice = &slice[1..];
-        }
+        slice = strip_command_prefixes(slice).0;
         let first = slice.first().map(|token| command_name(token.as_ref()))?;
-        let wrapper = COMMAND_WRAPPERS
-            .iter()
-            .find(|wrapper| wrapper.name == first)?;
-        let skipped = 1 + skip_wrapper_tokens(&slice[1..], wrapper);
-        let inner = &slice[skipped.min(slice.len())..];
+        let LauncherLayer::Child(inner) = launcher_layer(slice) else {
+            return None;
+        };
         if first == "watch" {
             if inner.is_empty() {
                 return None;
@@ -441,5 +814,134 @@ pub(crate) fn reparsed_watch_command<S: AsRef<str>>(tokens: &[S]) -> Option<Stri
             );
         }
         slice = inner;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn listed_opaque_launchers_are_classified_fail_closed() {
+        assert!(!OPAQUE_COMMAND_LAUNCHERS.is_empty());
+        for launcher in OPAQUE_COMMAND_LAUNCHERS {
+            let argv = [*launcher, "git", "push", "origin", "main"];
+            assert!(
+                matches!(
+                    classify_command_launcher(&argv),
+                    LauncherDisposition::Opaque(name) if name == *launcher
+                ),
+                "listed opaque launcher was not classified: {launcher}"
+            );
+        }
+    }
+
+    #[test]
+    fn launcher_classification_keeps_transparent_and_ordinary_commands_distinct() {
+        for launcher in ["time", "proxychains", "proxychains4", "eatmydata"] {
+            let argv = [launcher, "git", "push", "origin", "main"];
+            match classify_command_launcher(&argv) {
+                LauncherDisposition::Transparent => {
+                    assert_eq!(unwrap_command_wrappers(&argv).first().copied(), Some("git"));
+                }
+                _ => panic!("modeled launcher was not transparent: {launcher}"),
+            }
+        }
+
+        let argv = ["echo", "git", "push"];
+        assert!(matches!(
+            classify_command_launcher(&argv),
+            LauncherDisposition::Ordinary
+        ));
+    }
+
+    #[test]
+    fn util_linux_launchers_unwrap_only_command_mode() {
+        let cases: &[(&[&str], &[&str])] = &[
+            (&["ionice", "cargo", "build"], &["cargo", "build"]),
+            (&["ionice", "-c3", "cargo", "build"], &["cargo", "build"]),
+            (&["ionice", "-tc", "3", "cargo", "test"], &["cargo", "test"]),
+            (
+                &["ionice", "--class", "idle", "cargo", "test"],
+                &["cargo", "test"],
+            ),
+            (
+                &["taskset", "-c", "0", "cargo", "bench"],
+                &["cargo", "bench"],
+            ),
+            (&["taskset", "0x1", "make"], &["make"]),
+            (&["taskset", "--", "0x1", "make"], &["make"]),
+            (
+                &["taskset", "-c", "0", "cargo", "build", "-p"],
+                &["cargo", "build", "-p"],
+            ),
+            (&["chrt", "-b", "0", "make"], &["make"]),
+            (&["chrt", "-b", "make"], &["make"]),
+            (&["chrt", "-f", "10", "make"], &["make"]),
+            (
+                &["chrt", "-b", "-T100p", "cargo", "build"],
+                &["cargo", "build"],
+            ),
+            (&["chrt", "-b", "0", "--", "make"], &["make"]),
+            (
+                &["chrt", "--batch", "0", "cargo", "build"],
+                &["cargo", "build"],
+            ),
+        ];
+
+        for (argv, expected) in cases {
+            assert_eq!(
+                unwrap_command_wrappers(argv),
+                *expected,
+                "command mode was not unwrapped: {argv:?}"
+            );
+            assert!(matches!(
+                classify_command_launcher(argv),
+                LauncherDisposition::Transparent
+            ));
+        }
+    }
+
+    #[test]
+    fn util_linux_pid_modes_do_not_treat_identifiers_as_commands() {
+        for argv in [
+            &["ionice", "-p", "1234"][..],
+            &["ionice", "-p1234"][..],
+            &["ionice", "--pid=1234"][..],
+            &["ionice", "-P", "7", "8"][..],
+            &["ionice", "-u0", "1000"][..],
+            &["taskset", "-pc", "0", "1234"][..],
+            &["taskset", "-p", "1234"][..],
+            &["taskset", "--pid", "1234"][..],
+            &["chrt", "-p", "1234"][..],
+            &["chrt", "-p", "-b", "0", "1234"][..],
+            &["chrt", "-pT100"][..],
+            &["chrt", "--pid", "10", "1234"][..],
+        ] {
+            assert_eq!(
+                unwrap_command_wrappers(argv),
+                argv,
+                "PID mode exposed an identifier as a child command: {argv:?}"
+            );
+            assert!(matches!(
+                classify_command_launcher(argv),
+                LauncherDisposition::ExistingProcess(_)
+            ));
+        }
+    }
+
+    #[test]
+    fn ambiguous_util_linux_launcher_syntax_fails_closed() {
+        for argv in [
+            &["ionice", "--unknown", "git", "push"][..],
+            &["taskset", "--unknown", "git", "push"][..],
+            &["chrt", "--unknown", "git", "push"][..],
+            &["env", "ionice", "--unknown", "git", "push"][..],
+        ] {
+            assert!(matches!(
+                classify_command_launcher(argv),
+                LauncherDisposition::Opaque(_)
+            ));
+        }
     }
 }

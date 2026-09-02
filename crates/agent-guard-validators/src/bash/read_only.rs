@@ -91,7 +91,16 @@ fn check_command_segment(parts: &[String]) -> Option<ValidationResult> {
         if parts.len() > 1 {
             let sub = &parts[1];
             let write_subs = [
-                "commit", "push", "pull", "merge", "checkout", "add", "rebase", "reset", "init",
+                "commit",
+                "push",
+                "send-pack",
+                "pull",
+                "merge",
+                "checkout",
+                "add",
+                "rebase",
+                "reset",
+                "init",
             ];
             if write_subs.contains(&sub.as_str()) {
                 return Some(ValidationResult::Block {
@@ -100,6 +109,13 @@ fn check_command_segment(parts: &[String]) -> Option<ValidationResult> {
             }
         }
         return None;
+    }
+
+    if first_command == "git-send-pack" {
+        return Some(ValidationResult::Block {
+            reason: "Git command 'send-pack' modifies a remote repository and is not allowed in read-only mode"
+                .to_string(),
+        });
     }
 
     if first_command == "sed" {

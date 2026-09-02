@@ -255,7 +255,7 @@ tools:
 
     let d = guard.check_tool(
         Tool::ReadFile,
-        &format!(r#"{{"path":"{}"}}"#, symlink.display()),
+        format!(r#"{{"path":"{}"}}"#, symlink.display()),
         Context {
             trust_level: TrustLevel::Trusted,
             working_directory: Some(workspace.clone()),
@@ -441,13 +441,10 @@ fn untrusted_read_file_is_denied_by_mode() {
 
 #[test]
 fn bash_validator_blocks_destructive_rm_rf_root() {
-    // rm -rf / triggers the bash validator's destructive pattern check.
-    // Note: the policy deny rule also catches "rm -rf", so this confirms both work.
+    // The validator warning and policy deny are both evaluated; the stronger
+    // policy decision must win deterministically.
     let d = guard().check_tool(Tool::Bash, r#"{"command":"rm -rf /"}"#, trusted());
-    assert!(matches!(
-        d,
-        GuardDecision::Deny { .. } | GuardDecision::AskUser { .. }
-    ));
+    assert!(matches!(d, GuardDecision::Deny { .. }));
 }
 
 #[test]
@@ -941,10 +938,12 @@ fn bash_validator_fork_bomb_produces_ask_user_with_destructive_code() {
 
 #[test]
 fn bash_validator_rm_rf_root_produces_intercepted_decision() {
-    // rm -rf / hits the destructive warning → AskUser or Deny (policy also has deny rule).
-    // We only assert it's NOT Allow — the exact variant depends on which fires first.
+    // The destructive warning cannot mask the policy's explicit deny.
     let d = guard().check_tool(Tool::Bash, r#"{"command":"rm -rf /"}"#, trusted());
-    assert_ne!(d, GuardDecision::Allow, "rm -rf / must never be allowed");
+    assert!(
+        matches!(d, GuardDecision::Deny { .. }),
+        "rm -rf / must resolve to the strongest decision"
+    );
 }
 
 #[test]

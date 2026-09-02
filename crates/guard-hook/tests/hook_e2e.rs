@@ -22,6 +22,7 @@ tools:
     mode: workspace_write
     deny:
       - prefix: "sudo"
+      - regex: "^git\\s+push\\s+--force(?:\\s|$)"
     ask:
       - prefix: "git push"
     allow:
@@ -101,11 +102,12 @@ fn denies_sudo_command() {
 }
 
 #[test]
-fn destructive_validator_short_circuits_to_ask() {
+fn destructive_validator_warning_remains_ask_without_a_stronger_policy_decision() {
     // The bash validator runs before policy and classifies `rm -rf <path>`
-    // as DESTRUCTIVE_COMMAND → AskUser. This is by design: validator
-    // detections take precedence over policy rules so users can't
-    // accidentally allow inherently destructive commands. Pin the behaviour.
+    // as DESTRUCTIVE_COMMAND → AskUser. Validator warnings participate in the
+    // final strongest-decision merge: they can strengthen an allow, while a
+    // later policy deny still wins. This policy has no stronger matching rule,
+    // so the final decision remains ask. Pin that behaviour.
     //
     // The event must carry `cwd` and the target must sit INSIDE that
     // workspace: `validate_paths` runs ahead of `check_destructive`
@@ -146,6 +148,83 @@ fn asks_on_git_push() {
     assert!(
         stdout.contains("\"permissionDecision\":\"ask\""),
         "expected ask, got: {stdout}"
+    );
+}
+
+#[test]
+fn send_pack_enters_outbound_approval_at_the_real_hook() {
+    let dir = TempDir::new().unwrap();
+    let audit = dir.path().join("audit.jsonl");
+    let policy = write_policy(&dir, audit.to_str().unwrap());
+
+    let send_pack = r#"{"tool_name":"Bash","tool_input":{"command":"git send-pack origin main"}}"#;
+    let (stdout, _stderr, code) = run_hook(&policy, send_pack);
+    assert_eq!(code, 0);
+    assert!(
+        stdout.contains("\"permissionDecision\":\"ask\"") && stdout.contains("git send-pack"),
+        "send-pack must enter exact outbound approval: {stdout}"
+    );
+}
+
+#[test]
+fn modeled_launcher_preserves_policy_and_safe_local_work_at_the_real_hook() {
+    let dir = TempDir::new().unwrap();
+    let audit = dir.path().join("audit.jsonl");
+    let policy = write_policy(&dir, audit.to_str().unwrap());
+
+    let forced_push = r#"{"tool_name":"Bash","tool_input":{"command":"ionice -c3 git push --force origin main"}}"#;
+    let (stdout, _stderr, code) = run_hook(&policy, forced_push);
+    assert_eq!(code, 0);
+    assert!(
+        stdout.contains("\"permissionDecision\":\"deny\""),
+        "modeled launcher must preserve the inner force deny: {stdout}"
+    );
+    assert!(
+        std::fs::read_to_string(&audit)
+            .expect("read audit")
+            .contains("\"detection_kind\":\"modeled_execution\""),
+        "modeled execution provenance must be audited"
+    );
+
+    let benign = r#"{"tool_name":"Bash","tool_input":{"command":"ionice -c3 cargo build"}}"#;
+    let (stdout, _stderr, code) = run_hook(&policy, benign);
+    assert_eq!(code, 0);
+    assert!(
+        stdout.contains("\"permissionDecision\":\"allow\""),
+        "modeled benign launcher must stay frictionless: {stdout}"
+    );
+}
+
+#[test]
+fn embedded_argv_candidate_preserves_policy_strength_at_the_real_hook() {
+    let dir = TempDir::new().unwrap();
+    let audit = dir.path().join("audit.jsonl");
+    let policy = write_policy(&dir, audit.to_str().unwrap());
+
+    let ordinary =
+        r#"{"tool_name":"Bash","tool_input":{"command":"firejail git push origin main"}}"#;
+    let (stdout, _stderr, code) = run_hook(&policy, ordinary);
+    assert_eq!(code, 0);
+    assert!(
+        stdout.contains("\"permissionDecision\":\"ask\"")
+            && stdout.contains("conservative argv candidate")
+            && stdout.contains("embedded_argv"),
+        "embedded ordinary push must ask with honest provenance: {stdout}"
+    );
+
+    let forced =
+        r#"{"tool_name":"Bash","tool_input":{"command":"firejail git push --force origin main"}}"#;
+    let (stdout, _stderr, code) = run_hook(&policy, forced);
+    assert_eq!(code, 0);
+    assert!(
+        stdout.contains("\"permissionDecision\":\"deny\""),
+        "embedded destructive push must remain deny: {stdout}"
+    );
+    assert!(
+        std::fs::read_to_string(&audit)
+            .expect("read audit")
+            .contains("\"detection_kind\":\"embedded_argv\""),
+        "embedded argv provenance must be audited"
     );
 }
 

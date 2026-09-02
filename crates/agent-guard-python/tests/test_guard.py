@@ -85,10 +85,11 @@ def test_allow_safe_bash(guard):
 
 def test_deny_rm_rf(guard):
     d = guard.check("bash", "rm -rf ./build", trust_level="trusted")
-    assert d.is_ask()
-    assert d.outcome == "ask_user"
+    assert d.is_deny()
+    assert d.outcome == "deny"
     assert d.code is not None
     assert d.message is not None
+    assert d.matched_rule is not None
 
 
 def test_deny_has_matched_rule(guard):

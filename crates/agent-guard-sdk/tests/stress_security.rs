@@ -100,16 +100,14 @@ anomaly:
 
             let res = g_check.execute(&input, &NoopSandbox).unwrap();
             if let ExecuteOutcome::Denied {
-                decision,
+                decision: GuardDecision::Deny { reason, .. },
                 policy_version,
                 ..
             } = res
             {
-                if let GuardDecision::Deny { reason, .. } = decision {
-                    if reason.code() == DecisionCode::AgentLocked {
-                        locked_at_version = Some(policy_version);
-                        break;
-                    }
+                if reason.code() == DecisionCode::AgentLocked {
+                    locked_at_version = Some(policy_version);
+                    break;
                 }
             }
             tokio::task::yield_now().await;
@@ -155,14 +153,16 @@ anomaly:
     guard.execute(&input_restricted, &sandbox).unwrap();
 
     let res = guard.execute(&input_restricted, &sandbox).unwrap();
-    if let ExecuteOutcome::Denied { decision, .. } = res {
-        if let GuardDecision::Deny { reason, .. } = decision {
-            assert_eq!(
-                reason.code(),
-                DecisionCode::AgentLocked,
-                "Priority failure: AGENT_LOCKED must come first"
-            );
-        }
+    if let ExecuteOutcome::Denied {
+        decision: GuardDecision::Deny { reason, .. },
+        ..
+    } = res
+    {
+        assert_eq!(
+            reason.code(),
+            DecisionCode::AgentLocked,
+            "Priority failure: AGENT_LOCKED must come first"
+        );
     }
 }
 
@@ -253,13 +253,15 @@ anomaly:
     guard.execute(&input, &NoopSandbox).unwrap();
 
     let res = guard.execute(&input, &NoopSandbox).unwrap();
-    if let ExecuteOutcome::Denied { decision, .. } = res {
-        if let GuardDecision::Deny { reason, .. } = decision {
-            assert_eq!(
-                reason.code(),
-                DecisionCode::AgentLocked,
-                "Local locking failed due to webhook error?"
-            );
-        }
+    if let ExecuteOutcome::Denied {
+        decision: GuardDecision::Deny { reason, .. },
+        ..
+    } = res
+    {
+        assert_eq!(
+            reason.code(),
+            DecisionCode::AgentLocked,
+            "Local locking failed due to webhook error?"
+        );
     }
 }

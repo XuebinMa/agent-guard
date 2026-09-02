@@ -3,6 +3,10 @@ name = "guard-verify"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+keywords.workspace = true
+categories.workspace = true
 description = "CLI tool to verify agent-guard execution receipts"
 
 [[bin]]
@@ -10,8 +14,8 @@ name = "guard-verify"
 path = "src/main.rs"
 
 [dependencies]
-agent-guard-core = { path = "../agent-guard-core", version = "=0.2.0-rc2" }
-agent-guard-sdk = { path = "../agent-guard-sdk", version = "=0.2.0-rc2" }
+agent-guard-core = { path = "../agent-guard-core", version = "=0.2.0" }
+agent-guard-sdk = { path = "../agent-guard-sdk", version = "=0.2.0" }
 clap.workspace = true
 serde.workspace = true
 serde_json.workspace = true

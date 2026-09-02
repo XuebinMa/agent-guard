@@ -30,6 +30,7 @@ STALE_PATTERNS = [
     (r'global filesystem write protection \(Prototype\)', 'Linux prototype fallback does not currently guarantee global write protection'),
     (r'While Seccomp blocks writes globally', 'Current Linux prototype fallback does not yet block writes globally'),
     (r'provides OS-level process isolation on Linux using `seccomp-bpf`', 'The Linux sandbox doc should describe the current prototype wrapper, not shipped seccomp-bpf enforcement'),
+    (r'cover the class rather than one wrapper spelling', 'Do not describe a finite launcher list as class-level containment; reserve that guarantee for the credential-isolated broker'),
     
     # Result schema drifts. Check/decision objects intentionally expose
     # `.outcome`; only execution/runtime result types use `.status`.

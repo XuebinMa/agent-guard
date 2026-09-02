@@ -262,8 +262,8 @@ Legend: ✅ primary control · 🟡 containment / blast-radius / accountability 
 | ASI06 | Memory & Context Poisoning | ⬜ | We do not touch agent memory / vector stores / RAG. |
 | ASI07 | Insecure Inter-Agent Communication | ⬜ | Single-agent execution control; multi-agent control plane is out of scope. |
 | ASI08 | Cascading Failures | 🟡 | Deny Fuse circuit-breaker (lock after N denials in a window) + rate limiting bound a single runaway agent. |
-| ASI09 | Human-Agent Trust Exploitation | 🟡 | Approval workflow + signed approval provenance insert and *record* a real human decision point before risky actions. |
-| ASI10 | Rogue Agents | 🟡 | Deny Fuse lock-out + tamper-evident audit + Ed25519 execution proof make rogue actions detectable and attributable. |
+| ASI09 | Human-Agent Trust Exploitation | 🟡 | The local approval workflow records a human decision and revalidates policy before execution. Its JSONL ledger is not authenticated; hostile-agent isolation requires a separate broker. |
+| ASI10 | Rogue Agents | 🟡 | Deny Fuse lock-out and JSONL decisions improve detection; Guard-owned executions can add Ed25519 provenance when explicitly configured. |
 
 **Defensible one-liner:** `agent-guard` is a *primary* control for **ASI02** and
 **ASI05**, and a blast-radius / accountability backstop for **ASI01, ASI03,

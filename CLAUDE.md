@@ -6,7 +6,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 `agent-guard` is an execution control layer for agent side effects. It sits between agent tool intent and real execution, evaluates calls against policy, applies validator and sandbox controls, and records auditable outcomes.
 
-Today, the clearest proof point is shell-first execution control. The broader direction is side-effect execution control beyond shell, but the current adoption wedge is giving AI application and agent developers a real decision boundary before risky actions become real. Current version: 0.2.0-rc2.
+Today, the clearest proof point is structured recognition and policy decisions
+for recognized outbound Git push forms. The existing shell/file/HTTP surfaces
+remain supported, but new product work should not expand them horizontally. The
+target broker boundary is: an agent may write and test freely; agent-guard
+decides and executes which exact Git change may leave the machine.
+Plumbing-level `git send-pack` is part of that same outbound boundary, not a
+separate feature surface. Current source version: 0.2.0 (unpublished).
 
 ## Build & Test Commands
 
@@ -66,13 +72,23 @@ guard-hook                ← Claude Code PreToolUse hook adapter (bin: guard-ho
 
 ## Current Product Reality
 
-The current adoption wedge is a narrow execution-control runtime for:
+- The shipped Claude Code hook is a **decision-only, fail-open advisory
+  integration**. It does not own credentials or execution and is not a hostile
+  agent containment boundary.
+- The local JSONL approval ledger is an unauthenticated single-user workflow.
+  It binds approvals to the request and revalidates current policy, but a
+  same-permission process can still forge the file.
+- Guard-owned execution can emit an Ed25519-signed receipt only when an
+  explicit signing key is configured. Ordinary JSONL decision records are not
+  signed.
+- The strategic target is a separate broker-enforced Git push path: structured
+  intent, exact preview, one-use short-lived authorization, execution-time
+  policy/remote-state revalidation, Guard-held credentials, and a signed
+  receipt.
 
-- shell / terminal
-- file write
-- outbound mutation HTTP
-
-The broader SDK already includes governance-oriented features such as policy signing, execution receipts, metrics, anomaly detection, and SIEM export. Do not describe the repository as a tiny shell-only layer, but do keep wedge claims narrow and truthful.
+The broader SDK features remain maintained, but avoid new generic-agent,
+sandbox, DLP, framework-adapter, or control-plane expansion until that Git
+boundary is complete.
 
 ## Core Execution Pipeline
 
@@ -128,6 +144,10 @@ GitHub Actions (`.github/workflows/ci.yml`) uses `./scripts/verify.sh` as the sh
 - Prefer landing the bump as a normal PR and tagging the **main merge commit** afterwards — tagging a branch commit gets orphaned by squash-merge.
 - Remote/cloud sessions **cannot push tags**: the session git proxy scopes pushes to the designated branch and returns 403 on tag refs. Hand the tag/Release step to the maintainer (GitHub UI "Draft a new release" creates tag + Release in one step).
 - Historical version strings (old CHANGELOG headings, `docs/archive/`, era status markers) stay untouched on a bump; only current-facing markers move.
+- Registry publishing (added at `0.2.0`): `.github/workflows/release.yml` runs on a `v*` tag and covers crates.io, PyPI wheels, and the npm plugin; `release.toml` now carries `publish = true`, and the two binding crates carry `publish = false` in their own manifests. Two packaging traps were live before that and are easy to reintroduce:
+  - **The root `pyproject.toml` is not the one under test.** `scripts/verify.sh python` and CI both build from `crates/agent-guard-python`. The root file lacked `python-source`, so a wheel built from the repo root shipped the native module alone and silently dropped `python/agent_guard/{adapters,langchain,openai}.py`. Both files must stay aligned; build from the crate directory.
+  - **`.gitignore` does not constrain maturin.** `maturin develop` writes a `.so` and (on macOS) a ~75MB `.dSYM` tree into `python-source`, so a maintainer who verifies before publishing would ship debug symbols. The `exclude` list in `crates/agent-guard-python/pyproject.toml` is what keeps them out — verify by unzipping the built wheel, not by reading config.
+- The PyPI distribution is **`agent-guard-runtime`**, not `agent-guard` (taken on PyPI, npm, and crates.io by unrelated projects). The import name stays `agent_guard`.
 
 ## Local Environment Gotchas (remote/cloud sessions)
 
