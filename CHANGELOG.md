@@ -9,6 +9,29 @@ The `[Unreleased]` heading is rolled forward manually before each release; do no
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-09-02
+
+Release engineering only; no library or policy behaviour changed. `0.2.0`
+reached crates.io but stalled before PyPI and npm, and finishing it needed
+workflow changes, which only take effect at a new tag.
+
+### Fixed
+- **The crates.io publish retries a rate limit.** Publishing seven new crates
+  in one run hits the new-crate limit: `0.2.0` published five and then took a
+  `429` on the sixth, leaving `guard-hook` and `guard-verify` behind. The
+  probe before the publish and the visibility poll after it already retried;
+  the publish itself now does too, and still fails immediately on any other
+  error.
+- **The Linux arm64 wheel is built natively.** `aws-lc-sys` reaches the SDK
+  through `reqwest` -> `rustls` -> `aws-lc-rs`, and its C sources do not
+  survive the manylinux2014 aarch64 cross toolchain. That wheel now builds on
+  an `ubuntu-24.04-arm` runner, which removes the cross step rather than
+  upgrading it.
+- **The retired `macos-13` runner is replaced by `macos-15-intel`.** A job
+  targeting `macos-13` is never scheduled — it queues until timeout — and
+  because the PyPI upload requires every wheel in the matrix, the `0.2.0` run
+  could not reach PyPI or npm however often it was restarted.
+
 ## [0.2.0] - 2026-09-02
 
 ### Added
