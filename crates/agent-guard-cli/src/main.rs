@@ -192,7 +192,7 @@ mod tests {
     fn approve_flips_pending_to_approved_and_exits_zero() {
         let (_dir, ledger) = ledger();
         ledger
-            .create_pending("r1", "bash", "h", "git push", None)
+            .create_pending("r1", "bash", "h", "git push", None, None)
             .expect("create");
 
         let code = run_decision(&ledger, "r1", Some("alice".into()), Decision::Approve);
@@ -207,7 +207,7 @@ mod tests {
     fn deny_flips_pending_to_denied() {
         let (_dir, ledger) = ledger();
         ledger
-            .create_pending("r1", "bash", "h", "m", None)
+            .create_pending("r1", "bash", "h", "m", None, None)
             .expect("create");
 
         let code = run_decision(&ledger, "r1", None, Decision::Deny);
@@ -229,7 +229,7 @@ mod tests {
     fn deciding_twice_exits_nonzero() {
         let (_dir, ledger) = ledger();
         ledger
-            .create_pending("r1", "bash", "h", "m", None)
+            .create_pending("r1", "bash", "h", "m", None, None)
             .expect("create");
         assert_eq!(run_decision(&ledger, "r1", None, Decision::Approve), 0);
         assert_eq!(run_decision(&ledger, "r1", None, Decision::Deny), 1);
@@ -245,7 +245,7 @@ mod tests {
     fn list_and_show_present_existing_requests() {
         let (_dir, ledger) = ledger();
         ledger
-            .create_pending("r1", "bash", "h", "m", None)
+            .create_pending("r1", "bash", "h", "m", None, None)
             .expect("create");
         assert_eq!(run_list(&ledger), 0);
         assert_eq!(run_show(&ledger, "r1"), 0);

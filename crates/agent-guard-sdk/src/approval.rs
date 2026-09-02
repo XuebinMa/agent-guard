@@ -99,6 +99,15 @@ pub struct ApprovalRecord {
     pub message: String,
     pub agent_id: Option<String>,
     pub created_at: DateTime<Utc>,
+    /// When this request stops being answerable, if a bound was imposed.
+    ///
+    /// An expiry is a claim about a bound, so the bound has to be in the
+    /// ledger: without it a reader can see that a request expired but cannot
+    /// check whether it expired on time. `None` means no bound was imposed —
+    /// a request created outside a waiting caller never expires on its own —
+    /// and a terminal `Expired` with `None` here is an unverifiable claim.
+    #[serde(default)]
+    pub expires_at: Option<DateTime<Utc>>,
     pub status: ApprovalStatus,
     pub decided_at: Option<DateTime<Utc>>,
     /// Free-form identifier of who decided (e.g. CLI `--by`), if recorded.
@@ -132,6 +141,10 @@ struct CreatedEvent {
     message: String,
     agent_id: Option<String>,
     created_at: DateTime<Utc>,
+    /// Absent in ledgers written before this field existed; such a request
+    /// carries no checkable bound.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    expires_at: Option<DateTime<Utc>>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -204,14 +217,27 @@ impl ApprovalLedger {
         payload_hash: impl Into<String>,
         message: impl Into<String>,
         agent_id: Option<String>,
+        timeout: Option<Duration>,
     ) -> Result<ApprovalRecord, ApprovalError> {
+        // Derived here, from this record's own `created_at`, so the two fields
+        // are related by exactly the configured timeout. Computing the
+        // deadline from a clock reading taken elsewhere would leave them off
+        // by the gap between the two readings, and a reader checking
+        // `expires_at - created_at` against a stated timeout would see drift
+        // that means nothing.
+        let created_at = Utc::now();
+        let expires_at = timeout
+            .and_then(|timeout| chrono::Duration::from_std(timeout).ok())
+            .and_then(|timeout| created_at.checked_add_signed(timeout));
+
         let created = CreatedEvent {
             request_id: request_id.into(),
             tool: tool.into(),
             payload_hash: payload_hash.into(),
             message: message.into(),
             agent_id,
-            created_at: Utc::now(),
+            created_at,
+            expires_at,
         };
 
         let record = ApprovalRecord {
@@ -221,6 +247,7 @@ impl ApprovalLedger {
             message: created.message.clone(),
             agent_id: created.agent_id.clone(),
             created_at: created.created_at,
+            expires_at: created.expires_at,
             status: ApprovalStatus::Pending,
             decided_at: None,
             decided_by: None,
@@ -380,6 +407,7 @@ fn apply_event(state: &mut BTreeMap<String, ApprovalRecord>, event: LedgerEvent)
                 message: c.message,
                 agent_id: c.agent_id,
                 created_at: c.created_at,
+                expires_at: c.expires_at,
                 status: ApprovalStatus::Pending,
                 decided_at: None,
                 decided_by: None,
@@ -419,6 +447,7 @@ mod tests {
                 "abc123",
                 "git push origin main",
                 Some("a".into()),
+                None,
             )
             .expect("create");
 
@@ -433,7 +462,7 @@ mod tests {
     fn approve_transitions_to_approved() {
         let (_dir, ledger) = ledger();
         ledger
-            .create_pending("req-1", "bash", "h", "msg", None)
+            .create_pending("req-1", "bash", "h", "msg", None, None)
             .expect("create");
 
         let decided = ledger
@@ -452,7 +481,7 @@ mod tests {
     fn deny_transitions_to_denied() {
         let (_dir, ledger) = ledger();
         ledger
-            .create_pending("r", "http_request", "h", "POST", None)
+            .create_pending("r", "http_request", "h", "POST", None, None)
             .expect("create");
 
         let decided = ledger.deny("r", None).expect("deny");
@@ -463,7 +492,7 @@ mod tests {
     fn deciding_twice_is_rejected() {
         let (_dir, ledger) = ledger();
         ledger
-            .create_pending("r", "bash", "h", "m", None)
+            .create_pending("r", "bash", "h", "m", None, None)
             .expect("create");
         ledger.approve("r", None).expect("first approve");
 
@@ -492,13 +521,13 @@ mod tests {
     fn list_pending_excludes_decided_and_sorts_by_age() {
         let (_dir, ledger) = ledger();
         ledger
-            .create_pending("a", "bash", "h", "first", None)
+            .create_pending("a", "bash", "h", "first", None, None)
             .expect("create a");
         ledger
-            .create_pending("b", "bash", "h", "second", None)
+            .create_pending("b", "bash", "h", "second", None, None)
             .expect("create b");
         ledger
-            .create_pending("c", "bash", "h", "third", None)
+            .create_pending("c", "bash", "h", "third", None, None)
             .expect("create c");
         ledger.approve("b", None).expect("approve b");
 
@@ -518,7 +547,7 @@ mod tests {
     fn corrupt_lines_are_skipped() {
         let (dir, ledger) = ledger();
         ledger
-            .create_pending("r", "bash", "h", "m", None)
+            .create_pending("r", "bash", "h", "m", None, None)
             .expect("create");
         // Append a garbage line directly.
         let mut f = OpenOptions::new()

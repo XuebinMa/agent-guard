@@ -262,3 +262,90 @@ fn non_ask_outcomes_pass_through_without_ledger_writes() {
 
     assert!(ledger.list_pending().expect("list").is_empty());
 }
+
+/// An expiry is a claim about a bound. The ledger has to carry the bound, or
+/// nobody holding the ledger can tell a correct expiry from a premature one.
+///
+/// Before this, the deadline lived only as a process-local `Instant` in the
+/// waiting loop: not serialisable, not comparable across processes, and never
+/// written down. A reader saw that a request expired between two timestamps
+/// and could not check whether the configured timeout was 150ms or 30 minutes.
+#[test]
+fn expired_request_records_the_deadline_that_expired_it() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let ledger = ApprovalLedger::open(dir.path().join("approvals.jsonl"));
+    let timeout = Duration::from_millis(150);
+
+    let outcome = guard()
+        .run_until_approved(
+            &bash("git push origin main"),
+            &NoopSandbox,
+            &config(&ledger, timeout),
+        )
+        .expect("no sandbox error");
+
+    let request_id = match outcome {
+        RuntimeOutcome::Denied { request_id, .. } => request_id,
+        other => panic!("expected Denied, got {other:?}"),
+    };
+
+    let record = ledger.get(&request_id).expect("get").expect("present");
+    assert_eq!(record.status, ApprovalStatus::Expired);
+
+    let expires_at = record
+        .expires_at
+        .expect("an expired request must record the deadline it passed");
+
+    // The bound is derivable from the record alone.
+    let bound_ms = (expires_at - record.created_at).num_milliseconds();
+    assert_eq!(
+        bound_ms,
+        timeout.as_millis() as i64,
+        "recorded deadline must equal created_at plus the configured timeout"
+    );
+
+    // And the terminal decision is justified by it, checkable without config.
+    let decided_at = record.decided_at.expect("expired record is decided");
+    assert!(
+        decided_at >= expires_at,
+        "expiry claimed at {decided_at} but the recorded deadline was {expires_at}"
+    );
+}
+
+/// The reader's own configuration must not change what the ledger says
+/// happened. Two runs under different timeouts each carry their own bound, and
+/// a checker that reads only the record reaches the same verdict for both.
+#[test]
+fn expiry_verdict_does_not_depend_on_the_readers_timeout() {
+    fn expiry_is_justified(record: &agent_guard_sdk::ApprovalRecord) -> bool {
+        match (record.expires_at, record.decided_at) {
+            (Some(expires_at), Some(decided_at)) => decided_at >= expires_at,
+            // No recorded bound means the claim is unverifiable, not fine.
+            _ => false,
+        }
+    }
+
+    for timeout in [Duration::from_millis(120), Duration::from_millis(400)] {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let ledger = ApprovalLedger::open(dir.path().join("approvals.jsonl"));
+
+        let outcome = guard()
+            .run_until_approved(
+                &bash("git push origin main"),
+                &NoopSandbox,
+                &config(&ledger, timeout),
+            )
+            .expect("no sandbox error");
+
+        let request_id = match outcome {
+            RuntimeOutcome::Denied { request_id, .. } => request_id,
+            other => panic!("expected Denied, got {other:?}"),
+        };
+
+        let record = ledger.get(&request_id).expect("get").expect("present");
+        assert!(
+            expiry_is_justified(&record),
+            "expiry under timeout {timeout:?} was not checkable from the ledger"
+        );
+    }
+}

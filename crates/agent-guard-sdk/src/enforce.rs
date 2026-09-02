@@ -515,6 +515,12 @@ impl Guard {
         policy_version: String,
         policy_verification: PolicyVerification,
     ) -> RuntimeResult {
+        // The wall-clock deadline is written into the ledger before the wait
+        // begins, so a later `Expired` can be checked by anyone holding the
+        // ledger. The monotonic `Instant` below is what the loop actually
+        // waits on — it cannot jump if the system clock moves — but it is not
+        // serialisable, so it is a companion to the recorded bound rather than
+        // a substitute for it.
         config
             .ledger
             .create_pending(
@@ -523,6 +529,7 @@ impl Guard {
                 sha256_hash(&input.payload),
                 message,
                 input.context.agent_id.clone(),
+                Some(config.timeout),
             )
             .map_err(|e| {
                 SandboxError::ExecutionFailed(format!("approval ledger write failed: {e}"))
