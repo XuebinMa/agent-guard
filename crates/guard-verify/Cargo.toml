@@ -14,8 +14,8 @@ name = "guard-verify"
 path = "src/main.rs"
 
 [dependencies]
-agent-guard-core = { path = "../agent-guard-core", version = "=0.2.0" }
-agent-guard-sdk = { path = "../agent-guard-sdk", version = "=0.2.0" }
+agent-guard-core = { path = "../agent-guard-core", version = "=0.2.1" }
+agent-guard-sdk = { path = "../agent-guard-sdk", version = "=0.2.1" }
 clap.workspace = true
 serde.workspace = true
 serde_json.workspace = true

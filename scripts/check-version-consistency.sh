@@ -39,8 +39,8 @@ docs_readme = (root / "docs/README.md").read_text()
 badge_match = re.search(r"Version-([0-9A-Za-z.\-]+)-blue", readme)
 source_match = re.search(r"Source version\*\*:\s*`v([0-9A-Za-z.\-]+)`", readme)
 docs_title_match = re.search(r"Documentation Hub \(v([0-9A-Za-z.\-]+)\)", docs_readme)
-release_match = re.search(r"Latest published prerelease\*\*:\s*\[`v([0-9A-Za-z.\-]+)`", readme)
-docs_release_match = re.search(r"Latest published prerelease\*\*\s*(?:→|:)\s*\[`v([0-9A-Za-z.\-]+)`", docs_readme)
+release_match = re.search(r"Latest published release\*\*:\s*\[`v([0-9A-Za-z.\-]+)`", readme)
+docs_release_match = re.search(r"Latest published release\*\*\s*(?:→|:)\s*\[`v([0-9A-Za-z.\-]+)`", docs_readme)
 
 if not all([badge_match, source_match, docs_title_match, release_match, docs_release_match]):
     missing = []
@@ -51,9 +51,9 @@ if not all([badge_match, source_match, docs_title_match, release_match, docs_rel
     if not docs_title_match:
         missing.append("docs/README title version")
     if not release_match:
-        missing.append("README published prerelease link")
+        missing.append("README published release link")
     if not docs_release_match:
-        missing.append("docs/README published prerelease link")
+        missing.append("docs/README published release link")
     raise SystemExit("Missing version markers: " + ", ".join(missing))
 
 print(cargo_version)
@@ -98,8 +98,8 @@ for check in "${checks[@]}"; do
 done
 
 if [[ "${versions[6]}" != "${versions[7]}" ]]; then
-  echo "Published prerelease link mismatch: README has ${versions[6]}, docs/README has ${versions[7]}" >&2
+  echo "Published release link mismatch: README has ${versions[6]}, docs/README has ${versions[7]}" >&2
   exit 1
 fi
 
-echo "Version consistency check passed: source $expected, published prerelease ${versions[6]}"
+echo "Version consistency check passed: source $expected, published release ${versions[6]}"

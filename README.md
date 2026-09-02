@@ -4,7 +4,7 @@
 > Your agent writes code and runs tests freely; agent-guard makes the outbound
 > intent visible and gives the host a decision before code leaves the machine.
 
-[![Version](https://img.shields.io/badge/Version-0.2.0-blue.svg)]()
+[![Version](https://img.shields.io/badge/Version-0.2.1-blue.svg)]()
 [![Focus](https://img.shields.io/badge/Focus-Outbound%20Control-green.svg)]()
 [![License](https://img.shields.io/badge/License-MIT-yellow.svg)]()
 [![MSRV](https://img.shields.io/badge/MSRV-1.79-orange.svg)]()
@@ -30,39 +30,42 @@ Why now: EU AI Act enforcement begins 2026-08-02. Claude Code's PreToolUse hook 
 
 ---
 
-## Install From This Checkout
+## Install
 
-The `v0.2.0` source is not published to crates.io or PyPI yet. Until the
-release gate opens, install the binaries from a checkout rather than using
-registry commands:
+The Rust crates are on crates.io as of `0.2.0`:
 
 ```bash
-cargo install --path crates/guard-hook --locked
-cargo install --path crates/agent-guard-cli --locked
-cargo install --path crates/guard-verify --locked
+cargo install guard-hook --locked
+cargo install agent-guard-cli --locked
+cargo install guard-verify --locked
 ```
 
-As a Rust library, use a path dependency and adjust the relative path for your
-workspace:
+As a Rust library:
 
 ```toml
 [dependencies]
-agent-guard-sdk = { path = "../agent-guard/crates/agent-guard-sdk" }
+agent-guard-sdk = "0.2"
 ```
+
+The Python and Node distributions are not published yet — the `0.2.0` release
+run reached crates.io but stalled before them. Until `0.2.1` lands, install
+them from a checkout:
 
 ```bash
 python -m pip install ./crates/agent-guard-python   # imports as `agent_guard`
 ```
 
-The Node binding is also not published to npm yet — build it from a checkout
-(`npm ci --prefix crates/agent-guard-node && npm run build --prefix crates/agent-guard-node`).
-The unversioned `npx agent-guard-plugin` command currently resolves to the older
+```bash
+npm ci --prefix crates/agent-guard-node && npm run build --prefix crates/agent-guard-node
+```
+
+The unversioned `npx agent-guard-plugin` command still resolves to the older
 `0.2.0-rc1` package, not this source tree.
 
 ## Release Status
 
-- **Source version**: `v0.2.0` (not published yet; the release gate remains closed)
-- **Latest published prerelease**: [`v0.2.0-rc2`](https://github.com/XuebinMa/agent-guard/releases/tag/v0.2.0-rc2)
+- **Source version**: `v0.2.1` (crates.io only; PyPI and npm land with this release)
+- **Latest published release**: [`v0.2.0`](https://github.com/XuebinMa/agent-guard/releases/tag/v0.2.0)
 - **Announcement**: [GitHub Discussions #1](https://github.com/XuebinMa/agent-guard/discussions/1)
 
 ## Verify Locally
@@ -325,7 +328,7 @@ safety net, not the primary control.
 
 Additional references:
 
-- [Latest published prerelease](https://github.com/XuebinMa/agent-guard/releases/tag/v0.2.0-rc2)
+- [Latest published release](https://github.com/XuebinMa/agent-guard/releases/tag/v0.2.0)
 - [Join the Discussion](https://github.com/XuebinMa/agent-guard/discussions/1)
 - [Deployment Guide](docs/guides/operations/deployment-guide.md)
 - [Roadmap](ROADMAP.md): what's shipped, partial, and planned
