@@ -19,6 +19,7 @@ serde_yaml = "0.9.34"
 thiserror = "1.0.69"
 chrono = { version = "0.4.44", features = ["serde"] }
 sha2 = "0.10.9"
+hmac = "0.12.1"
 hex = "0.4.3"
 rand = "0.8.6"
 reqwest = { version = "0.13", features = ["json"] }
