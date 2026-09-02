@@ -9,27 +9,6 @@ The `[Unreleased]` heading is rolled forward manually before each release; do no
 
 ## [Unreleased]
 
-### Changed
-- **The PyPI distribution is now `agent-guard-python`, not `agent-guard-runtime`.**
-  PyPI compares project names with separators collapsed, and
-  `agent-guard-runtime` collapses to the same string as the unrelated
-  `agentguard-runtime`, so it was refused as too similar. Publishing beside a
-  near-identical name with a near-identical description would also be
-  confusing on its own merits. The import name is unchanged: `agent_guard`.
-
-### Added
-- **Third-party conformance: an offline verifier for attenu-guard evidence
-  bundles.** `guard-verify attenu-bundle` re-derives a schema-v2 bundle from
-  its own bytes — RFC 8785 canonicalization, the SHA-256 entry chain, the
-  HMAC-SHA256 anchor over a head recomputed from genesis rather than read
-  from the ledger, delegation containment, and the allow-to-outcome execution
-  binding. `guard-verify attenu-vectors` scores it against a published corpus
-  under that corpus's minimal-set rule. Written against the published format
-  description only; it does not read, port, or invoke either attenu-guard
-  reference implementation, so agreement is evidence about the format rather
-  than about shared code. Scores 8/8 on `bundle_vectors_v1`, vendored with its
-  pinned hash under `crates/guard-verify/fixtures/attenu/`.
-
 ## [0.2.0] - 2026-09-02
 
 ### Added
@@ -47,6 +26,17 @@ The `[Unreleased]` heading is rolled forward manually before each release; do no
   porcelain `git push`, while structured previews retain the actual command.
   Force, lease, mirror, deletion, and forced-refspec semantics share the same
   policy decision and audit record. Locked by security regression `sec31`.
+- **Third-party conformance: an offline verifier for attenu-guard evidence
+  bundles.** `guard-verify attenu-bundle` re-derives a schema-v2 bundle from
+  its own bytes — RFC 8785 canonicalization, the SHA-256 entry chain, the
+  HMAC-SHA256 anchor over a head recomputed from genesis rather than read
+  from the ledger, delegation containment, and the allow-to-outcome execution
+  binding. `guard-verify attenu-vectors` scores it against a published corpus
+  under that corpus's minimal-set rule. Written against the published format
+  description only; it does not read, port, or invoke either attenu-guard
+  reference implementation, so agreement is evidence about the format rather
+  than about shared code. Scores 8/8 on `bundle_vectors_v1`, vendored with its
+  pinned hash under `crates/guard-verify/fixtures/attenu/`.
 
 ### Security
 - **Static shell command words now share one policy identity.** Executable names
@@ -90,6 +80,12 @@ The `[Unreleased]` heading is rolled forward manually before each release; do no
   distinguishes the fail-open advisory hook, Guard-owned execution, and the
   planned credential-isolated broker; horizontal framework, DLP, sandbox,
   attestation, and telemetry expansion is frozen until that path is complete.
+- **The PyPI distribution is now `agent-guard-python`, not `agent-guard-runtime`.**
+  PyPI compares project names with separators collapsed, and
+  `agent-guard-runtime` collapses to the same string as the unrelated
+  `agentguard-runtime`, so it was refused as too similar. Publishing beside a
+  near-identical name with a near-identical description would also be
+  confusing on its own merits. The import name is unchanged: `agent_guard`.
 
 ### Fixed
 - **Git push previews preserve repository selectors and allowed audit intent.**
