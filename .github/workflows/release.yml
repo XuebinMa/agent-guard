@@ -137,7 +137,13 @@ jobs:
         include:
           - runner: ubuntu-latest
             target: x86_64
-          - runner: ubuntu-latest
+          # Built natively on an arm64 runner rather than cross-compiled.
+          # The aws-lc-sys C sources reach agent-guard-sdk through reqwest ->
+          # rustls -> aws-lc-rs, and they do not survive the manylinux2014
+          # cross toolchain: no stdatomic.h, no -march=armv8.4-a+sha3, no
+          # AT_HWCAP2. A native builder removes the cross toolchain entirely
+          # instead of chasing a newer one.
+          - runner: ubuntu-24.04-arm
             target: aarch64
           - runner: macos-latest
             target: aarch64
