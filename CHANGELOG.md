@@ -9,6 +9,24 @@ The `[Unreleased]` heading is rolled forward manually before each release; do no
 
 ## [Unreleased]
 
+### Fixed
+- **An approval expiry now carries the bound that justified it.** The
+  approval deadline existed only as a process-local `Instant` inside the
+  waiting loop: not serialisable, not comparable across processes, and never
+  written down. Someone holding the whole ledger could see that a request
+  expired between two timestamps and could not check whether the configured
+  timeout was 150 milliseconds or thirty minutes. `ApprovalRecord` and the
+  `created` ledger event now carry `expires_at`, derived inside
+  `create_pending` from that record's own `created_at` so the two fields are
+  related by exactly the configured timeout. A terminal `Expired` with no
+  recorded deadline is an unverifiable claim, and reads that way rather than
+  passing silently. Ledgers written before this field parse with
+  `expires_at: None`.
+
+  `ApprovalLedger::create_pending` takes one further argument, the optional
+  timeout. A request created outside a waiting caller passes `None`, because
+  nothing will expire it.
+
 ## [0.2.1] - 2026-09-02
 
 Release engineering only; no library or policy behaviour changed. `0.2.0`
