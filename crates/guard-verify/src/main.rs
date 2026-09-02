@@ -6,6 +6,8 @@ use clap::{Parser, Subcommand, ValueEnum};
 use ed25519_dalek::SigningKey;
 use std::path::{Path, PathBuf};
 
+mod attenu;
+mod jcs;
 mod report;
 
 /// CLI tool to verify agent-guard execution receipts and trust artifacts.
@@ -129,6 +131,31 @@ enum Commands {
         /// Output format.
         #[arg(short, long, default_value = "text")]
         format: ReportFormat,
+    },
+    /// Verify an attenu-guard evidence bundle offline.
+    ///
+    /// A third-party implementation of the published schema-v2 bundle
+    /// format: it recomputes the hash chain, re-checks the signed anchor
+    /// against the head the ledger actually reproduces, and re-derives the
+    /// delegation and execution-binding rules. It never reads the bundle's
+    /// own `verified` claim.
+    AttenuBundle {
+        /// Path to a JSON file holding the bundle.
+        #[arg(short, long)]
+        bundle: PathBuf,
+        /// Path to a JSON file holding {"alg","secret_hex"} for the anchor.
+        #[arg(short, long)]
+        signer: PathBuf,
+    },
+    /// Score this verifier against an attenu-guard bundle vector corpus.
+    ///
+    /// Applies the corpus scoring rule: each rejecting case declares the
+    /// minimal set of failures that must appear, at their exact positions.
+    /// Reporting more is permitted and is printed as a diagnostic difference.
+    AttenuVectors {
+        /// Path to a `bundle_vectors_v1`-shaped JSON corpus.
+        #[arg(short, long)]
+        vectors: PathBuf,
     },
 }
 
@@ -694,6 +721,8 @@ fn main() {
             agent_id,
             format,
         } => cmd_report(audit, since, agent_id, format.clone()),
+        Commands::AttenuBundle { bundle, signer } => cmd_attenu_bundle(bundle, signer),
+        Commands::AttenuVectors { vectors } => cmd_attenu_vectors(vectors),
     }
 }
 
@@ -739,6 +768,106 @@ fn cmd_report(
             Err(e) => exit_with_error(&format!("Failed to serialise report: {e}")),
         },
         ReportFormat::Text => report::print_text(&summary),
+    }
+}
+
+/// Verify one evidence bundle and print the structured report.
+///
+/// Exits non-zero when the bundle is rejected, so a shell can gate on it.
+fn cmd_attenu_bundle(bundle_path: &Path, signer_path: &Path) {
+    let bundle = read_json(bundle_path);
+    let signer_value = read_json(signer_path);
+    let signer: attenu::Signer = match serde_json::from_value(signer_value) {
+        Ok(signer) => signer,
+        Err(err) => {
+            eprintln!("Invalid signer file {}: {err}", signer_path.display());
+            std::process::exit(2);
+        }
+    };
+
+    let report = attenu::verify_bundle(&bundle, &signer);
+    match serde_json::to_string_pretty(&report) {
+        Ok(rendered) => println!("{rendered}"),
+        Err(err) => {
+            eprintln!("Failed to render report: {err}");
+            std::process::exit(2);
+        }
+    }
+
+    if !report.accepted {
+        std::process::exit(1);
+    }
+}
+
+/// Score this verifier against a published vector corpus.
+fn cmd_attenu_vectors(vectors_path: &Path) {
+    let raw = match std::fs::read_to_string(vectors_path) {
+        Ok(raw) => raw,
+        Err(err) => {
+            eprintln!("Failed to read {}: {err}", vectors_path.display());
+            std::process::exit(2);
+        }
+    };
+    let file: attenu::corpus::VectorFile = match serde_json::from_str(&raw) {
+        Ok(file) => file,
+        Err(err) => {
+            eprintln!("Invalid corpus {}: {err}", vectors_path.display());
+            std::process::exit(2);
+        }
+    };
+
+    println!("corpus: {}", file.version);
+    println!("cases:  {}", file.cases.len());
+    println!();
+
+    let scores = attenu::corpus::score_corpus(&file);
+    let mut conformant = 0usize;
+    for score in &scores {
+        let status = if score.conformant {
+            conformant += 1;
+            "PASS"
+        } else {
+            "FAIL"
+        };
+        println!("{status}  {}", score.name);
+        for problem in &score.problems {
+            println!("        problem: {problem}");
+        }
+        if !score.report.unaccounted_calls.is_empty() {
+            println!(
+                "        unaccounted calls: {}",
+                score.report.unaccounted_calls.join(", ")
+            );
+        }
+        for extra in &score.additional {
+            println!(
+                "        additional (permitted): {} seq={:?} node={:?}",
+                extra.reason, extra.seq, extra.node
+            );
+        }
+    }
+
+    println!();
+    println!("{conformant}/{} conformant", scores.len());
+    if conformant != scores.len() {
+        std::process::exit(1);
+    }
+}
+
+fn read_json(path: &Path) -> serde_json::Value {
+    let raw = match std::fs::read_to_string(path) {
+        Ok(raw) => raw,
+        Err(err) => {
+            eprintln!("Failed to read {}: {err}", path.display());
+            std::process::exit(2);
+        }
+    };
+    match serde_json::from_str(&raw) {
+        Ok(value) => value,
+        Err(err) => {
+            eprintln!("Invalid JSON in {}: {err}", path.display());
+            std::process::exit(2);
+        }
     }
 }
 

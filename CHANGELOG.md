@@ -9,6 +9,19 @@ The `[Unreleased]` heading is rolled forward manually before each release; do no
 
 ## [Unreleased]
 
+### Added
+- **Third-party conformance: an offline verifier for attenu-guard evidence
+  bundles.** `guard-verify attenu-bundle` re-derives a schema-v2 bundle from
+  its own bytes — RFC 8785 canonicalization, the SHA-256 entry chain, the
+  HMAC-SHA256 anchor over a head recomputed from genesis rather than read
+  from the ledger, delegation containment, and the allow-to-outcome execution
+  binding. `guard-verify attenu-vectors` scores it against a published corpus
+  under that corpus's minimal-set rule. Written against the published format
+  description only; it does not read, port, or invoke either attenu-guard
+  reference implementation, so agreement is evidence about the format rather
+  than about shared code. Scores 8/8 on `bundle_vectors_v1`, vendored with its
+  pinned hash under `crates/guard-verify/fixtures/attenu/`.
+
 ## [0.2.0] - 2026-09-02
 
 ### Added
