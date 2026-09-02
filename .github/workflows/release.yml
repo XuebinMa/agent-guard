@@ -101,7 +101,32 @@ jobs:
               echo "crates.io did not return a definitive status for $crate $version" >&2
               return 1
             fi
-            cargo publish --locked --package "$crate"
+            # crates.io rate-limits NEW crate creation, and the limit is
+            # reached mid-publish rather than reported by the existence check
+            # above: the first v0.2.0 run published five crates and then took
+            # a 429 on the sixth. Retry the publish itself, not just the
+            # probe, so a workspace-wide first release does not need a human
+            # to restart it between crates.
+            publish_attempts=6
+            published=false
+            for publish_attempt in $(seq 1 "$publish_attempts"); do
+              if cargo publish --locked --package "$crate" 2>"$RUNNER_TEMP/publish_err.txt"; then
+                cat "$RUNNER_TEMP/publish_err.txt" >&2
+                published=true
+                break
+              fi
+              cat "$RUNNER_TEMP/publish_err.txt" >&2
+              if ! grep -q "429 Too Many Requests" "$RUNNER_TEMP/publish_err.txt"; then
+                echo "$crate $version failed to publish for a non-rate-limit reason" >&2
+                return 1
+              fi
+              echo "crates.io rate-limited $crate (attempt $publish_attempt/$publish_attempts); waiting 600s"
+              sleep 600
+            done
+            if [ "$published" != true ]; then
+              echo "$crate $version still rate-limited after $publish_attempts attempts" >&2
+              return 1
+            fi
             for attempt in $(seq 1 60); do
               status="$(curl --silent --show-error --user-agent "$user_agent" --output /dev/null --write-out '%{http_code}' "$endpoint")"
               case "$status" in
