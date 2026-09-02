@@ -1,18 +1,27 @@
 # agent-guard-plugin
 
-One-command setup for the [agent-guard](https://github.com/XuebinMa/agent-guard) outbound gate in Claude Code.
+One-command setup for the [agent-guard](https://github.com/XuebinMa/agent-guard) advisory outbound hook in Claude Code.
 
-`npx agent-guard-plugin init` installs the `guard-hook` binary, drops the outbound policy, and wires a `PreToolUse` hook into your `~/.claude/settings.json` that gates `git push`, `npm publish`, `docker push`, `gh release`, non-local HTTP mutations, and `rm -rf` — before they happen.
+The `v0.2.0` source is not published to npm or crates.io yet. From the repository
+root, install and initialize the matching checkout with:
+
+This path is intentionally fail-open on installation/runtime errors and does
+not own Git credentials or execution. Treat it as an advisory host integration,
+not an isolation boundary against an agent that can bypass the hook.
 
 ```bash
-npx agent-guard-plugin init
+cargo install --path crates/guard-hook --locked
+node packages/agent-guard-plugin/bin/cli.js init --skip-binary
 ```
 
-This is the **standalone** setup path. If you prefer Claude Code's native plugin system, use the marketplace instead (`/plugin marketplace add XuebinMa/agent-guard`) and run `npx agent-guard-plugin init --binary-only` just to install the binary — see [the plugin guide](https://github.com/XuebinMa/agent-guard/blob/main/docs/guides/operations/claude-code-plugin.md).
+After the synchronized `v0.2.0` release, `npx agent-guard-plugin init` becomes
+the standalone setup path and installs the exact same `guard-hook` version. The
+current npm `latest` tag is still `0.2.0-rc1`, so it is not a substitute for
+these source-checkout instructions. See the [plugin guide](https://github.com/XuebinMa/agent-guard/blob/main/docs/guides/operations/claude-code-plugin.md).
 
 ## What `init` does
 
-1. **Installs the binary** with `cargo install --git … guard-hook` (Rust required). If cargo is missing it prints manual instructions and continues — the hook fails open until the binary exists, so nothing is ever blocked by a partial setup.
+1. **Installs the matching binary** with `cargo install guard-hook --version <plugin-version> --locked` (Rust required). If cargo is missing it prints manual instructions and continues — the hook remains advisory and fails open until the binary exists.
 2. **Writes the policy** to `~/.claude/agent-guard/policy.yaml` (the bundled outbound preset, with audit routed to `~/.claude/agent-guard/audit.jsonl` so the hook's stdout stays clean).
 3. **Wires the hook** into `~/.claude/settings.json` under `PreToolUse` for `Bash`, `Write`, `Edit`, and `WebFetch`. The edit is idempotent and preserves every other setting and hook.
 

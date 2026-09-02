@@ -1,30 +1,68 @@
 # agent-guard
 
-> Outbound change control for AI coding agents — action and content.
-> Your agent writes code and runs tests freely; the moment it tries to push, publish, deploy, or send a secret out, `agent-guard` is the gate.
+> Exact outbound authorization for AI coding agents, starting with `git push`.
+> Your agent writes code and runs tests freely; agent-guard makes the outbound
+> intent visible and gives the host a decision before code leaves the machine.
 
-[![Version](https://img.shields.io/badge/Version-0.2.0--rc2-blue.svg)]()
+[![Version](https://img.shields.io/badge/Version-0.2.0-blue.svg)]()
 [![Focus](https://img.shields.io/badge/Focus-Outbound%20Control-green.svg)]()
 [![License](https://img.shields.io/badge/License-MIT-yellow.svg)]()
 [![MSRV](https://img.shields.io/badge/MSRV-1.79-orange.svg)]()
 
-`agent-guard` is for developers running AI coding agents — Claude Code, Cursor, Codex CLI, Aider — who don't want the next `git push --force` to be the agent's idea, and don't want a stray `.env` quietly making it into the model's context.
+`agent-guard` is for developers running AI coding agents — Claude Code, Cursor,
+Codex CLI, Aider — who want a narrow, inspectable control at the point where
+local code becomes a remote Git change.
 
 Two layers of outbound control, one decision surface:
 
-- **Action layer** (today): gate `git push`, `npm publish`, `docker push`, `gh release create`, non-local HTTP mutations, `rm -rf` — before they become real
+- **Action layer** (today): parse recognized Git push forms, conservatively flag
+  embedded Git argv candidates, and evaluate shell, file-write, and HTTP tool
+  calls against policy
 - **Content layer** (experimental, opt-in): detect credentials and PII in tool inputs and outputs before they reach the LLM provider or external API
-- **Audit layer**: every decision signed with Ed25519 — tamper-evident receipts usable as supporting evidence in compliance workflows
+- **Evidence layer**: JSONL records for decisions; optional Ed25519-signed
+  receipts only when the Guard owns execution and a signing key is configured
 
-Best fit: solo and small-team devs running coding agents in real workflows. **Local-first by design** — no cloud, no telemetry, no data leaves your machine.
+Best fit: solo and small-team devs running coding agents in real workflows.
+**Local-first by default** — network export occurs only when the host explicitly
+configures an outbound action or SIEM destination.
 
 Why now: EU AI Act enforcement begins 2026-08-02. Claude Code's PreToolUse hook has known gaps with MCP tools (#33106). DNS-tunnel credential exfiltration exploits (CVE-2025-55284) are already in the wild. The cost of "the agent did something irreversible" is no longer hypothetical.
 
 ---
 
-## Latest Release
+## Install From This Checkout
 
-- **Prerelease**: [`v0.2.0-rc2`](https://github.com/XuebinMa/agent-guard/releases/tag/v0.2.0-rc2)
+The `v0.2.0` source is not published to crates.io or PyPI yet. Until the
+release gate opens, install the binaries from a checkout rather than using
+registry commands:
+
+```bash
+cargo install --path crates/guard-hook --locked
+cargo install --path crates/agent-guard-cli --locked
+cargo install --path crates/guard-verify --locked
+```
+
+As a Rust library, use a path dependency and adjust the relative path for your
+workspace:
+
+```toml
+[dependencies]
+agent-guard-sdk = { path = "../agent-guard/crates/agent-guard-sdk" }
+```
+
+```bash
+python -m pip install ./crates/agent-guard-python   # imports as `agent_guard`
+```
+
+The Node binding is also not published to npm yet — build it from a checkout
+(`npm ci --prefix crates/agent-guard-node && npm run build --prefix crates/agent-guard-node`).
+The unversioned `npx agent-guard-plugin` command currently resolves to the older
+`0.2.0-rc1` package, not this source tree.
+
+## Release Status
+
+- **Source version**: `v0.2.0` (not published yet; the release gate remains closed)
+- **Latest published prerelease**: [`v0.2.0-rc2`](https://github.com/XuebinMa/agent-guard/releases/tag/v0.2.0-rc2)
 - **Announcement**: [GitHub Discussions #1](https://github.com/XuebinMa/agent-guard/discussions/1)
 
 ## Verify Locally
@@ -51,7 +89,7 @@ The verification script uses temporary directories for Python build/test work so
 The fastest adoption path is the zero-config outbound preset. It covers all five action-layer categories (code egress, package release, artifact egress, remote mutation, destructive shell) with sensible defaults, so you do not have to write your first rule.
 
 ```bash
-cargo install --path crates/guard-hook   # one-time install of the Claude Code adapter
+cargo install --path crates/guard-hook --locked
 guard-hook check \
   --policy presets/coding-agent-outbound.yaml \
   --agent-id smoke-test < event.json
@@ -99,7 +137,7 @@ agent action (outbound moment)
   -> agent-guard
   -> execute | deny | ask_for_approval | handoff
   -> optional guard-owned execution
-  -> Ed25519-signed audit record
+  -> optional Ed25519-signed execution receipt
 ```
 
 This is the difference between:
@@ -119,10 +157,17 @@ Together those three surfaces cover the action-layer categories the preset bundl
 
 ## Why Developers Adopt It
 
-- **A real outbound boundary, not prompt-only safety**: `git push`, `npm publish`, `docker push`, `rm -rf`, `kubectl apply` all hit a decision point before they become real.
+- **One narrow outbound decision**: recognized direct `git push` spellings,
+  plumbing-level `git send-pack` calls, and explicitly modeled wrappers are
+  normalized before policy matching, including repository selectors,
+  destructive flags, and force/delete refspec shorthand. Unknown outer
+  commands containing adjacent standalone Git argv tokens are governed by a
+  conservative, explicitly unverified check so they cannot weaken that
+  decision.
 - **Zero-config preset**: a copy-able policy that covers the five action-layer categories on day one — no rule-writing required.
 - **Small integration surface**: wrap existing LangChain-style tools or OpenAI-style handlers, or hook into Claude Code's PreToolUse via `guard-hook`. No runtime rewrite.
-- **Tamper-evident audit**: every decision is Ed25519-signed and JSONL-formatted — a verifiable evidence trail you can hand to whatever compliance process you answer to, without an enterprise control plane.
+- **Truthful evidence**: decisions are recorded as JSONL; executions can carry
+  a signed receipt when the Guard owns the action and has an explicit key.
 
 ---
 
@@ -130,7 +175,7 @@ Together those three surfaces cover the action-layer categories the preset bundl
 
 - solo and small-team devs running Claude Code / Cursor / Codex CLI / Aider against real codebases
 - shell-enabled coding agents that publish, push, deploy, or otherwise produce outbound effects
-- teams that want a tamper-evident audit trail before the EU AI Act enforcement deadline
+- teams that want a local forensic decision trail and optional signed execution receipts
 
 ## Not The First Thing To Reach For
 
@@ -152,10 +197,19 @@ For that layer, see [MartinLoop](https://github.com/Keesan12/martin-loop): it wr
 
 What is strong today (action layer):
 
-- the five outbound action categories — code egress, package release, artifact egress, remote mutation, destructive shell — are covered by a zero-config preset
+- recognized direct Git push entry points and explicitly modeled wrappers are
+  normalized into one policy decision; force, mirror, delete, and destructive
+  refspec forms cannot fall back to a weaker raw string match
+- adjacent standalone Git argv candidates under an unknown outer command are
+  conservatively governed at the same decision strength and labeled as
+  unverified; argv inspection cannot establish whether an arbitrary program
+  will execute those arguments
+- the broader zero-config preset covers five outbound action categories as an
+  advisory policy, not as a credential-isolated containment boundary
 - shell / terminal, file write, and outbound mutation HTTP are the underlying runtime proof surfaces
 - HTTP policy rules are method-aware: a rule can carry a `method:` constraint (e.g. deny `POST`/`DELETE` to a host) instead of matching the URL alone
-- normalized runtime decisions, approval flows, and Ed25519-signed audit records are available now
+- normalized runtime decisions, a local single-user approval workflow, JSONL
+  decision records, and optional Ed25519-signed execution receipts are available now
 - the SDK already includes policy signing, execution receipts, metrics, anomaly detection, and SIEM export beyond the narrow wedge
 
 What is experimental and opt-in (content layer):
@@ -163,9 +217,11 @@ What is experimental and opt-in (content layer):
 - credential / PII detection on outbound content — `write_file` content and `http_request` body — behind the off-by-default `content` feature, with three enforcement modes (`block` / `mask` / `warn`). See [Content layer](#content-layer-experimental) below.
 - the same detection on *input* text (prompts) before it reaches the LLM provider, via the top-level `input_content:` policy block and `Guard::check_content`
 
-What is roadmap (content layer):
+What is roadmap (primary product boundary):
 
-- distribution as a Claude Code plugin / ECC marketplace entry
+- broker-enforced GitHub push for one repository and one branch: exact preview,
+  short-lived one-use authorization, execution-time remote-state revalidation,
+  Guard-held credentials, and a signed outcome receipt
 
 What to understand before integrating:
 
@@ -175,6 +231,9 @@ What to understand before integrating:
 - Python and Node bindings default to the SDK's platform sandbox selection; both also accept an explicit `backend` argument on `execute` / `run`, resolved truthfully (a backend that is not compiled in or not functional yields the `none` backend, never a false isolation claim)
 - broader capability coverage is intentionally narrow, not generic
 - broader policy workflow and control-plane ideas are future expansion paths, not the phase-one hook
+- the advisory shell layer cannot prove arbitrary launcher semantics or stop a
+  process that bypasses the hook; that class-level guarantee requires the
+  planned credential-isolated broker
 
 ---
 
@@ -186,7 +245,9 @@ Where `agent-guard` sits on the OWASP Top 10 for Agentic Applications (ASI01–A
 - 🟡 **Containment / accountability**: **ASI01** Goal Hijack, **ASI03** Privilege Abuse, **ASI08** Cascading Failures, **ASI09** Human-Agent Trust, **ASI10** Rogue Agents
 - ⬜ **Out of scope** (by design): **ASI04** supply-chain / MCP scanning, **ASI06** memory poisoning, **ASI07** inter-agent comms
 
-The through-line across the 🟡 rows is the Ed25519 execution-proof chain — actions a hijacked or rogue agent takes are still gated, recorded, and attributable. Full mapping: [Framework Support Matrix §10](docs/reference/framework-support-matrix.md#10-threat-coverage--owasp-agentic-top-10).
+For Guard-owned executions configured with a signing key, Ed25519 receipts add
+cryptographic provenance. Decision-only hooks do not create those receipts and
+remain dependent on the host honoring the decision. Full mapping: [Framework Support Matrix §10](docs/reference/framework-support-matrix.md#10-threat-coverage--owasp-agentic-top-10).
 
 ---
 
@@ -264,7 +325,7 @@ safety net, not the primary control.
 
 Additional references:
 
-- [Latest Release](https://github.com/XuebinMa/agent-guard/releases/tag/v0.2.0-rc2)
+- [Latest published prerelease](https://github.com/XuebinMa/agent-guard/releases/tag/v0.2.0-rc2)
 - [Join the Discussion](https://github.com/XuebinMa/agent-guard/discussions/1)
 - [Deployment Guide](docs/guides/operations/deployment-guide.md)
 - [Roadmap](ROADMAP.md): what's shipped, partial, and planned
@@ -277,7 +338,8 @@ Additional references:
 
 - **Claude Code**: the `guard-hook` PreToolUse adapter is the lowest-friction entry — point one `--policy` flag at the outbound preset
 - **Node**: strongest programmatic surface, with wrappers for LangChain-style tools and OpenAI-style handlers
-- **Python**: wrap_langchain_tool / wrap_openai_tool are available; a real-package validation script ships, automated CI version matrix is the remaining gap
+- **Python**: `wrap_langchain_tool` / `wrap_openai_tool` are available and the
+  real-package CI matrix runs; the adapter surface remains beta
 - **Rust SDK**: most direct integration path for hosts that want explicit control over side-effect decisioning and execution
 
 ---

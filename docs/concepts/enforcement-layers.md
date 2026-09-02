@@ -36,10 +36,11 @@ same map instead of an implicit one.
 
 | Shape | Example | What agent-guard provides | Containment responsibility |
 | :--- | :--- | :--- | :--- |
-| **Decision-only** | `guard-hook` on Claude Code PreToolUse; `Guard::check` / `decide` from any SDK | Policy decision + signed evidence. The host runtime executes (or doesn't). | The **host runtime** (and whatever isolation it runs under). |
-| **Guard-owned execution** | `Guard::execute` / runtime `run` path | Decision + execution inside the selected sandbox + signed receipt. | The **sandbox layer**, iff compiled in and active; otherwise falls back to decision-only posture (noop sandbox, truthfully diagnosed). |
+| **Decision-only / advisory** | `guard-hook` on Claude Code PreToolUse; `Guard::check` / `decide` from any SDK | Policy decision + JSONL record. The hook is fail-open and the host runtime executes (or doesn't). | The **host runtime** (and whatever isolation it runs under). |
+| **Guard-owned execution** | `Guard::execute` / runtime `run` path | Decision + execution inside the selected sandbox; optional signed receipt when a key is configured. | The **sandbox layer**, iff compiled in and active; otherwise the noop backend provides no OS containment. |
+| **Broker-enforced Git push** | Planned narrow product boundary | Exact push intent, one-use authorization, current remote-state revalidation, and Guard-held credentials/execution. | A separate broker process and credential boundary the agent cannot access. |
 
-The primary adoption wedge today is **decision-only**. In that shape there is no
+The primary adoption wedge today is **decision-only and advisory**. In that shape there is no
 sandbox in the path at all — which is precisely why the validator must not be
 described as a boundary: in the most common deployment it is the only mechanical
 check, and it is best-effort by construction.
@@ -57,7 +58,8 @@ check, and it is best-effort by construction.
 
 - **Engineering effort**: validator hardening is scheduled work, not
   drop-everything work. Boundary-grade effort goes to the sandbox layer and to
-  decision integrity (policy engine, decision plumbing, signed evidence).
+  decision integrity (policy engine and decision plumbing). Signed evidence is
+  available only for Guard-owned executions configured with a key.
 - **Messaging**: no agent-guard surface (README, docs, release notes, outreach)
   may claim containment for the validator or for a default build. Claims about
   "blocking" in decision-only deployments must attribute enforcement to the host

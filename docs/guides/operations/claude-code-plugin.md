@@ -28,15 +28,20 @@ The plugin is the distribution wrapper. The actual evaluation is done by the `gu
 
 ## Install
 
-There are two install paths. Both end with the same `PreToolUse` gate; pick whichever fits your workflow.
+The current `v0.2.0` source has not been published to npm or crates.io. Use the
+checkout path below until the synchronized release completes.
 
-### Option A — one command (`npx`)
+### Option A — current source checkout
 
 ```bash
-npx agent-guard-plugin init
+cargo install --path crates/guard-hook --locked
+node packages/agent-guard-plugin/bin/cli.js init --skip-binary
 ```
 
-This installs the `guard-hook` binary (via `cargo install` — Rust required), writes the outbound policy to `~/.claude/agent-guard/policy.yaml`, and wires the hook into `~/.claude/settings.json`. The edit is idempotent and preserves your other settings and hooks. Use `--dry-run` to preview, `npx agent-guard-plugin uninstall` to remove the hook. See [`packages/agent-guard-plugin`](../../../packages/agent-guard-plugin/README.md) for all options.
+This builds the current `guard-hook`, writes the current outbound policy to
+`~/.claude/agent-guard/policy.yaml`, and wires the hook into
+`~/.claude/settings.json`. The edit is idempotent and preserves other settings
+and hooks. Add `--dry-run` to preview.
 
 ### Option B — Claude Code marketplace plugin
 
@@ -50,10 +55,13 @@ The repo doubles as a single-plugin marketplace:
 Then install the evaluation binary (the plugin **fails open** until it is present, so the gate is a no-op until you do):
 
 ```bash
-cargo install --path crates/guard-hook         # from a repo checkout
-# or, from anywhere:
-npx agent-guard-plugin init --binary-only       # installs guard-hook only
+cargo install --path crates/guard-hook --locked
 ```
+
+After `v0.2.0` is published to both registries, the synchronized convenience
+installer will be `npx agent-guard-plugin init`. The current unversioned npm
+command still resolves to `0.2.0-rc1` and must not be used as a current-source
+installation instruction.
 
 `cargo install` drops `guard-hook` into `~/.cargo/bin`, which the plugin's wrapper finds automatically.
 
@@ -71,6 +79,12 @@ The plugin's hook runs `scripts/guard-hook-plugin.sh`, which resolves two things
 | **Policy** | bundled `presets/coding-agent-outbound.yaml` | `AGENT_GUARD_POLICY=/path/to/policy.yaml` |
 
 The wrapper is **fail-open by contract**: a missing binary or missing policy emits an `allow` decision (with a one-line warning on stderr) rather than blocking your agent. A broken or partial install never stalls your workflow.
+
+That makes the plugin an **advisory decision-only integration**. It does not own
+Git credentials or execute the push, and it cannot contain an agent that can
+avoid the built-in tool/hook path. Use Guard-owned execution where available;
+the planned broker-enforced Git push path is the boundary intended for hostile
+agent isolation.
 
 ---
 

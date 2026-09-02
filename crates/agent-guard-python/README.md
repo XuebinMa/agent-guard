@@ -71,12 +71,19 @@ Current boundary note:
 
 ## 🔧 Installation
 
+Version `0.2.0` is not on PyPI yet. Install it from a repository checkout
+(requires Python and a Rust toolchain):
+
 ```bash
-# Via Git (v0.2.0-rc2)
-pip install git+https://github.com/XuebinMa/agent-guard.git#subdirectory=crates/agent-guard-python
+python -m pip install ./crates/agent-guard-python
 ```
 
-*Note: Requires Rust toolchain for building from source.*
+After the synchronized release, the distribution name will be
+`agent-guard-runtime`; the import name remains `agent_guard`:
+
+```python
+from agent_guard import Guard
+```
 
 For local development in this repository:
 
