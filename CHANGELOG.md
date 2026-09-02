@@ -9,6 +9,14 @@ The `[Unreleased]` heading is rolled forward manually before each release; do no
 
 ## [Unreleased]
 
+### Changed
+- **The PyPI distribution is now `agent-guard-python`, not `agent-guard-runtime`.**
+  PyPI compares project names with separators collapsed, and
+  `agent-guard-runtime` collapses to the same string as the unrelated
+  `agentguard-runtime`, so it was refused as too similar. Publishing beside a
+  near-identical name with a near-identical description would also be
+  confusing on its own merits. The import name is unchanged: `agent_guard`.
+
 ### Added
 - **Third-party conformance: an offline verifier for attenu-guard evidence
   bundles.** `guard-verify attenu-bundle` re-derives a schema-v2 bundle from

@@ -147,7 +147,8 @@ GitHub Actions (`.github/workflows/ci.yml`) uses `./scripts/verify.sh` as the sh
 - Registry publishing (added at `0.2.0`): `.github/workflows/release.yml` runs on a `v*` tag and covers crates.io, PyPI wheels, and the npm plugin; `release.toml` now carries `publish = true`, and the two binding crates carry `publish = false` in their own manifests. Two packaging traps were live before that and are easy to reintroduce:
   - **The root `pyproject.toml` is not the one under test.** `scripts/verify.sh python` and CI both build from `crates/agent-guard-python`. The root file lacked `python-source`, so a wheel built from the repo root shipped the native module alone and silently dropped `python/agent_guard/{adapters,langchain,openai}.py`. Both files must stay aligned; build from the crate directory.
   - **`.gitignore` does not constrain maturin.** `maturin develop` writes a `.so` and (on macOS) a ~75MB `.dSYM` tree into `python-source`, so a maintainer who verifies before publishing would ship debug symbols. The `exclude` list in `crates/agent-guard-python/pyproject.toml` is what keeps them out — verify by unzipping the built wheel, not by reading config.
-- The PyPI distribution is **`agent-guard-runtime`**, not `agent-guard` (taken on PyPI, npm, and crates.io by unrelated projects). The import name stays `agent_guard`.
+- The PyPI distribution is **`agent-guard-python`**, not `agent-guard` (taken on PyPI, npm, and crates.io by unrelated projects). The import name stays `agent_guard`.
+  PyPI compares names with separators collapsed, so `agent-guard-runtime` was rejected as "too similar to an existing project": `agentguard-runtime` (an unrelated LangChain tool-call firewall, 0.1.0, 2026-05-25) collapses to the same string. `agent-guard-sdk` is blocked the same way by `agentguard-sdk`. Check a candidate's collapsed form, not just its exact name, before assuming it is free.
 
 ## Local Environment Gotchas (remote/cloud sessions)
 
