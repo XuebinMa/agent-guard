@@ -79,7 +79,7 @@ python -m pip install ./crates/agent-guard-python
 ```
 
 After the synchronized release, the distribution name will be
-`agent-guard-runtime`; the import name remains `agent_guard`:
+`agent-guard-python`; the import name remains `agent_guard`:
 
 ```python
 from agent_guard import Guard

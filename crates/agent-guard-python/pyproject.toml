@@ -3,7 +3,7 @@ requires = ["maturin>=1.0,<2.0"]
 build-backend = "maturin"
 
 [project]
-name = "agent-guard-runtime"
+name = "agent-guard-python"
 version = "0.2.0"
 requires-python = ">=3.10"
 description = "Outbound change control for AI agents — gate shell, file-write and HTTP side effects before they happen"
