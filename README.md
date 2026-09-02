@@ -32,7 +32,13 @@ Why now: EU AI Act enforcement begins 2026-08-02. Claude Code's PreToolUse hook 
 
 ## Install
 
-The Rust crates are on crates.io as of `0.2.0`:
+The Claude Code plugin, which installs the hook and a starter policy:
+
+```bash
+npx agent-guard-plugin init
+```
+
+The command-line tools:
 
 ```bash
 cargo install guard-hook --locked
@@ -47,25 +53,21 @@ As a Rust library:
 agent-guard-sdk = "0.2"
 ```
 
-The Python and Node distributions are not published yet — the `0.2.0` release
-run reached crates.io but stalled before them. Until `0.2.1` lands, install
-them from a checkout:
+From Python — the distribution is `agent-guard-python`, the import name is
+`agent_guard`:
 
 ```bash
-python -m pip install ./crates/agent-guard-python   # imports as `agent_guard`
+pip install agent-guard-python
 ```
 
-```bash
-npm ci --prefix crates/agent-guard-node && npm run build --prefix crates/agent-guard-node
-```
-
-The unversioned `npx agent-guard-plugin` command still resolves to the older
-`0.2.0-rc1` package, not this source tree.
+The Node binding (`@agent-guard/node`) is not published; build it from a
+checkout with `npm ci --prefix crates/agent-guard-node && npm run build
+--prefix crates/agent-guard-node`.
 
 ## Release Status
 
-- **Source version**: `v0.2.1` (crates.io only; PyPI and npm land with this release)
-- **Latest published release**: [`v0.2.0`](https://github.com/XuebinMa/agent-guard/releases/tag/v0.2.0)
+- **Source version**: `v0.2.1`
+- **Latest published release**: [`v0.2.1`](https://github.com/XuebinMa/agent-guard/releases/tag/v0.2.1) — crates.io, PyPI, npm
 - **Announcement**: [GitHub Discussions #1](https://github.com/XuebinMa/agent-guard/discussions/1)
 
 ## Verify Locally
@@ -328,7 +330,7 @@ safety net, not the primary control.
 
 Additional references:
 
-- [Latest published release](https://github.com/XuebinMa/agent-guard/releases/tag/v0.2.0)
+- [Latest published release](https://github.com/XuebinMa/agent-guard/releases/tag/v0.2.1)
 - [Join the Discussion](https://github.com/XuebinMa/agent-guard/discussions/1)
 - [Deployment Guide](docs/guides/operations/deployment-guide.md)
 - [Roadmap](ROADMAP.md): what's shipped, partial, and planned
