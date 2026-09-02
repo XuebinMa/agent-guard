@@ -144,30 +144,29 @@ anomaly:
                                 agent_id
                             );
                         }
-                        ExecuteOutcome::Denied { decision, .. } => {
-                            if let GuardDecision::Deny { reason } = decision {
-                                match reason.code() {
-                                    DecisionCode::DeniedByRule
-                                    | DecisionCode::WriteInReadOnlyMode => {
-                                        stats.actual_denies.fetch_add(1, Ordering::SeqCst);
-                                        shadow.denial_count += 1;
-                                        // Check if fuse should have triggered
-                                        if shadow.denial_count >= DENY_FUSE_THRESHOLD {
-                                            // The next request should be locked.
-                                            // Note: Deny Fuse triggers *after* the denial is reported.
-                                        }
-                                    }
-                                    DecisionCode::AnomalyDetected => {
-                                        stats.actual_anomalies.fetch_add(1, Ordering::SeqCst);
-                                    }
-                                    DecisionCode::AgentLocked => {
-                                        stats.actual_locks.fetch_add(1, Ordering::SeqCst);
-                                        shadow.is_locked = true;
-                                    }
-                                    _ => panic!("Unexpected decision code: {:?}", reason.code()),
+                        ExecuteOutcome::Denied {
+                            decision: GuardDecision::Deny { reason },
+                            ..
+                        } => match reason.code() {
+                            DecisionCode::DeniedByRule | DecisionCode::WriteInReadOnlyMode => {
+                                stats.actual_denies.fetch_add(1, Ordering::SeqCst);
+                                shadow.denial_count += 1;
+                                // Check if fuse should have triggered
+                                if shadow.denial_count >= DENY_FUSE_THRESHOLD {
+                                    // The next request should be locked.
+                                    // Note: Deny Fuse triggers *after* the denial is reported.
                                 }
                             }
-                        }
+                            DecisionCode::AnomalyDetected => {
+                                stats.actual_anomalies.fetch_add(1, Ordering::SeqCst);
+                            }
+                            DecisionCode::AgentLocked => {
+                                stats.actual_locks.fetch_add(1, Ordering::SeqCst);
+                                shadow.is_locked = true;
+                            }
+                            _ => panic!("Unexpected decision code: {:?}", reason.code()),
+                        },
+                        ExecuteOutcome::Denied { .. } => {}
                         _ => {}
                     }
                 }

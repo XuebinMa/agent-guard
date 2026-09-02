@@ -237,7 +237,7 @@ fn argv_of(node: Node, src: &str) -> Vec<String> {
             _ => {}
         }
         if let Ok(text) = child.utf8_text(src.as_bytes()) {
-            argv.push(word_value(child.kind(), text));
+            argv.push(word_value(text));
         }
     }
     argv
@@ -250,23 +250,149 @@ fn argv_of(node: Node, src: &str) -> Vec<String> {
 /// (`watch 'echo ok; rm /etc/passwd'`) is a command list, not a string
 /// literal. Expansions inside the quotes are deliberately preserved, so
 /// `"$CMD"` still reads as a dynamic command word.
-fn word_value(kind: &str, text: &str) -> String {
-    let unquoted = match kind {
-        "string" => text
-            .strip_prefix('"')
-            .and_then(|rest| rest.strip_suffix('"')),
-        "raw_string" => text
-            .strip_prefix('\'')
-            .and_then(|rest| rest.strip_suffix('\'')),
-        "ansi_c_string" => text
-            .strip_prefix("$'")
-            .and_then(|rest| rest.strip_suffix('\'')),
-        "translated_string" => text
-            .strip_prefix("$\"")
-            .and_then(|rest| rest.strip_suffix('"')),
-        _ => None,
-    };
-    unquoted.unwrap_or(text).to_string()
+fn word_value(text: &str) -> String {
+    static_shell_word(text).unwrap_or_else(|| text.to_string())
+}
+
+/// Evaluate the parts of a shell word whose value is completely determined by
+/// its source spelling. This deliberately handles the *whole* source span
+/// rather than switching on the outer tree-sitter node kind: a command name is
+/// wrapped in `command_name`, while `g""it`, `/usr/bin/"git"`, and `g\it` are
+/// represented by still different child shapes even though Bash executes the
+/// same static word.
+///
+/// Expansions and locale-translated strings return `None`; callers retain their
+/// source spelling so the restricted-mode dynamic-command gates can reject
+/// them instead of pretending to know their runtime value.
+fn static_shell_word(text: &str) -> Option<String> {
+    #[derive(Clone, Copy, PartialEq, Eq)]
+    enum Quote {
+        None,
+        Single,
+        Double,
+        AnsiC,
+    }
+
+    fn push_ansi_escape(chars: &[char], index: &mut usize, out: &mut String) -> Option<()> {
+        let escaped = *chars.get(*index)?;
+        *index += 1;
+        match escaped {
+            'a' => out.push('\u{0007}'),
+            'b' => out.push('\u{0008}'),
+            'e' | 'E' => out.push('\u{001b}'),
+            'f' => out.push('\u{000c}'),
+            'n' => out.push('\n'),
+            'r' => out.push('\r'),
+            't' => out.push('\t'),
+            'v' => out.push('\u{000b}'),
+            '\\' | '\'' | '"' | '?' => out.push(escaped),
+            '\n' => {}
+            'x' => {
+                let start = *index;
+                while *index < chars.len()
+                    && *index - start < 2
+                    && chars[*index].is_ascii_hexdigit()
+                {
+                    *index += 1;
+                }
+                if *index == start {
+                    return None;
+                }
+                let digits: String = chars[start..*index].iter().collect();
+                out.push(char::from_u32(u32::from_str_radix(&digits, 16).ok()?)?);
+            }
+            'u' | 'U' => {
+                let width = if escaped == 'u' { 4 } else { 8 };
+                let start = *index;
+                while *index < chars.len()
+                    && *index - start < width
+                    && chars[*index].is_ascii_hexdigit()
+                {
+                    *index += 1;
+                }
+                if *index == start {
+                    return None;
+                }
+                let digits: String = chars[start..*index].iter().collect();
+                out.push(char::from_u32(u32::from_str_radix(&digits, 16).ok()?)?);
+            }
+            '0'..='7' => {
+                let mut digits = String::from(escaped);
+                while *index < chars.len() && digits.len() < 3 && matches!(chars[*index], '0'..='7')
+                {
+                    digits.push(chars[*index]);
+                    *index += 1;
+                }
+                out.push(char::from_u32(u32::from_str_radix(&digits, 8).ok()?)?);
+            }
+            // Bash leaves unrecognised ANSI-C escapes implementation-defined
+            // enough that treating them as a known executable would be unsafe.
+            _ => return None,
+        }
+        Some(())
+    }
+
+    let chars: Vec<char> = text.chars().collect();
+    let mut out = String::with_capacity(text.len());
+    let mut quote = Quote::None;
+    let mut index = 0;
+
+    while index < chars.len() {
+        let ch = chars[index];
+        index += 1;
+        match quote {
+            Quote::None => match ch {
+                '\'' => quote = Quote::Single,
+                '"' => quote = Quote::Double,
+                '\\' => {
+                    let escaped = *chars.get(index)?;
+                    index += 1;
+                    if escaped != '\n' {
+                        out.push(escaped);
+                    }
+                }
+                '$' if chars.get(index) == Some(&'\'') => {
+                    index += 1;
+                    quote = Quote::AnsiC;
+                }
+                // `$"..."` is locale translated; every other dollar form is
+                // a runtime expansion. Neither has a statically knowable value.
+                '$' | '`' => return None,
+                _ => out.push(ch),
+            },
+            Quote::Single => {
+                if ch == '\'' {
+                    quote = Quote::None;
+                } else {
+                    out.push(ch);
+                }
+            }
+            Quote::Double => match ch {
+                '"' => quote = Quote::None,
+                '\\' => {
+                    let escaped = *chars.get(index)?;
+                    index += 1;
+                    if matches!(escaped, '$' | '`' | '"' | '\\') {
+                        out.push(escaped);
+                    } else if escaped == '\n' {
+                        // A backslash-newline pair is removed before execution.
+                    } else {
+                        out.push('\\');
+                        out.push(escaped);
+                    }
+                }
+                '$' | '`' => return None,
+                _ => out.push(ch),
+            },
+            Quote::AnsiC => match ch {
+                '\'' => quote = Quote::None,
+                '\\' => push_ansi_escape(&chars, &mut index, &mut out)?,
+                _ => out.push(ch),
+            },
+        }
+    }
+
+    (quote == Quote::None).then_some(out)
 }
 
 #[cfg(test)]
@@ -337,6 +463,27 @@ mod tests {
     fn assignment_prefix_is_not_the_command_word() {
         let found = commands("FOO=1 touch /etc/x");
         assert_eq!(found, vec![vec!["touch".to_string(), "/etc/x".to_string()]]);
+    }
+
+    #[test]
+    fn static_command_words_are_normalized_like_bash() {
+        for (input, expected) in [
+            (r#""git" push"#, "git"),
+            ("'git' push", "git"),
+            (r#"g""it push"#, "git"),
+            (r#"g\it push"#, "git"),
+            (r#"/usr/bin/"git" push"#, "/usr/bin/git"),
+            ("$'g\\x69t' push", "git"),
+        ] {
+            assert_eq!(commands(input)[0][0], expected, "input: {input}");
+        }
+    }
+
+    #[test]
+    fn dynamic_command_words_retain_their_source_spelling() {
+        for input in [r#""$COMMAND" push"#, r#"${COMMAND} push"#, r#"$"git" push"#] {
+            assert_eq!(commands(input)[0][0], input.trim_end_matches(" push"));
+        }
     }
 
     #[test]

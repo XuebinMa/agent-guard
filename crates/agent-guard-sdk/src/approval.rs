@@ -21,6 +21,15 @@
 //! The only residual race is two `decided` lines for one id; `decide` guards
 //! against it with a pre-check (sufficient for a local single-user tool) and
 //! the fold treats the first terminal decision as authoritative.
+//!
+//! ## Trust boundary
+//!
+//! This file is an unauthenticated local coordination ledger. It is suitable
+//! when the agent cannot modify it and the human/host share one trusted user
+//! boundary. It is not a hostile-agent authorization broker: any process that
+//! can rewrite the file can forge a decision. The resume path verifies the
+//! request binding and re-runs current policy, but deployment must use OS file
+//! permissions or a separate broker for adversarial isolation.
 
 use std::collections::BTreeMap;
 use std::fs::OpenOptions;

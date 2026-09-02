@@ -9,6 +9,7 @@ use std::path::Path;
 
 mod ast;
 mod destructive;
+mod git_push;
 mod paths;
 mod read_only;
 mod tables;
@@ -20,6 +21,7 @@ mod wrappers;
 mod tests;
 
 pub use destructive::check_destructive;
+pub use git_push::{git_push_intents, GitPushDetection, GitPushIntent};
 pub use paths::{validate_paths, validate_sed};
 pub use read_only::validate_read_only;
 pub use types::{CommandIntent, PermissionMode, ValidationResult};
@@ -31,7 +33,55 @@ use tokenize::{
     contains_multiple_find_exec_actions, contains_opaque_interpreter_execution,
     extract_first_command, reparsed_watch_commands,
 };
-use wrappers::command_name;
+use wrappers::{
+    classify_command_launcher, command_name, unwrap_command_wrappers, LauncherDisposition,
+};
+
+/// Canonical command spellings for policy matching.
+///
+/// Each parsed command contributes its normalized direct spelling and, when
+/// applicable, a second spelling with transparent launchers removed. Static
+/// shell quoting/escaping has already been evaluated by the AST front-end, and
+/// the executable is reduced to its basename. Policy evaluation can therefore
+/// apply one `prefix: "sudo "` or `prefix: "git push"` rule to `"sudo"`,
+/// `/usr/bin/git`, and `stdbuf -o0 git` without weakening a decision made from
+/// the original payload.
+pub fn canonical_policy_subjects(command: &str) -> Result<Vec<String>, String> {
+    let commands = match parse_shell(command) {
+        ShellParse::Understood(commands) => commands,
+        ShellParse::TooComplex(reason) => return Err(reason),
+    };
+    let mut subjects = Vec::new();
+
+    for resolved in commands {
+        if let Some(direct) = canonical_argv(&resolved.argv) {
+            if !subjects.contains(&direct) {
+                subjects.push(direct);
+            }
+        }
+
+        let unwrapped = unwrap_command_wrappers(&resolved.argv);
+        if unwrapped.len() != resolved.argv.len() {
+            if let Some(unwrapped) = canonical_argv(unwrapped) {
+                if !subjects.contains(&unwrapped) {
+                    subjects.push(unwrapped);
+                }
+            }
+        }
+    }
+
+    Ok(subjects)
+}
+
+fn canonical_argv<S: AsRef<str>>(argv: &[S]) -> Option<String> {
+    let (first, rest) = argv.split_first()?;
+    let mut subject = command_name(first.as_ref()).to_string();
+    for argument in rest {
+        subject.push(' ');
+        subject.push_str(argument.as_ref());
+    }
+    Some(subject)
+}
 
 pub fn validate_bash_command(
     command: &str,
@@ -56,10 +106,33 @@ pub fn validate_bash_command(
         // Syntax the grammar cannot parse, or a construct the walker does not
         // model, cannot be classified by any gate below — so no downstream
         // decision would be truthful. Reject before anything else runs.
-        if let ShellParse::TooComplex(reason) = parse_shell(command) {
-            return ValidationResult::Block {
-                reason: format!("Command cannot be validated in this mode: {reason}"),
-            };
+        match parse_shell(command) {
+            ShellParse::TooComplex(reason) => {
+                return ValidationResult::Block {
+                    reason: format!("Command cannot be validated in this mode: {reason}"),
+                };
+            }
+            ShellParse::Understood(commands) => {
+                for resolved in commands {
+                    match classify_command_launcher(&resolved.argv) {
+                        LauncherDisposition::Opaque(launcher) => {
+                            return ValidationResult::Block {
+                                reason: format!(
+                                    "Command launcher '{launcher}' can spawn an uninspected child and is not supported in this mode"
+                                ),
+                            };
+                        }
+                        LauncherDisposition::ExistingProcess(launcher) => {
+                            return ValidationResult::Block {
+                                reason: format!(
+                                    "Command launcher '{launcher}' operates on an existing process and is not supported in this mode"
+                                ),
+                            };
+                        }
+                        LauncherDisposition::Transparent | LauncherDisposition::Ordinary => {}
+                    }
+                }
+            }
         }
         if let Some(pat) = contains_command_substitution(command) {
             return ValidationResult::Block {

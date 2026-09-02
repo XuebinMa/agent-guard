@@ -1,8 +1,96 @@
 use super::tokenize::shell_split;
 use super::{
-    validate_bash_command, validate_paths, validate_read_only, PermissionMode, ValidationResult,
+    canonical_policy_subjects, validate_bash_command, validate_paths, validate_read_only,
+    PermissionMode, ValidationResult,
 };
 use std::path::Path;
+
+#[test]
+fn canonical_subjects_normalize_static_words_and_wrappers() {
+    for (command, expected) in [
+        (r#""sudo" ls /etc"#, "sudo ls /etc"),
+        (r#"g""it "push" origin main"#, "git push origin main"),
+        (r#"g\it push origin main"#, "git push origin main"),
+        ("/usr/bin/git push origin main", "git push origin main"),
+        ("stdbuf -o0 git push origin main", "git push origin main"),
+        ("setsid -fw git push origin main", "git push origin main"),
+    ] {
+        let subjects = canonical_policy_subjects(command).expect("valid shell");
+        assert!(
+            subjects.iter().any(|subject| subject == expected),
+            "missing {expected:?} for {command:?}: {subjects:?}"
+        );
+    }
+}
+
+#[test]
+fn modeled_timing_launcher_does_not_block_normal_local_work() {
+    let result = validate_bash_command(
+        "time cargo test",
+        PermissionMode::WorkspaceWrite,
+        Path::new("/workspace"),
+        &[],
+    );
+    assert_eq!(result, ValidationResult::Allow);
+}
+
+#[test]
+fn modeled_util_linux_launchers_do_not_block_normal_local_work() {
+    for command in [
+        "ionice -c3 cargo build",
+        "taskset -c 0 cargo bench",
+        "chrt -b 0 make",
+    ] {
+        let result = validate_bash_command(
+            command,
+            PermissionMode::WorkspaceWrite,
+            Path::new("/workspace"),
+            &[],
+        );
+        assert_eq!(
+            result,
+            ValidationResult::Allow,
+            "unexpected block: {command}"
+        );
+    }
+}
+
+#[test]
+fn util_linux_existing_process_modes_fail_closed_without_treating_pid_as_command() {
+    for command in ["ionice -p 1234", "taskset -p 1234", "chrt -p 1234"] {
+        let result = validate_bash_command(
+            command,
+            PermissionMode::WorkspaceWrite,
+            Path::new("/workspace"),
+            &[],
+        );
+        assert!(
+            matches!(result, ValidationResult::Block { ref reason } if reason.contains("existing process")),
+            "existing-process mode must fail closed accurately: {command}: {result:?}"
+        );
+    }
+}
+
+#[test]
+fn modeled_util_linux_layers_reenter_every_restricted_mode_gate() {
+    for command in [
+        "ionice -c3 xargs rm",
+        "taskset -c 0 env -S 'rm /etc/passwd'",
+        "chrt -b 0 watch 'rm /etc/passwd'",
+        "env ionice --future value git push --force origin main",
+    ] {
+        let result = validate_bash_command(
+            command,
+            PermissionMode::WorkspaceWrite,
+            Path::new("/workspace"),
+            &[],
+        );
+        assert!(
+            matches!(result, ValidationResult::Block { .. }),
+            "modeled/nested launcher escaped a restricted-mode gate: {command}: {result:?}"
+        );
+    }
+}
 
 #[test]
 fn shell_split_keeps_boolean_operators_together() {

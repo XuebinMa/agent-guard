@@ -177,28 +177,32 @@ anomaly:
 
     // 1. Trigger first deny
     let res1 = guard.execute(&input, &sandbox).unwrap();
-    if let ExecuteOutcome::Denied { decision, .. } = res1 {
-        if let GuardDecision::Deny { reason } = decision {
-            assert_eq!(reason.code(), DecisionCode::DeniedByRule);
-        }
+    if let ExecuteOutcome::Denied {
+        decision: GuardDecision::Deny { reason },
+        ..
+    } = res1
+    {
+        assert_eq!(reason.code(), DecisionCode::DeniedByRule);
     }
 
     // 2. Trigger second deny -> will trigger fuse internally AFTER this check
     let res2 = guard.execute(&input, &sandbox).unwrap();
-    if let ExecuteOutcome::Denied { decision, .. } = res2 {
-        if let GuardDecision::Deny { reason } = decision {
-            assert_eq!(reason.code(), DecisionCode::DeniedByRule);
-        }
+    if let ExecuteOutcome::Denied {
+        decision: GuardDecision::Deny { reason },
+        ..
+    } = res2
+    {
+        assert_eq!(reason.code(), DecisionCode::DeniedByRule);
     }
 
     // 3. Subsequent call should be short-circuited (AgentLocked)
     let res3 = guard.execute(&input, &sandbox).unwrap();
-    if let ExecuteOutcome::Denied { decision, .. } = res3 {
-        if let GuardDecision::Deny { reason } = decision {
-            assert_eq!(reason.code(), DecisionCode::AgentLocked);
-        } else {
-            panic!("Should be AgentLocked");
-        }
+    if let ExecuteOutcome::Denied {
+        decision: GuardDecision::Deny { reason },
+        ..
+    } = res3
+    {
+        assert_eq!(reason.code(), DecisionCode::AgentLocked);
     } else {
         panic!("Call 3 should be denied as AgentLocked");
     }

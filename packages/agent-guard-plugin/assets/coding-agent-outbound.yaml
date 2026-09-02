@@ -31,7 +31,7 @@
 #      and the reason — this file is also documentation.
 #
 # Coverage (the 5 outbound categories from the strategic frame):
-#   - code egress:        `git push` family
+#   - code egress:        `git push` + plumbing-level `git send-pack`
 #   - package release:    npm / yarn / pnpm / cargo / gem / twine / setup.py
 #   - artifact egress:    docker / podman / buildx push, gh release
 #   - remote mutation:    HTTP to cloud metadata + RFC1918 / loopback
@@ -70,7 +70,7 @@ tools:
       - regex: "rm\\s+-[rRfv]+\\s+\\.\\.?$"
 
       # History-rewriting / forced overwrite — irreversible at the remote.
-      - prefix: "git push --force"
+      - regex: "^git\\s+push\\s+--force(?:\\s|$)"
       - prefix: "git push -f"
       - regex: "git\\s+push\\s+.*--force-with-lease"
       - regex: "git\\s+push\\s+.*--mirror"
@@ -99,7 +99,8 @@ tools:
       # ─── code egress ─────────────────────────────────────────────────
       # Catches the moment "agent thinks it's done, wants to ship it."
       # Covers push to origin, fork, or any remote — the user decides
-      # whether the destination is what they expected.
+      # whether the destination is what they expected. Structured recognition
+      # maps direct git send-pack/git-send-pack plumbing calls here too.
       - prefix: "git push"
 
       # ─── package release ─────────────────────────────────────────────

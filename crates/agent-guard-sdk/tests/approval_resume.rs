@@ -25,6 +25,16 @@ tools:
       - prefix: "rm -rf /"
 "#;
 
+const DENY_PUSH_POLICY: &str = r#"
+version: 1
+default_mode: workspace_write
+tools:
+  bash:
+    mode: workspace_write
+    deny:
+      - prefix: "git push"
+"#;
+
 fn guard() -> Guard {
     Guard::from_yaml(ASK_POLICY).expect("policy parses")
 }
@@ -90,6 +100,88 @@ fn approved_request_executes() {
         matches!(outcome, RuntimeOutcome::Executed { .. }),
         "expected Executed, got {outcome:?}"
     );
+}
+
+#[test]
+fn approval_is_revalidated_against_the_current_policy() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let ledger = ApprovalLedger::open(dir.path().join("approvals.jsonl"));
+    let guard = std::sync::Arc::new(guard());
+
+    let runner = {
+        let guard = guard.clone();
+        let ledger = ledger.clone();
+        thread::spawn(move || {
+            guard.run_until_approved(
+                &bash("git push origin main"),
+                &NoopSandbox,
+                &config(&ledger, Duration::from_secs(10)),
+            )
+        })
+    };
+
+    let request_id = wait_for_pending(&ledger);
+    guard
+        .reload_from_yaml(DENY_PUSH_POLICY)
+        .expect("reload deny policy");
+    ledger
+        .approve(&request_id, Some("tester".to_string()))
+        .expect("approve");
+
+    let outcome = runner
+        .join()
+        .expect("runner thread")
+        .expect("runtime result");
+    match outcome {
+        RuntimeOutcome::Denied { reason, .. } => {
+            assert_eq!(reason.code(), DecisionCode::DeniedByRule);
+        }
+        other => panic!("policy reload must prevent execution, got {other:?}"),
+    }
+}
+
+#[test]
+fn approval_record_must_stay_bound_to_the_original_payload() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let ledger_path = dir.path().join("approvals.jsonl");
+    let ledger = ApprovalLedger::open(&ledger_path);
+
+    let runner = {
+        let ledger = ledger.clone();
+        thread::spawn(move || {
+            guard().run_until_approved(
+                &bash("git push origin main"),
+                &NoopSandbox,
+                &config(&ledger, Duration::from_secs(10)),
+            )
+        })
+    };
+
+    let request_id = wait_for_pending(&ledger);
+    let contents = std::fs::read_to_string(&ledger_path).expect("read ledger");
+    let mut event: serde_json::Value =
+        serde_json::from_str(contents.lines().next().expect("created event"))
+            .expect("parse created event");
+    event["payload_hash"] = serde_json::Value::String("forged".to_string());
+    std::fs::write(
+        &ledger_path,
+        format!("{}\n", serde_json::to_string(&event).expect("serialize")),
+    )
+    .expect("tamper ledger fixture");
+    ledger
+        .approve(&request_id, Some("tester".to_string()))
+        .expect("approve");
+
+    let outcome = runner
+        .join()
+        .expect("runner thread")
+        .expect("runtime result");
+    match outcome {
+        RuntimeOutcome::Denied { reason, .. } => {
+            assert_eq!(reason.code(), DecisionCode::ApprovalDenied);
+        }
+        other => panic!("tampered approval binding must deny, got {other:?}"),
+    }
 }
 
 #[test]

@@ -1689,6 +1689,32 @@ mod bash_interpreter_in_workspace_write_tests {
     }
 
     #[test]
+    fn blocks_stdbuf_then_write_command_in_workspace_write() {
+        for command in [
+            "stdbuf -o0 rm /etc/passwd",
+            "stdbuf -o 0 rm /etc/passwd",
+            "stdbuf --output=0 rm /etc/passwd",
+        ] {
+            let result = validate_bash_command(command, ws(), workspace(), &[]);
+            assert!(
+                matches!(result, ValidationResult::Block { .. }),
+                "wrapper hid write command in `{command}`: {result:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn blocks_setsid_then_write_command_in_workspace_write() {
+        for command in ["setsid rm /etc/passwd", "setsid -fw rm /etc/passwd"] {
+            let result = validate_bash_command(command, ws(), workspace(), &[]);
+            assert!(
+                matches!(result, ValidationResult::Block { .. }),
+                "wrapper hid write command in `{command}`: {result:?}"
+            );
+        }
+    }
+
+    #[test]
     fn blocks_nested_sudo_env_then_write_command_in_readonly() {
         // Wrapper nesting: `sudo env rm` must unwrap both layers.
         let r = validate_bash_command("sudo env rm /etc/passwd", ro(), workspace(), &[]);

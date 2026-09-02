@@ -1,4 +1,4 @@
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use agent_guard_core::{
@@ -7,7 +7,10 @@ use agent_guard_core::{
     ReloadEvent, RuntimeDecision, Tool,
 };
 use agent_guard_sandbox::Sandbox;
-use agent_guard_validators::bash::{validate_bash_command, ValidationResult};
+use agent_guard_validators::bash::{
+    canonical_policy_subjects, git_push_intents, validate_bash_command, GitPushDetection,
+    GitPushIntent, ValidationResult,
+};
 use agent_guard_validators::http::validate_http_request;
 use arc_swap::ArcSwap;
 use thiserror::Error;
@@ -77,6 +80,177 @@ fn write_to_audit_sink(sink: &AuditSink, line: &str) {
         }
         Err(_) => {
             tracing::error!("audit sink mutex poisoned; audit line dropped from sink output");
+        }
+    }
+}
+
+fn stronger_decision(current: GuardDecision, candidate: GuardDecision) -> GuardDecision {
+    fn strength(decision: &GuardDecision) -> u8 {
+        match decision {
+            GuardDecision::Allow => 0,
+            GuardDecision::AskUser { .. } => 1,
+            GuardDecision::Deny { .. } => 2,
+            // A future decision kind must never weaken an established gate.
+            _ => 2,
+        }
+    }
+
+    if strength(&candidate) > strength(&current) {
+        candidate
+    } else {
+        current
+    }
+}
+
+fn git_effective_working_directory(
+    context: &Context,
+    directory_changes: &[String],
+) -> Option<PathBuf> {
+    let mut current = context.working_directory.clone();
+    for change in directory_changes {
+        if change.is_empty() {
+            continue;
+        }
+        let path = Path::new(change);
+        current = Some(if path.is_absolute() {
+            path.to_path_buf()
+        } else if let Some(base) = current {
+            base.join(path)
+        } else {
+            path.to_path_buf()
+        });
+    }
+    current
+}
+
+fn resolve_git_selector(base: Option<&Path>, selector: Option<&str>) -> Option<PathBuf> {
+    let selector = Path::new(selector?);
+    Some(if selector.is_absolute() {
+        selector.to_path_buf()
+    } else if let Some(base) = base {
+        base.join(selector)
+    } else {
+        selector.to_path_buf()
+    })
+}
+
+fn git_push_intent_values(intents: &[GitPushIntent], context: &Context) -> Vec<serde_json::Value> {
+    intents
+        .iter()
+        .map(|intent| {
+            let effective_directory =
+                git_effective_working_directory(context, &intent.directory_changes);
+            let effective_git_dir =
+                resolve_git_selector(effective_directory.as_deref(), intent.git_dir.as_deref());
+            let effective_work_tree =
+                resolve_git_selector(effective_directory.as_deref(), intent.work_tree.as_deref());
+            let (detection_kind, execution_semantics, outer_command, argument_index) = match &intent
+                .detection
+            {
+                GitPushDetection::ModeledExecution => ("modeled_execution", "modeled", None, None),
+                GitPushDetection::EmbeddedArgv {
+                    outer_command,
+                    argument_index,
+                } => (
+                    "embedded_argv",
+                    "unverified",
+                    Some(outer_command.as_str()),
+                    Some(*argument_index),
+                ),
+            };
+            serde_json::json!({
+                "command": intent.command,
+                "detection_kind": detection_kind,
+                "execution_semantics": execution_semantics,
+                "outer_command": outer_command,
+                "argument_index": argument_index,
+                "starting_working_directory": context.working_directory,
+                "directory_changes": intent.directory_changes,
+                "effective_working_directory": effective_directory,
+                "git_dir": intent.git_dir,
+                "effective_git_dir": effective_git_dir,
+                "work_tree": intent.work_tree,
+                "effective_work_tree": effective_work_tree,
+                "remote": intent.remote,
+                "refspecs": intent.refspecs,
+                "force": intent.force,
+                "force_with_lease": intent.force_with_lease,
+                "force_if_includes": intent.force_if_includes,
+                "mirror": intent.mirror,
+                "delete": intent.delete,
+            })
+        })
+        .collect()
+}
+
+fn insert_git_push_intents(
+    details: &mut Option<serde_json::Value>,
+    intent_values: &[serde_json::Value],
+) {
+    if intent_values.is_empty() {
+        return;
+    }
+    let mut object = details
+        .take()
+        .and_then(|value| value.as_object().cloned())
+        .unwrap_or_default();
+    object.insert(
+        "git_push_intents".to_string(),
+        serde_json::Value::Array(intent_values.to_vec()),
+    );
+    *details = Some(serde_json::Value::Object(object));
+}
+
+fn with_git_push_preview(
+    decision: GuardDecision,
+    intents: &[GitPushIntent],
+    context: &Context,
+) -> GuardDecision {
+    if intents.is_empty() {
+        return decision;
+    }
+
+    let intent_values = git_push_intent_values(intents, context);
+
+    let attach = |reason: agent_guard_core::DecisionReason| {
+        let mut details = reason.details().cloned();
+        insert_git_push_intents(&mut details, &intent_values);
+        reason.with_details(details.unwrap_or_else(|| serde_json::json!({})))
+    };
+
+    match decision {
+        GuardDecision::AskUser { reason, .. } => {
+            let preview = serde_json::to_string(&intent_values)
+                .unwrap_or_else(|_| "[unavailable]".to_string());
+            let prompt = if intents
+                .iter()
+                .any(|intent| matches!(intent.detection, GitPushDetection::EmbeddedArgv { .. }))
+            {
+                format!(
+                    "Git outbound update approval required for a conservative argv candidate whose execution semantics are unverified: {preview}"
+                )
+            } else {
+                format!("Git outbound update approval required for exact parsed intent: {preview}")
+            };
+            GuardDecision::ask_with_reason(prompt, attach(reason))
+        }
+        GuardDecision::Deny { reason } => GuardDecision::Deny {
+            reason: attach(reason),
+        },
+        other => other,
+    }
+}
+
+struct EvaluatedDecision {
+    decision: GuardDecision,
+    git_push_intents: Vec<GitPushIntent>,
+}
+
+impl EvaluatedDecision {
+    fn without_git_intents(decision: GuardDecision) -> Self {
+        Self {
+            decision,
+            git_push_intents: Vec::new(),
         }
     }
 }
@@ -433,27 +607,30 @@ impl Guard {
         match state.anomaly_detector.check(&anomaly_subject, anomaly_cfg) {
             crate::anomaly::AnomalyStatus::Normal => {}
             crate::anomaly::AnomalyStatus::RateLimited => {
-                let decision = GuardDecision::deny(
+                let evaluated = EvaluatedDecision::without_git_intents(GuardDecision::deny(
                     DecisionCode::AnomalyDetected,
                     format!(
                         "anomaly detected: tool call frequency exceeded limit ({} calls / {}s)",
                         anomaly_cfg.rate_limit.max_calls, anomaly_cfg.rate_limit.window_seconds
                     ),
-                );
-                return self.finalize_check(input, &decision, state, &agent_id, "deny", request_id);
+                ));
+                return self
+                    .finalize_check(input, &evaluated, state, &agent_id, "deny", request_id);
             }
             crate::anomaly::AnomalyStatus::Locked => {
-                let decision = GuardDecision::deny(
+                let evaluated = EvaluatedDecision::without_git_intents(GuardDecision::deny(
                     DecisionCode::AgentLocked,
                     "anomaly detected: agent locked due to too many security denials (Deny Fuse)",
-                );
-                return self.finalize_check(input, &decision, state, &agent_id, "deny", request_id);
+                ));
+                return self
+                    .finalize_check(input, &evaluated, state, &agent_id, "deny", request_id);
             }
         }
 
-        let decision = self.evaluate(input, state);
+        let evaluated = self.evaluate_with_metadata(input, state);
+        let decision = &evaluated.decision;
 
-        let outcome = match &decision {
+        let outcome = match decision {
             GuardDecision::Allow => "allow",
             GuardDecision::Deny { .. } => {
                 state
@@ -465,18 +642,19 @@ impl Guard {
             // Fail closed: label an unrecognized decision as a denial, never allow.
             _ => "deny",
         };
-        self.finalize_check(input, &decision, state, &agent_id, outcome, request_id)
+        self.finalize_check(input, &evaluated, state, &agent_id, outcome, request_id)
     }
 
     fn finalize_check(
         &self,
         input: &GuardInput,
-        decision: &GuardDecision,
+        evaluated: &EvaluatedDecision,
         state: &GuardState,
         agent_id: &str,
         outcome: &str,
         request_id: &str,
     ) -> GuardDecision {
+        let decision = &evaluated.decision;
         let metrics = &state.metrics;
 
         metrics
@@ -518,7 +696,13 @@ impl Guard {
         }
 
         // `write_audit` is the single place that gates on `audit_cfg.enabled`.
-        self.write_audit(input, decision, state, request_id);
+        self.write_audit(
+            input,
+            decision,
+            &evaluated.git_push_intents,
+            state,
+            request_id,
+        );
         decision.clone()
     }
 
@@ -543,7 +727,14 @@ impl Guard {
         resolve_sandbox_by_name(name).map(|(sandbox, _)| sandbox)
     }
 
-    fn evaluate(&self, input: &GuardInput, state: &GuardState) -> GuardDecision {
+    pub(crate) fn evaluate(&self, input: &GuardInput, state: &GuardState) -> GuardDecision {
+        self.evaluate_with_metadata(input, state).decision
+    }
+
+    fn evaluate_with_metadata(&self, input: &GuardInput, state: &GuardState) -> EvaluatedDecision {
+        let mut bash_policy_subjects = Vec::new();
+        let mut parsed_git_pushes = Vec::new();
+        let mut validator_warning = None;
         if let Tool::Bash = &input.tool {
             let mode = policy_mode_to_permission_mode(
                 &state.engine.effective_mode(&input.tool, &input.context),
@@ -561,12 +752,12 @@ impl Guard {
                 // path, so fail closed with a deny rather than panic if that invariant
                 // ever changes in the core crate. (Pre-1.0 cleanup, issue #61 item 3.)
                 Ok(_) => {
-                    return GuardDecision::deny(
+                    return EvaluatedDecision::without_git_intents(GuardDecision::deny(
                         DecisionCode::InvalidPayload,
                         "bash payload did not yield a command string".to_string(),
-                    );
+                    ));
                 }
-                Err(decision) => return decision,
+                Err(decision) => return EvaluatedDecision::without_git_intents(decision),
             };
 
             let escape_paths = state.engine.workspace_escape_paths(&input.tool);
@@ -574,16 +765,43 @@ impl Guard {
             match result {
                 ValidationResult::Block { reason } => {
                     let code = classify_block_reason(&reason);
-                    return GuardDecision::deny(code, reason);
+                    return EvaluatedDecision::without_git_intents(GuardDecision::deny(
+                        code, reason,
+                    ));
                 }
                 ValidationResult::Warn { message } => {
-                    return GuardDecision::ask(
+                    validator_warning = Some(GuardDecision::ask(
                         message.clone(),
                         DecisionCode::DestructiveCommand,
                         message,
-                    );
+                    ));
                 }
                 ValidationResult::Allow => {}
+            }
+
+            if let Ok(subjects) = canonical_policy_subjects(&command) {
+                bash_policy_subjects.extend(subjects);
+            }
+
+            // Match modeled Git pushes and conservative embedded argv candidates
+            // by parsed intent as well as by their raw shell spelling. This makes
+            // path-qualified executables, transparent wrappers, Git repository
+            // selectors, and refspec shorthand share one policy decision. It is
+            // additive: canonical evaluation may strengthen Allow → Ask/Deny or
+            // Ask → Deny, but never relax a raw or validator decision. Restricted
+            // modes already reject a shell parse failure above.
+            if let Ok(intents) = git_push_intents(&command) {
+                for intent in &intents {
+                    for subject in intent.policy_subjects() {
+                        if !bash_policy_subjects
+                            .iter()
+                            .any(|existing| existing == subject)
+                        {
+                            bash_policy_subjects.push(subject.to_string());
+                        }
+                    }
+                }
+                parsed_git_pushes = intents;
             }
         }
 
@@ -592,13 +810,34 @@ impl Guard {
         // override header past a method-aware rule.
         if let Tool::HttpRequest = &input.tool {
             if let ValidationResult::Block { reason } = validate_http_request(&input.payload) {
-                return GuardDecision::deny(DecisionCode::DeniedByRule, reason);
+                return EvaluatedDecision::without_git_intents(GuardDecision::deny(
+                    DecisionCode::DeniedByRule,
+                    reason,
+                ));
             }
         }
 
-        let decision = state
+        let mut decision = state
             .engine
             .check(&input.tool, &input.payload, &input.context);
+        if let Some(warning) = validator_warning {
+            decision = stronger_decision(decision, warning);
+        }
+
+        if !matches!(decision, GuardDecision::Deny { .. }) {
+            for subject in bash_policy_subjects {
+                let canonical_payload = serde_json::json!({ "command": subject }).to_string();
+                let canonical = state
+                    .engine
+                    .check(&input.tool, &canonical_payload, &input.context);
+                decision = stronger_decision(decision, canonical);
+                if matches!(decision, GuardDecision::Deny { .. }) {
+                    break;
+                }
+            }
+        }
+
+        decision = with_git_push_preview(decision, &parsed_git_pushes, &input.context);
 
         // S6-4b: content-layer enforcement. Only consulted when the action
         // layer already allows the call — a content scan never relaxes an
@@ -610,18 +849,25 @@ impl Guard {
                 if let Some(content_decision) =
                     crate::content_filter::apply_content_policy(policy, &input.tool, &input.payload)
                 {
-                    return content_decision;
+                    return EvaluatedDecision {
+                        decision: content_decision,
+                        git_push_intents: parsed_git_pushes,
+                    };
                 }
             }
         }
 
-        decision
+        EvaluatedDecision {
+            decision,
+            git_push_intents: parsed_git_pushes,
+        }
     }
 
     fn write_audit(
         &self,
         input: &GuardInput,
         decision: &GuardDecision,
+        git_push_intents: &[GitPushIntent],
         state: &GuardState,
         request_id: &str,
     ) {
@@ -629,7 +875,7 @@ impl Guard {
             return;
         }
 
-        let event = AuditEvent::from_decision(
+        let mut event = AuditEvent::from_decision(
             request_id.to_string(),
             &input.tool,
             &input.payload,
@@ -640,6 +886,14 @@ impl Guard {
             state.audit_cfg.include_payload_hash,
             state.engine.version().to_string(),
         );
+        // An Allow decision is intentionally a unit variant, so it cannot
+        // carry evaluation metadata itself. Preserve every recognised push
+        // proposal in the audit event anyway: the allowed outbound action is
+        // the one operators most need to reconstruct later.
+        if !git_push_intents.is_empty() {
+            let values = git_push_intent_values(git_push_intents, &input.context);
+            insert_git_push_intents(&mut event.details, &values);
+        }
         let line = event.to_jsonl();
 
         state
@@ -870,5 +1124,58 @@ mod tests {
             assert!(line.contains("bash"), "audit line names the tool: {line}");
         }
         Ok(())
+    }
+
+    #[test]
+    fn allowed_git_push_keeps_structured_intent_in_audit() -> Result<(), GuardInitError> {
+        let guard = Guard::from_yaml(POLICY_AUDIT_B)?;
+        let buffer = Arc::new(std::sync::Mutex::new(Vec::new()));
+        guard.set_audit_sink(Box::new(SharedBuf(buffer.clone())));
+
+        let input = GuardInput::new(Tool::Bash, r#"{"command":"git push origin main"}"#);
+        assert_eq!(guard.check(&input), GuardDecision::Allow);
+
+        let captured = buffer.lock().expect("buffer lock").clone();
+        let event: serde_json::Value =
+            serde_json::from_slice(&captured).expect("audit line is valid JSON");
+        let intent = &event["details"]["git_push_intents"][0];
+        assert_eq!(intent["command"], "git push");
+        assert_eq!(intent["remote"], "origin");
+        assert_eq!(intent["refspecs"], serde_json::json!(["main"]));
+        assert_eq!(intent["force"], false);
+        Ok(())
+    }
+
+    #[test]
+    fn git_push_preview_keeps_repository_selectors_distinct() {
+        let intents =
+            git_push_intents("git -C /workspace --git-dir=.git --work-tree=src push origin main")
+                .expect("valid push");
+        let values = git_push_intent_values(
+            &intents,
+            &Context {
+                working_directory: Some(PathBuf::from("/starting")),
+                ..Default::default()
+            },
+        );
+        let preview = &values[0];
+
+        assert_eq!(
+            preview["directory_changes"],
+            serde_json::json!(["/workspace"])
+        );
+        assert_eq!(preview["effective_working_directory"], "/workspace");
+        assert_eq!(preview["git_dir"], ".git");
+        assert_eq!(preview["effective_git_dir"], "/workspace/.git");
+        assert_eq!(preview["work_tree"], "src");
+        assert_eq!(preview["effective_work_tree"], "/workspace/src");
+        assert_eq!(preview["detection_kind"], "modeled_execution");
+        assert_eq!(preview["execution_semantics"], "modeled");
+        assert!(preview["outer_command"].is_null());
+        assert!(preview["argument_index"].is_null());
+
+        let send_pack = git_push_intents("git send-pack origin main").expect("valid send-pack");
+        let send_pack_values = git_push_intent_values(&send_pack, &Context::default());
+        assert_eq!(send_pack_values[0]["command"], "git send-pack");
     }
 }

@@ -127,9 +127,9 @@ impl Guard {
     }
 
     /// Execute an action whose decision has already resolved to "proceed" — a
-    /// policy `Allow`, or a human-approved `ask` (S7-4). Does NOT re-run the
-    /// policy check; the caller owns that decision. Shared by the direct
-    /// execute path and the approval-resume path.
+    /// policy `Allow`, or an `ask` that the approval-resume path has just
+    /// revalidated (S7-4). This helper does not itself re-run policy; callers
+    /// must pass the same state snapshot used for their final decision.
     #[allow(clippy::too_many_arguments)]
     fn execute_allowed(
         &self,
@@ -474,8 +474,8 @@ impl Guard {
     ///
     /// Non-ask outcomes (execute / deny / handoff) pass straight through, so
     /// `run`'s behaviour is unchanged for everything except the ask path.
-    /// Approval is authoritative: after a human approves, the action executes
-    /// without re-running the deny/ask decision.
+    /// Approval never overrides a current deny: the record binding and current
+    /// policy are revalidated immediately before execution.
     pub fn run_until_approved(
         &self,
         input: &GuardInput,
@@ -550,6 +550,14 @@ impl Guard {
                             "approval ledger inconsistency: status Approved but no record for '{request_id}'"
                         )));
                     };
+                    if let Err(message) = approval_record_matches(&record, input, &request_id) {
+                        return Ok(RuntimeOutcome::Denied {
+                            request_id,
+                            reason: DecisionReason::new(DecisionCode::ApprovalDenied, message),
+                            policy_version,
+                            policy_verification,
+                        });
+                    }
                     let approval = approval_proof_from_record(record);
                     return self.resume_execution(input, sandbox, request_id, approval);
                 }
@@ -600,8 +608,10 @@ impl Guard {
         }
     }
 
-    /// Execute an approved action. Approval upgrades the original `ask` to a
-    /// proceed, so this runs `execute_allowed` with `Allow`.
+    /// Execute an approved action after revalidating the exact input against
+    /// the current policy snapshot. A repeated `ask` is expected and the
+    /// approval upgrades only that exact action; a new deny or policy
+    /// verification failure wins.
     fn resume_execution(
         &self,
         input: &GuardInput,
@@ -611,6 +621,42 @@ impl Guard {
     ) -> RuntimeResult {
         let state = self.state.load();
         let policy_version = state.engine.version().to_string();
+        if state.policy_verification.should_fail_closed() {
+            return Ok(RuntimeOutcome::Denied {
+                request_id,
+                reason: DecisionReason::new(
+                    DecisionCode::PolicyVerificationFailed,
+                    "policy signature verification failed during approval revalidation",
+                ),
+                policy_version,
+                policy_verification: state.policy_verification.clone(),
+            });
+        }
+
+        let current_decision = self.evaluate(input, &state);
+        if let GuardDecision::Deny { reason } = current_decision {
+            return Ok(RuntimeOutcome::Denied {
+                request_id,
+                reason,
+                policy_version,
+                policy_verification: state.policy_verification.clone(),
+            });
+        }
+        if !matches!(
+            current_decision,
+            GuardDecision::Allow | GuardDecision::AskUser { .. }
+        ) {
+            return Ok(RuntimeOutcome::Denied {
+                request_id,
+                reason: DecisionReason::new(
+                    DecisionCode::InternalError,
+                    "unrecognized decision during approval revalidation; failing closed",
+                ),
+                policy_version,
+                policy_verification: state.policy_verification.clone(),
+            });
+        }
+
         match self.execute_allowed(
             input,
             sandbox,
@@ -731,6 +777,27 @@ impl Guard {
             );
         }
     }
+}
+
+fn approval_record_matches(
+    record: &ApprovalRecord,
+    input: &GuardInput,
+    request_id: &str,
+) -> Result<(), String> {
+    let decided_at = record
+        .decided_at
+        .ok_or_else(|| "approved record has no decision timestamp".to_string())?;
+    if record.request_id != request_id
+        || record.tool != input.tool.name()
+        || record.payload_hash != sha256_hash(&input.payload)
+        || record.agent_id.as_deref() != input.context.agent_id.as_deref()
+        || decided_at < record.created_at
+    {
+        return Err(
+            "approval record no longer matches the exact request; refusing execution".to_string(),
+        );
+    }
+    Ok(())
 }
 
 /// Build the signed approval provenance (S7-5) from a decided ledger record.

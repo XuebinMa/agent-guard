@@ -160,8 +160,8 @@ pub struct DecisionReason {
     pub(crate) message: String,
     /// Structured extension fields for tooling, UI, and audit consumers.
     pub(crate) details: Option<serde_json::Value>,
-    /// Which policy rule triggered this decision, e.g. "tools.bash.deny[0]".
-    /// For Allow decisions, the matching allow rule is recorded in audit details instead.
+    /// Which policy rule triggered this deny/ask decision, e.g.
+    /// "tools.bash.deny[0]". `Allow` is a unit decision and carries no reason.
     pub(crate) matched_rule: Option<String>,
 }
 
