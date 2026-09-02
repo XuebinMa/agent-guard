@@ -172,7 +172,11 @@ jobs:
             target: aarch64
           - runner: macos-latest
             target: aarch64
-          - runner: macos-13
+          # macos-13 was retired in December 2025; jobs targeting it queue
+          # forever without ever being scheduled, which is what stalled the
+          # first v0.2.0 run. macos-15-intel is the last Intel image and is
+          # supported until Fall 2027.
+          - runner: macos-15-intel
             target: x86_64
           - runner: windows-latest
             target: x64
