@@ -5,11 +5,88 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-`cargo-release` automation rewrites the `[Unreleased]` heading at each release; do not delete it.
+The `[Unreleased]` heading is rolled forward manually before each release; do not delete it.
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-09-02
+
+### Added
+- **Structured Git push intent matching for recognized execution forms.**
+  Equivalent entry points such as quoted/escaped executable names, absolute
+  executable paths, explicitly modeled `env` / `command` / `stdbuf` / `setsid`
+  wrappers, `git -C`,
+  `--git-dir`, `git-push`, and grouped shell forms now share the canonical
+  `git push` policy decision. Force/lease/mirror/delete flags and destructive
+  `+source:destination` / `:destination` refspec shorthand are normalized so a
+  raw-string spelling cannot downgrade a deny to an ask or allow. Locked by
+  security regression `sec29` and tests against the shipped outbound preset.
+- **Plumbing-level Git egress recognition.** `git send-pack` and
+  `git-send-pack` now enter the same exact outbound authorization path as
+  porcelain `git push`, while structured previews retain the actual command.
+  Force, lease, mirror, deletion, and forced-refspec semantics share the same
+  policy decision and audit record. Locked by security regression `sec31`.
+
+### Security
+- **Static shell command words now share one policy identity.** Executable names
+  expressed with single/double quotes, concatenated quote fragments, or
+  backslash escapes are evaluated to the same policy subject as their Bash
+  runtime value. Both the wrapper spelling and its unwrapped command are
+  checked, closing deny-to-allow bypasses such as `"sudo"` and
+  `stdbuf -o0 "git" push --force`.
+- **Known process launchers are handled conservatively.** Modeled launchers are
+  unwrapped, including command-mode `ionice`, `taskset`, and `chrt`; their
+  existing-process modes and explicitly listed launchers with unsupported
+  grammars are rejected in restricted modes. Security regression `sec30` locks
+  the explicitly modeled and listed launchers. This is not an exhaustive proof
+  about arbitrary program semantics.
+- **Unknown argv prefixes cannot weaken a recognizable Git outbound decision.**
+  Adjacent standalone `git push`, `git-push`, `git send-pack`, and
+  `git-send-pack` argv candidates receive the same ask/deny strength as their
+  modeled forms. These candidates are labeled `embedded_argv` with unverified
+  execution semantics in previews and audit records. This deliberately
+  conservative check, locked by `sec32`, is a defense-in-depth heuristic rather
+  than launcher-class containment; the credential-isolated broker remains the
+  class-level boundary.
+- **Approval resume now revalidates before execution.** An approved ledger
+  record must still match the request id, tool, payload hash, agent id, and
+  timestamp ordering; the current policy and signature state are checked again
+  on the same execution snapshot, and a new deny always wins. The local JSONL
+  ledger remains explicitly unauthenticated and is documented as a
+  single-user coordination workflow, not a hostile-agent authorization broker.
+
+### Changed
+- **Release publication is ordered and restartable.** The tag workflow runs the
+  full verification gate, publishes the seven Rust crates individually in
+  dependency order, then publishes PyPI and npm sequentially. The npm installer
+  installs the exact matching `guard-hook` crate version instead of repository
+  `main`. crates.io 429 and server errors are retried during both the initial
+  existence check and post-publication visibility polling.
+- **Recoverable remote branch deletion now requires approval.** The outbound
+  preset treats `git push --delete` and deletion refspecs as `ask`, while force
+  and mirror operations remain denied.
+- **Product scope is narrowed to broker-enforced Git push.** Documentation now
+  distinguishes the fail-open advisory hook, Guard-owned execution, and the
+  planned credential-isolated broker; horizontal framework, DLP, sandbox,
+  attestation, and telemetry expansion is frozen until that path is complete.
+
 ### Fixed
+- **Git push previews preserve repository selectors and allowed audit intent.**
+  Ordered `-C` changes, `--git-dir`, and `--work-tree` are retained separately
+  with resolved preview paths; `--force-if-includes` alone is no longer
+  mislabeled as force, and allowed pushes retain structured intent in audit.
+- **Git outbound intent is parsed once per normal decision path.** The parsed
+  metadata now flows from evaluation into the audit choke point, avoiding a
+  second shell syntax-tree construction for each Bash check.
+- **Validator warnings no longer mask stronger policy decisions.** A warning is
+  retained as a candidate decision while raw and canonical policy subjects are
+  evaluated, so a preceding destructive-command warning cannot downgrade a
+  later forced-push deny to an approval prompt.
+- **Pre-release install and registry checks are truthful.** Documentation uses
+  checkout/path installs until `0.2.0` reaches the registries; the release
+  workflow identifies itself to crates.io and distinguishes 404 from
+  authorization/server failures, while version checks keep the two published
+  prerelease links synchronized independently of the source version.
 - **Grouping constructs can no longer hide a command from the shell gates.** The bash validator split a command on `| ; && || &` and treated the first token of each segment as the command word. Shell grammar is not flat, so `{ …; }`, `( … )`, `if/then`, `while/do`, `until/do`, `for/do`, `case`, and function bodies each presented `{`, `then`, or `do` in that position, and the command underneath was never classified — in `workspace_write`, `{ touch /etc/x; }` was allowed while `touch /etc/x` was denied. Commands are now recovered from a real syntax tree (`tree-sitter-bash`, new `bash::ast` module), so nesting cannot conceal one. This closes the bug class behind roughly fifteen previous point fixes rather than adding one more instance to them. Locked by `sec27` and by a 51-case corpus (`agent-guard-validators/tests/fixtures/shell_bypass_corpus.json`) that replays every historically closed bypass.
 - **The bash path gate no longer fails open when the workspace root is unverifiable.** An absent or relative `working_directory` normalised to an empty path, and `Path::starts_with` against an empty prefix is vacuously true, so every absolute write/read target counted as "inside the workspace" — the gate silently permitted host-wide writes. Absolute targets now fail closed when no absolute workspace root is configured (after the policy-declared escape list is consulted). Commands with no absolute target, such as `ls`, are unaffected. Locked by `sec26`.
 

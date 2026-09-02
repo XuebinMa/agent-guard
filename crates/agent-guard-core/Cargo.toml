@@ -3,6 +3,10 @@ name = "agent-guard-core"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+keywords.workspace = true
+categories.workspace = true
 description = "Core types, policy engine and audit for agent-guard"
 
 [dependencies]

@@ -3,6 +3,10 @@ name = "agent-guard-sdk"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+keywords.workspace = true
+categories.workspace = true
 description = "High-level SDK for agent-guard policy enforcement"
 
 [features]
@@ -22,9 +26,9 @@ windows-sandbox = ["agent-guard-sandbox/windows-sandbox"]
 windows-appcontainer = ["agent-guard-sandbox/windows-appcontainer"]
 
 [dependencies]
-agent-guard-core = { path = "../agent-guard-core", version = "=0.2.0-rc2" }
-agent-guard-validators = { path = "../agent-guard-validators", version = "=0.2.0-rc2" }
-agent-guard-sandbox = { path = "../agent-guard-sandbox", version = "=0.2.0-rc2" }
+agent-guard-core = { path = "../agent-guard-core", version = "=0.2.0" }
+agent-guard-validators = { path = "../agent-guard-validators", version = "=0.2.0" }
+agent-guard-sandbox = { path = "../agent-guard-sandbox", version = "=0.2.0" }
 tracing.workspace = true
 tracing-subscriber = { workspace = true, optional = true }
 prometheus-client.workspace = true

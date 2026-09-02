@@ -3,6 +3,10 @@ name = "agent-guard-cli"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+keywords.workspace = true
+categories.workspace = true
 description = "agent-guard command-line interface (approval workflow)"
 
 [[bin]]
@@ -10,7 +14,7 @@ name = "agent-guard"
 path = "src/main.rs"
 
 [dependencies]
-agent-guard-sdk = { path = "../agent-guard-sdk", version = "=0.2.0-rc2" }
+agent-guard-sdk = { path = "../agent-guard-sdk", version = "=0.2.0" }
 clap.workspace = true
 
 [dev-dependencies]

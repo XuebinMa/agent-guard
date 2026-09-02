@@ -3,16 +3,36 @@ requires = ["maturin>=1.0,<2.0"]
 build-backend = "maturin"
 
 [project]
-name = "agent-guard"
-version = "0.2.0-rc2"
+name = "agent-guard-runtime"
+version = "0.2.0"
 requires-python = ">=3.10"
+description = "Outbound change control for AI agents — gate shell, file-write and HTTP side effects before they happen"
+readme = "README.md"
+license = { text = "MIT" }
+keywords = ["security", "sandbox", "policy", "agent", "audit"]
 classifiers = [
     "Programming Language :: Rust",
     "Programming Language :: Python :: Implementation :: CPython",
     "Programming Language :: Python :: Implementation :: PyPy",
+    "Topic :: Security",
 ]
+
+[project.urls]
+Homepage = "https://github.com/XuebinMa/agent-guard"
+Repository = "https://github.com/XuebinMa/agent-guard"
+Changelog = "https://github.com/XuebinMa/agent-guard/blob/main/CHANGELOG.md"
 
 [tool.maturin]
 features = ["extension-module"]
 python-source = "python"
 module-name = "agent_guard._agent_guard"
+# `maturin develop` (which scripts/verify.sh runs) drops a built .so and, on
+# macOS, a ~75MB .dSYM tree straight into python-source. .gitignore does not
+# constrain maturin, so without this a maintainer who verifies before
+# publishing ships their local debug symbols to PyPI.
+exclude = [
+    "python/agent_guard/__pycache__/**/*",
+    "python/agent_guard/*.so",
+    "python/agent_guard/*.pyd",
+    "python/agent_guard/*.dSYM/**/*",
+]

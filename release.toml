@@ -10,13 +10,14 @@
 #  1. cargo release <level>          (dry-run)
 #  2. review the proposed diff + tag
 #  3. cargo release <level> --execute
-#  4. cargo release publish --execute (only when crates are ready for crates.io)
+#  4. push the reviewed tag; GitHub Actions performs registry publishing
 #
-# For now we ship release commits and tags but skip the actual `cargo publish`
-# step, since the crates aren't on crates.io yet.
+# Registry publishing is intentionally kept out of cargo-release: the release
+# workflow publishes each crate in dependency order and sequences crates.io,
+# PyPI, and npm to reduce partial releases.
 
 # Use a single shared version across all workspace crates so the nine
-# crates always release together and inter-crate `version = "=0.2.0-rc2"`
+# crates always release together and inter-crate `version = "=0.2.0"`
 # pins stay consistent.
 shared-version = true
 
@@ -26,8 +27,8 @@ tag-name = "v{{version}}"
 tag-message = "agent-guard v{{version}}"
 pre-release-commit-message = "chore(release): v{{version}}"
 
-# Skip `cargo publish` for now — the crates aren't on crates.io and a
-# stray publish would be hard to undo. Flip to `true` when we're ready.
+# Version, commit, and tag only. `.github/workflows/release.yml` owns the
+# ordered registry writes after the tag passes the full preflight.
 publish = false
 
 # Don't push the tag automatically; the human reviews and pushes it

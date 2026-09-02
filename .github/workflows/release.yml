@@ -1,0 +1,198 @@
+name: Release
+
+# Publishing is deliberately manual: this runs only when a maintainer pushes a
+# v* tag, never on a branch push. Irreversible registry writes are ordered so a
+# failed Rust publication cannot leave PyPI/npm claiming a complete release.
+on:
+  push:
+    tags: [ 'v*' ]
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
+jobs:
+  guard:
+    name: Verify Tag Matches Workspace Version
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Tag must equal the version every marker agrees on
+        run: |
+          ./scripts/check-version-consistency.sh
+          workspace_version="$(sed -n 's/^version = "\(.*\)"$/\1/p' Cargo.toml | head -1)"
+          tag_version="${GITHUB_REF_NAME#v}"
+          if [ "$workspace_version" != "$tag_version" ]; then
+            echo "Tag $GITHUB_REF_NAME does not match workspace version $workspace_version" >&2
+            exit 1
+          fi
+          echo "Releasing $tag_version"
+
+  preflight:
+    name: Full Release Preflight
+    needs: guard
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Linux sandbox deps
+        run: sudo apt-get update && sudo apt-get install -y libseccomp-dev
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: crates/agent-guard-node/package-lock.json
+      - name: Run the canonical verification gate
+        run: ./scripts/verify.sh full
+
+  crates-io:
+    name: Publish Rust Crates
+    needs: preflight
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Linux sandbox deps
+        run: sudo apt-get update && sudo apt-get install -y libseccomp-dev
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+      - name: Cache Rust
+        uses: Swatinem/rust-cache@v2
+      # Publish individually in dependency order. crates.io rate-limits new
+      # crate creation; the API check also makes a retry skip versions that
+      # already landed.
+      - name: Publish crates in dependency order
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          publish_and_wait() {
+            crate="$1"
+            endpoint="https://crates.io/api/v1/crates/${crate}/${version}"
+            user_agent="agent-guard-release/${version} (+https://github.com/XuebinMa/agent-guard)"
+            ready_to_publish=false
+            for attempt in $(seq 1 6); do
+              status="$(curl --silent --show-error --user-agent "$user_agent" --output /dev/null --write-out '%{http_code}' "$endpoint")"
+              case "$status" in
+                200)
+                  echo "$crate $version is already published; skipping"
+                  return 0
+                  ;;
+                404)
+                  ready_to_publish=true
+                  break
+                  ;;
+                429|5??)
+                  echo "crates.io returned transient HTTP $status while checking $crate $version (attempt $attempt/6)"
+                  sleep 10
+                  ;;
+                *)
+                  echo "crates.io returned HTTP $status while checking $crate $version" >&2
+                  return 1
+                  ;;
+              esac
+            done
+            if [ "$ready_to_publish" != true ]; then
+              echo "crates.io did not return a definitive status for $crate $version" >&2
+              return 1
+            fi
+            cargo publish --locked --package "$crate"
+            for attempt in $(seq 1 60); do
+              status="$(curl --silent --show-error --user-agent "$user_agent" --output /dev/null --write-out '%{http_code}' "$endpoint")"
+              case "$status" in
+                200)
+                  echo "$crate $version is visible in crates.io"
+                  return 0
+                  ;;
+                404|429|5??) ;;
+                *)
+                  echo "crates.io returned HTTP $status while waiting for $crate $version" >&2
+                  return 1
+                  ;;
+              esac
+              sleep 10
+            done
+            echo "$crate $version did not become visible in time" >&2
+            return 1
+          }
+          publish_and_wait agent-guard-core
+          publish_and_wait agent-guard-validators
+          publish_and_wait agent-guard-sandbox
+          publish_and_wait agent-guard-sdk
+          publish_and_wait agent-guard-cli
+          publish_and_wait guard-hook
+          publish_and_wait guard-verify
+
+  pypi:
+    name: Publish Python Wheels
+    needs: preflight
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-latest
+            target: x86_64
+          - runner: ubuntu-latest
+            target: aarch64
+          - runner: macos-latest
+            target: aarch64
+          - runner: macos-13
+            target: x86_64
+          - runner: windows-latest
+            target: x64
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      # abi3-py310 means one wheel per platform covers every CPython >= 3.10.
+      # Built from crates/agent-guard-python: that is the pyproject verify.sh
+      # and CI exercise, and the one whose python-source ships the adapters.
+      - name: Build wheel
+        uses: PyO3/maturin-action@v1
+        with:
+          target: ${{ matrix.target }}
+          args: --release --out dist --features extension-module
+          manylinux: auto
+          working-directory: crates/agent-guard-python
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wheels-${{ matrix.runner }}-${{ matrix.target }}
+          path: crates/agent-guard-python/dist
+
+  pypi-publish:
+    name: Upload Wheels to PyPI
+    needs: [crates-io, pypi]
+    runs-on: ubuntu-latest
+    # Trusted publishing: no long-lived token in repository secrets.
+    environment: pypi
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: wheels-*
+          merge-multiple: true
+          path: dist
+      - uses: pypa/gh-action-pypi-publish@release/v1
+
+  npm:
+    name: Publish Claude Code Plugin
+    needs: pypi-publish
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          registry-url: 'https://registry.npmjs.org'
+      - name: Publish agent-guard-plugin
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: npm publish ./packages/agent-guard-plugin

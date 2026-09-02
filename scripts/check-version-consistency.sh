@@ -37,28 +37,32 @@ readme = (root / "README.md").read_text()
 docs_readme = (root / "docs/README.md").read_text()
 
 badge_match = re.search(r"Version-([0-9A-Za-z.\-]+)-blue", readme)
-release_match = re.search(r"releases/tag/v([0-9A-Za-z.\-]+)", readme)
+source_match = re.search(r"Source version\*\*:\s*`v([0-9A-Za-z.\-]+)`", readme)
 docs_title_match = re.search(r"Documentation Hub \(v([0-9A-Za-z.\-]+)\)", docs_readme)
-docs_release_match = re.search(r"releases/tag/v([0-9A-Za-z.\-]+)", docs_readme)
+release_match = re.search(r"Latest published prerelease\*\*:\s*\[`v([0-9A-Za-z.\-]+)`", readme)
+docs_release_match = re.search(r"Latest published prerelease\*\*\s*(?:→|:)\s*\[`v([0-9A-Za-z.\-]+)`", docs_readme)
 
-if not all([badge_match, release_match, docs_title_match, docs_release_match]):
+if not all([badge_match, source_match, docs_title_match, release_match, docs_release_match]):
     missing = []
     if not badge_match:
         missing.append("README badge version")
-    if not release_match:
-        missing.append("README release version")
+    if not source_match:
+        missing.append("README source version")
     if not docs_title_match:
         missing.append("docs/README title version")
+    if not release_match:
+        missing.append("README published prerelease link")
     if not docs_release_match:
-        missing.append("docs/README release version")
+        missing.append("docs/README published prerelease link")
     raise SystemExit("Missing version markers: " + ", ".join(missing))
 
 print(cargo_version)
 print(node_version)
 print(python_version)
 print(badge_match.group(1).replace("--", "-"))
-print(release_match.group(1))
+print(source_match.group(1))
 print(docs_title_match.group(1))
+print(release_match.group(1))
 print(docs_release_match.group(1))
 print(plugin_version)
 print(marketplace_version)
@@ -77,12 +81,11 @@ checks=(
   "crates/agent-guard-node/package.json:${versions[1]}"
   "crates/agent-guard-python/pyproject.toml:${versions[2]}"
   "README badge:${versions[3]}"
-  "README release link:${versions[4]}"
+  "README source version:${versions[4]}"
   "docs/README title:${versions[5]}"
-  "docs/README release link:${versions[6]}"
-  ".claude-plugin/plugin.json:${versions[7]}"
-  ".claude-plugin/marketplace.json:${versions[8]}"
-  "packages/agent-guard-plugin/package.json:${versions[9]}"
+  ".claude-plugin/plugin.json:${versions[8]}"
+  ".claude-plugin/marketplace.json:${versions[9]}"
+  "packages/agent-guard-plugin/package.json:${versions[10]}"
 )
 
 for check in "${checks[@]}"; do
@@ -94,4 +97,9 @@ for check in "${checks[@]}"; do
   fi
 done
 
-echo "Version consistency check passed: $expected"
+if [[ "${versions[6]}" != "${versions[7]}" ]]; then
+  echo "Published prerelease link mismatch: README has ${versions[6]}, docs/README has ${versions[7]}" >&2
+  exit 1
+fi
+
+echo "Version consistency check passed: source $expected, published prerelease ${versions[6]}"

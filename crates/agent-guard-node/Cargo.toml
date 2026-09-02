@@ -3,6 +3,8 @@ name = "agent-guard-node"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+# Distributed via npm / PyPI, not crates.io.
+publish = false
 description = "Node.js binding for agent-guard via napi-rs"
 
 [lib]
@@ -19,7 +21,7 @@ seccomp = ["agent-guard-sdk/seccomp"]
 landlock = ["agent-guard-sdk/landlock"]
 
 [dependencies]
-agent-guard-sdk = { path = "../agent-guard-sdk", version = "=0.2.0-rc2" }
+agent-guard-sdk = { path = "../agent-guard-sdk", version = "=0.2.0" }
 napi = { version = "2.12", features = ["async", "serde-json"] }
 napi-derive = "2.12"
 serde = { version = "1.0", features = ["derive"] }
