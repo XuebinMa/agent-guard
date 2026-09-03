@@ -10,6 +10,34 @@ The `[Unreleased]` heading is rolled forward manually before each release; do no
 ## [Unreleased]
 
 ### Fixed
+- **Anomaly and lock records reach the audit sink, not only a SIEM webhook.**
+  `AgentLocked` and `AnomalyTriggered` were built in one place and handed
+  straight to the SIEM exporter, which returns early when no webhook is
+  configured. On a file-audited deployment — what the plugin preset sets up —
+  the record naming the lock was written nowhere, while the lock itself
+  appeared only as a `code` on the ordinary `tool_call` line. Any consumer
+  counting those record types was structurally always zero, `guard-verify`'s
+  compliance report among them. Both records now go to every configured sink,
+  gated on `audit.enabled` like the tool-call line.
+- **An anomaly verdict carries the observations it was derived from.** The
+  rate limiter and the deny fuse decide against in-memory histories that are
+  destructively pruned to the current window, and the emitted record said only
+  that a limit was exceeded. `AnomalyEvent` now carries `evidence`: the rule,
+  the window, the threshold, the observed count, the in-window witnesses as
+  wall-clock timestamps, and a `truncated` flag set when the history cap
+  dropped older entries so the count is a lower bound rather than an exact
+  reconstruction. A reader holding the record can recompute the verdict
+  instead of taking it on faith.
+
+  Decisions still compare monotonic `Instant`s, so a system clock stepping
+  backwards cannot age observations out of a window; the wall-clock witnesses
+  exist only to make the verdict checkable outside the process. The two clocks
+  are recorded together and neither is derived from the other. A lock's
+  evidence is captured at the moment the fuse trips and replayed unchanged
+  afterwards, because a lock outlives the window that caused it.
+
+  `AnomalyDetector::check` returns `AnomalyVerdict` (status plus evidence)
+  rather than a bare `AnomalyStatus`.
 - **An approval expiry now carries the bound that justified it.** The
   approval deadline existed only as a process-local `Instant` inside the
   waiting loop: not serialisable, not comparable across processes, and never

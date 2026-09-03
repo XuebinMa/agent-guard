@@ -244,6 +244,10 @@ fn with_git_push_preview(
 struct EvaluatedDecision {
     decision: GuardDecision,
     git_push_intents: Vec<GitPushIntent>,
+    /// Set when the anomaly detector produced this decision, so the audit
+    /// record can state what the verdict was derived from instead of only
+    /// asserting it.
+    anomaly_evidence: Option<agent_guard_core::AnomalyEvidence>,
 }
 
 impl EvaluatedDecision {
@@ -251,6 +255,18 @@ impl EvaluatedDecision {
         Self {
             decision,
             git_push_intents: Vec::new(),
+            anomaly_evidence: None,
+        }
+    }
+
+    fn with_anomaly_evidence(
+        decision: GuardDecision,
+        evidence: Option<agent_guard_core::AnomalyEvidence>,
+    ) -> Self {
+        Self {
+            decision,
+            git_push_intents: Vec::new(),
+            anomaly_evidence: evidence,
         }
     }
 }
@@ -604,24 +620,31 @@ impl Guard {
         let anomaly_subject = anomaly_subject(&input.context);
         let anomaly_cfg = state.engine.anomaly_config();
 
-        match state.anomaly_detector.check(&anomaly_subject, anomaly_cfg) {
+        let verdict = state.anomaly_detector.check(&anomaly_subject, anomaly_cfg);
+        match verdict.status {
             crate::anomaly::AnomalyStatus::Normal => {}
             crate::anomaly::AnomalyStatus::RateLimited => {
-                let evaluated = EvaluatedDecision::without_git_intents(GuardDecision::deny(
-                    DecisionCode::AnomalyDetected,
-                    format!(
-                        "anomaly detected: tool call frequency exceeded limit ({} calls / {}s)",
-                        anomaly_cfg.rate_limit.max_calls, anomaly_cfg.rate_limit.window_seconds
+                let evaluated = EvaluatedDecision::with_anomaly_evidence(
+                    GuardDecision::deny(
+                        DecisionCode::AnomalyDetected,
+                        format!(
+                            "anomaly detected: tool call frequency exceeded limit ({} calls / {}s)",
+                            anomaly_cfg.rate_limit.max_calls, anomaly_cfg.rate_limit.window_seconds
+                        ),
                     ),
-                ));
+                    verdict.evidence,
+                );
                 return self
                     .finalize_check(input, &evaluated, state, &agent_id, "deny", request_id);
             }
             crate::anomaly::AnomalyStatus::Locked => {
-                let evaluated = EvaluatedDecision::without_git_intents(GuardDecision::deny(
-                    DecisionCode::AgentLocked,
-                    "anomaly detected: agent locked due to too many security denials (Deny Fuse)",
-                ));
+                let evaluated = EvaluatedDecision::with_anomaly_evidence(
+                    GuardDecision::deny(
+                        DecisionCode::AgentLocked,
+                        "anomaly detected: agent locked due to too many security denials (Deny Fuse)",
+                    ),
+                    verdict.evidence,
+                );
                 return self
                     .finalize_check(input, &evaluated, state, &agent_id, "deny", request_id);
             }
@@ -685,6 +708,7 @@ impl Guard {
                     GuardDecision::Deny { reason } => reason.message().to_string(),
                     _ => "anomaly".to_string(),
                 },
+                evidence: evaluated.anomaly_evidence.clone(),
             };
             let record = if matches!(decision, GuardDecision::Deny { reason } if reason.code() == DecisionCode::AgentLocked)
             {
@@ -692,7 +716,12 @@ impl Guard {
             } else {
                 agent_guard_core::AuditRecord::AnomalyTriggered(event)
             };
-            state.siem_exporter.export(record);
+            // An anomaly record used to reach the SIEM exporter only, which
+            // meant that on a file-audited deployment — the plugin default —
+            // the record naming the lock was never written anywhere, and any
+            // consumer counting `agent_locked` (guard-verify's report does)
+            // was structurally always zero. It goes to both sinks now.
+            self.emit_record(state, record);
         }
 
         // `write_audit` is the single place that gates on `audit_cfg.enabled`.
@@ -852,6 +881,7 @@ impl Guard {
                     return EvaluatedDecision {
                         decision: content_decision,
                         git_push_intents: parsed_git_pushes,
+                        anomaly_evidence: None,
                     };
                 }
             }
@@ -860,7 +890,30 @@ impl Guard {
         EvaluatedDecision {
             decision,
             git_push_intents: parsed_git_pushes,
+            anomaly_evidence: None,
         }
+    }
+
+    /// Send one record to every configured audit sink.
+    ///
+    /// `write_audit` gates the tool-call line on `audit_cfg.enabled`; this
+    /// does the same for the records that are not tool calls, so enabling or
+    /// disabling audit governs the whole stream rather than part of it.
+    fn emit_record(&self, state: &GuardState, record: agent_guard_core::AuditRecord) {
+        if !state.audit_cfg.enabled {
+            return;
+        }
+
+        if state.audit_cfg.output == "file" {
+            if let Some(ref writer) = state.audit_file_writer {
+                let line = serde_json::to_string(&record).unwrap_or_else(|e| {
+                    format!("{{\"error\":\"audit serialization failed: {e}\"}}")
+                });
+                writer.send(line);
+            }
+        }
+
+        state.siem_exporter.export(record);
     }
 
     fn write_audit(

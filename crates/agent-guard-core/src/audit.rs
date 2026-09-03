@@ -93,6 +93,53 @@ pub struct AnomalyEvent {
     pub agent_id: Option<String>,
     pub actor: Option<String>,
     pub reason: String,
+    /// What the verdict was derived from.
+    ///
+    /// `reason` is prose: it says a limit was exceeded, not which
+    /// observations exceeded it. Without the evidence a reader can see that
+    /// an actor was rate-limited or locked and cannot check whether the
+    /// verdict follows. `None` marks a claim that carries no revalidation
+    /// material — records written before this field, and any future emitter
+    /// that does not supply one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub evidence: Option<AnomalyEvidence>,
+}
+
+/// Which rule produced an anomaly verdict.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AnomalyRule {
+    /// Too many calls inside the window: fires when `observed > threshold`.
+    RateLimit,
+    /// Too many denials inside the window: fires when `observed >= threshold`.
+    DenyFuse,
+}
+
+/// The observations a verdict was derived from, in a form another evaluator
+/// can recompute it from.
+///
+/// The witnesses are wall-clock times so they mean something outside this
+/// process. The decision itself is taken on a monotonic clock, which cannot
+/// be moved by an NTP step or a hostile clock change; these two clocks are
+/// deliberately different and are recorded together rather than one being
+/// derived from the other.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AnomalyEvidence {
+    pub rule: AnomalyRule,
+    /// The width of the window the observations were counted in.
+    pub window_seconds: u64,
+    /// The configured limit the observations were compared against.
+    pub threshold: usize,
+    /// How many observations were counted. Equals `witnesses.len()` unless
+    /// `truncated` is set.
+    pub observed: usize,
+    /// The in-window observations, oldest first.
+    pub witnesses: Vec<DateTime<Utc>>,
+    /// Set when the in-memory history hit its cap and older entries were
+    /// dropped before this verdict. `observed` and `witnesses` then
+    /// understate what happened, and a reader must treat the count as a
+    /// lower bound rather than an exact reconstruction.
+    pub truncated: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
