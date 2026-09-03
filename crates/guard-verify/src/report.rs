@@ -50,6 +50,14 @@ pub struct ComplianceReport {
     pub executions_finished: usize,
     /// Host-reported outcomes that were not witnessed by the Guard.
     pub executions_reported: usize,
+    /// Of those, the ones whose host supplied a signature over the outcome.
+    ///
+    /// Counted separately because the difference changes what the total
+    /// proves: an attested outcome names a key that can be checked and
+    /// cannot be edited afterwards without detection, an unattested one
+    /// rests on nothing but the host having said it. Folding them together
+    /// would let the stronger class lend its credibility to the weaker.
+    pub executions_reported_attested: usize,
     pub sandbox_failures: usize,
     pub anomalies_triggered: usize,
     pub agents_locked: usize,
@@ -148,7 +156,12 @@ pub fn build_report(
             }
             AuditRecord::ExecutionStarted(_) => report.executions_started += 1,
             AuditRecord::ExecutionFinished(_) => report.executions_finished += 1,
-            AuditRecord::ExecutionReported(_) => report.executions_reported += 1,
+            AuditRecord::ExecutionReported(event) => {
+                report.executions_reported += 1;
+                if event.host_attestation.is_some() {
+                    report.executions_reported_attested += 1;
+                }
+            }
             AuditRecord::SandboxFailure(_) => report.sandbox_failures += 1,
             AuditRecord::AnomalyTriggered(_) => report.anomalies_triggered += 1,
             AuditRecord::AgentLocked(_) => report.agents_locked += 1,
@@ -222,11 +235,16 @@ pub fn print_text(report: &ComplianceReport) {
     print_counts("  by label", &report.content_by_label);
 
     println!();
+    let unattested = report
+        .executions_reported
+        .saturating_sub(report.executions_reported_attested);
     println!(
-        "executions:  {} started · {} finished · {} host-reported · {} sandbox failure(s)",
+        "executions:  {} started · {} finished · {} host-reported ({} attested, {} unattested) · {} sandbox failure(s)",
         report.executions_started,
         report.executions_finished,
         report.executions_reported,
+        report.executions_reported_attested,
+        unattested,
         report.sandbox_failures
     );
     println!(

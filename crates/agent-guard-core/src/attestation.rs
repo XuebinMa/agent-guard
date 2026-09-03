@@ -119,3 +119,109 @@ mod tests {
         assert!(!proof.verify(&verifying_key));
     }
 }
+
+/// A host's signed statement about an outcome it produced outside the Guard.
+///
+/// `RuntimeOutcome::Handoff` gives the action to the host, which executes it
+/// beyond the Guard's boundary and reports back. The resulting
+/// `ExecutionReported` record identifies where the claim came from; this is
+/// what lets a reader re-check it.
+///
+/// ## What it establishes, and what it cannot
+///
+/// The signature binds a named key to an exact claim — this request, this
+/// exit code, this duration. A third party cannot forge it, and an edit to
+/// the recorded outcome stops matching it, so tampering is detectable.
+///
+/// It does not make the exit code true. The execution happened outside the
+/// boundary and nothing signed inside the boundary can reach it: a host that
+/// lies about its own result will produce a perfectly valid attestation of
+/// that lie. What changes is that the lie becomes attributable to a named key
+/// and cannot be quietly revised afterwards, and that a reader can tell an
+/// attested claim from an unattested one instead of having to treat both the
+/// same way.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct HostAttestation {
+    pub version: u8,
+    /// Names the key that signed, so a verifier knows which one to check
+    /// against. It is the host's own label and is not itself authenticated.
+    pub key_id: String,
+    /// The claim is restated here rather than referenced, so the signature
+    /// covers the values themselves instead of whatever the surrounding
+    /// record happens to say later.
+    pub request_id: String,
+    pub exit_code: i32,
+    pub duration_ms: u64,
+    pub signature: String,
+}
+
+impl HostAttestation {
+    pub fn create(
+        signing_key: &SigningKey,
+        key_id: &str,
+        request_id: &str,
+        exit_code: i32,
+        duration_ms: u64,
+    ) -> Self {
+        let version = 1;
+        let data_to_sign =
+            host_attestation_payload(version, key_id, request_id, exit_code, duration_ms);
+        let signature = signing_key.sign(&data_to_sign);
+
+        Self {
+            version,
+            key_id: key_id.to_string(),
+            request_id: request_id.to_string(),
+            exit_code,
+            duration_ms,
+            signature: hex::encode(signature.to_bytes()),
+        }
+    }
+
+    /// Check the signature against a host key the verifier already trusts.
+    pub fn verify(&self, verifying_key: &VerifyingKey) -> bool {
+        let data_to_sign = host_attestation_payload(
+            self.version,
+            &self.key_id,
+            &self.request_id,
+            self.exit_code,
+            self.duration_ms,
+        );
+
+        if let Ok(sig_bytes) = hex::decode(&self.signature) {
+            if let Ok(sig) = Signature::from_slice(&sig_bytes) {
+                return verifying_key.verify(&data_to_sign, &sig).is_ok();
+            }
+        }
+        false
+    }
+
+    /// Whether this attestation is about the outcome described.
+    ///
+    /// Checkable without any key, which is what lets the Guard refuse to
+    /// attach an attestation that signs one result while the host reports
+    /// another, and lets a reader notice a record edited after signing.
+    pub fn describes(&self, request_id: &str, exit_code: i32, duration_ms: u64) -> bool {
+        self.request_id == request_id
+            && self.exit_code == exit_code
+            && self.duration_ms == duration_ms
+    }
+}
+
+fn host_attestation_payload(
+    version: u8,
+    key_id: &str,
+    request_id: &str,
+    exit_code: i32,
+    duration_ms: u64,
+) -> Vec<u8> {
+    serde_json::to_vec(&(
+        "agent-guard/host-attestation",
+        version,
+        key_id,
+        request_id,
+        exit_code,
+        duration_ms,
+    ))
+    .expect("host attestation signing payload should always serialize")
+}

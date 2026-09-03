@@ -189,6 +189,8 @@ impl Guard {
                     sandbox_type: execution_backend.clone(),
                     duration_ms: None,
                     exit_code: None,
+                    // Witnessed by the Guard; there is no host claim to back.
+                    host_attestation: None,
                 },
             ));
 
@@ -255,6 +257,8 @@ impl Guard {
                     sandbox_type: execution_backend.clone(),
                     duration_ms: Some(duration.as_millis() as u64),
                     exit_code: Some(output.exit_code),
+                    // Witnessed by the Guard; there is no host claim to back.
+                    host_attestation: None,
                 },
             ));
 
@@ -747,6 +751,25 @@ impl Guard {
     pub fn report_handoff_result(&self, request_id: &str, result: HandoffResult) {
         let state = self.state.load();
         let stderr_present = result.stderr.is_some();
+        // An attestation is only evidence for the claim it actually signs.
+        // A host that signs one outcome and reports another has attested to
+        // nothing about this record, so the signature is dropped rather than
+        // recorded next to a result it does not cover. This check needs no
+        // key, so it holds even for a verifier the Guard has never heard of.
+        let attestation = result.attestation.filter(|attestation| {
+            let describes_report =
+                attestation.describes(request_id, result.exit_code, result.duration_ms);
+            if !describes_report {
+                tracing::warn!(
+                    request_id = request_id,
+                    key_id = %attestation.key_id,
+                    "host attestation describes a different outcome than the one reported; \
+                     recording the outcome as unattested"
+                );
+            }
+            describes_report
+        });
+
         let event = agent_guard_core::ExecutionEvent {
             timestamp: chrono::Utc::now(),
             request_id: request_id.to_string(),
@@ -755,6 +778,7 @@ impl Guard {
             sandbox_type: "host-handoff".to_string(),
             duration_ms: Some(result.duration_ms),
             exit_code: Some(result.exit_code),
+            host_attestation: attestation,
         };
 
         state

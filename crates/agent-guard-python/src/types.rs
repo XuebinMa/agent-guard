@@ -438,6 +438,9 @@ pub fn handoff_result_to_rust(r: &HandoffResult) -> RustHandoffResult {
         exit_code: r.exit_code,
         duration_ms: r.duration_ms,
         stderr: r.stderr.clone(),
+        // The bindings cannot sign: neither exposes a host key, so a
+        // binding-reported outcome is honestly unattested.
+        attestation: None,
     }
 }
 

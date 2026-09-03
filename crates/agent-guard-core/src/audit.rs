@@ -57,6 +57,14 @@ pub struct ExecutionEvent {
     pub sandbox_type: String,
     pub duration_ms: Option<u64>,
     pub exit_code: Option<i32>,
+    /// A host's signature over the outcome it reported, when it supplied one.
+    ///
+    /// Only ever set on `ExecutionReported`, where the Guard did not witness
+    /// the execution. `None` means the claim rests on nothing but the host
+    /// having said it, and a reader must treat it that way rather than as an
+    /// outcome that simply has not been checked yet.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub host_attestation: Option<crate::attestation::HostAttestation>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
