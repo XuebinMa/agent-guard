@@ -7,12 +7,14 @@ name = "agent-guard-broker"
 version = "0.2.1"
 dependencies = [
  "agent-guard-core",
+ "chrono",
  "hex",
  "serde",
  "serde_json",
  "sha2",
  "tempfile",
  "thiserror 1.0.69",
+ "uuid",
 ]
 
 [[package]]

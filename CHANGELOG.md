@@ -10,6 +10,26 @@ The `[Unreleased]` heading is rolled forward manually before each release; do no
 ## [Unreleased]
 
 ### Added
+- **`agent-guard-broker`: one-use authorization.** A grant records a human
+  decision about exactly one resolved transaction, bound to its digest, the
+  policy hash in force, an actor and a deadline, and can be spent once.
+
+  Spending is a rename into a `spent/` directory, which is one atomic
+  filesystem operation: of many callers racing for the same grant, exactly one
+  succeeds. Nothing reads the grant to decide whether it is still available,
+  because a read followed by a write has a window between them and that window
+  is the whole of what one-use has to exclude. A 16-thread test asserts exactly
+  one winner.
+
+  A presented grant is consumed whether or not it authorizes what was
+  presented. The only reasons validation fails are that the effect changed or
+  that someone is probing, and both need a fresh human decision anyway, so
+  nothing is lost — while validating first would let one approval be tried
+  against many transactions.
+
+  The deadline is recorded in the grant rather than left in the process that
+  enforces it, so someone holding a spent grant can check that a refusal for
+  expiry was correct.
 - **`agent-guard-broker`: the exact Git push transaction, and drift against
   it.** The first piece of the broker-enforced push path in `ROADMAP.md`.
   `resolve_push_transaction` answers, from the repository and the remote,
