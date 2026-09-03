@@ -1,15 +1,15 @@
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::sync::Arc;
 
 use agent_guard_core::{
     payload::{extract_bash_command as extract_core_bash_command, ExtractedPayload},
-    AuditConfig, AuditEvent, Context, DecisionCode, GuardDecision, GuardInput, PolicyEngine,
-    ReloadEvent, RuntimeDecision, Tool,
+    AuditConfig, Context, DecisionCode, GuardDecision, GuardInput, PolicyEngine, RuntimeDecision,
+    Tool,
 };
 use agent_guard_sandbox::Sandbox;
 use agent_guard_validators::bash::{
-    canonical_policy_subjects, git_push_intents, validate_bash_command, GitPushDetection,
-    GitPushIntent, ValidationResult,
+    canonical_policy_subjects, git_push_intents, validate_bash_command, GitPushIntent,
+    ValidationResult,
 };
 use agent_guard_validators::http::validate_http_request;
 use arc_swap::ArcSwap;
@@ -17,14 +17,13 @@ use thiserror::Error;
 use uuid::Uuid;
 
 use crate::audit_writer::AuditFileWriter;
+use crate::guard_audit::{stdout_audit_sink, AuditSink};
+use crate::guard_git_preview::with_git_push_preview;
 use crate::guard_helpers::{
     anomaly_subject, classify_block_reason, policy_mode_to_permission_mode,
     runtime_decision_for_input,
 };
-use crate::policy_signing::{
-    load_policy_signature_file, load_public_key_file, parse_hex_signing_key, verify_policy,
-    PolicyVerification,
-};
+use crate::policy_signing::PolicyVerification;
 use crate::sandbox_resolution::{resolve_default_sandbox, resolve_sandbox_by_name};
 pub use crate::sandbox_resolution::{DefaultSandboxDiagnosis, UnknownBackendError};
 use crate::siem::SiemExporter;
@@ -58,32 +57,6 @@ pub struct Guard {
     pub(crate) state: ArcSwap<GuardState>,
 }
 
-/// Destination for non-file audit lines. Defaults to stdout; hosts and
-/// tests can redirect it via `Guard::set_audit_sink` so the library never
-/// owns the process stdout outright.
-pub(crate) type AuditSink = Arc<std::sync::Mutex<Box<dyn std::io::Write + Send>>>;
-
-fn stdout_audit_sink() -> AuditSink {
-    Arc::new(std::sync::Mutex::new(Box::new(std::io::stdout())))
-}
-
-/// Write one audit line to the sink. An unwritable sink must not panic or
-/// abort the decision path; the failure is surfaced via tracing and the
-/// SIEM export remains the durable channel.
-fn write_to_audit_sink(sink: &AuditSink, line: &str) {
-    use std::io::Write;
-    match sink.lock() {
-        Ok(mut writer) => {
-            if let Err(error) = writeln!(writer, "{line}") {
-                tracing::error!(%error, "failed to write audit line to sink");
-            }
-        }
-        Err(_) => {
-            tracing::error!("audit sink mutex poisoned; audit line dropped from sink output");
-        }
-    }
-}
-
 fn stronger_decision(current: GuardDecision, candidate: GuardDecision) -> GuardDecision {
     fn strength(decision: &GuardDecision) -> u8 {
         match decision {
@@ -99,145 +72,6 @@ fn stronger_decision(current: GuardDecision, candidate: GuardDecision) -> GuardD
         candidate
     } else {
         current
-    }
-}
-
-fn git_effective_working_directory(
-    context: &Context,
-    directory_changes: &[String],
-) -> Option<PathBuf> {
-    let mut current = context.working_directory.clone();
-    for change in directory_changes {
-        if change.is_empty() {
-            continue;
-        }
-        let path = Path::new(change);
-        current = Some(if path.is_absolute() {
-            path.to_path_buf()
-        } else if let Some(base) = current {
-            base.join(path)
-        } else {
-            path.to_path_buf()
-        });
-    }
-    current
-}
-
-fn resolve_git_selector(base: Option<&Path>, selector: Option<&str>) -> Option<PathBuf> {
-    let selector = Path::new(selector?);
-    Some(if selector.is_absolute() {
-        selector.to_path_buf()
-    } else if let Some(base) = base {
-        base.join(selector)
-    } else {
-        selector.to_path_buf()
-    })
-}
-
-fn git_push_intent_values(intents: &[GitPushIntent], context: &Context) -> Vec<serde_json::Value> {
-    intents
-        .iter()
-        .map(|intent| {
-            let effective_directory =
-                git_effective_working_directory(context, &intent.directory_changes);
-            let effective_git_dir =
-                resolve_git_selector(effective_directory.as_deref(), intent.git_dir.as_deref());
-            let effective_work_tree =
-                resolve_git_selector(effective_directory.as_deref(), intent.work_tree.as_deref());
-            let (detection_kind, execution_semantics, outer_command, argument_index) = match &intent
-                .detection
-            {
-                GitPushDetection::ModeledExecution => ("modeled_execution", "modeled", None, None),
-                GitPushDetection::EmbeddedArgv {
-                    outer_command,
-                    argument_index,
-                } => (
-                    "embedded_argv",
-                    "unverified",
-                    Some(outer_command.as_str()),
-                    Some(*argument_index),
-                ),
-            };
-            serde_json::json!({
-                "command": intent.command,
-                "detection_kind": detection_kind,
-                "execution_semantics": execution_semantics,
-                "outer_command": outer_command,
-                "argument_index": argument_index,
-                "starting_working_directory": context.working_directory,
-                "directory_changes": intent.directory_changes,
-                "effective_working_directory": effective_directory,
-                "git_dir": intent.git_dir,
-                "effective_git_dir": effective_git_dir,
-                "work_tree": intent.work_tree,
-                "effective_work_tree": effective_work_tree,
-                "remote": intent.remote,
-                "refspecs": intent.refspecs,
-                "force": intent.force,
-                "force_with_lease": intent.force_with_lease,
-                "force_if_includes": intent.force_if_includes,
-                "mirror": intent.mirror,
-                "delete": intent.delete,
-            })
-        })
-        .collect()
-}
-
-fn insert_git_push_intents(
-    details: &mut Option<serde_json::Value>,
-    intent_values: &[serde_json::Value],
-) {
-    if intent_values.is_empty() {
-        return;
-    }
-    let mut object = details
-        .take()
-        .and_then(|value| value.as_object().cloned())
-        .unwrap_or_default();
-    object.insert(
-        "git_push_intents".to_string(),
-        serde_json::Value::Array(intent_values.to_vec()),
-    );
-    *details = Some(serde_json::Value::Object(object));
-}
-
-fn with_git_push_preview(
-    decision: GuardDecision,
-    intents: &[GitPushIntent],
-    context: &Context,
-) -> GuardDecision {
-    if intents.is_empty() {
-        return decision;
-    }
-
-    let intent_values = git_push_intent_values(intents, context);
-
-    let attach = |reason: agent_guard_core::DecisionReason| {
-        let mut details = reason.details().cloned();
-        insert_git_push_intents(&mut details, &intent_values);
-        reason.with_details(details.unwrap_or_else(|| serde_json::json!({})))
-    };
-
-    match decision {
-        GuardDecision::AskUser { reason, .. } => {
-            let preview = serde_json::to_string(&intent_values)
-                .unwrap_or_else(|_| "[unavailable]".to_string());
-            let prompt = if intents
-                .iter()
-                .any(|intent| matches!(intent.detection, GitPushDetection::EmbeddedArgv { .. }))
-            {
-                format!(
-                    "Git outbound update approval required for a conservative argv candidate whose execution semantics are unverified: {preview}"
-                )
-            } else {
-                format!("Git outbound update approval required for exact parsed intent: {preview}")
-            };
-            GuardDecision::ask_with_reason(prompt, attach(reason))
-        }
-        GuardDecision::Deny { reason } => GuardDecision::Deny {
-            reason: attach(reason),
-        },
-        other => other,
     }
 }
 
@@ -299,208 +133,6 @@ impl std::fmt::Debug for Guard {
 }
 
 impl Guard {
-    /// Create a Guard from an already-parsed PolicyEngine.
-    pub fn new(engine: PolicyEngine) -> Result<Self, GuardInitError> {
-        let state = GuardState::new(Arc::new(engine), PolicyVerification::unsigned())?;
-        Ok(Self {
-            state: ArcSwap::from_pointee(state),
-        })
-    }
-
-    /// Construct a Guard from a YAML string.
-    pub fn from_yaml(yaml: &str) -> Result<Self, GuardInitError> {
-        Self::new(PolicyEngine::from_yaml_str(yaml)?)
-    }
-
-    /// Construct a Guard from a YAML file.
-    pub fn from_yaml_file(path: impl AsRef<std::path::Path>) -> Result<Self, GuardInitError> {
-        Self::new(PolicyEngine::from_yaml_file(path)?)
-    }
-
-    /// Construct a Guard from a YAML string and detached Ed25519 signature.
-    pub fn from_signed_yaml(
-        yaml: &str,
-        public_key_hex: &str,
-        signature_hex: &str,
-    ) -> Result<Self, GuardInitError> {
-        let engine = PolicyEngine::from_yaml_str(yaml)?;
-        Self::new_with_verification(engine, verify_policy(yaml, public_key_hex, signature_hex))
-    }
-
-    /// Construct a Guard from a YAML file and detached Ed25519 signature file.
-    pub fn from_signed_yaml_file(
-        policy_path: impl AsRef<Path>,
-        public_key_path: impl AsRef<Path>,
-        signature_path: impl AsRef<Path>,
-    ) -> Result<Self, GuardInitError> {
-        let yaml = std::fs::read_to_string(policy_path)
-            .map_err(|error| GuardInitError::SigningKeyLoad(error.to_string()))?;
-        let public_key_hex =
-            load_public_key_file(public_key_path).map_err(GuardInitError::SigningKeyLoad)?;
-        let signature_hex =
-            load_policy_signature_file(signature_path).map_err(GuardInitError::SigningKeyLoad)?;
-        Self::from_signed_yaml(&yaml, &public_key_hex, &signature_hex)
-    }
-
-    fn new_with_verification(
-        engine: PolicyEngine,
-        policy_verification: PolicyVerification,
-    ) -> Result<Self, GuardInitError> {
-        let state = GuardState::new(Arc::new(engine), policy_verification)?;
-        Ok(Self {
-            state: ArcSwap::from_pointee(state),
-        })
-    }
-
-    /// Set the Ed25519 signing key for provenance receipts.
-    pub fn with_signing_key(&self, key: ed25519_dalek::SigningKey) {
-        // RCU instead of load→clone→store: a plain store racing with a
-        // concurrent reload would silently drop one side's update (#56).
-        self.state.rcu(|current| {
-            let mut new_state = (**current).clone();
-            new_state.signing_key = Some(key.clone());
-            new_state
-        });
-    }
-
-    /// Route this Guard's metrics to a dedicated registry instead of the
-    /// process-global one, so co-resident Guards don't blend counters (#60).
-    pub fn set_metrics(&self, metrics: Arc<crate::metrics::Metrics>) {
-        self.state.rcu(|current| {
-            let mut new_state = (**current).clone();
-            new_state.metrics = metrics.clone();
-            new_state
-        });
-    }
-
-    /// Redirect non-file audit output (default: process stdout). Survives
-    /// policy reloads, like the signing key (#60).
-    pub fn set_audit_sink(&self, sink: Box<dyn std::io::Write + Send>) {
-        let sink: AuditSink = Arc::new(std::sync::Mutex::new(sink));
-        self.state.rcu(|current| {
-            let mut new_state = (**current).clone();
-            new_state.audit_sink = sink.clone();
-            new_state
-        });
-    }
-
-    /// Construct a Guard from a YAML string with an Ed25519 signing key for provenance.
-    pub fn from_yaml_with_key(
-        yaml: &str,
-        key: ed25519_dalek::SigningKey,
-    ) -> Result<Self, GuardInitError> {
-        let guard = Self::from_yaml(yaml)?;
-        guard.with_signing_key(key);
-        Ok(guard)
-    }
-
-    /// Load a hex-encoded Ed25519 private key from a file and set it on this Guard.
-    pub fn load_signing_key(&self, path: impl AsRef<Path>) -> Result<(), GuardInitError> {
-        let hex_str = std::fs::read_to_string(path)
-            .map_err(|e| GuardInitError::SigningKeyLoad(e.to_string()))?;
-        let key = parse_hex_signing_key(hex_str.trim()).map_err(GuardInitError::SigningKeyLoad)?;
-        self.with_signing_key(key);
-        Ok(())
-    }
-
-    /// Atomically reload the policy engine from a new instance.
-    pub fn reload_engine(&self, engine: PolicyEngine) -> Result<(), GuardInitError> {
-        self.reload_engine_with_verification(engine, PolicyVerification::unsigned())
-    }
-
-    pub fn reload_engine_with_verification(
-        &self,
-        engine: PolicyEngine,
-        policy_verification: PolicyVerification,
-    ) -> Result<(), GuardInitError> {
-        let new_version = engine.version().to_string();
-        let base_state = GuardState::new(Arc::new(engine), policy_verification)?;
-
-        // The carry-over fields must be copied from the state observed at
-        // swap time, not from a snapshot taken earlier: a `with_signing_key`
-        // landing between that snapshot and the store would be lost (#56).
-        // RCU retries the copy until the swap is uncontended.
-        let old_state = self.state.rcu(|current| {
-            let mut new_state = base_state.clone();
-            new_state.anomaly_detector = current.anomaly_detector.clone();
-            new_state.signing_key = current.signing_key.clone();
-            new_state.metrics = current.metrics.clone();
-            new_state.audit_sink = current.audit_sink.clone();
-            new_state
-        });
-
-        let event = ReloadEvent::success(old_state.engine.version().to_string(), new_version);
-        self.write_reload_audit(&event, &old_state);
-
-        Ok(())
-    }
-
-    /// Atomically reload the policy from a YAML string.
-    pub fn reload_from_yaml(&self, yaml: &str) -> Result<(), GuardInitError> {
-        match PolicyEngine::from_yaml_str(yaml) {
-            Ok(engine) => self.reload_engine(engine),
-            Err(e) => {
-                let old_state = self.state.load();
-                let old_version = old_state.engine.version().to_string();
-                let err = GuardInitError::Policy(e);
-                let event = ReloadEvent::failure(old_version, err.to_string());
-                self.write_reload_audit(&event, &old_state);
-                Err(err)
-            }
-        }
-    }
-
-    pub fn reload_from_signed_yaml(
-        &self,
-        yaml: &str,
-        public_key_hex: &str,
-        signature_hex: &str,
-    ) -> Result<(), GuardInitError> {
-        match PolicyEngine::from_yaml_str(yaml) {
-            Ok(engine) => self.reload_engine_with_verification(
-                engine,
-                verify_policy(yaml, public_key_hex, signature_hex),
-            ),
-            Err(e) => {
-                let old_state = self.state.load();
-                let old_version = old_state.engine.version().to_string();
-                let err = GuardInitError::Policy(e);
-                let event = ReloadEvent::failure(old_version, err.to_string());
-                self.write_reload_audit(&event, &old_state);
-                Err(err)
-            }
-        }
-    }
-
-    pub fn reload_from_signed_yaml_file(
-        &self,
-        policy_path: impl AsRef<Path>,
-        public_key_path: impl AsRef<Path>,
-        signature_path: impl AsRef<Path>,
-    ) -> Result<(), GuardInitError> {
-        let yaml = std::fs::read_to_string(policy_path)
-            .map_err(|error| GuardInitError::SigningKeyLoad(error.to_string()))?;
-        let public_key_hex =
-            load_public_key_file(public_key_path).map_err(GuardInitError::SigningKeyLoad)?;
-        let signature_hex =
-            load_policy_signature_file(signature_path).map_err(GuardInitError::SigningKeyLoad)?;
-        self.reload_from_signed_yaml(&yaml, &public_key_hex, &signature_hex)
-    }
-
-    /// Return the version string of the currently loaded policy.
-    pub fn policy_version(&self) -> String {
-        self.state.load().engine.version().to_string()
-    }
-
-    /// Return the SHA-256 hash of the currently loaded policy.
-    pub fn policy_hash(&self) -> String {
-        self.state.load().engine.hash().to_string()
-    }
-
-    pub fn policy_verification(&self) -> PolicyVerification {
-        self.state.load().policy_verification.clone()
-    }
-
     pub fn check(&self, input: &GuardInput) -> GuardDecision {
         let state = self.state.load();
         let request_id = Uuid::new_v4().to_string();
@@ -893,91 +525,10 @@ impl Guard {
             anomaly_evidence: None,
         }
     }
-
-    /// Send one record to every configured audit sink.
-    ///
-    /// `write_audit` gates the tool-call line on `audit_cfg.enabled`; this
-    /// does the same for the records that are not tool calls, so enabling or
-    /// disabling audit governs the whole stream rather than part of it.
-    fn emit_record(&self, state: &GuardState, record: agent_guard_core::AuditRecord) {
-        if !state.audit_cfg.enabled {
-            return;
-        }
-
-        if state.audit_cfg.output == "file" {
-            if let Some(ref writer) = state.audit_file_writer {
-                let line = serde_json::to_string(&record).unwrap_or_else(|e| {
-                    format!("{{\"error\":\"audit serialization failed: {e}\"}}")
-                });
-                writer.send(line);
-            }
-        }
-
-        state.siem_exporter.export(record);
-    }
-
-    fn write_audit(
-        &self,
-        input: &GuardInput,
-        decision: &GuardDecision,
-        git_push_intents: &[GitPushIntent],
-        state: &GuardState,
-        request_id: &str,
-    ) {
-        if !state.audit_cfg.enabled {
-            return;
-        }
-
-        let mut event = AuditEvent::from_decision(
-            request_id.to_string(),
-            &input.tool,
-            &input.payload,
-            decision,
-            input.context.session_id.clone(),
-            input.context.agent_id.clone(),
-            input.context.actor.clone(),
-            state.audit_cfg.include_payload_hash,
-            state.engine.version().to_string(),
-        );
-        // An Allow decision is intentionally a unit variant, so it cannot
-        // carry evaluation metadata itself. Preserve every recognised push
-        // proposal in the audit event anyway: the allowed outbound action is
-        // the one operators most need to reconstruct later.
-        if !git_push_intents.is_empty() {
-            let values = git_push_intent_values(git_push_intents, &input.context);
-            insert_git_push_intents(&mut event.details, &values);
-        }
-        let line = event.to_jsonl();
-
-        state
-            .siem_exporter
-            .export(agent_guard_core::AuditRecord::ToolCall(event));
-
-        if state.audit_cfg.output == "file" {
-            if let Some(ref writer) = state.audit_file_writer {
-                writer.send(line);
-            }
-        } else {
-            write_to_audit_sink(&state.audit_sink, &line);
-        }
-    }
-
-    fn write_reload_audit(&self, event: &ReloadEvent, state: &GuardState) {
-        let line = event.to_jsonl();
-        state
-            .siem_exporter
-            .export(agent_guard_core::AuditRecord::PolicyReload(event.clone()));
-
-        if state.audit_cfg.enabled && state.audit_cfg.output == "file" {
-            if let Some(ref writer) = state.audit_file_writer {
-                writer.send(line);
-            }
-        }
-    }
 }
 
 impl GuardState {
-    fn new(
+    pub(crate) fn new(
         engine: Arc<PolicyEngine>,
         policy_verification: PolicyVerification,
     ) -> Result<Self, GuardInitError> {
@@ -1197,38 +748,5 @@ mod tests {
         assert_eq!(intent["refspecs"], serde_json::json!(["main"]));
         assert_eq!(intent["force"], false);
         Ok(())
-    }
-
-    #[test]
-    fn git_push_preview_keeps_repository_selectors_distinct() {
-        let intents =
-            git_push_intents("git -C /workspace --git-dir=.git --work-tree=src push origin main")
-                .expect("valid push");
-        let values = git_push_intent_values(
-            &intents,
-            &Context {
-                working_directory: Some(PathBuf::from("/starting")),
-                ..Default::default()
-            },
-        );
-        let preview = &values[0];
-
-        assert_eq!(
-            preview["directory_changes"],
-            serde_json::json!(["/workspace"])
-        );
-        assert_eq!(preview["effective_working_directory"], "/workspace");
-        assert_eq!(preview["git_dir"], ".git");
-        assert_eq!(preview["effective_git_dir"], "/workspace/.git");
-        assert_eq!(preview["work_tree"], "src");
-        assert_eq!(preview["effective_work_tree"], "/workspace/src");
-        assert_eq!(preview["detection_kind"], "modeled_execution");
-        assert_eq!(preview["execution_semantics"], "modeled");
-        assert!(preview["outer_command"].is_null());
-        assert!(preview["argument_index"].is_null());
-
-        let send_pack = git_push_intents("git send-pack origin main").expect("valid send-pack");
-        let send_pack_values = git_push_intent_values(&send_pack, &Context::default());
-        assert_eq!(send_pack_values[0]["command"], "git send-pack");
     }
 }
