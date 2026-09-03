@@ -24,12 +24,14 @@
 //! here prevents an agent that holds a credential from pushing on its own.
 //! Those are separate properties and they are not implemented.
 
+mod execute;
 mod git;
 mod grant;
 mod transaction;
 
+pub use execute::{execute_push, ExecuteError, PushOutcome};
 pub use git::GitError;
-pub use grant::{issue_grant, spend_grant, GrantError, PushGrant};
+pub use grant::{issue_grant, peek_grant, spend_grant, GrantError, PushGrant};
 pub use transaction::{
     drift_against, resolve_push_transaction, Drift, PushTransaction, RefUpdateKind,
 };

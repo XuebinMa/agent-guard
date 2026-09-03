@@ -10,6 +10,27 @@ The `[Unreleased]` heading is rolled forward manually before each release; do no
 ## [Unreleased]
 
 ### Added
+- **`agent-guard-broker`: broker-owned execution.** `execute_push` resolves
+  the transaction afresh, spends the grant against what it just resolved, and
+  pushes. Spending against a freshly resolved transaction makes authorization
+  and drift detection the same check: a grant is bound to a digest, so a
+  transaction that moved no longer matches it and cannot be spent. There is no
+  separate drift step to forget to call.
+
+  The push pins both ends rather than trusting a reading taken moments before.
+  The source is the approved object id, not the branch name, so a commit made
+  after approval cannot ride along. The destination carries a lease on the
+  approved remote object id, so the server refuses when the remote is no
+  longer what the human was shown — a remote advanced by someone else is a
+  state nobody approved, even when the update would still fast-forward.
+
+  Only fast-forwards and branch creates execute; anything that would discard
+  history is refused. The grant is spent by then, so a refusal costs a fresh
+  approval, which is the intended price.
+
+  Credential isolation remains a deployment property this code cannot verify,
+  and the module says so: the push uses whatever credential the broker
+  process holds, which is a boundary only if the agent has none of its own.
 - **`agent-guard-broker`: one-use authorization.** A grant records a human
   decision about exactly one resolved transaction, bound to its digest, the
   policy hash in force, an actor and a deadline, and can be spent once.
