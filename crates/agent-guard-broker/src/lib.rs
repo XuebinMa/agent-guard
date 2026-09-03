@@ -25,9 +25,11 @@
 //! Those are separate properties and they are not implemented.
 
 mod git;
+mod grant;
 mod transaction;
 
 pub use git::GitError;
+pub use grant::{issue_grant, spend_grant, GrantError, PushGrant};
 pub use transaction::{
     drift_against, resolve_push_transaction, Drift, PushTransaction, RefUpdateKind,
 };
