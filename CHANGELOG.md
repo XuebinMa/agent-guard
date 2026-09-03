@@ -9,6 +9,18 @@ The `[Unreleased]` heading is rolled forward manually before each release; do no
 
 ## [Unreleased]
 
+### Fixed
+- **The attenu bundle verifier reports the corpus's containment reasons.**
+  Scoring against `bundle_vectors_v1.2`, which added the nine delegation
+  containment rows this path previously had no negative coverage for, gave
+  9/17. Every one of the eight failures was the same shape: the violation was
+  detected and positioned correctly, but reported as `not_narrower` or
+  `scope_not_authorized` — names invented here while no corpus row exercised
+  the rules — where the corpus requires `monotonicity` and `containment`.
+  Adopting the corpus vocabulary takes it to 17/17. The logic was already
+  right on all four containment dimensions, including the two the reference
+  implementation itself had wrong.
+
 ### Added
 - **A host can now sign the outcome it reports back from a handoff.**
   `RuntimeOutcome::Handoff` gives the action to the host, which runs it

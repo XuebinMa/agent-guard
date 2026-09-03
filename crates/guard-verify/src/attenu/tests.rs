@@ -17,9 +17,9 @@ fn attenu_corpus_fixture_bytes_are_pinned() {
     let digest = Sha256::digest(CORPUS.as_bytes());
     assert_eq!(
         hex::encode(digest),
-        "90d7fa70eabe92cbfa4df04bad50ac78995b57e83812cc5671e1ba9de01619ce"
+        "54311d68c8342c01ce233f4b1aea251125a4f3323fd9776c01843d3b2f5700ea"
     );
-    assert_eq!(CORPUS.len(), 69_573);
+    assert_eq!(CORPUS.len(), 146_765);
 }
 
 #[test]
@@ -32,7 +32,7 @@ fn attenu_corpus_version_is_the_one_we_implement() {
 #[test]
 fn attenu_bundle_corpus_scores_conformant() {
     let file = corpus();
-    assert_eq!(file.cases.len(), 8);
+    assert_eq!(file.cases.len(), 17);
 
     let scores = score_corpus(&file);
     let failed: Vec<String> = scores
@@ -141,4 +141,46 @@ fn jcs_sorts_object_keys_and_escapes_minimally() {
 fn jcs_refuses_non_integer_numbers_instead_of_guessing() {
     let value = serde_json::json!({"n": 1.5});
     assert!(crate::jcs::canonicalize(&value).is_err());
+}
+
+/// Delegation containment fails on four separate dimensions, and a verifier
+/// that checks only the obvious one passes the others silently.
+///
+/// This is not hypothetical: the reference implementation accepted a child
+/// whose scopes were a literal subset of its parent's but which took a longer
+/// ttl, a looser ceiling, no ceiling, or no ttl — its monotonicity check was
+/// gated on a literal scope difference. Until the corpus grew these rows this
+/// path here had no negative coverage either, so it passed for the same
+/// reason: nothing attacked it.
+#[test]
+fn attenu_containment_is_checked_on_every_dimension() {
+    let file = corpus();
+
+    for (case_name, reason) in [
+        ("reject_widened_scope", "monotonicity"),
+        ("reject_increased_ttl", "monotonicity"),
+        ("reject_loosened_ceiling", "monotonicity"),
+        // The `_literal` rows keep the scope set a literal subset, so only the
+        // named dimension can be what fails.
+        ("reject_increased_ttl_literal", "monotonicity"),
+        ("reject_loosened_ceiling_literal", "monotonicity"),
+        ("reject_null_ttl_literal", "monotonicity"),
+        ("reject_omitted_ceiling_literal", "monotonicity"),
+        // Allow-level: authorizing outside what this node was granted.
+        ("reject_uncontained_allow", "containment"),
+    ] {
+        let case = file
+            .cases
+            .iter()
+            .find(|case| case.name == case_name)
+            .unwrap_or_else(|| panic!("{case_name} missing from the corpus"));
+
+        let report = verify_bundle(&case.bundle, &case.signer);
+        assert!(!report.accepted, "{case_name} must be rejected");
+        assert!(
+            report.failures.iter().any(|f| f.reason == reason),
+            "{case_name} must fail as {reason}, got {:?}",
+            report.failures
+        );
+    }
 }
