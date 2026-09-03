@@ -40,6 +40,10 @@ pub struct PushGrant {
     pub transaction_digest: String,
     /// The policy in force when it was issued.
     pub policy_hash: String,
+    /// Which push this is about. Carried so the executor knows what to
+    /// resolve before it spends anything; the digest is what authenticates.
+    pub remote: String,
+    pub branch: String,
     /// Who approved, as recorded by the issuer.
     pub actor: String,
     pub issued_at: DateTime<Utc>,
@@ -103,6 +107,8 @@ pub fn issue_grant(
         grant_id: uuid::Uuid::new_v4().to_string(),
         transaction_digest: transaction.digest(),
         policy_hash: policy_hash.to_string(),
+        remote: transaction.remote.clone(),
+        branch: transaction.branch.clone(),
         actor: actor.to_string(),
         issued_at,
         expires_at: issued_at + ttl,
@@ -116,6 +122,27 @@ pub fn issue_grant(
     std::fs::write(&path, body)?;
 
     Ok(grant.grant_id)
+}
+
+/// Read a grant without spending it.
+///
+/// Advisory only. It answers "which push is this grant about?" so a caller
+/// knows what to resolve, and nothing read here is trusted: the spend that
+/// follows compares the digest, which covers every field that defines the
+/// effect. A grant edited between this read and that spend fails there.
+pub fn peek_grant(dir: &Path, id: &str) -> Result<PushGrant, GrantError> {
+    let path = grant_path(dir, id)?;
+    let body = match std::fs::read(&path) {
+        Ok(body) => body,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            return Err(GrantError::NotFound { id: id.to_string() })
+        }
+        Err(e) => return Err(GrantError::Io(e)),
+    };
+    serde_json::from_slice(&body).map_err(|e| GrantError::Corrupt {
+        id: id.to_string(),
+        detail: e.to_string(),
+    })
 }
 
 /// Spend the grant and check that it authorizes what is being presented.
