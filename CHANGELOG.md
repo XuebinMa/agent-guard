@@ -10,6 +10,24 @@ The `[Unreleased]` heading is rolled forward manually before each release; do no
 ## [Unreleased]
 
 ### Added
+- **`agent-guard-broker`: a receipt for every attempt.** `execute_push_with_receipt`
+  records what the broker witnessed — the transaction it resolved, the grant
+  it spent, and whether the push landed or was refused and why.
+
+  A receipt is emitted for refusals too. The interesting thing a broker does
+  is decline, and a record covering only successes cannot show that it ever
+  did.
+
+  A receipt is emitted with no signing key too, as `Witness::Unsigned` rather
+  than as nothing. Absence would read as "no push was attempted", and an
+  operator reaching that conclusion because a key was not configured has been
+  misled by their own tooling — the same failure as anomaly records reaching
+  only a sink most deployments do not configure. An unsigned receipt never
+  verifies: it is a truthful record and not evidence anyone else can rely on,
+  and the two must not blur.
+
+  The signature covers the outcome, so rewriting a refusal into a success
+  does not survive verification.
 - **`agent-guard-broker`: broker-owned execution.** `execute_push` resolves
   the transaction afresh, spends the grant against what it just resolved, and
   pushes. Spending against a freshly resolved transaction makes authorization

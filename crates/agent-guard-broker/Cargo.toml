@@ -23,6 +23,7 @@ hex.workspace = true
 thiserror.workspace = true
 chrono.workspace = true
 uuid.workspace = true
+ed25519-dalek.workspace = true
 
 [dev-dependencies]
 tempfile = "3"
