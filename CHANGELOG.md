@@ -9,6 +9,30 @@ The `[Unreleased]` heading is rolled forward manually before each release; do no
 
 ## [Unreleased]
 
+### Added
+- **`agent-guard-broker`: the exact Git push transaction, and drift against
+  it.** The first piece of the broker-enforced push path in `ROADMAP.md`.
+  `resolve_push_transaction` answers, from the repository and the remote,
+  what a push would actually do: the URL the remote name resolves to, both
+  object ids, whether the update creates, fast-forwards, discards history or
+  does nothing, and which commits the remote would gain. The remote tip is
+  read from the remote itself rather than from a local tracking ref, which is
+  a cache and may be arbitrarily stale.
+
+  `drift_against` re-resolves an approved transaction immediately before a
+  push and names every difference — remote repointed, local moved, remote
+  moved, kind changed, commits changed — because those call for different
+  actions from a human.
+
+  A remote holding objects this repository has never fetched is reported as
+  `Undetermined` with no commit list, not as `NotFastForward` with an empty
+  one. The relationship cannot be established without fetching, and saying
+  "history would be discarded" when the truth is "this cannot be determined"
+  tells a human something was established that was not.
+
+  Not published, and deliberately incomplete: no credentials, no
+  authorization, no execution, no receipt. Nothing here can push.
+
 ### Fixed
 - **The attenu bundle verifier reports the corpus's containment reasons.**
   Scoring against `bundle_vectors_v1.2`, which added the nine delegation
