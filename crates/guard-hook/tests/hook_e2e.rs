@@ -248,12 +248,13 @@ fn kill_switch_short_circuits_to_allow() {
         .stderr(Stdio::piped())
         .spawn()
         .expect("spawn guard-hook");
-    child
-        .stdin
-        .as_mut()
-        .unwrap()
-        .write_all(stdin.as_bytes())
-        .unwrap();
+    // A broken pipe here is the behaviour under test, not a failure. The kill
+    // switch answers before any I/O -- `main` checks the env var and returns
+    // approve without ever reading stdin -- so on a machine where the child
+    // exits first, this write has no reader. Unwrapping it made the test
+    // assert the opposite of what the hook promises, and it failed in CI for
+    // exactly that reason.
+    let _ = child.stdin.as_mut().unwrap().write_all(stdin.as_bytes());
     let output = child.wait_with_output().expect("wait guard-hook");
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(
