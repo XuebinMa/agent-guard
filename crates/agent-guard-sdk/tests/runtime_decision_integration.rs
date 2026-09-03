@@ -379,6 +379,7 @@ anomaly:
             exit_code: 0,
             duration_ms: 42,
             stderr: None,
+            attestation: None,
         },
     );
 

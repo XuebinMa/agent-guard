@@ -47,4 +47,12 @@ pub struct HandoffResult {
     pub exit_code: i32,
     pub duration_ms: u64,
     pub stderr: Option<String>,
+    /// The host's signature over this outcome, if it can produce one.
+    ///
+    /// Optional because most hosts cannot: a host with no signing key has
+    /// nothing honest to put here, and inventing a value would be worse than
+    /// leaving the claim visibly unbacked. The Guard attaches this to the
+    /// audit record only when it describes the outcome actually reported.
+    #[serde(default)]
+    pub attestation: Option<agent_guard_core::HostAttestation>,
 }

@@ -9,6 +9,32 @@ The `[Unreleased]` heading is rolled forward manually before each release; do no
 
 ## [Unreleased]
 
+### Added
+- **A host can now sign the outcome it reports back from a handoff.**
+  `RuntimeOutcome::Handoff` gives the action to the host, which runs it
+  outside the Guard. The resulting `ExecutionReported` record said where the
+  claim came from and carried nothing anyone could re-check it with, so a
+  reader had to take the host's word and could not tell whether anybody had
+  vouched for it. `HandoffResult` accepts an optional `HostAttestation` — an
+  Ed25519 signature over the request id, exit code and duration — which the
+  Guard records on the audit event.
+
+  What that establishes is bounded, and the type says so: the signature binds
+  a named key to an exact claim, so a third party cannot forge it and an edit
+  to the recorded outcome stops matching it. It does not make the exit code
+  true. The execution happened outside the boundary and nothing signed inside
+  the boundary can reach it; a host that lies produces a valid attestation of
+  its lie. What changes is that the lie is attributable and cannot be quietly
+  revised, and that a reader can tell an attested claim from an unattested
+  one.
+
+  The Guard refuses to attach an attestation that describes a different
+  outcome than the one reported — a check that needs no key — and
+  `guard-verify report` counts attested and unattested host-reported
+  executions separately rather than letting the total blur them. The Python
+  and Node bindings expose no host key, so outcomes reported through them are
+  honestly unattested.
+
 ### Changed
 - **npm publishing moves to trusted publishing (OIDC).** The npm job no
   longer carries a long-lived token: it declares `id-token: write`, runs a

@@ -583,6 +583,9 @@ impl Guard {
             exit_code: result.exit_code,
             duration_ms: result.duration_ms.max(0) as u64,
             stderr: result.stderr,
+            // The bindings cannot sign: neither exposes a host key, so a
+            // binding-reported outcome is honestly unattested.
+            attestation: None,
         };
         self.inner.report_handoff_result(&request_id, rust_result);
     }

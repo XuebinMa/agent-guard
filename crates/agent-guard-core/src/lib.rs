@@ -9,7 +9,7 @@ pub mod types;
 #[cfg(test)]
 mod tests;
 
-pub use attestation::ExecutionProof;
+pub use attestation::{ExecutionProof, HostAttestation};
 pub use audit::{
     AnomalyEvent, AnomalyEvidence, AnomalyRule, AuditDecision, AuditEvent, AuditRecord,
     ContentFindingEvent, ExecutionEvent, ReloadEvent, ReloadStatus, SandboxFailureEvent,

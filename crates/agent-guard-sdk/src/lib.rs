@@ -36,8 +36,8 @@ pub use siem::SiemExporter;
 // Re-export core types so SDK users don't need to depend on agent-guard-core
 pub use agent_guard_core::{
     AnomalyEvent, AuditConfig, AuditDecision, AuditEvent, AuditRecord, Context, CustomToolId,
-    DecisionCode, DecisionReason, ExecutionEvent, GuardDecision, GuardInput, ReloadEvent,
-    ReloadStatus, RuntimeDecision, SandboxFailureEvent, Tool, TrustLevel,
+    DecisionCode, DecisionReason, ExecutionEvent, GuardDecision, GuardInput, HostAttestation,
+    ReloadEvent, ReloadStatus, RuntimeDecision, SandboxFailureEvent, Tool, TrustLevel,
 };
 
 // Re-export sandbox types for direct usage
