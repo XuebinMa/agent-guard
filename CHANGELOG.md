@@ -9,6 +9,16 @@ The `[Unreleased]` heading is rolled forward manually before each release; do no
 
 ## [Unreleased]
 
+### Changed
+- **npm publishing moves to trusted publishing (OIDC).** The npm job no
+  longer carries a long-lived token: it declares `id-token: write`, runs a
+  Node whose npm CLI can exchange the Actions OIDC token, and lets npm attach
+  provenance by default. This replaces a granular token with bypass-2FA set,
+  which expires 2026-12-01 and whose mechanism npm ends in January 2027 —
+  npm's own token form recommends trusted publishing for CI. The job asserts
+  its npm version, because an npm older than 11.5.1 does not refuse OIDC, it
+  quietly falls back to token auth.
+
 ### Fixed
 - **Anomaly and lock records reach the audit sink, not only a SIEM webhook.**
   `AgentLocked` and `AnomalyTriggered` were built in one place and handed

@@ -221,13 +221,33 @@ jobs:
     name: Publish Claude Code Plugin
     needs: pypi-publish
     runs-on: ubuntu-latest
+    # Trusted publishing, like the PyPI job: no long-lived token. The
+    # bypass-2FA granular token this replaces expires 2026-12-01, and npm
+    # ends bypass-2FA direct publishing in January 2027.
+    environment: npm
+    permissions:
+      id-token: write
     steps:
       - uses: actions/checkout@v4
+      # Node 24 ships npm 11.x. Trusted publishing needs npm >= 11.5.1; an
+      # older CLI does not fail loudly, it falls back to token auth, so the
+      # version is asserted below rather than assumed from the runner image.
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '24'
           registry-url: 'https://registry.npmjs.org'
+      - name: Require an npm that can use OIDC
+        run: |
+          required="11.5.1"
+          actual="$(npm --version)"
+          echo "npm $actual"
+          lowest="$(printf '%s\n%s\n' "$required" "$actual" | sort -V | head -1)"
+          if [ "$lowest" != "$required" ]; then
+            echo "npm $actual is older than $required; trusted publishing would silently fall back to token auth" >&2
+            exit 1
+          fi
+      # No NODE_AUTH_TOKEN: the CLI exchanges the Actions OIDC token itself.
+      # Provenance is attached by default under trusted publishing, so
+      # --provenance is not passed.
       - name: Publish agent-guard-plugin
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: npm publish ./packages/agent-guard-plugin
