@@ -84,9 +84,12 @@ fn scope_matches(pattern: &str, scope: &str) -> bool {
 /// Walk the ledger in order, tracking each node's authority as it is
 /// established, and check every delegation and every allow against it.
 ///
-/// No vector in `bundle_vectors_v1` exercises these rules — every rejecting
-/// case there changes something else — so this path is exercised only by the
-/// accepting case.
+/// The corpus names the two failures these rules produce: `monotonicity` for
+/// a delegation granting more than its parent holds, `containment` for an
+/// allow authorizing a scope outside what the acting node was granted. Both
+/// tokens come from the corpus rather than from this implementation — the
+/// first revision to exercise containment had no such rows, so the names
+/// here were placeholders until it did.
 pub fn check_authority(entries: &[Value], failures: &mut Vec<Failure>) {
     let mut authorities: HashMap<String, Authority> = HashMap::new();
 
@@ -112,7 +115,7 @@ pub fn check_authority(entries: &[Value], failures: &mut Vec<Failure>) {
                 };
                 let granted = Authority::parse(granted);
                 if !parent_authority.contains(&granted) {
-                    failures.push(Failure::at(entry, "not_narrower"));
+                    failures.push(Failure::at(entry, "monotonicity"));
                 }
                 authorities.insert(node, granted);
             }
@@ -122,7 +125,7 @@ pub fn check_authority(entries: &[Value], failures: &mut Vec<Failure>) {
                 };
                 match authorities.get(&node) {
                     Some(authority) if authority.covers_scope(&scope) => {}
-                    Some(_) => failures.push(Failure::at(entry, "scope_not_authorized")),
+                    Some(_) => failures.push(Failure::at(entry, "containment")),
                     None => failures.push(Failure::at(entry, "unreadable_authority")),
                 }
             }
