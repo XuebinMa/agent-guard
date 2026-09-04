@@ -9,6 +9,21 @@ The `[Unreleased]` heading is rolled forward manually before each release; do no
 
 ## [Unreleased]
 
+### Fixed
+- **The approval prompt is a sentence again.** A push awaiting approval
+  serialized its entire parsed intent into the prompt — four hundred
+  characters of JSON in a permission dialog, with anything actionable arriving
+  after it. The prompt now reads `Approve git push to origin, main — force:
+  may discard commits on the remote`, and the structured intent stays in the
+  decision's `details`, where it was already being written and where a
+  consumer can parse it. Two audiences, two renderings.
+- **An unverified argv candidate is no longer offered a concrete replacement.**
+  A command like `wrapper git push origin main` has execution semantics the
+  parser could not establish, so suggesting `agent-guard push --remote origin
+  --branch main` asserted the two were equivalent — the confidence that
+  detection mode exists to withhold. It now says the wrapping program's
+  behaviour was not established and leaves the substitution to the human.
+
 ### Added
 - **A refused push now says where to go.** The hook attached a policy code
   and nothing else, so an agent stopped at `git push` left the human with no

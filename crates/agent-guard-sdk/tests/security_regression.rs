@@ -528,7 +528,20 @@ fn sec32_unknown_prefix_cannot_downgrade_embedded_git_outbound_intent() {
     let GuardDecision::AskUser { message, reason } = decision else {
         panic!("embedded ordinary push must ask")
     };
-    assert!(message.contains("conservative argv candidate"));
+    // The security property of this test is carried by the three structured
+    // assertions below, which are untouched. This line is about what the
+    // human reads, and it is now stricter than the wording it replaced: the
+    // prompt must state the uncertainty *as prose*. A prompt that serialized
+    // the intent would contain "unverified" inside its payload and satisfy a
+    // bare substring check while telling a person nothing.
+    assert!(
+        message.contains("unverified"),
+        "the prompt must state that execution semantics are unverified: {message}"
+    );
+    assert!(
+        !message.contains('{') && !message.contains('['),
+        "the prompt must say it in prose, not by dumping the intent: {message}"
+    );
     let preview = &reason.details().expect("details")["git_push_intents"][0];
     assert_eq!(preview["detection_kind"], "embedded_argv");
     assert_eq!(preview["execution_semantics"], "unverified");
