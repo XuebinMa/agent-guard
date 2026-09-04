@@ -9,7 +9,7 @@
 //! `agent-guard push` would send someone to a command that refuses, and would
 //! imply the broker offers a route to the thing policy just stopped.
 
-use agent_guard_validators::bash::{git_push_intents, GitPushIntent};
+use agent_guard_validators::bash::{git_push_intents, GitPushDetection, GitPushIntent};
 
 /// What to tell someone whose push was refused, if anything.
 ///
@@ -24,6 +24,21 @@ pub(crate) fn broker_hint(command: &str) -> Option<String> {
     // hint becomes misinformation.
     let intents = git_push_intents(command).ok()?;
     let intent = intents.first()?;
+
+    // An argv candidate is a command whose execution semantics were never
+    // established — the outer program might not run git at all, or might run
+    // it differently. Naming a concrete replacement would substitute a
+    // different action for the one requested and claim they are equivalent,
+    // which is the confidence this detection mode exists to avoid.
+    if matches!(intent.detection, GitPushDetection::EmbeddedArgv { .. }) {
+        return Some(
+            "This looks like a push inside another program, and what that \
+             program does was not established. agent-guard push performs \
+             pushes it can resolve itself; run it directly if that is what \
+             you meant."
+                .to_string(),
+        );
+    }
 
     if let Some(shape) = unsupported_shape(intent) {
         return Some(format!(
@@ -130,6 +145,21 @@ mod tests {
             hint.contains("--branch <branch>"),
             "a source:destination refspec must not be guessed: {hint}"
         );
+    }
+
+    /// A command whose semantics were never established must not be handed a
+    /// concrete substitute. Suggesting a plain push for `wrapper git push`
+    /// asserts the two are equivalent, which is exactly what "unverified"
+    /// means we do not know.
+    #[test]
+    fn an_argv_candidate_is_not_given_a_confident_replacement() {
+        let hint = broker_hint("unknown-wrapper git push origin main")
+            .expect("a recognized candidate gets a hint");
+        assert!(
+            !hint.contains("--remote origin --branch main"),
+            "an unverified candidate must not be handed a concrete command: {hint}"
+        );
+        assert!(hint.contains("was not established"), "{hint}");
     }
 
     #[test]

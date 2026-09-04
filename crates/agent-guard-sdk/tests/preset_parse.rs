@@ -94,8 +94,13 @@ fn outbound_preset_governs_recognized_and_conservative_git_push_candidates() {
                     );
                 }
                 if command.starts_with("firejail") {
+                    // Asserted on the property rather than the wording. The
+                    // prompt was rewritten from a serialized intent dump into
+                    // a sentence; what must survive that is the statement
+                    // that execution semantics were not established, not the
+                    // particular phrase carrying it.
                     assert!(
-                        message.contains("conservative argv candidate"),
+                        message.contains("unverified"),
                         "embedded preview must describe its uncertainty: {message}"
                     );
                 }

@@ -205,11 +205,33 @@ fn embedded_argv_candidate_preserves_policy_strength_at_the_real_hook() {
         r#"{"tool_name":"Bash","tool_input":{"command":"firejail git push origin main"}}"#;
     let (stdout, _stderr, code) = run_hook(&policy, ordinary);
     assert_eq!(code, 0);
+    // Asserted on the properties rather than one phrase: it still asks, the
+    // human is told the semantics were not established, the audit record
+    // still classifies it, and — added here — the hint does not hand over a
+    // concrete replacement command, because substituting a plain push for a
+    // command nobody could interpret would assert an equivalence this
+    // detection mode exists to deny.
     assert!(
-        stdout.contains("\"permissionDecision\":\"ask\"")
-            && stdout.contains("conservative argv candidate")
-            && stdout.contains("embedded_argv"),
-        "embedded ordinary push must ask with honest provenance: {stdout}"
+        stdout.contains("\"permissionDecision\":\"ask\""),
+        "embedded ordinary push must ask: {stdout}"
+    );
+    assert!(
+        stdout.contains("unverified"),
+        "the human must be told the semantics were not established: {stdout}"
+    );
+    // `embedded_argv` is asserted where it actually lives. The hook protocol
+    // carries a decision and a reason, nothing structured, so this
+    // classification only ever appeared in stdout as a side effect of the
+    // prompt serializing the whole intent. The audit record is its home, and
+    // testing it there is the stronger check.
+    let audit_body = std::fs::read_to_string(&audit).expect("audit written");
+    assert!(
+        audit_body.contains("embedded_argv"),
+        "the audit record must classify the candidate: {audit_body}"
+    );
+    assert!(
+        !stdout.contains("--remote origin --branch main"),
+        "an unverified candidate must not be handed a concrete command: {stdout}"
     );
 
     let forced =
