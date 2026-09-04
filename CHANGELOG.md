@@ -10,6 +10,19 @@ The `[Unreleased]` heading is rolled forward manually before each release; do no
 ## [Unreleased]
 
 ### Added
+- **A refused push now says where to go.** The hook attached a policy code
+  and nothing else, so an agent stopped at `git push` left the human with no
+  route: the broker path existed and was invisible unless they read the docs.
+  A refusal or prompt on a recognized push now carries the exact command —
+  `agent-guard push --remote origin --branch main`.
+
+  The hint is only as specific as it can honestly be. Force pushes, mirrors,
+  remote branch removal and multi-refspec pushes say the broker does not
+  perform that shape rather than pointing at a command that would refuse. A
+  push naming no branch, or a `src:dst` refspec, asks for the branch instead
+  of guessing which half was meant. Commands that are not a recognized push,
+  and shells too complex to parse, get no hint at all — advice on an
+  unrelated denial trains people to ignore advice.
 - **`agent-guard push`: the broker has an entry point.** The five broker
   properties existed as a library nobody could reach. One command now runs
   them end to end: it evaluates the equivalent command against policy, prints

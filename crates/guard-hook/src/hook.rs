@@ -220,18 +220,46 @@ pub fn run_check(stdin_buf: &str, policy_path: &Path, agent_id: &str, out: &mut 
         context,
     };
 
+    // A refusal that does not say what to do next is a dead end, and the
+    // broker path is invisible to anyone who never reads the docs. The hint
+    // is attached to the refusal itself, where the person who needs it is
+    // already looking.
+    let hint =
+        bash_command(&guard_input).and_then(|command| crate::broker_hint::broker_hint(&command));
+
     match guard.check(&guard_input) {
         GuardDecision::Allow => emit_approve(out),
         GuardDecision::Deny { reason } => {
             let label = format_reason(&reason.code(), reason.message(), reason.matched_rule());
-            emit_block(out, label);
+            emit_block(out, with_hint(label, hint));
         }
         GuardDecision::AskUser { message, reason } => {
             let label = format_reason(&reason.code(), &message, reason.matched_rule());
-            emit_ask(out, label);
+            emit_ask(out, with_hint(label, hint));
         }
         // Fail closed: an unrecognized decision kind must block, never approve.
         _ => emit_block(out, "unrecognized guard decision; blocking".to_string()),
+    }
+}
+
+/// The command a Bash call carries, if this is one.
+fn bash_command(input: &GuardInput) -> Option<String> {
+    if !matches!(input.tool, agent_guard_core::Tool::Bash) {
+        return None;
+    }
+    serde_json::from_str::<serde_json::Value>(&input.payload)
+        .ok()?
+        .get("command")?
+        .as_str()
+        .map(str::to_string)
+}
+
+/// Append the hint when there is one, leaving the reason first: the decision
+/// is what the reader needs, and the route out is what they need next.
+fn with_hint(reason: String, hint: Option<String>) -> String {
+    match hint {
+        Some(hint) => format!("{reason} — {hint}"),
+        None => reason,
     }
 }
 

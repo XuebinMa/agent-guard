@@ -308,3 +308,76 @@ fn unmappable_tool_silently_approves() {
         "Read is out-of-wedge, must allow: {stdout}"
     );
 }
+
+/// The hint has to reach the JSON the agent's host actually reads. A unit
+/// test proves the sentence is right; only this proves it is attached.
+#[test]
+fn a_refused_push_tells_the_reader_about_the_broker() {
+    let dir = TempDir::new().unwrap();
+    let audit = dir.path().join("audit.jsonl");
+    let policy = write_policy(&dir, audit.to_str().unwrap());
+    let stdin = r#"{"tool_name":"Bash","tool_input":{"command":"git push origin main"}}"#;
+
+    let mut child = Command::new(BIN)
+        .args([
+            "check",
+            "--policy",
+            policy.to_str().unwrap(),
+            "--agent-id",
+            "e2e-test",
+        ])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("spawn guard-hook");
+    child
+        .stdin
+        .as_mut()
+        .unwrap()
+        .write_all(stdin.as_bytes())
+        .unwrap();
+    let output = child.wait_with_output().expect("wait guard-hook");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+
+    assert!(
+        stdout.contains("agent-guard push --remote origin --branch main"),
+        "a refusal must carry the way out, got: {stdout}"
+    );
+}
+
+/// A denial that has nothing to do with pushing must not carry push advice.
+#[test]
+fn an_unrelated_denial_carries_no_broker_hint() {
+    let dir = TempDir::new().unwrap();
+    let audit = dir.path().join("audit.jsonl");
+    let policy = write_policy(&dir, audit.to_str().unwrap());
+    let stdin = r#"{"tool_name":"Bash","tool_input":{"command":"sudo whoami"}}"#;
+
+    let mut child = Command::new(BIN)
+        .args([
+            "check",
+            "--policy",
+            policy.to_str().unwrap(),
+            "--agent-id",
+            "e2e-test",
+        ])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("spawn guard-hook");
+    child
+        .stdin
+        .as_mut()
+        .unwrap()
+        .write_all(stdin.as_bytes())
+        .unwrap();
+    let output = child.wait_with_output().expect("wait guard-hook");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+
+    assert!(
+        !stdout.contains("agent-guard push"),
+        "advice on an unrelated denial trains people to ignore advice: {stdout}"
+    );
+}
