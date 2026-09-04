@@ -10,6 +10,23 @@ The `[Unreleased]` heading is rolled forward manually before each release; do no
 ## [Unreleased]
 
 ### Added
+- **`agent-guard push`: the broker has an entry point.** The five broker
+  properties existed as a library nobody could reach. One command now runs
+  them end to end: it evaluates the equivalent command against policy, prints
+  the effect resolved from the repository and the remote, asks, then
+  re-resolves and spends a one-use authorization against what it just
+  resolved before pushing.
+
+  Policy is evaluated, not merely pinned. A push the policy denies never
+  reaches a human — asking someone to approve what policy already refused
+  teaches them to click through refusals.
+
+  When no signing key is configured the command says the receipt is unsigned
+  and that nobody else can check it, rather than printing an official-looking
+  record.
+
+  `agent-guard-broker` is published from this release: the condition its
+  manifest recorded for that — having an entry point — is now met.
 - **`agent-guard-broker`: a receipt for every attempt.** `execute_push_with_receipt`
   records what the broker witnessed — the transaction it resolved, the grant
   it spent, and whether the push landed or was refused and why.
