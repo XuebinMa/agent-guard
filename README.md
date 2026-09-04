@@ -9,6 +9,39 @@
 [![License](https://img.shields.io/badge/License-MIT-yellow.svg)]()
 [![MSRV](https://img.shields.io/badge/MSRV-1.79-orange.svg)]()
 
+## What it looks like
+
+Your agent runs `git push origin main`. The hook stops it and names the command
+that will do it properly. You run that, and see the effect rather than the
+command line:
+
+```text
+remote:  origin (git@github.com:you/project.git)
+branch:  main
+update:  fast-forward
+remote is at 5863769554d56461ba6f3ee3c1c1ee54985d9a6c
+would move it to e52e547c023fa4bd1a7d08577dc4efdca3581278
+adds 2 commit(s):
+  e52e547c023fa4bd1a7d08577dc4efdca3581278
+  c12504e4bacb12aad388149c4712d0af1df547eb
+
+Push this? [y/N] y
+
+Pushed e52e547c023fa4bd1a7d08577dc4efdca3581278 to origin/main.
+```
+
+`git push origin main` cannot tell you any of that. Which URL `origin` is, what
+the remote holds right now, which commits it would gain, whether anything would
+be discarded — those come from asking the repository and the remote, which is
+what `agent-guard push` does before asking you.
+
+It then performs the push itself, re-resolving the transaction first: if the
+repository moved while you were reading — your agent committed again, or someone
+else advanced the remote — the authorization no longer matches and the push is
+refused rather than performed against a state nobody approved.
+
+---
+
 `agent-guard` is for developers running AI coding agents — Claude Code, Cursor,
 Codex CLI, Aider — who want a narrow, inspectable control at the point where
 local code becomes a remote Git change.
@@ -45,6 +78,17 @@ cargo install guard-hook --locked
 cargo install agent-guard-cli --locked
 cargo install guard-verify --locked
 ```
+
+`agent-guard-cli` is what performs the push shown above. From a repository,
+against whatever policy you already use:
+
+```bash
+agent-guard push --policy policy.yaml --remote origin --branch main
+```
+
+It prints the preview and asks before doing anything. Note that the shipped
+`0.2.1` release predates this command — until the next release, install it
+from a checkout with `cargo install --path crates/agent-guard-cli --locked`.
 
 As a Rust library:
 
@@ -157,6 +201,35 @@ Today, the runtime can already own execution for:
 - outbound mutation HTTP
 
 Together those three surfaces cover the action-layer categories the preset bundles (code egress, package release, artifact egress, remote mutation, destructive shell).
+
+### The broker path, for `git push`
+
+`agent-guard push` is the one place where the Guard performs the outbound
+action rather than advising on it:
+
+1. **Policy**, on the equivalent command. A push your policy denies never
+   reaches you — being asked to approve what policy already refused teaches
+   people to click through refusals.
+2. **Preview**, resolved from the repository and the remote: the URL, both
+   object ids, the update kind, and the commits the remote would gain.
+3. **Your decision**, on that.
+4. **Execution**, which re-resolves and spends a one-use authorization against
+   what it just resolved. The push pins the approved object id rather than the
+   branch name, and leases the approved remote object id, so neither end can
+   move between your decision and the push.
+5. **A receipt** for every attempt, including refusals. Signed when a broker
+   key is configured, and plainly marked unsigned when not — never absent,
+   because a missing receipt reads as "no push was attempted".
+
+Ordinary non-force pushes of one branch are what it performs today. Force,
+mirror, remote branch removal, tags and multiple refspecs fail closed, and the
+hook says so rather than pointing you at a command that would refuse.
+
+**What this does not do:** keeping credentials away from the agent is a
+deployment decision, not something this code can enforce. The broker uses
+whatever credential its own process holds, which is a boundary only if the
+agent has none of its own. The Claude Code hook remains fail-open advisory: an
+agent with a credential can still push without consulting any of this.
 
 ---
 
