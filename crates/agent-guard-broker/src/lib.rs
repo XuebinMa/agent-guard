@@ -27,11 +27,13 @@
 mod execute;
 mod git;
 mod grant;
+mod receipt;
 mod transaction;
 
-pub use execute::{execute_push, ExecuteError, PushOutcome};
+pub use execute::{execute_push, execute_push_with_receipt, ExecuteError, PushOutcome};
 pub use git::GitError;
 pub use grant::{issue_grant, peek_grant, spend_grant, GrantError, PushGrant};
+pub use receipt::{PushAttempt, PushReceipt, Witness};
 pub use transaction::{
     drift_against, resolve_push_transaction, Drift, PushTransaction, RefUpdateKind,
 };

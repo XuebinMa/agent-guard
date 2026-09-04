@@ -37,6 +37,7 @@ use thiserror::Error;
 
 use crate::git::{run, GitError};
 use crate::grant::{peek_grant, spend_grant, GrantError, PushGrant};
+use crate::receipt::{PushAttempt, PushReceipt, Witness};
 use crate::transaction::{resolve_push_transaction, PushTransaction, RefUpdateKind};
 
 /// What the broker did, and to what.
@@ -132,4 +133,47 @@ fn push_pinned(repo: &Path, tx: &PushTransaction) -> Result<String, GitError> {
             run(repo, &["push", &lease, &tx.remote, &refspec])
         }
     }
+}
+
+/// Execute, and record what happened either way.
+///
+/// This is the entry point a broker should use. [`execute_push`] returns a
+/// `Result` and leaves the caller to decide whether a refusal is worth
+/// recording; this one records both, because a broker that only writes down
+/// its successes cannot show that it ever declined.
+pub fn execute_push_with_receipt(
+    repo: &Path,
+    grant_dir: &Path,
+    grant_id: &str,
+    policy_hash: &str,
+    now: DateTime<Utc>,
+    signing_key: Option<&ed25519_dalek::SigningKey>,
+) -> PushReceipt {
+    // Resolved separately from the attempt so a refusal can still describe
+    // what it refused. A failure here leaves the receipt without a
+    // transaction, which is the truthful shape for an attempt that never got
+    // far enough to have an effect.
+    let transaction = peek_grant(grant_dir, grant_id)
+        .ok()
+        .and_then(|target| resolve_push_transaction(repo, &target.remote, &target.branch).ok());
+
+    let (attempt, grant_id_used) = match execute_push(repo, grant_dir, grant_id, policy_hash, now) {
+        Ok(outcome) => (PushAttempt::Pushed, Some(outcome.grant.grant_id)),
+        Err(error) => (
+            PushAttempt::Refused {
+                reason: error.to_string(),
+            },
+            None,
+        ),
+    };
+
+    PushReceipt {
+        version: 1,
+        at: now,
+        transaction,
+        grant_id: grant_id_used,
+        attempt,
+        witness: Witness::Unsigned,
+    }
+    .seal(signing_key)
 }
