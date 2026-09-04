@@ -40,6 +40,14 @@ repository moved while you were reading — your agent committed again, or someo
 else advanced the remote — the authorization no longer matches and the push is
 refused rather than performed against a state nobody approved.
 
+Run the whole path rather than take the block above on trust. It uses a
+throwaway repository and a local remote, so it needs no credentials and touches
+nothing of yours:
+
+```bash
+./demos/push-broker/demo.sh
+```
+
 ---
 
 `agent-guard` is for developers running AI coding agents — Claude Code, Cursor,
