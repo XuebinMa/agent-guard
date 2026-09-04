@@ -11,7 +11,7 @@ description = "Broker-owned Git push: resolve, authorize and execute the exact o
 
 
 [dependencies]
-agent-guard-core = { path = "../agent-guard-core", version = "=0.2.1" }
+agent-guard-core = { path = "../agent-guard-core", version = "=0.2.2" }
 serde.workspace = true
 serde_json.workspace = true
 sha2.workspace = true
