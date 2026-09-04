@@ -12,7 +12,8 @@
 # nowhere and needs no credentials.
 #
 #   ./demos/push-broker/demo.sh                # asks, as a human would
-#   DEMO_AUTO=1 ./demos/push-broker/demo.sh    # answers y, for recording
+#   DEMO_AUTO=1 ./demos/push-broker/demo.sh    # answers y, unattended
+#   DEMO_PAUSE=1.5 ./demos/push-broker/demo.sh # waits between scenes, for recording
 #
 set -euo pipefail
 
@@ -37,7 +38,9 @@ else
   DIM=''; BOLD=''; OFF=''
 fi
 
-say() { printf '\n%s%s%s\n' "$BOLD" "$1" "$OFF"; }
+# DEMO_PAUSE gives a recording time to be read. Unset, nothing waits.
+beat() { [ -n "${DEMO_PAUSE:-}" ] && sleep "$DEMO_PAUSE" || true; }
+say() { beat; printf '\n%s%s%s\n' "$BOLD" "$1" "$OFF"; }
 ran() { printf '%s$ %s%s\n' "$DIM" "$1" "$OFF"; }
 
 # The shipped preset, with audit routed to a file in the workspace instead of
