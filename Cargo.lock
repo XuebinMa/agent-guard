@@ -978,6 +978,7 @@ version = "0.2.1"
 dependencies = [
  "agent-guard-core",
  "agent-guard-sdk",
+ "agent-guard-validators",
  "clap",
  "serde",
  "serde_json",

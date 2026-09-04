@@ -15,6 +15,7 @@ path = "src/main.rs"
 
 [dependencies]
 agent-guard-core = { path = "../agent-guard-core", version = "=0.2.1" }
+agent-guard-validators = { path = "../agent-guard-validators", version = "=0.2.1" }
 # `content` enables the content-layer check stage so a policy with a
 # `content:` block (e.g. `write_file.content: { mode: block }`) is enforced
 # through the hook. With the shipped outbound preset this is a no-op (its

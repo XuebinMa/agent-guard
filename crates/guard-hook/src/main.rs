@@ -19,6 +19,7 @@ use std::process::ExitCode;
 
 use clap::{Parser, Subcommand};
 
+mod broker_hint;
 mod hook;
 
 use hook::{emit_approve, run_check};
