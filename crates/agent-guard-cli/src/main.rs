@@ -8,15 +8,27 @@
 //!   agent-guard approve <request-id>  # let it proceed
 //!   agent-guard deny <request-id>     # block it
 //!
+//! And the broker-executed outbound path, where the human sees the resolved
+//! effect rather than the command line and the Guard performs the push:
+//!
+//!   agent-guard push --policy p.yaml --remote origin --branch main
+//!
 //! The ledger path defaults to `$AGENT_GUARD_APPROVALS` or
 //! `<home>/.agent-guard/approvals.jsonl`; override with `--ledger`.
 
-use std::path::PathBuf;
+use std::io::{self, Write};
+use std::path::{Path, PathBuf};
 use std::process;
 
+use agent_guard_broker::{
+    execute_push_with_receipt, issue_grant, resolve_push_transaction, PushAttempt, PushTransaction,
+    RefUpdateKind, Witness,
+};
 use agent_guard_sdk::approval::{
     default_ledger_path, ApprovalError, ApprovalLedger, ApprovalRecord,
 };
+use agent_guard_sdk::{Context, Guard, GuardDecision, GuardInput, Tool};
+use chrono::{Duration, Utc};
 use clap::{Parser, Subcommand};
 
 #[derive(Parser)]
@@ -51,6 +63,35 @@ enum Commands {
         #[arg(long)]
         by: Option<String>,
     },
+    /// Resolve, show, authorize and execute one Git push.
+    ///
+    /// The preview is resolved from the repository and the remote, so it
+    /// shows the effect rather than the command line. Between the preview and
+    /// the push the transaction is re-resolved and the authorization is spent
+    /// against it, so a repository that moved in between is refused rather
+    /// than pushed.
+    Push {
+        /// Policy the push is evaluated against. A `deny` rule matching the
+        /// equivalent command refuses before anything else happens.
+        #[arg(long)]
+        policy: PathBuf,
+        /// Repository to push from.
+        #[arg(long, default_value = ".")]
+        repo: PathBuf,
+        #[arg(long, default_value = "origin")]
+        remote: String,
+        #[arg(long)]
+        branch: String,
+        /// Skip the interactive confirmation. The preview is still printed.
+        #[arg(long)]
+        yes: bool,
+        /// Where one-use authorizations are kept.
+        #[arg(long)]
+        grants: Option<PathBuf>,
+        /// Write the receipt here as JSON. It is printed either way.
+        #[arg(long)]
+        receipt: Option<PathBuf>,
+    },
     /// Deny a pending request.
     Deny {
         /// The request id to deny.
@@ -72,6 +113,15 @@ fn main() {
             run_decision(&ledger, &request_id, by, Decision::Approve)
         }
         Commands::Deny { request_id, by } => run_decision(&ledger, &request_id, by, Decision::Deny),
+        Commands::Push {
+            policy,
+            repo,
+            remote,
+            branch,
+            yes,
+            grants,
+            receipt,
+        } => run_push(&policy, &repo, &remote, &branch, yes, grants, receipt),
     };
     process::exit(exit_code);
 }
@@ -250,4 +300,186 @@ mod tests {
         assert_eq!(run_list(&ledger), 0);
         assert_eq!(run_show(&ledger, "r1"), 0);
     }
+}
+
+/// Resolve, show, authorize and execute one push.
+///
+/// The order is deliberate and each step can refuse:
+///
+/// 1. **Policy**, on the equivalent command. A push a policy denies never
+///    reaches a human, because asking someone to approve what the policy
+///    already refused teaches them to click through refusals.
+/// 2. **Preview**, resolved from the repository and the remote. This is the
+///    effect, not the command line.
+/// 3. **Confirmation**, from a human who has just read that effect.
+/// 4. **Execution**, which re-resolves and spends the authorization against
+///    what it just resolved. Reading a preview takes seconds, and a
+///    repository can move during them.
+fn run_push(
+    policy_path: &Path,
+    repo: &Path,
+    remote: &str,
+    branch: &str,
+    yes: bool,
+    grants: Option<PathBuf>,
+    receipt_path: Option<PathBuf>,
+) -> i32 {
+    let guard = match Guard::from_yaml_file(policy_path) {
+        Ok(guard) => guard,
+        Err(error) => {
+            eprintln!("agent-guard: policy {}: {error}", policy_path.display());
+            return 2;
+        }
+    };
+
+    let equivalent = format!("git push {remote} {branch}");
+    let decision = guard.check(&GuardInput {
+        tool: Tool::Bash,
+        payload: serde_json::json!({ "command": equivalent }).to_string(),
+        context: Context {
+            working_directory: Some(repo.to_path_buf()),
+            ..Default::default()
+        },
+    });
+    if let GuardDecision::Deny { reason } = &decision {
+        eprintln!(
+            "agent-guard: policy refuses this push: {}",
+            reason.message()
+        );
+        return 1;
+    }
+
+    let transaction = match resolve_push_transaction(repo, remote, branch) {
+        Ok(transaction) => transaction,
+        Err(error) => {
+            eprintln!("agent-guard: could not resolve the push: {error}");
+            return 2;
+        }
+    };
+
+    print_preview(&transaction);
+
+    if matches!(transaction.kind, RefUpdateKind::UpToDate) {
+        println!("\nNothing to push.");
+        return 0;
+    }
+
+    if !yes && !confirm() {
+        println!("\nNot pushed.");
+        return 1;
+    }
+
+    let grant_dir = grants.unwrap_or_else(default_grant_dir);
+    let policy_hash = guard.policy_version();
+    let grant = match issue_grant(
+        &grant_dir,
+        &transaction,
+        &policy_hash,
+        &actor(),
+        Duration::minutes(5),
+    ) {
+        Ok(grant) => grant,
+        Err(error) => {
+            eprintln!("agent-guard: could not record the authorization: {error}");
+            return 2;
+        }
+    };
+
+    let receipt =
+        execute_push_with_receipt(repo, &grant_dir, &grant, &policy_hash, Utc::now(), None);
+
+    if let Some(path) = receipt_path {
+        match serde_json::to_vec_pretty(&receipt) {
+            Ok(body) => {
+                if let Err(error) = std::fs::write(&path, body) {
+                    eprintln!("agent-guard: could not write the receipt: {error}");
+                }
+            }
+            Err(error) => eprintln!("agent-guard: could not render the receipt: {error}"),
+        }
+    }
+
+    match &receipt.attempt {
+        PushAttempt::Pushed => {
+            println!("\nPushed {} to {}/{branch}.", transaction.local_oid, remote);
+            if matches!(receipt.witness, Witness::Unsigned) {
+                println!(
+                    "Receipt is unsigned: no broker signing key is configured, so nobody \
+                     else can check this record."
+                );
+            }
+            0
+        }
+        PushAttempt::Refused { reason } => {
+            eprintln!("\nNot pushed: {reason}");
+            1
+        }
+    }
+}
+
+/// Show the effect, in the order someone deciding would ask about it.
+fn print_preview(tx: &PushTransaction) {
+    println!("remote:  {} ({})", tx.remote, tx.remote_url);
+    println!("branch:  {}", tx.branch);
+    println!(
+        "update:  {}",
+        match tx.kind {
+            RefUpdateKind::Create => "creates the branch on the remote",
+            RefUpdateKind::FastForward => "fast-forward",
+            RefUpdateKind::NotFastForward =>
+                "NOT a fast-forward: this would discard remote commits",
+            RefUpdateKind::UpToDate => "already up to date",
+            RefUpdateKind::Undetermined =>
+                "cannot be determined: the remote holds objects this repository has not fetched",
+        }
+    );
+    match &tx.remote_oid {
+        Some(oid) => println!("remote is at {oid}"),
+        None => println!("remote does not have this branch yet"),
+    }
+    println!("would move it to {}", tx.local_oid);
+
+    match &tx.added_commits {
+        Some(commits) if commits.is_empty() => println!("adds no commits"),
+        Some(commits) => {
+            println!("adds {} commit(s):", commits.len());
+            for oid in commits {
+                println!("  {oid}");
+            }
+        }
+        // Not "adds no commits": the question could not be answered, and an
+        // empty list would read as an answer.
+        None => println!("commits added: unknown until this repository fetches the remote"),
+    }
+}
+
+fn confirm() -> bool {
+    print!("\nPush this? [y/N] ");
+    if io::stdout().flush().is_err() {
+        return false;
+    }
+    let mut answer = String::new();
+    if io::stdin().read_line(&mut answer).is_err() {
+        return false;
+    }
+    matches!(answer.trim(), "y" | "Y" | "yes")
+}
+
+fn default_grant_dir() -> PathBuf {
+    std::env::var("AGENT_GUARD_GRANTS")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| dirs_home().join(".agent-guard").join("grants"))
+}
+
+fn dirs_home() -> PathBuf {
+    std::env::var("HOME")
+        .or_else(|_| std::env::var("USERPROFILE"))
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| PathBuf::from("."))
+}
+
+fn actor() -> String {
+    std::env::var("USER")
+        .or_else(|_| std::env::var("USERNAME"))
+        .unwrap_or_else(|_| "unknown".to_string())
 }

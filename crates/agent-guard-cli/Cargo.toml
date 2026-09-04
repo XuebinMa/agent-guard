@@ -15,6 +15,9 @@ path = "src/main.rs"
 
 [dependencies]
 agent-guard-sdk = { path = "../agent-guard-sdk", version = "=0.2.1" }
+agent-guard-broker = { path = "../agent-guard-broker", version = "=0.2.1" }
+chrono.workspace = true
+serde_json.workspace = true
 clap.workspace = true
 
 [dev-dependencies]

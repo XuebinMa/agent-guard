@@ -22,8 +22,11 @@ dependencies = [
 name = "agent-guard-cli"
 version = "0.2.1"
 dependencies = [
+ "agent-guard-broker",
  "agent-guard-sdk",
+ "chrono",
  "clap",
+ "serde_json",
  "tempfile",
 ]
 

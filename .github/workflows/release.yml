@@ -149,6 +149,7 @@ jobs:
           publish_and_wait agent-guard-validators
           publish_and_wait agent-guard-sandbox
           publish_and_wait agent-guard-sdk
+          publish_and_wait agent-guard-broker
           publish_and_wait agent-guard-cli
           publish_and_wait guard-hook
           publish_and_wait guard-verify

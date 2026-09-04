@@ -8,11 +8,7 @@ homepage.workspace = true
 keywords.workspace = true
 categories.workspace = true
 description = "Broker-owned Git push: resolve, authorize and execute the exact outbound transaction"
-# Not published: this crate has no user-facing surface yet. It resolves and
-# compares transactions and cannot push, so releasing it would put a name on
-# a registry ahead of anything anyone could use. Flip this when the broker
-# has an entry point.
-publish = false
+
 
 [dependencies]
 agent-guard-core = { path = "../agent-guard-core", version = "=0.2.1" }
