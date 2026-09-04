@@ -40,6 +40,23 @@ repository moved while you were reading — your agent committed again, or someo
 else advanced the remote — the authorization no longer matches and the push is
 refused rather than performed against a state nobody approved.
 
+Here is that path actually running — the hook refusing the push and naming the
+command, the effect resolved and approved, the receipt, and a force push
+refused rather than rerouted:
+
+![agent-guard push: a hook refusal that names the broker command, the resolved
+effect of the push, the approval, the sealed receipt, and a force push refused](docs/assets/push-broker-demo.gif)
+
+Nothing in that recording is staged: it is
+[`demos/push-broker/demo.sh`](demos/push-broker/demo.sh) driving the real
+binaries against a real repository. Run it yourself — it uses a throwaway
+repository and a local remote, so it needs no credentials and touches nothing
+of yours:
+
+```bash
+./demos/push-broker/demo.sh
+```
+
 ---
 
 `agent-guard` is for developers running AI coding agents — Claude Code, Cursor,
