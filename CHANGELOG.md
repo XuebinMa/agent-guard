@@ -9,6 +9,23 @@ The `[Unreleased]` heading is rolled forward manually before each release; do no
 
 ## [Unreleased]
 
+### Fixed
+- **The broker crate's documentation described a crate that no longer exists.**
+  `agent-guard-broker`'s crate-level docs were written when only the
+  transaction resolver had landed, and still announced "No credential
+  handling, no authorization, no execution, no receipt" — with `issue_grant`,
+  `execute_push`, `execute_push_with_receipt` and `PushReceipt` exported ten
+  lines below. Understating which properties are present is the safe direction
+  to be wrong in, and it is still a false claim about a security boundary,
+  sitting in the first thing a reader of the crate sees.
+
+  The docs now describe the path the crate runs — resolve, grant, spend
+  against a freshly resolved transaction, push with both ends pinned, receipt
+  — and say which parts remain the caller's: policy is evaluated above this
+  crate, and what the crate enforces is that the policy has not changed since
+  the approval. The boundary that is still true is kept: credential isolation
+  is a deployment property this code cannot verify.
+
 ## [0.2.2] - 2026-09-04
 
 ### Fixed
