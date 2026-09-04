@@ -9,6 +9,8 @@ The `[Unreleased]` heading is rolled forward manually before each release; do no
 
 ## [Unreleased]
 
+## [0.2.2] - 2026-09-04
+
 ### Fixed
 - **The approval prompt is a sentence again.** A push awaiting approval
   serialized its entire parsed intent into the prompt — four hundred

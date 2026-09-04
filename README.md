@@ -4,7 +4,7 @@
 > Your agent writes code and runs tests freely; agent-guard makes the outbound
 > intent visible and gives the host a decision before code leaves the machine.
 
-[![Version](https://img.shields.io/badge/Version-0.2.1-blue.svg)]()
+[![Version](https://img.shields.io/badge/Version-0.2.2-blue.svg)]()
 [![Focus](https://img.shields.io/badge/Focus-Outbound%20Control-green.svg)]()
 [![License](https://img.shields.io/badge/License-MIT-yellow.svg)]()
 [![MSRV](https://img.shields.io/badge/MSRV-1.79-orange.svg)]()
@@ -86,9 +86,7 @@ against whatever policy you already use:
 agent-guard push --policy policy.yaml --remote origin --branch main
 ```
 
-It prints the preview and asks before doing anything. Note that the shipped
-`0.2.1` release predates this command — until the next release, install it
-from a checkout with `cargo install --path crates/agent-guard-cli --locked`.
+It prints the preview and asks before doing anything.
 
 As a Rust library:
 
@@ -110,8 +108,8 @@ checkout with `npm ci --prefix crates/agent-guard-node && npm run build
 
 ## Release Status
 
-- **Source version**: `v0.2.1`
-- **Latest published release**: [`v0.2.1`](https://github.com/XuebinMa/agent-guard/releases/tag/v0.2.1) — crates.io, PyPI, npm
+- **Source version**: `v0.2.2`
+- **Latest published release**: [`v0.2.2`](https://github.com/XuebinMa/agent-guard/releases/tag/v0.2.2) — crates.io, PyPI, npm
 - **Announcement**: [GitHub Discussions #1](https://github.com/XuebinMa/agent-guard/discussions/1)
 
 ## Verify Locally
@@ -403,7 +401,7 @@ safety net, not the primary control.
 
 Additional references:
 
-- [Latest published release](https://github.com/XuebinMa/agent-guard/releases/tag/v0.2.1)
+- [Latest published release](https://github.com/XuebinMa/agent-guard/releases/tag/v0.2.2)
 - [Join the Discussion](https://github.com/XuebinMa/agent-guard/discussions/1)
 - [Deployment Guide](docs/guides/operations/deployment-guide.md)
 - [Roadmap](ROADMAP.md): what's shipped, partial, and planned
