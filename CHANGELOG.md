@@ -9,6 +9,27 @@ The `[Unreleased]` heading is rolled forward manually before each release; do no
 
 ## [Unreleased]
 
+### Added
+- **Credential isolation has a page, and a way to check it.** The README said
+  twice that keeping credentials away from the agent is a deployment decision
+  this code cannot enforce, and both times stopped there. A reader who wanted
+  the property had a disclaimer and no instructions.
+
+  [Credential isolation](docs/guides/operations/credential-isolation.md) states
+  the requirement in one sentence — the push credential must live somewhere the
+  agent's process cannot read — and is explicit that a default install
+  satisfies none of it, because the agent and the broker are the same user with
+  the same `~/.ssh`. It gives the deployment that does hold (the agent in a
+  container, the credential on the host), the weaker same-machine measure that
+  is sometimes all you can do (a hardware key requiring a touch), and says
+  exactly how much less the second one buys.
+
+  The part worth having is the check: `git push --dry-run` from the agent's
+  environment authenticates without updating a ref, so it separates "cannot
+  push" from "can push" unambiguously and safely. Configuration nobody has
+  tested is a belief, and a security boundary held as a belief is the failure
+  this project keeps trying not to ship.
+
 ### Fixed
 - **The command the hook tells you to run now runs.** A refused push printed
   `agent-guard push --remote origin --branch main`, and running exactly that
