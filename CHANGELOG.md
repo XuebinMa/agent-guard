@@ -10,6 +10,25 @@ The `[Unreleased]` heading is rolled forward manually before each release; do no
 ## [Unreleased]
 
 ### Fixed
+- **The command the hook tells you to run now runs.** A refused push printed
+  `agent-guard push --remote origin --branch main`, and running exactly that
+  died on a missing `--policy`. The hint added in 0.2.2 existed to remove a
+  dead end, and it had moved the dead end one step later instead.
+
+  `--policy` is now optional, resolving to `$AGENT_GUARD_POLICY` and then to
+  the policy `npx agent-guard-plugin init` installs. That default is not an
+  arbitrary guess: it is the file the hook itself is wired to, so the push is
+  evaluated against the same rules that refused it rather than a different
+  set. With no policy there at all, the error names the path it tried and how
+  to get one, rather than printing a usage line.
+
+  The policy in force is printed in the preview whether or not it was named on
+  the command line. Approving a push means approving it under some set of
+  rules, and a default that goes unstated is a rule set the person deciding
+  never saw.
+
+  A test asserts the CLI accepts the exact argument shape the hook prints.
+  That invariant spans two crates, which is why nothing caught it breaking.
 - **The broker crate's documentation described a crate that no longer exists.**
   `agent-guard-broker`'s crate-level docs were written when only the
   transaction resolver had landed, and still announced "No credential
