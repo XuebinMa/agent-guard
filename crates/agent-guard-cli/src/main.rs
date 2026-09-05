@@ -73,8 +73,12 @@ enum Commands {
     Push {
         /// Policy the push is evaluated against. A `deny` rule matching the
         /// equivalent command refuses before anything else happens.
+        ///
+        /// Defaults to `$AGENT_GUARD_POLICY`, then to the policy the Claude
+        /// Code plugin installs — which is the one that refused the push you
+        /// are running this command because of.
         #[arg(long)]
-        policy: PathBuf,
+        policy: Option<PathBuf>,
         /// Repository to push from.
         #[arg(long, default_value = ".")]
         repo: PathBuf,
@@ -121,7 +125,7 @@ fn main() {
             yes,
             grants,
             receipt,
-        } => run_push(&policy, &repo, &remote, &branch, yes, grants, receipt),
+        } => run_push(policy, &repo, &remote, &branch, yes, grants, receipt),
     };
     process::exit(exit_code);
 }
@@ -238,6 +242,46 @@ mod tests {
         (dir, ledger)
     }
 
+    /// The hook prints this command verbatim to a human whose push it just
+    /// stopped (`guard-hook`'s `broker_hint`). If running it dies on a missing
+    /// argument, the refusal has moved the dead end one step later instead of
+    /// removing it — which is the whole reason that hint exists.
+    ///
+    /// The shape the hook prints therefore has to be a shape this CLI accepts,
+    /// and that is an invariant spanning two crates that nothing else checks.
+    #[test]
+    fn the_command_the_hook_prints_is_one_this_cli_accepts() {
+        let parsed = Cli::try_parse_from([
+            "agent-guard",
+            "push",
+            "--remote",
+            "origin",
+            "--branch",
+            "main",
+        ]);
+
+        assert!(
+            parsed.is_ok(),
+            "a human runs exactly this after a refusal: {}",
+            parsed
+                .err()
+                .map(|error| error.to_string())
+                .unwrap_or_default()
+        );
+    }
+
+    /// The location `packages/agent-guard-plugin/bin/cli.js` writes the policy
+    /// to and wires the hook to read. A push resolved against some other file
+    /// would be judged by rules the refusal never applied, so these two paths
+    /// are one fact: changing it here means changing it there.
+    #[test]
+    fn the_default_policy_is_where_the_plugin_installs_it() {
+        assert_eq!(
+            plugin_policy_path(Path::new("/home/someone")),
+            PathBuf::from("/home/someone/.claude/agent-guard/policy.yaml")
+        );
+    }
+
     #[test]
     fn approve_flips_pending_to_approved_and_exits_zero() {
         let (_dir, ledger) = ledger();
@@ -316,7 +360,7 @@ mod tests {
 ///    what it just resolved. Reading a preview takes seconds, and a
 ///    repository can move during them.
 fn run_push(
-    policy_path: &Path,
+    policy: Option<PathBuf>,
     repo: &Path,
     remote: &str,
     branch: &str,
@@ -324,7 +368,24 @@ fn run_push(
     grants: Option<PathBuf>,
     receipt_path: Option<PathBuf>,
 ) -> i32 {
-    let guard = match Guard::from_yaml_file(policy_path) {
+    let named_by_caller = policy.is_some();
+    let policy_path = policy.unwrap_or_else(default_policy_path);
+
+    // A caller who named a path gets the loader's own error: their path is
+    // wrong, and only they know what it should have been. A caller who named
+    // nothing is usually here because a refusal told them to run this, so the
+    // useful thing to say is how to get a policy at all.
+    if !named_by_caller && !policy_path.exists() {
+        eprintln!(
+            "agent-guard: no policy at {}.\n\
+             Install one with `npx agent-guard-plugin init`, or name your own \
+             with --policy.",
+            policy_path.display()
+        );
+        return 2;
+    }
+
+    let guard = match Guard::from_yaml_file(&policy_path) {
         Ok(guard) => guard,
         Err(error) => {
             eprintln!("agent-guard: policy {}: {error}", policy_path.display());
@@ -357,7 +418,7 @@ fn run_push(
         }
     };
 
-    print_preview(&transaction);
+    print_preview(&transaction, &policy_path);
 
     if matches!(transaction.kind, RefUpdateKind::UpToDate) {
         println!("\nNothing to push.");
@@ -418,7 +479,11 @@ fn run_push(
 }
 
 /// Show the effect, in the order someone deciding would ask about it.
-fn print_preview(tx: &PushTransaction) {
+fn print_preview(tx: &PushTransaction, policy_path: &Path) {
+    // Named, even when it was not asked for. Approving a push means approving
+    // it under some set of rules, and a default that goes unstated is a rule
+    // set the person deciding never saw.
+    println!("policy:  {}", policy_path.display());
     println!("remote:  {} ({})", tx.remote, tx.remote_url);
     println!("branch:  {}", tx.branch);
     println!(
@@ -463,6 +528,22 @@ fn confirm() -> bool {
         return false;
     }
     matches!(answer.trim(), "y" | "Y" | "yes")
+}
+
+/// Where the Claude Code plugin installs the policy.
+///
+/// `packages/agent-guard-plugin/bin/cli.js` writes it here and points the
+/// PreToolUse hook at it. That makes this the policy that refused the push a
+/// human is running `agent-guard push` because of, so resolving to anything
+/// else would judge the push by rules the refusal never applied.
+fn plugin_policy_path(home: &Path) -> PathBuf {
+    home.join(".claude").join("agent-guard").join("policy.yaml")
+}
+
+fn default_policy_path() -> PathBuf {
+    std::env::var("AGENT_GUARD_POLICY")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| plugin_policy_path(&dirs_home()))
 }
 
 fn default_grant_dir() -> PathBuf {

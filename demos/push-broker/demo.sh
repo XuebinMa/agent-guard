@@ -94,13 +94,17 @@ hook_says "git push origin main"
 # --- 2 -----------------------------------------------------------------------
 say "2. That command shows the effect before asking, then performs it."
 ran "agent-guard push --remote origin --branch main"
+# The command shown above is the command run below. `agent-guard push` reads
+# AGENT_GUARD_POLICY when no --policy is given, which is how this script aims
+# it at the workspace policy without printing one thing and running another.
+export AGENT_GUARD_POLICY="$POLICY"
 if [ "${DEMO_AUTO:-}" = "1" ]; then
   printf 'y\n' | "$PUSH" push \
-    --policy "$POLICY" --remote origin --branch main \
+    --remote origin --branch main \
     --grants "$WORK/grants" --receipt "$WORK/receipt.json"
 else
   "$PUSH" push \
-    --policy "$POLICY" --remote origin --branch main \
+    --remote origin --branch main \
     --grants "$WORK/grants" --receipt "$WORK/receipt.json"
 fi
 

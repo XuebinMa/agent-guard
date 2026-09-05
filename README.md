@@ -96,12 +96,17 @@ cargo install agent-guard-cli --locked
 cargo install guard-verify --locked
 ```
 
-`agent-guard-cli` is what performs the push shown above. From a repository,
-against whatever policy you already use:
+`agent-guard-cli` is what performs the push shown above. From a repository:
 
 ```bash
-agent-guard push --policy policy.yaml --remote origin --branch main
+agent-guard push --remote origin --branch main
 ```
+
+That is the command the hook names when it stops a push, and it runs as
+printed. The policy defaults to `$AGENT_GUARD_POLICY`, then to the one
+`npx agent-guard-plugin init` installs — the same policy that refused the
+push. Name another with `--policy`. Whichever is used is printed in the
+preview, so the rules a push was judged by are never left implied.
 
 It prints the preview and asks before doing anything.
 
