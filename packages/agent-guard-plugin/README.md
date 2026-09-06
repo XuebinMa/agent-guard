@@ -21,7 +21,11 @@ these source-checkout instructions. See the [plugin guide](https://github.com/Xu
 
 ## What `init` does
 
-1. **Installs the matching binary** with `cargo install guard-hook --version <plugin-version> --locked` (Rust required). If cargo is missing it prints manual instructions and continues — the hook remains advisory and fails open until the binary exists.
+1. **Installs both matching binaries** with `cargo install <crate> --version <plugin-version> --locked` (Rust required):
+   - `guard-hook` — the PreToolUse gate itself.
+   - `agent-guard-cli`, providing `agent-guard` — the broker path the gate *names*. When the gate stops a push it tells you to run `agent-guard push`, so installing the gate without this leaves you at a `command not found`.
+
+   If cargo is missing, or one install fails, it says which binary is absent and what it costs you, then continues — the hook remains advisory and fails open until `guard-hook` exists.
 2. **Writes the policy** to `~/.claude/agent-guard/policy.yaml` (the bundled outbound preset, with audit routed to `~/.claude/agent-guard/audit.jsonl` so the hook's stdout stays clean).
 3. **Wires the hook** into `~/.claude/settings.json` under `PreToolUse` for `Bash`, `Write`, `Edit`, and `WebFetch`. The edit is idempotent and preserves every other setting and hook.
 
@@ -33,8 +37,8 @@ Restart Claude Code afterwards so the hook loads.
 | :--- | :--- |
 | `--dry-run` | Show changes without writing anything |
 | `--force` | Overwrite an existing policy file |
-| `--binary-only` | Only install the binary (use with the marketplace plugin) |
-| `--skip-binary` | Skip `cargo install` (assume `guard-hook` is present) |
+| `--binary-only` | Only install the binaries (use with the marketplace plugin) |
+| `--skip-binary` | Skip `cargo install` (assume the binaries are present) |
 | `--agent-id <id>` | Audit agent id recorded by the hook (default: `claude-code`) |
 | `--settings <path>` | Target settings.json (default: `~/.claude/settings.json`) |
 

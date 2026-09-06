@@ -6,6 +6,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const {
+  BINARIES,
   HOOK_ID,
   MATCHER,
   withHook,
@@ -107,4 +108,28 @@ test('bundled policy asset stays byte-identical to the repo outbound preset (no 
     fs.readFileSync(source, 'utf8'),
     'bundled policy has drifted from presets/coding-agent-outbound.yaml — re-copy it'
   );
+});
+
+// The gate is Rust and the installer is Node, so "the plugin installs what the
+// gate tells a human to run" is an invariant neither side can check alone.
+// That is exactly how it broke: `init` installed guard-hook, the hook printed
+// `agent-guard push …`, and the human ran it and got `command not found`.
+test('the plugin installs every binary the hook tells a human to run', () => {
+  const hintSource = fs.readFileSync(
+    path.join(__dirname, '..', '..', '..', 'crates', 'guard-hook', 'src', 'broker_hint.rs'),
+    'utf8',
+  );
+
+  const named = new Set(
+    [...hintSource.matchAll(/([a-z][a-z0-9-]*) push --remote/g)].map((m) => m[1]),
+  );
+  assert.ok(named.size > 0, 'the hint must name at least one runnable command');
+
+  const installed = new Set(BINARIES.map((b) => b.bin));
+  for (const bin of named) {
+    assert.ok(
+      installed.has(bin),
+      `the hook prints "${bin} push --remote …" but init does not install ${bin}`,
+    );
+  }
 });
