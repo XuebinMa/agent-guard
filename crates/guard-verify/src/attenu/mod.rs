@@ -22,6 +22,11 @@ mod authority;
 mod binding;
 mod chain;
 pub mod corpus;
+mod envelope;
+
+pub use envelope::{EntryWitness, EnvelopeReport, TrustSet, WitnessKey};
+
+use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -70,10 +75,40 @@ pub struct BundleReport {
     /// Authorized calls with no terminal observation. Not a failure: it
     /// bounds what the ledger proves rather than showing a broken rule.
     pub unaccounted_calls: Vec<String>,
+    /// What the observer envelopes beside this ledger establish. `None` when
+    /// no trust set was supplied, which is not the same as an empty one: with
+    /// no keys, nothing could have been witness-signed.
+    pub envelopes: Option<EnvelopeReport>,
 }
 
 /// Verify one evidence bundle against its signer.
 pub fn verify_bundle(bundle: &Value, signer: &Signer) -> BundleReport {
+    verify(bundle, Some(signer), None, &HashMap::new())
+}
+
+/// Verify a bundle and the observer envelopes travelling beside it.
+///
+/// `signer` is optional because a bundle may carry no anchor at all, and an
+/// absent anchor is not an envelope failure: running the anchor check anyway
+/// would report a chain-level failure caused by nothing the ledger did.
+///
+/// `received` supplies the bytes an envelope arrived as, by array index, for
+/// deployments that kept them.
+pub fn verify_bundle_with_envelopes(
+    bundle: &Value,
+    signer: Option<&Signer>,
+    trust: &TrustSet,
+    received: &HashMap<usize, Vec<u8>>,
+) -> BundleReport {
+    verify(bundle, signer, Some(trust), received)
+}
+
+fn verify(
+    bundle: &Value,
+    signer: Option<&Signer>,
+    trust: Option<&TrustSet>,
+    received: &HashMap<usize, Vec<u8>>,
+) -> BundleReport {
     let mut failures = Vec::new();
 
     let entries = bundle
@@ -92,15 +127,21 @@ pub fn verify_bundle(bundle: &Value, signer: &Signer) -> BundleReport {
     }
 
     chain::check_entries(&entries, &mut failures);
-    chain::check_anchor(bundle.get("anchor"), &entries, signer, &mut failures);
+    if let Some(signer) = signer {
+        chain::check_anchor(bundle.get("anchor"), &entries, signer, &mut failures);
+    }
     binding::check_call_id_uniqueness(&entries, &mut failures);
     let unaccounted_calls = binding::check_execution_binding(&entries, &mut failures);
     authority::check_authority(&entries, &mut failures);
+
+    let envelopes = trust
+        .map(|trust| envelope::check_envelopes(bundle, &entries, trust, received, &mut failures));
 
     BundleReport {
         accepted: failures.is_empty(),
         failures,
         unaccounted_calls,
+        envelopes,
     }
 }
 

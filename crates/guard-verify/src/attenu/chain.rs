@@ -49,6 +49,22 @@ fn recompute_entry_hash(entry: &Value, prev_hash: &str) -> Result<String, jcs::J
     Ok(hex::encode(hasher.finalize()))
 }
 
+/// Recompute the hash of one entry from genesis, using each entry's own body
+/// rather than the hash stored next to it.
+///
+/// An observer envelope binds to this value, so reading the stored `hash`
+/// would let the same edit that moved the entry also move what the envelope is
+/// compared against. Deriving it means a rewritten ledger disagrees with the
+/// signature taken before the rewrite, which is the whole point of the
+/// envelope.
+pub(super) fn entry_hash_of(entries: &[Value], index: usize) -> Result<String, jcs::JcsError> {
+    let mut prev = GENESIS_PREV.to_string();
+    for entry in entries.iter().take(index + 1) {
+        prev = recompute_entry_hash(entry, &prev)?;
+    }
+    Ok(prev)
+}
+
 /// Recompute the chain head from genesis, using each entry's own body rather
 /// than the hash stored next to it.
 ///

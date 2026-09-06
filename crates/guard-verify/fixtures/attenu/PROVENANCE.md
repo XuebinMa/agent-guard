@@ -18,6 +18,24 @@ It is vendored rather than fetched so the conformance test is hermetic and
 so the bytes under test cannot drift. `attenu_corpus_fixture_bytes_are_pinned`
 in `src/attenu/tests.rs` fails if this file changes.
 
+## `envelope_vectors_v1.json`
+
+Vendored verbatim from the same repository,
+`tests/vectors/envelopes/envelope_vectors_v1.json`, unmodified.
+
+- revision: `envelope_vectors_v1.1`, eighteen cases
+- size: 185,227 bytes
+- sha256: `6a57d75ebec881d39d5a1805793a20f9a6d7bff021b70782dcb57c43b276df64`
+
+The hash is the one attenu-guard published and a second independent runner
+reported for the same file, so byte identity was established before scoring
+rather than assumed from a download. `attenu_envelope_fixture_bytes_are_pinned`
+fails if this copy changes.
+
+This corpus is the one that was **posted as text before anyone implemented
+it**, which is why the run against it reads differently from the bundle one:
+the reason vocabulary was published rather than inferred.
+
 Our verifier (`src/attenu/`) is written against the published format
 description only. It does not read, port, or invoke either attenu-guard
 reference implementation.

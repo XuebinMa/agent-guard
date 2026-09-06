@@ -1,0 +1,5001 @@
+{
+  "cases": [
+    {
+      "bundle": {
+        "anchor": {
+          "c14n": "JCS",
+          "chain_id": "vectors",
+          "head": "53349075656990a1bde24c34e2a4bcd4b70826a208924a86c9cf2647a3a0fc9e",
+          "kid": "bundle-interop-v1",
+          "seq": 8,
+          "sig": "0c49095924277666675466722fb40d0b297416622a49b50e05896fa550654dcf",
+          "ts": 0,
+          "v": 2,
+          "verified": true
+        },
+        "c14n": "JCS",
+        "chain_id": "vectors",
+        "entries": [
+          {
+            "agent": "orchestrator",
+            "authority": {
+              "constraints": [
+                {
+                  "key": "max_rows",
+                  "max": 100000
+                }
+              ],
+              "scopes": [
+                "crm.*",
+                "mail.send"
+              ],
+              "ttl": 3600
+            },
+            "c14n": "JCS",
+            "chain_id": "vectors",
+            "event": "root",
+            "hash": "fba88ffa70b6d8a976a06d4ccf3e00c573eccd9eccdbac56ced056057da8daa6",
+            "node": "vectors:n0",
+            "params_salt": "098023016893b040de8e953490e91ae4",
+            "prev_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+            "seq": 0,
+            "ts": 1,
+            "v": 2
+          },
+          {
+            "agent": "summarizer",
+            "c14n": "JCS",
+            "chain_id": "vectors",
+            "event": "spawn",
+            "granted": {
+              "constraints": [
+                {
+                  "key": "max_rows",
+                  "max": 5000
+                }
+              ],
+              "scopes": [
+                "crm.read"
+              ],
+              "ttl": 900
+            },
+            "hash": "5339c1271ede46a2b783871e7e65e4f0018e8f141f30ef760e8d3e6b0f31bb8d",
+            "node": "vectors:n1",
+            "parent": "vectors:n0",
+            "prev_hash": "fba88ffa70b6d8a976a06d4ccf3e00c573eccd9eccdbac56ced056057da8daa6",
+            "requested": {
+              "constraints": [
+                {
+                  "key": "max_rows",
+                  "max": 5000
+                }
+              ],
+              "scopes": [
+                "crm.read"
+              ],
+              "ttl": 900
+            },
+            "seq": 1,
+            "task": "summarize Q3 pipeline",
+            "ts": 2,
+            "v": 2
+          },
+          {
+            "adapter": {
+              "hook_path": "wrap_tool",
+              "module": "attenu_guard.adapters.example",
+              "version": "1.0.0"
+            },
+            "authorized_params_hash": "d1901bc20e47587a42017724672f7c5fca81f8a6151a6933e5b62482367586a1",
+            "c14n": "JCS",
+            "call_id": "eb099aeb221783e1442261f15df4fb35",
+            "capture": "wrapper_sync",
+            "chain_id": "vectors",
+            "context": {},
+            "event": "allow",
+            "hash": "6a55969c228f85cca9e5c4ff195fce20fc3a76d8d2afae4788bfa0f3e621340b",
+            "node": "vectors:n0",
+            "prev_hash": "5339c1271ede46a2b783871e7e65e4f0018e8f141f30ef760e8d3e6b0f31bb8d",
+            "scope": "mail.send",
+            "seq": 2,
+            "tool": "mail.send",
+            "ts": 3,
+            "v": 2
+          },
+          {
+            "body_state": "returned",
+            "c14n": "JCS",
+            "call_id": "eb099aeb221783e1442261f15df4fb35",
+            "chain_id": "vectors",
+            "duration_ms": 12,
+            "event": "outcome",
+            "hash": "b5c9da99d2ba0874a150e05307994b35b5c6c3cc7a2dda35a067632404988f62",
+            "invoked_params_hash": "d1901bc20e47587a42017724672f7c5fca81f8a6151a6933e5b62482367586a1",
+            "node": "vectors:n0",
+            "prev_hash": "6a55969c228f85cca9e5c4ff195fce20fc3a76d8d2afae4788bfa0f3e621340b",
+            "seq": 3,
+            "ts": 4,
+            "v": 2
+          },
+          {
+            "adapter": {
+              "hook_path": "wrap_tool",
+              "module": "attenu_guard.adapters.example",
+              "version": "1.0.0"
+            },
+            "authorized_params_hash": "fce526871286f8690b26b26fd968b9ad482f5e34e453b7fb8907fce528457a9c",
+            "c14n": "JCS",
+            "call_id": "15d42567717e39b8ff1881a14ec42f96",
+            "capture": "wrapper_sync",
+            "chain_id": "vectors",
+            "context": {
+              "rows": 120
+            },
+            "event": "allow",
+            "hash": "7230444ce8d0178ca0352ca46bfe8c7518bad7c098f77e0103156bfcc1eb4a7b",
+            "node": "vectors:n1",
+            "prev_hash": "b5c9da99d2ba0874a150e05307994b35b5c6c3cc7a2dda35a067632404988f62",
+            "scope": "crm.read",
+            "seq": 4,
+            "tool": "crm.read",
+            "ts": 5,
+            "v": 2
+          },
+          {
+            "c14n": "JCS",
+            "call_id": "b19e6c109fd52df399317b62beac78b4",
+            "chain_id": "vectors",
+            "context": {
+              "rows": 120
+            },
+            "disposition": "out_of_authority",
+            "event": "deny",
+            "hash": "78288abb02a9742c4059f159b32eaf89a5d7685d2edd7a504df18b9c805e357e",
+            "node": "vectors:n1",
+            "prev_hash": "7230444ce8d0178ca0352ca46bfe8c7518bad7c098f77e0103156bfcc1eb4a7b",
+            "reason": "scope_not_granted",
+            "reasons": [
+              {
+                "code": "scope_not_granted",
+                "constraint": null,
+                "limit": null,
+                "message": "scope 'crm.export' not covered by held scopes ['crm.read']",
+                "requested": "crm.export"
+              }
+            ],
+            "scope": "crm.export",
+            "seq": 5,
+            "tool": "crm.export",
+            "ts": 6,
+            "v": 2
+          },
+          {
+            "body_state": "returned",
+            "c14n": "JCS",
+            "call_id": "15d42567717e39b8ff1881a14ec42f96",
+            "chain_id": "vectors",
+            "duration_ms": 7,
+            "event": "outcome",
+            "hash": "919b70ea66d3a6dcb028d436c606d4503711d465968f2cccca769a14b2d9d28a",
+            "invoked_params_hash": "fce526871286f8690b26b26fd968b9ad482f5e34e453b7fb8907fce528457a9c",
+            "node": "vectors:n1",
+            "prev_hash": "78288abb02a9742c4059f159b32eaf89a5d7685d2edd7a504df18b9c805e357e",
+            "seq": 6,
+            "ts": 7,
+            "v": 2
+          },
+          {
+            "agent": "summarizer",
+            "c14n": "JCS",
+            "chain_id": "vectors",
+            "event": "done",
+            "hash": "9d99da710ca7ae8dd731099360fc5304746df3d926933c6dcdf61e2033bf2c95",
+            "node": "vectors:n1",
+            "prev_hash": "919b70ea66d3a6dcb028d436c606d4503711d465968f2cccca769a14b2d9d28a",
+            "seq": 7,
+            "ts": 8,
+            "v": 2
+          },
+          {
+            "agent": "orchestrator",
+            "c14n": "JCS",
+            "chain_id": "vectors",
+            "event": "done",
+            "hash": "53349075656990a1bde24c34e2a4bcd4b70826a208924a86c9cf2647a3a0fc9e",
+            "node": "vectors:n0",
+            "prev_hash": "9d99da710ca7ae8dd731099360fc5304746df3d926933c6dcdf61e2033bf2c95",
+            "seq": 8,
+            "ts": 9,
+            "v": 2
+          }
+        ],
+        "envelopes": [
+          {
+            "observed": {
+              "at": "2026-09-01T11:00:00Z",
+              "method": "sidecar:ledger-tail",
+              "result": "matched"
+            },
+            "sig": "9d915e8cb279236dbf0263038d9eb3a23859eba4394f8ed05d512af631bb9564684eb8cc9cd8cc95c37fc5c19e3a4d323afbc69752f0bdc4562fe0b21ed08509",
+            "subject": {
+              "chain_id": "vectors",
+              "entry_hash": "5339c1271ede46a2b783871e7e65e4f0018e8f141f30ef760e8d3e6b0f31bb8d",
+              "event": "spawn",
+              "node": "vectors:n1",
+              "seq": 1
+            },
+            "typ": "delegation-event-observation",
+            "v": 1,
+            "witness": {
+              "alg": "EdDSA",
+              "kid": "witness-interop-v1"
+            }
+          }
+        ],
+        "note": "offline-verifiable: attenu_guard.evidence.verify_bundle(bundle, signer)",
+        "redaction": {
+          "ok": true,
+          "violations": []
+        },
+        "v": 2
+      },
+      "description": "One honest envelope over the `spawn` at seq 1: a witness outside the process that wrote the ledger signed the IDENTITY of that entry \u2014 chain_id, node, seq, entry_hash and event \u2014 and nothing about its contents, which the entry's own hash already covers. Every check MUST pass, and the entry at seq 1 MUST report witness-signed while every other entry reports process-asserted: coverage is explicit, never assumed dense. The report line for seq 1 is `witness-signed (matched)`. This is the case the rejecting rows below are derived from by exactly one change, unless their description names another.",
+      "expect": "accept",
+      "expect_failures": [],
+      "expect_states": {
+        "0": "process-asserted",
+        "1": "witness-signed",
+        "2": "process-asserted",
+        "3": "process-asserted",
+        "4": "process-asserted",
+        "5": "process-asserted",
+        "6": "process-asserted",
+        "7": "process-asserted",
+        "8": "process-asserted"
+      },
+      "name": "valid_spawn_envelope",
+      "signer": {
+        "alg": "HS256",
+        "kid": "bundle-interop-v1",
+        "secret_hex": "617474656e752d67756172642d62756e646c652d766563746f72732d76312d66697865642d736563726574"
+      },
+      "witness_keys": [
+        {
+          "alg": "EdDSA",
+          "kid": "witness-interop-v1",
+          "public_key_hex": "175690a2bd6cdde8dc82af9df6529ad86ca740d9adf9cf06caeafd151fa15249"
+        },
+        {
+          "alg": "EdDSA",
+          "kid": "witness-interop-v1-b",
+          "public_key_hex": "99fb1b490a5fb16480f2dac356b30e07152d74c1afa2e70901b7e485d08aca9f"
+        }
+      ]
+    },
+    {
+      "bundle": {
+        "anchor": {
+          "c14n": "JCS",
+          "chain_id": "vectors",
+          "head": "53349075656990a1bde24c34e2a4bcd4b70826a208924a86c9cf2647a3a0fc9e",
+          "kid": "bundle-interop-v1",
+          "seq": 8,
+          "sig": "0c49095924277666675466722fb40d0b297416622a49b50e05896fa550654dcf",
+          "ts": 0,
+          "v": 2,
+          "verified": true
+        },
+        "c14n": "JCS",
+        "chain_id": "vectors",
+        "entries": [
+          {
+            "agent": "orchestrator",
+            "authority": {
+              "constraints": [
+                {
+                  "key": "max_rows",
+                  "max": 100000
+                }
+              ],
+              "scopes": [
+                "crm.*",
+                "mail.send"
+              ],
+              "ttl": 3600
+            },
+            "c14n": "JCS",
+            "chain_id": "vectors",
+            "event": "root",
+            "hash": "fba88ffa70b6d8a976a06d4ccf3e00c573eccd9eccdbac56ced056057da8daa6",
+            "node": "vectors:n0",
+            "params_salt": "098023016893b040de8e953490e91ae4",
+            "prev_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+            "seq": 0,
+            "ts": 1,
+            "v": 2
+          },
+          {
+            "agent": "summarizer",
+            "c14n": "JCS",
+            "chain_id": "vectors",
+            "event": "spawn",
+            "granted": {
+              "constraints": [
+                {
+                  "key": "max_rows",
+                  "max": 5000
+                }
+              ],
+              "scopes": [
+                "crm.read"
+              ],
+              "ttl": 900
+            },
+            "hash": "5339c1271ede46a2b783871e7e65e4f0018e8f141f30ef760e8d3e6b0f31bb8d",
+            "node": "vectors:n1",
+            "parent": "vectors:n0",
+            "prev_hash": "fba88ffa70b6d8a976a06d4ccf3e00c573eccd9eccdbac56ced056057da8daa6",
+            "requested": {
+              "constraints": [
+                {
+                  "key": "max_rows",
+                  "max": 5000
+                }
+              ],
+              "scopes": [
+                "crm.read"
+              ],
+              "ttl": 900
+            },
+            "seq": 1,
+            "task": "summarize Q3 pipeline",
+            "ts": 2,
+            "v": 2
+          },
+          {
+            "adapter": {
+              "hook_path": "wrap_tool",
+              "module": "attenu_guard.adapters.example",
+              "version": "1.0.0"
+            },
+            "authorized_params_hash": "d1901bc20e47587a42017724672f7c5fca81f8a6151a6933e5b62482367586a1",
+            "c14n": "JCS",
+            "call_id": "eb099aeb221783e1442261f15df4fb35",
+            "capture": "wrapper_sync",
+            "chain_id": "vectors",
+            "context": {},
+            "event": "allow",
+            "hash": "6a55969c228f85cca9e5c4ff195fce20fc3a76d8d2afae4788bfa0f3e621340b",
+            "node": "vectors:n0",
+            "prev_hash": "5339c1271ede46a2b783871e7e65e4f0018e8f141f30ef760e8d3e6b0f31bb8d",
+            "scope": "mail.send",
+            "seq": 2,
+            "tool": "mail.send",
+            "ts": 3,
+            "v": 2
+          },
+          {
+            "body_state": "returned",
+            "c14n": "JCS",
+            "call_id": "eb099aeb221783e1442261f15df4fb35",
+            "chain_id": "vectors",
+            "duration_ms": 12,
+            "event": "outcome",
+            "hash": "b5c9da99d2ba0874a150e05307994b35b5c6c3cc7a2dda35a067632404988f62",
+            "invoked_params_hash": "d1901bc20e47587a42017724672f7c5fca81f8a6151a6933e5b62482367586a1",
+            "node": "vectors:n0",
+            "prev_hash": "6a55969c228f85cca9e5c4ff195fce20fc3a76d8d2afae4788bfa0f3e621340b",
+            "seq": 3,
+            "ts": 4,
+            "v": 2
+          },
+          {
+            "adapter": {
+              "hook_path": "wrap_tool",
+              "module": "attenu_guard.adapters.example",
+              "version": "1.0.0"
+            },
+            "authorized_params_hash": "fce526871286f8690b26b26fd968b9ad482f5e34e453b7fb8907fce528457a9c",
+            "c14n": "JCS",
+            "call_id": "15d42567717e39b8ff1881a14ec42f96",
+            "capture": "wrapper_sync",
+            "chain_id": "vectors",
+            "context": {
+              "rows": 120
+            },
+            "event": "allow",
+            "hash": "7230444ce8d0178ca0352ca46bfe8c7518bad7c098f77e0103156bfcc1eb4a7b",
+            "node": "vectors:n1",
+            "prev_hash": "b5c9da99d2ba0874a150e05307994b35b5c6c3cc7a2dda35a067632404988f62",
+            "scope": "crm.read",
+            "seq": 4,
+            "tool": "crm.read",
+            "ts": 5,
+            "v": 2
+          },
+          {
+            "c14n": "JCS",
+            "call_id": "b19e6c109fd52df399317b62beac78b4",
+            "chain_id": "vectors",
+            "context": {
+              "rows": 120
+            },
+            "disposition": "out_of_authority",
+            "event": "deny",
+            "hash": "78288abb02a9742c4059f159b32eaf89a5d7685d2edd7a504df18b9c805e357e",
+            "node": "vectors:n1",
+            "prev_hash": "7230444ce8d0178ca0352ca46bfe8c7518bad7c098f77e0103156bfcc1eb4a7b",
+            "reason": "scope_not_granted",
+            "reasons": [
+              {
+                "code": "scope_not_granted",
+                "constraint": null,
+                "limit": null,
+                "message": "scope 'crm.export' not covered by held scopes ['crm.read']",
+                "requested": "crm.export"
+              }
+            ],
+            "scope": "crm.export",
+            "seq": 5,
+            "tool": "crm.export",
+            "ts": 6,
+            "v": 2
+          },
+          {
+            "body_state": "returned",
+            "c14n": "JCS",
+            "call_id": "15d42567717e39b8ff1881a14ec42f96",
+            "chain_id": "vectors",
+            "duration_ms": 7,
+            "event": "outcome",
+            "hash": "919b70ea66d3a6dcb028d436c606d4503711d465968f2cccca769a14b2d9d28a",
+            "invoked_params_hash": "fce526871286f8690b26b26fd968b9ad482f5e34e453b7fb8907fce528457a9c",
+            "node": "vectors:n1",
+            "prev_hash": "78288abb02a9742c4059f159b32eaf89a5d7685d2edd7a504df18b9c805e357e",
+            "seq": 6,
+            "ts": 7,
+            "v": 2
+          },
+          {
+            "agent": "summarizer",
+            "c14n": "JCS",
+            "chain_id": "vectors",
+            "event": "done",
+            "hash": "9d99da710ca7ae8dd731099360fc5304746df3d926933c6dcdf61e2033bf2c95",
+            "node": "vectors:n1",
+            "prev_hash": "919b70ea66d3a6dcb028d436c606d4503711d465968f2cccca769a14b2d9d28a",
+            "seq": 7,
+            "ts": 8,
+            "v": 2
+          },
+          {
+            "agent": "orchestrator",
+            "c14n": "JCS",
+            "chain_id": "vectors",
+            "event": "done",
+            "hash": "53349075656990a1bde24c34e2a4bcd4b70826a208924a86c9cf2647a3a0fc9e",
+            "node": "vectors:n0",
+            "prev_hash": "9d99da710ca7ae8dd731099360fc5304746df3d926933c6dcdf61e2033bf2c95",
+            "seq": 8,
+            "ts": 9,
+            "v": 2
+          }
+        ],
+        "envelopes": [
+          {
+            "observed": {
+              "at": "2026-09-01T11:00:00Z",
+              "method": "sidecar:ledger-tail",
+              "result": "matched"
+            },
+            "sig": "cb823939065ebf2cb4d34c8e749c373481aaab46dcf2d6b8a72dd58b373dc4bb04e424d66573dac17d034dca672d69ee5e4fad3728471fcef73711ec6d56f009",
+            "subject": {
+              "call_id": "eb099aeb221783e1442261f15df4fb35",
+              "chain_id": "vectors",
+              "entry_hash": "6a55969c228f85cca9e5c4ff195fce20fc3a76d8d2afae4788bfa0f3e621340b",
+              "event": "allow",
+              "node": "vectors:n0",
+              "seq": 2
+            },
+            "typ": "delegation-event-observation",
+            "v": 1,
+            "witness": {
+              "alg": "EdDSA",
+              "kid": "witness-interop-v1"
+            }
+          }
+        ],
+        "note": "offline-verifiable: attenu_guard.evidence.verify_bundle(bundle, signer)",
+        "redaction": {
+          "ok": true,
+          "violations": []
+        },
+        "v": 2
+      },
+      "description": "The same, over an `allow` instead: the orchestrator's authorization at seq 2, whose subject carries `call_id` alongside the five members a spawn subject carries. An allow never creates a node of its own, which is why the ENTRY and not the node is the unit a state is reported for. Every check MUST pass; seq 2 reports witness-signed, every other entry process-asserted.",
+      "expect": "accept",
+      "expect_failures": [],
+      "expect_states": {
+        "0": "process-asserted",
+        "1": "process-asserted",
+        "2": "witness-signed",
+        "3": "process-asserted",
+        "4": "process-asserted",
+        "5": "process-asserted",
+        "6": "process-asserted",
+        "7": "process-asserted",
+        "8": "process-asserted"
+      },
+      "name": "valid_allow_envelope",
+      "signer": {
+        "alg": "HS256",
+        "kid": "bundle-interop-v1",
+        "secret_hex": "617474656e752d67756172642d62756e646c652d766563746f72732d76312d66697865642d736563726574"
+      },
+      "witness_keys": [
+        {
+          "alg": "EdDSA",
+          "kid": "witness-interop-v1",
+          "public_key_hex": "175690a2bd6cdde8dc82af9df6529ad86ca740d9adf9cf06caeafd151fa15249"
+        },
+        {
+          "alg": "EdDSA",
+          "kid": "witness-interop-v1-b",
+          "public_key_hex": "99fb1b490a5fb16480f2dac356b30e07152d74c1afa2e70901b7e485d08aca9f"
+        }
+      ]
+    },
+    {
+      "bundle": {
+        "anchor": {
+          "c14n": "JCS",
+          "chain_id": "vectors",
+          "head": "53349075656990a1bde24c34e2a4bcd4b70826a208924a86c9cf2647a3a0fc9e",
+          "kid": "bundle-interop-v1",
+          "seq": 8,
+          "sig": "0c49095924277666675466722fb40d0b297416622a49b50e05896fa550654dcf",
+          "ts": 0,
+          "v": 2,
+          "verified": true
+        },
+        "c14n": "JCS",
+        "chain_id": "vectors",
+        "entries": [
+          {
+            "agent": "orchestrator",
+            "authority": {
+              "constraints": [
+                {
+                  "key": "max_rows",
+                  "max": 100000
+                }
+              ],
+              "scopes": [
+                "crm.*",
+                "mail.send"
+              ],
+              "ttl": 3600
+            },
+            "c14n": "JCS",
+            "chain_id": "vectors",
+            "event": "root",
+            "hash": "fba88ffa70b6d8a976a06d4ccf3e00c573eccd9eccdbac56ced056057da8daa6",
+            "node": "vectors:n0",
+            "params_salt": "098023016893b040de8e953490e91ae4",
+            "prev_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+            "seq": 0,
+            "ts": 1,
+            "v": 2
+          },
+          {
+            "agent": "summarizer",
+            "c14n": "JCS",
+            "chain_id": "vectors",
+            "event": "spawn",
+            "granted": {
+              "constraints": [
+                {
+                  "key": "max_rows",
+                  "max": 5000
+                }
+              ],
+              "scopes": [
+                "crm.read"
+              ],
+              "ttl": 900
+            },
+            "hash": "5339c1271ede46a2b783871e7e65e4f0018e8f141f30ef760e8d3e6b0f31bb8d",
+            "node": "vectors:n1",
+            "parent": "vectors:n0",
+            "prev_hash": "fba88ffa70b6d8a976a06d4ccf3e00c573eccd9eccdbac56ced056057da8daa6",
+            "requested": {
+              "constraints": [
+                {
+                  "key": "max_rows",
+                  "max": 5000
+                }
+              ],
+              "scopes": [
+                "crm.read"
+              ],
+              "ttl": 900
+            },
+            "seq": 1,
+            "task": "summarize Q3 pipeline",
+            "ts": 2,
+            "v": 2
+          },
+          {
+            "adapter": {
+              "hook_path": "wrap_tool",
+              "module": "attenu_guard.adapters.example",
+              "version": "1.0.0"
+            },
+            "authorized_params_hash": "d1901bc20e47587a42017724672f7c5fca81f8a6151a6933e5b62482367586a1",
+            "c14n": "JCS",
+            "call_id": "eb099aeb221783e1442261f15df4fb35",
+            "capture": "wrapper_sync",
+            "chain_id": "vectors",
+            "context": {},
+            "event": "allow",
+            "hash": "6a55969c228f85cca9e5c4ff195fce20fc3a76d8d2afae4788bfa0f3e621340b",
+            "node": "vectors:n0",
+            "prev_hash": "5339c1271ede46a2b783871e7e65e4f0018e8f141f30ef760e8d3e6b0f31bb8d",
+            "scope": "mail.send",
+            "seq": 2,
+            "tool": "mail.send",
+            "ts": 3,
+            "v": 2
+          },
+          {
+            "body_state": "returned",
+            "c14n": "JCS",
+            "call_id": "eb099aeb221783e1442261f15df4fb35",
+            "chain_id": "vectors",
+            "duration_ms": 12,
+            "event": "outcome",
+            "hash": "b5c9da99d2ba0874a150e05307994b35b5c6c3cc7a2dda35a067632404988f62",
+            "invoked_params_hash": "d1901bc20e47587a42017724672f7c5fca81f8a6151a6933e5b62482367586a1",
+            "node": "vectors:n0",
+            "prev_hash": "6a55969c228f85cca9e5c4ff195fce20fc3a76d8d2afae4788bfa0f3e621340b",
+            "seq": 3,
+            "ts": 4,
+            "v": 2
+          },
+          {
+            "adapter": {
+              "hook_path": "wrap_tool",
+              "module": "attenu_guard.adapters.example",
+              "version": "1.0.0"
+            },
+            "authorized_params_hash": "fce526871286f8690b26b26fd968b9ad482f5e34e453b7fb8907fce528457a9c",
+            "c14n": "JCS",
+            "call_id": "15d42567717e39b8ff1881a14ec42f96",
+            "capture": "wrapper_sync",
+            "chain_id": "vectors",
+            "context": {
+              "rows": 120
+            },
+            "event": "allow",
+            "hash": "7230444ce8d0178ca0352ca46bfe8c7518bad7c098f77e0103156bfcc1eb4a7b",
+            "node": "vectors:n1",
+            "prev_hash": "b5c9da99d2ba0874a150e05307994b35b5c6c3cc7a2dda35a067632404988f62",
+            "scope": "crm.read",
+            "seq": 4,
+            "tool": "crm.read",
+            "ts": 5,
+            "v": 2
+          },
+          {
+            "c14n": "JCS",
+            "call_id": "b19e6c109fd52df399317b62beac78b4",
+            "chain_id": "vectors",
+            "context": {
+              "rows": 120
+            },
+            "disposition": "out_of_authority",
+            "event": "deny",
+            "hash": "78288abb02a9742c4059f159b32eaf89a5d7685d2edd7a504df18b9c805e357e",
+            "node": "vectors:n1",
+            "prev_hash": "7230444ce8d0178ca0352ca46bfe8c7518bad7c098f77e0103156bfcc1eb4a7b",
+            "reason": "scope_not_granted",
+            "reasons": [
+              {
+                "code": "scope_not_granted",
+                "constraint": null,
+                "limit": null,
+                "message": "scope 'crm.export' not covered by held scopes ['crm.read']",
+                "requested": "crm.export"
+              }
+            ],
+            "scope": "crm.export",
+            "seq": 5,
+            "tool": "crm.export",
+            "ts": 6,
+            "v": 2
+          },
+          {
+            "body_state": "returned",
+            "c14n": "JCS",
+            "call_id": "15d42567717e39b8ff1881a14ec42f96",
+            "chain_id": "vectors",
+            "duration_ms": 7,
+            "event": "outcome",
+            "hash": "919b70ea66d3a6dcb028d436c606d4503711d465968f2cccca769a14b2d9d28a",
+            "invoked_params_hash": "fce526871286f8690b26b26fd968b9ad482f5e34e453b7fb8907fce528457a9c",
+            "node": "vectors:n1",
+            "prev_hash": "78288abb02a9742c4059f159b32eaf89a5d7685d2edd7a504df18b9c805e357e",
+            "seq": 6,
+            "ts": 7,
+            "v": 2
+          },
+          {
+            "agent": "summarizer",
+            "c14n": "JCS",
+            "chain_id": "vectors",
+            "event": "done",
+            "hash": "9d99da710ca7ae8dd731099360fc5304746df3d926933c6dcdf61e2033bf2c95",
+            "node": "vectors:n1",
+            "prev_hash": "919b70ea66d3a6dcb028d436c606d4503711d465968f2cccca769a14b2d9d28a",
+            "seq": 7,
+            "ts": 8,
+            "v": 2
+          },
+          {
+            "agent": "orchestrator",
+            "c14n": "JCS",
+            "chain_id": "vectors",
+            "event": "done",
+            "hash": "53349075656990a1bde24c34e2a4bcd4b70826a208924a86c9cf2647a3a0fc9e",
+            "node": "vectors:n0",
+            "prev_hash": "9d99da710ca7ae8dd731099360fc5304746df3d926933c6dcdf61e2033bf2c95",
+            "seq": 8,
+            "ts": 9,
+            "v": 2
+          }
+        ],
+        "envelopes": [
+          {
+            "witness": {
+              "kid": "witness-interop-v1",
+              "alg": "EdDSA"
+            },
+            "v": 1,
+            "typ": "delegation-event-observation",
+            "subject": {
+              "seq": 1,
+              "node": "vectors:n1",
+              "event": "spawn",
+              "entry_hash": "5339c1271ede46a2b783871e7e65e4f0018e8f141f30ef760e8d3e6b0f31bb8d",
+              "chain_id": "vectors"
+            },
+            "sig": "9d915e8cb279236dbf0263038d9eb3a23859eba4394f8ed05d512af631bb9564684eb8cc9cd8cc95c37fc5c19e3a4d323afbc69752f0bdc4562fe0b21ed08509",
+            "observed": {
+              "result": "matched",
+              "method": "sidecar:ledger-tail",
+              "at": "2026-09-01T11:00:00Z"
+            }
+          }
+        ],
+        "note": "offline-verifiable: attenu_guard.evidence.verify_bundle(bundle, signer)",
+        "redaction": {
+          "ok": true,
+          "violations": []
+        },
+        "v": 2
+      },
+      "canonical_hex": "7b226f62736572766564223a7b226174223a22323032362d30392d30315431313a30303a30305a222c226d6574686f64223a22736964656361723a6c65646765722d7461696c222c22726573756c74223a226d617463686564227d2c227375626a656374223a7b22636861696e5f6964223a22766563746f7273222c22656e7472795f68617368223a2235333339633132373165646534366132623738333837316537653635653466303031386538663134316633306566373630653864336536623066333162623864222c226576656e74223a22737061776e222c226e6f6465223a22766563746f72733a6e31222c22736571223a317d2c22747970223a2264656c65676174696f6e2d6576656e742d6f62736572766174696f6e222c2276223a312c227769746e657373223a7b22616c67223a224564445341222c226b6964223a227769746e6573732d696e7465726f702d7631227d7d",
+      "description": "The positive control for canonicalization. Byte for byte the same envelope as valid_spawn_envelope \u2014 the same subject, the same signature \u2014 with its members, and its subject's, observed's and witness's members, written in a different SOURCE order. JCS sorts them, so it still verifies and seq 1 still reports witness-signed. Score this row on both halves: it accepts, AND the bytes the verifier canonicalized equal `canonical_hex`, which is the exact JCS preimage the signature covers \u2014 the envelope without its `sig` member, as bytes, not a digest over them. Accepting while producing different bytes fails the row. Every other object in this file is written with its members sorted; this envelope is the one deliberate exception, and a generator that sorted it would delete what the case tests.",
+      "expect": "accept",
+      "expect_failures": [],
+      "expect_states": {
+        "0": "process-asserted",
+        "1": "witness-signed",
+        "2": "process-asserted",
+        "3": "process-asserted",
+        "4": "process-asserted",
+        "5": "process-asserted",
+        "6": "process-asserted",
+        "7": "process-asserted",
+        "8": "process-asserted"
+      },
+      "name": "valid_jcs_reorder",
+      "signer": {
+        "alg": "HS256",
+        "kid": "bundle-interop-v1",
+        "secret_hex": "617474656e752d67756172642d62756e646c652d766563746f72732d76312d66697865642d736563726574"
+      },
+      "witness_keys": [
+        {
+          "alg": "EdDSA",
+          "kid": "witness-interop-v1",
+          "public_key_hex": "175690a2bd6cdde8dc82af9df6529ad86ca740d9adf9cf06caeafd151fa15249"
+        },
+        {
+          "alg": "EdDSA",
+          "kid": "witness-interop-v1-b",
+          "public_key_hex": "99fb1b490a5fb16480f2dac356b30e07152d74c1afa2e70901b7e485d08aca9f"
+        }
+      ]
+    },
+    {
+      "bundle": {
+        "anchor": {
+          "c14n": "JCS",
+          "chain_id": "vectors",
+          "head": "53349075656990a1bde24c34e2a4bcd4b70826a208924a86c9cf2647a3a0fc9e",
+          "kid": "bundle-interop-v1",
+          "seq": 8,
+          "sig": "0c49095924277666675466722fb40d0b297416622a49b50e05896fa550654dcf",
+          "ts": 0,
+          "v": 2,
+          "verified": true
+        },
+        "c14n": "JCS",
+        "chain_id": "vectors",
+        "entries": [
+          {
+            "agent": "orchestrator",
+            "authority": {
+              "constraints": [
+                {
+                  "key": "max_rows",
+                  "max": 100000
+                }
+              ],
+              "scopes": [
+                "crm.*",
+                "mail.send"
+              ],
+              "ttl": 3600
+            },
+            "c14n": "JCS",
+            "chain_id": "vectors",
+            "event": "root",
+            "hash": "fba88ffa70b6d8a976a06d4ccf3e00c573eccd9eccdbac56ced056057da8daa6",
+            "node": "vectors:n0",
+            "params_salt": "098023016893b040de8e953490e91ae4",
+            "prev_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+            "seq": 0,
+            "ts": 1,
+            "v": 2
+          },
+          {
+            "agent": "summarizer",
+            "c14n": "JCS",
+            "chain_id": "vectors",
+            "event": "spawn",
+            "granted": {
+              "constraints": [
+                {
+                  "key": "max_rows",
+                  "max": 5000
+                }
+              ],
+              "scopes": [
+                "crm.read"
+              ],
+              "ttl": 900
+            },
+            "hash": "5339c1271ede46a2b783871e7e65e4f0018e8f141f30ef760e8d3e6b0f31bb8d",
+            "node": "vectors:n1",
+            "parent": "vectors:n0",
+            "prev_hash": "fba88ffa70b6d8a976a06d4ccf3e00c573eccd9eccdbac56ced056057da8daa6",
+            "requested": {
+              "constraints": [
+                {
+                  "key": "max_rows",
+                  "max": 5000
+                }
+              ],
+              "scopes": [
+                "crm.read"
+              ],
+              "ttl": 900
+            },
+            "seq": 1,
+            "task": "summarize Q3 pipeline",
+            "ts": 2,
+            "v": 2
+          },
+          {
+            "adapter": {
+              "hook_path": "wrap_tool",
+              "module": "attenu_guard.adapters.example",
+              "version": "1.0.0"
+            },
+            "authorized_params_hash": "d1901bc20e47587a42017724672f7c5fca81f8a6151a6933e5b62482367586a1",
+            "c14n": "JCS",
+            "call_id": "eb099aeb221783e1442261f15df4fb35",
+            "capture": "wrapper_sync",
+            "chain_id": "vectors",
+            "context": {},
+            "event": "allow",
+            "hash": "6a55969c228f85cca9e5c4ff195fce20fc3a76d8d2afae4788bfa0f3e621340b",
+            "node": "vectors:n0",
+            "prev_hash": "5339c1271ede46a2b783871e7e65e4f0018e8f141f30ef760e8d3e6b0f31bb8d",
+            "scope": "mail.send",
+            "seq": 2,
+            "tool": "mail.send",
+            "ts": 3,
+            "v": 2
+          },
+          {
+            "body_state": "returned",
+            "c14n": "JCS",
+            "call_id": "eb099aeb221783e1442261f15df4fb35",
+            "chain_id": "vectors",
+            "duration_ms": 12,
+            "event": "outcome",
+            "hash": "b5c9da99d2ba0874a150e05307994b35b5c6c3cc7a2dda35a067632404988f62",
+            "invoked_params_hash": "d1901bc20e47587a42017724672f7c5fca81f8a6151a6933e5b62482367586a1",
+            "node": "vectors:n0",
+            "prev_hash": "6a55969c228f85cca9e5c4ff195fce20fc3a76d8d2afae4788bfa0f3e621340b",
+            "seq": 3,
+            "ts": 4,
+            "v": 2
+          },
+          {
+            "adapter": {
+              "hook_path": "wrap_tool",
+              "module": "attenu_guard.adapters.example",
+              "version": "1.0.0"
+            },
+            "authorized_params_hash": "fce526871286f8690b26b26fd968b9ad482f5e34e453b7fb8907fce528457a9c",
+            "c14n": "JCS",
+            "call_id": "15d42567717e39b8ff1881a14ec42f96",
+            "capture": "wrapper_sync",
+            "chain_id": "vectors",
+            "context": {
+              "rows": 120
+            },
+            "event": "allow",
+            "hash": "7230444ce8d0178ca0352ca46bfe8c7518bad7c098f77e0103156bfcc1eb4a7b",
+            "node": "vectors:n1",
+            "prev_hash": "b5c9da99d2ba0874a150e05307994b35b5c6c3cc7a2dda35a067632404988f62",
+            "scope": "crm.read",
+            "seq": 4,
+            "tool": "crm.read",
+            "ts": 5,
+            "v": 2
+          },
+          {
+            "c14n": "JCS",
+            "call_id": "b19e6c109fd52df399317b62beac78b4",
+            "chain_id": "vectors",
+            "context": {
+              "rows": 120
+            },
+            "disposition": "out_of_authority",
+            "event": "deny",
+            "hash": "78288abb02a9742c4059f159b32eaf89a5d7685d2edd7a504df18b9c805e357e",
+            "node": "vectors:n1",
+            "prev_hash": "7230444ce8d0178ca0352ca46bfe8c7518bad7c098f77e0103156bfcc1eb4a7b",
+            "reason": "scope_not_granted",
+            "reasons": [
+              {
+                "code": "scope_not_granted",
+                "constraint": null,
+                "limit": null,
+                "message": "scope 'crm.export' not covered by held scopes ['crm.read']",
+                "requested": "crm.export"
+              }
+            ],
+            "scope": "crm.export",
+            "seq": 5,
+            "tool": "crm.export",
+            "ts": 6,
+            "v": 2
+          },
+          {
+            "body_state": "returned",
+            "c14n": "JCS",
+            "call_id": "15d42567717e39b8ff1881a14ec42f96",
+            "chain_id": "vectors",
+            "duration_ms": 7,
+            "event": "outcome",
+            "hash": "919b70ea66d3a6dcb028d436c606d4503711d465968f2cccca769a14b2d9d28a",
+            "invoked_params_hash": "fce526871286f8690b26b26fd968b9ad482f5e34e453b7fb8907fce528457a9c",
+            "node": "vectors:n1",
+            "prev_hash": "78288abb02a9742c4059f159b32eaf89a5d7685d2edd7a504df18b9c805e357e",
+            "seq": 6,
+            "ts": 7,
+            "v": 2
+          },
+          {
+            "agent": "summarizer",
+            "c14n": "JCS",
+            "chain_id": "vectors",
+            "event": "done",
+            "hash": "9d99da710ca7ae8dd731099360fc5304746df3d926933c6dcdf61e2033bf2c95",
+            "node": "vectors:n1",
+            "prev_hash": "919b70ea66d3a6dcb028d436c606d4503711d465968f2cccca769a14b2d9d28a",
+            "seq": 7,
+            "ts": 8,
+            "v": 2
+          },
+          {
+            "agent": "orchestrator",
+            "c14n": "JCS",
+            "chain_id": "vectors",
+            "event": "done",
+            "hash": "53349075656990a1bde24c34e2a4bcd4b70826a208924a86c9cf2647a3a0fc9e",
+            "node": "vectors:n0",
+            "prev_hash": "9d99da710ca7ae8dd731099360fc5304746df3d926933c6dcdf61e2033bf2c95",
+            "seq": 8,
+            "ts": 9,
+            "v": 2
+          }
+        ],
+        "note": "offline-verifiable: attenu_guard.evidence.verify_bundle(bundle, signer)",
+        "redaction": {
+          "ok": true,
+          "violations": []
+        },
+        "v": 2
+      },
+      "description": "No envelopes at all: the bundle carries no top-level `envelopes` member, which is every bundle written before this contract existed and every bundle written by a deployment that runs no witness. It MUST verify exactly as it does today, and every entry MUST report process-asserted. process-asserted covers two facts a bundle does not separate \u2014 a hop nobody undertook to cover, and a hop a witness undertook to cover and never did \u2014 and v1 takes the weaker of the two readings and stops there. Nothing in this row is a failure.",
+      "expect": "accept",
+      "expect_failures": [],
+      "expect_states": {
+        "0": "process-asserted",
+        "1": "process-asserted",
+        "2": "process-asserted",
+        "3": "process-asserted",
+        "4": "process-asserted",
+        "5": "process-asserted",
+        "6": "process-asserted",
+        "7": "process-asserted",
+        "8": "process-asserted"
+      },
+      "name": "absent_envelope",
+      "signer": {
+        "alg": "HS256",
+        "kid": "bundle-interop-v1",
+        "secret_hex": "617474656e752d67756172642d62756e646c652d766563746f72732d76312d66697865642d736563726574"
+      },
+      "witness_keys": [
+        {
+          "alg": "EdDSA",
+          "kid": "witness-interop-v1",
+          "public_key_hex": "175690a2bd6cdde8dc82af9df6529ad86ca740d9adf9cf06caeafd151fa15249"
+        },
+        {
+          "alg": "EdDSA",
+          "kid": "witness-interop-v1-b",
+          "public_key_hex": "99fb1b490a5fb16480f2dac356b30e07152d74c1afa2e70901b7e485d08aca9f"
+        }
+      ]
+    },
+    {
+      "bundle": {
+        "anchor": {
+          "c14n": "JCS",
+          "chain_id": "vectors",
+          "head": "53349075656990a1bde24c34e2a4bcd4b70826a208924a86c9cf2647a3a0fc9e",
+          "kid": "bundle-interop-v1",
+          "seq": 8,
+          "sig": "0c49095924277666675466722fb40d0b297416622a49b50e05896fa550654dcf",
+          "ts": 0,
+          "v": 2,
+          "verified": true
+        },
+        "c14n": "JCS",
+        "chain_id": "vectors",
+        "entries": [
+          {
+            "agent": "orchestrator",
+            "authority": {
+              "constraints": [
+                {
+                  "key": "max_rows",
+                  "max": 100000
+                }
+              ],
+              "scopes": [
+                "crm.*",
+                "mail.send"
+              ],
+              "ttl": 3600
+            },
+            "c14n": "JCS",
+            "chain_id": "vectors",
+            "event": "root",
+            "hash": "fba88ffa70b6d8a976a06d4ccf3e00c573eccd9eccdbac56ced056057da8daa6",
+            "node": "vectors:n0",
+            "params_salt": "098023016893b040de8e953490e91ae4",
+            "prev_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+            "seq": 0,
+            "ts": 1,
+            "v": 2
+          },
+          {
+            "agent": "summarizer",
+            "c14n": "JCS",
+            "chain_id": "vectors",
+            "event": "spawn",
+            "granted": {
+              "constraints": [
+                {
+                  "key": "max_rows",
+                  "max": 5000
+                }
+              ],
+              "scopes": [
+                "crm.read"
+              ],
+              "ttl": 900
+            },
+            "hash": "5339c1271ede46a2b783871e7e65e4f0018e8f141f30ef760e8d3e6b0f31bb8d",
+            "node": "vectors:n1",
+            "parent": "vectors:n0",
+            "prev_hash": "fba88ffa70b6d8a976a06d4ccf3e00c573eccd9eccdbac56ced056057da8daa6",
+            "requested": {
+              "constraints": [
+                {
+                  "key": "max_rows",
+                  "max": 5000
+                }
+              ],
+              "scopes": [
+                "crm.read"
+              ],
+              "ttl": 900
+            },
+            "seq": 1,
+            "task": "summarize Q3 pipeline",
+            "ts": 2,
+            "v": 2
+          },
+          {
+            "adapter": {
+              "hook_path": "wrap_tool",
+              "module": "attenu_guard.adapters.example",
+              "version": "1.0.0"
+            },
+            "authorized_params_hash": "d1901bc20e47587a42017724672f7c5fca81f8a6151a6933e5b62482367586a1",
+            "c14n": "JCS",
+            "call_id": "eb099aeb221783e1442261f15df4fb35",
+            "capture": "wrapper_sync",
+            "chain_id": "vectors",
+            "context": {},
+            "event": "allow",
+            "hash": "6a55969c228f85cca9e5c4ff195fce20fc3a76d8d2afae4788bfa0f3e621340b",
+            "node": "vectors:n0",
+            "prev_hash": "5339c1271ede46a2b783871e7e65e4f0018e8f141f30ef760e8d3e6b0f31bb8d",
+            "scope": "mail.send",
+            "seq": 2,
+            "tool": "mail.send",
+            "ts": 3,
+            "v": 2
+          },
+          {
+            "body_state": "returned",
+            "c14n": "JCS",
+            "call_id": "eb099aeb221783e1442261f15df4fb35",
+            "chain_id": "vectors",
+            "duration_ms": 12,
+            "event": "outcome",
+            "hash": "b5c9da99d2ba0874a150e05307994b35b5c6c3cc7a2dda35a067632404988f62",
+            "invoked_params_hash": "d1901bc20e47587a42017724672f7c5fca81f8a6151a6933e5b62482367586a1",
+            "node": "vectors:n0",
+            "prev_hash": "6a55969c228f85cca9e5c4ff195fce20fc3a76d8d2afae4788bfa0f3e621340b",
+            "seq": 3,
+            "ts": 4,
+            "v": 2
+          },
+          {
+            "adapter": {
+              "hook_path": "wrap_tool",
+              "module": "attenu_guard.adapters.example",
+              "version": "1.0.0"
+            },
+            "authorized_params_hash": "fce526871286f8690b26b26fd968b9ad482f5e34e453b7fb8907fce528457a9c",
+            "c14n": "JCS",
+            "call_id": "15d42567717e39b8ff1881a14ec42f96",
+            "capture": "wrapper_sync",
+            "chain_id": "vectors",
+            "context": {
+              "rows": 120
+            },
+            "event": "allow",
+            "hash": "7230444ce8d0178ca0352ca46bfe8c7518bad7c098f77e0103156bfcc1eb4a7b",
+            "node": "vectors:n1",
+            "prev_hash": "b5c9da99d2ba0874a150e05307994b35b5c6c3cc7a2dda35a067632404988f62",
+            "scope": "crm.read",
+            "seq": 4,
+            "tool": "crm.read",
+            "ts": 5,
+            "v": 2
+          },
+          {
+            "c14n": "JCS",
+            "call_id": "b19e6c109fd52df399317b62beac78b4",
+            "chain_id": "vectors",
+            "context": {
+              "rows": 120
+            },
+            "disposition": "out_of_authority",
+            "event": "deny",
+            "hash": "78288abb02a9742c4059f159b32eaf89a5d7685d2edd7a504df18b9c805e357e",
+            "node": "vectors:n1",
+            "prev_hash": "7230444ce8d0178ca0352ca46bfe8c7518bad7c098f77e0103156bfcc1eb4a7b",
+            "reason": "scope_not_granted",
+            "reasons": [
+              {
+                "code": "scope_not_granted",
+                "constraint": null,
+                "limit": null,
+                "message": "scope 'crm.export' not covered by held scopes ['crm.read']",
+                "requested": "crm.export"
+              }
+            ],
+            "scope": "crm.export",
+            "seq": 5,
+            "tool": "crm.export",
+            "ts": 6,
+            "v": 2
+          },
+          {
+            "body_state": "returned",
+            "c14n": "JCS",
+            "call_id": "15d42567717e39b8ff1881a14ec42f96",
+            "chain_id": "vectors",
+            "duration_ms": 7,
+            "event": "outcome",
+            "hash": "919b70ea66d3a6dcb028d436c606d4503711d465968f2cccca769a14b2d9d28a",
+            "invoked_params_hash": "fce526871286f8690b26b26fd968b9ad482f5e34e453b7fb8907fce528457a9c",
+            "node": "vectors:n1",
+            "prev_hash": "78288abb02a9742c4059f159b32eaf89a5d7685d2edd7a504df18b9c805e357e",
+            "seq": 6,
+            "ts": 7,
+            "v": 2
+          },
+          {
+            "agent": "summarizer",
+            "c14n": "JCS",
+            "chain_id": "vectors",
+            "event": "done",
+            "hash": "9d99da710ca7ae8dd731099360fc5304746df3d926933c6dcdf61e2033bf2c95",
+            "node": "vectors:n1",
+            "prev_hash": "919b70ea66d3a6dcb028d436c606d4503711d465968f2cccca769a14b2d9d28a",
+            "seq": 7,
+            "ts": 8,
+            "v": 2
+          },
+          {
+            "agent": "orchestrator",
+            "c14n": "JCS",
+            "chain_id": "vectors",
+            "event": "done",
+            "hash": "53349075656990a1bde24c34e2a4bcd4b70826a208924a86c9cf2647a3a0fc9e",
+            "node": "vectors:n0",
+            "prev_hash": "9d99da710ca7ae8dd731099360fc5304746df3d926933c6dcdf61e2033bf2c95",
+            "seq": 8,
+            "ts": 9,
+            "v": 2
+          }
+        ],
+        "envelopes": [
+          {
+            "observed": {
+              "at": "2026-09-01T11:00:00Z",
+              "method": "sidecar:ledger-tail",
+              "result": "indeterminate"
+            },
+            "sig": "d9a4e47188b6f66d6f7dc6d1900cd769084a8895ce7d02ed51ccd468339506029fc388767cff579837ef9918b4789dd011063486cc78c4c06ac79d145507b903",
+            "subject": {
+              "chain_id": "vectors",
+              "entry_hash": "5339c1271ede46a2b783871e7e65e4f0018e8f141f30ef760e8d3e6b0f31bb8d",
+              "event": "spawn",
+              "node": "vectors:n1",
+              "seq": 1
+            },
+            "typ": "delegation-event-observation",
+            "v": 1,
+            "witness": {
+              "alg": "EdDSA",
+              "kid": "witness-interop-v1"
+            }
+          }
+        ],
+        "note": "offline-verifiable: attenu_guard.evidence.verify_bundle(bundle, signer)",
+        "redaction": {
+          "ok": true,
+          "violations": []
+        },
+        "v": 2
+      },
+      "description": "valid_spawn_envelope with `observed.result` set to `indeterminate`: a witness that looked and could not settle the question in either direction. It is carried, it verifies, and it is NOT a failure. The result never changes the state \u2014 a verifying envelope is witness-signed whatever the witness concluded \u2014 so seq 1 reports witness-signed and the report line is `witness-signed (indeterminate)`. This is the residual state of the three: `not_matched` requires evidence that CONTRADICTS the event, and thin or absent evidence is indeterminate, never not_matched.",
+      "expect": "accept",
+      "expect_failures": [],
+      "expect_states": {
+        "0": "process-asserted",
+        "1": "witness-signed",
+        "2": "process-asserted",
+        "3": "process-asserted",
+        "4": "process-asserted",
+        "5": "process-asserted",
+        "6": "process-asserted",
+        "7": "process-asserted",
+        "8": "process-asserted"
+      },
+      "name": "indeterminate_result",
+      "signer": {
+        "alg": "HS256",
+        "kid": "bundle-interop-v1",
+        "secret_hex": "617474656e752d67756172642d62756e646c652d766563746f72732d76312d66697865642d736563726574"
+      },
+      "witness_keys": [
+        {
+          "alg": "EdDSA",
+          "kid": "witness-interop-v1",
+          "public_key_hex": "175690a2bd6cdde8dc82af9df6529ad86ca740d9adf9cf06caeafd151fa15249"
+        },
+        {
+          "alg": "EdDSA",
+          "kid": "witness-interop-v1-b",
+          "public_key_hex": "99fb1b490a5fb16480f2dac356b30e07152d74c1afa2e70901b7e485d08aca9f"
+        }
+      ]
+    },
+    {
+      "bundle": {
+        "anchor": {
+          "c14n": "JCS",
+          "chain_id": "vectors",
+          "head": "53349075656990a1bde24c34e2a4bcd4b70826a208924a86c9cf2647a3a0fc9e",
+          "kid": "bundle-interop-v1",
+          "seq": 8,
+          "sig": "0c49095924277666675466722fb40d0b297416622a49b50e05896fa550654dcf",
+          "ts": 0,
+          "v": 2,
+          "verified": true
+        },
+        "c14n": "JCS",
+        "chain_id": "vectors",
+        "entries": [
+          {
+            "agent": "orchestrator",
+            "authority": {
+              "constraints": [
+                {
+                  "key": "max_rows",
+                  "max": 100000
+                }
+              ],
+              "scopes": [
+                "crm.*",
+                "mail.send"
+              ],
+              "ttl": 3600
+            },
+            "c14n": "JCS",
+            "chain_id": "vectors",
+            "event": "root",
+            "hash": "fba88ffa70b6d8a976a06d4ccf3e00c573eccd9eccdbac56ced056057da8daa6",
+            "node": "vectors:n0",
+            "params_salt": "098023016893b040de8e953490e91ae4",
+            "prev_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+            "seq": 0,
+            "ts": 1,
+            "v": 2
+          },
+          {
+            "agent": "summarizer",
+            "c14n": "JCS",
+            "chain_id": "vectors",
+            "event": "spawn",
+            "granted": {
+              "constraints": [
+                {
+                  "key": "max_rows",
+                  "max": 5000
+                }
+              ],
+              "scopes": [
+                "crm.read"
+              ],
+              "ttl": 900
+            },
+            "hash": "adcf81dfba25c1adb173746979d64ae963ba155fd23db39f3c8bdb3cf4d73467",
+            "node": "vectors:n1",
+            "parent": "vectors:n0",
+            "prev_hash": "fba88ffa70b6d8a976a06d4ccf3e00c573eccd9eccdbac56ced056057da8daa6",
+            "requested": {
+              "constraints": [
+                {
+                  "key": "max_rows",
+                  "max": 5000
+                }
+              ],
+              "scopes": [
+                "crm.read"
+              ],
+              "ttl": 900
+            },
+            "seq": 1,
+            "task": "summarize Q3 pipeline",
+            "ts": 99,
+            "v": 2
+          },
+          {
+            "adapter": {
+              "hook_path": "wrap_tool",
+              "module": "attenu_guard.adapters.example",
+              "version": "1.0.0"
+            },
+            "authorized_params_hash": "d1901bc20e47587a42017724672f7c5fca81f8a6151a6933e5b62482367586a1",
+            "c14n": "JCS",
+            "call_id": "eb099aeb221783e1442261f15df4fb35",
+            "capture": "wrapper_sync",
+            "chain_id": "vectors",
+            "context": {},
+            "event": "allow",
+            "hash": "49be641eac7e8bd67e722430f6b54d7a8a0ba4d910d2b9eeba7232dc41d35f54",
+            "node": "vectors:n0",
+            "prev_hash": "adcf81dfba25c1adb173746979d64ae963ba155fd23db39f3c8bdb3cf4d73467",
+            "scope": "mail.send",
+            "seq": 2,
+            "tool": "mail.send",
+            "ts": 3,
+            "v": 2
+          },
+          {
+            "body_state": "returned",
+            "c14n": "JCS",
+            "call_id": "eb099aeb221783e1442261f15df4fb35",
+            "chain_id": "vectors",
+            "duration_ms": 12,
+            "event": "outcome",
+            "hash": "8b02b301de7de3946c5209eb113d90c9269ec4a6e45c79a66669f3c4e1d4eb87",
+            "invoked_params_hash": "d1901bc20e47587a42017724672f7c5fca81f8a6151a6933e5b62482367586a1",
+            "node": "vectors:n0",
+            "prev_hash": "49be641eac7e8bd67e722430f6b54d7a8a0ba4d910d2b9eeba7232dc41d35f54",
+            "seq": 3,
+            "ts": 4,
+            "v": 2
+          },
+          {
+            "adapter": {
+              "hook_path": "wrap_tool",
+              "module": "attenu_guard.adapters.example",
+              "version": "1.0.0"
+            },
+            "authorized_params_hash": "fce526871286f8690b26b26fd968b9ad482f5e34e453b7fb8907fce528457a9c",
+            "c14n": "JCS",
+            "call_id": "15d42567717e39b8ff1881a14ec42f96",
+            "capture": "wrapper_sync",
+            "chain_id": "vectors",
+            "context": {
+              "rows": 120
+            },
+            "event": "allow",
+            "hash": "3cb9f868d044e625b85d0bca194a95f3d80b913f939f5aa81470db3ee1acb8a9",
+            "node": "vectors:n1",
+            "prev_hash": "8b02b301de7de3946c5209eb113d90c9269ec4a6e45c79a66669f3c4e1d4eb87",
+            "scope": "crm.read",
+            "seq": 4,
+            "tool": "crm.read",
+            "ts": 5,
+            "v": 2
+          },
+          {
+            "c14n": "JCS",
+            "call_id": "b19e6c109fd52df399317b62beac78b4",
+            "chain_id": "vectors",
+            "context": {
+              "rows": 120
+            },
+            "disposition": "out_of_authority",
+            "event": "deny",
+            "hash": "9cd79afaae1de09e888cd3dd7b169904f4f6117a63d9177c112d3ef57a6069b9",
+            "node": "vectors:n1",
+            "prev_hash": "3cb9f868d044e625b85d0bca194a95f3d80b913f939f5aa81470db3ee1acb8a9",
+            "reason": "scope_not_granted",
+            "reasons": [
+              {
+                "code": "scope_not_granted",
+                "constraint": null,
+                "limit": null,
+                "message": "scope 'crm.export' not covered by held scopes ['crm.read']",
+                "requested": "crm.export"
+              }
+            ],
+            "scope": "crm.export",
+            "seq": 5,
+            "tool": "crm.export",
+            "ts": 6,
+            "v": 2
+          },
+          {
+            "body_state": "returned",
+            "c14n": "JCS",
+            "call_id": "15d42567717e39b8ff1881a14ec42f96",
+            "chain_id": "vectors",
+            "duration_ms": 7,
+            "event": "outcome",
+            "hash": "f823ba8641729b775d56366cff4067376204f4cac8268402dc7fb8b20434481d",
+            "invoked_params_hash": "fce526871286f8690b26b26fd968b9ad482f5e34e453b7fb8907fce528457a9c",
+            "node": "vectors:n1",
+            "prev_hash": "9cd79afaae1de09e888cd3dd7b169904f4f6117a63d9177c112d3ef57a6069b9",
+            "seq": 6,
+            "ts": 7,
+            "v": 2
+          },
+          {
+            "agent": "summarizer",
+            "c14n": "JCS",
+            "chain_id": "vectors",
+            "event": "done",
+            "hash": "5f29f0d06bf27d626580f1550117562938e688ba6620f30c641bab56194bc2ba",
+            "node": "vectors:n1",
+            "prev_hash": "f823ba8641729b775d56366cff4067376204f4cac8268402dc7fb8b20434481d",
+            "seq": 7,
+            "ts": 8,
+            "v": 2
+          },
+          {
+            "agent": "orchestrator",
+            "c14n": "JCS",
+            "chain_id": "vectors",
+            "event": "done",
+            "hash": "44ab492b40a24b98ef6f5fba22f48c9125bc784516ea0632bd5e17a454036b80",
+            "node": "vectors:n0",
+            "prev_hash": "5f29f0d06bf27d626580f1550117562938e688ba6620f30c641bab56194bc2ba",
+            "seq": 8,
+            "ts": 9,
+            "v": 2
+          }
+        ],
+        "envelopes": [
+          {
+            "observed": {
+              "at": "2026-09-01T11:00:00Z",
+              "method": "sidecar:ledger-tail",
+              "result": "matched"
+            },
+            "sig": "cb823939065ebf2cb4d34c8e749c373481aaab46dcf2d6b8a72dd58b373dc4bb04e424d66573dac17d034dca672d69ee5e4fad3728471fcef73711ec6d56f009",
+            "subject": {
+              "call_id": "eb099aeb221783e1442261f15df4fb35",
+              "chain_id": "vectors",
+              "entry_hash": "6a55969c228f85cca9e5c4ff195fce20fc3a76d8d2afae4788bfa0f3e621340b",
+              "event": "allow",
+              "node": "vectors:n0",
+              "seq": 2
+            },
+            "typ": "delegation-event-observation",
+            "v": 1,
+            "witness": {
+              "alg": "EdDSA",
+              "kid": "witness-interop-v1"
+            }
+          }
+        ],
+        "note": "offline-verifiable: attenu_guard.evidence.verify_bundle(bundle, signer)",
+        "redaction": {
+          "ok": true,
+          "violations": []
+        },
+        "v": 2
+      },
+      "description": "Sparse coverage. The entry at seq 1 has its `ts` restated and every later hash recomputed, so the ledger is perfectly self-consistent; the anchor is the ORIGINAL one, over the head this ledger used to have. Coverage SKIPS the mutated entry: the only envelope is over seq 2, the next covered hop, whose hash moved with the rehash. Two failures are required and they come from different layers: `integrity(anchor)` at chain level, with no position, because the anchor genuinely no longer matches; and `envelope_subject_mismatch` at seq 2, the covered hop. The envelope failure lands at seq 2 and NEVER at seq 1, because no envelope covers that entry \u2014 position is only ever as fine as coverage. Every entry reports process-asserted.",
+      "expect": "reject",
+      "expect_failures": [
+        {
+          "node": null,
+          "reason": "integrity(anchor)",
+          "seq": null
+        },
+        {
+          "node": "vectors:n0",
+          "reason": "envelope_subject_mismatch",
+          "seq": 2
+        }
+      ],
+      "expect_states": {
+        "0": "process-asserted",
+        "1": "process-asserted",
+        "2": "process-asserted",
+        "3": "process-asserted",
+        "4": "process-asserted",
+        "5": "process-asserted",
+        "6": "process-asserted",
+        "7": "process-asserted",
+        "8": "process-asserted"
+      },
+      "name": "reject_rehashed_chain_sparse",
+      "signer": {
+        "alg": "HS256",
+        "kid": "bundle-interop-v1",
+        "secret_hex": "617474656e752d67756172642d62756e646c652d766563746f72732d76312d66697865642d736563726574"
+      },
+      "witness_keys": [
+        {
+          "alg": "EdDSA",
+          "kid": "witness-interop-v1",
+          "public_key_hex": "175690a2bd6cdde8dc82af9df6529ad86ca740d9adf9cf06caeafd151fa15249"
+        },
+        {
+          "alg": "EdDSA",
+          "kid": "witness-interop-v1-b",
+          "public_key_hex": "99fb1b490a5fb16480f2dac356b30e07152d74c1afa2e70901b7e485d08aca9f"
+        }
+      ]
+    },
+    {
+      "bundle": {
+        "anchor": {
+          "c14n": "JCS",
+          "chain_id": "vectors",
+          "head": "53349075656990a1bde24c34e2a4bcd4b70826a208924a86c9cf2647a3a0fc9e",
+          "kid": "bundle-interop-v1",
+          "seq": 8,
+          "sig": "0c49095924277666675466722fb40d0b297416622a49b50e05896fa550654dcf",
+          "ts": 0,
+          "v": 2,
+          "verified": true
+        },
+        "c14n": "JCS",
+        "chain_id": "vectors",
+        "entries": [
+          {
+            "agent": "orchestrator",
+            "authority": {
+              "constraints": [
+                {
+                  "key": "max_rows",
+                  "max": 100000
+                }
+              ],
+              "scopes": [
+                "crm.*",
+                "mail.send"
+              ],
+              "ttl": 3600
+            },
+            "c14n": "JCS",
+            "chain_id": "vectors",
+            "event": "root",
+            "hash": "fba88ffa70b6d8a976a06d4ccf3e00c573eccd9eccdbac56ced056057da8daa6",
+            "node": "vectors:n0",
+            "params_salt": "098023016893b040de8e953490e91ae4",
+            "prev_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+            "seq": 0,
+            "ts": 1,
+            "v": 2
+          },
+          {
+            "agent": "summarizer",
+            "c14n": "JCS",
+            "chain_id": "vectors",
+            "event": "spawn",
+            "granted": {
+              "constraints": [
+                {
+                  "key": "max_rows",
+                  "max": 5000
+                }
+              ],
+              "scopes": [
+                "crm.read"
+              ],
+              "ttl": 900
+            },
+            "hash": "5339c1271ede46a2b783871e7e65e4f0018e8f141f30ef760e8d3e6b0f31bb8d",
+            "node": "vectors:n1",
+            "parent": "vectors:n0",
+            "prev_hash": "fba88ffa70b6d8a976a06d4ccf3e00c573eccd9eccdbac56ced056057da8daa6",
+            "requested": {
+              "constraints": [
+                {
+                  "key": "max_rows",
+                  "max": 5000
+                }
+              ],
+              "scopes": [
+                "crm.read"
+              ],
+              "ttl": 900
+            },
+            "seq": 1,
+            "task": "summarize Q3 pipeline",
+            "ts": 2,
+            "v": 2
+          },
+          {
+            "adapter": {
+              "hook_path": "wrap_tool",
+              "module": "attenu_guard.adapters.example",
+              "version": "1.0.0"
+            },
+            "authorized_params_hash": "d1901bc20e47587a42017724672f7c5fca81f8a6151a6933e5b62482367586a1",
+            "c14n": "JCS",
+            "call_id": "eb099aeb221783e1442261f15df4fb35",
+            "capture": "wrapper_sync",
+            "chain_id": "vectors",
+            "context": {},
+            "event": "allow",
+            "hash": "6a55969c228f85cca9e5c4ff195fce20fc3a76d8d2afae4788bfa0f3e621340b",
+            "node": "vectors:n0",
+            "prev_hash": "5339c1271ede46a2b783871e7e65e4f0018e8f141f30ef760e8d3e6b0f31bb8d",
+            "scope": "mail.send",
+            "seq": 2,
+            "tool": "mail.send",
+            "ts": 3,
+            "v": 2
+          },
+          {
+            "body_state": "returned",
+            "c14n": "JCS",
+            "call_id": "eb099aeb221783e1442261f15df4fb35",
+            "chain_id": "vectors",
+            "duration_ms": 12,
+            "event": "outcome",
+            "hash": "b5c9da99d2ba0874a150e05307994b35b5c6c3cc7a2dda35a067632404988f62",
+            "invoked_params_hash": "d1901bc20e47587a42017724672f7c5fca81f8a6151a6933e5b62482367586a1",
+            "node": "vectors:n0",
+            "prev_hash": "6a55969c228f85cca9e5c4ff195fce20fc3a76d8d2afae4788bfa0f3e621340b",
+            "seq": 3,
+            "ts": 4,
+            "v": 2
+          },
+          {
+            "adapter": {
+              "hook_path": "wrap_tool",
+              "module": "attenu_guard.adapters.example",
+              "version": "1.0.0"
+            },
+            "authorized_params_hash": "fce526871286f8690b26b26fd968b9ad482f5e34e453b7fb8907fce528457a9c",
+            "c14n": "JCS",
+            "call_id": "15d42567717e39b8ff1881a14ec42f96",
+            "capture": "wrapper_sync",
+            "chain_id": "vectors",
+            "context": {
+              "rows": 120
+            },
+            "event": "allow",
+            "hash": "7230444ce8d0178ca0352ca46bfe8c7518bad7c098f77e0103156bfcc1eb4a7b",
+            "node": "vectors:n1",
+            "prev_hash": "b5c9da99d2ba0874a150e05307994b35b5c6c3cc7a2dda35a067632404988f62",
+            "scope": "crm.read",
+            "seq": 4,
+            "tool": "crm.read",
+            "ts": 5,
+            "v": 2
+          },
+          {
+            "c14n": "JCS",
+            "call_id": "b19e6c109fd52df399317b62beac78b4",
+            "chain_id": "vectors",
+            "context": {
+              "rows": 120
+            },
+            "disposition": "out_of_authority",
+            "event": "deny",
+            "hash": "78288abb02a9742c4059f159b32eaf89a5d7685d2edd7a504df18b9c805e357e",
+            "node": "vectors:n1",
+            "prev_hash": "7230444ce8d0178ca0352ca46bfe8c7518bad7c098f77e0103156bfcc1eb4a7b",
+            "reason": "scope_not_granted",
+            "reasons": [
+              {
+                "code": "scope_not_granted",
+                "constraint": null,
+                "limit": null,
+                "message": "scope 'crm.export' not covered by held scopes ['crm.read']",
+                "requested": "crm.export"
+              }
+            ],
+            "scope": "crm.export",
+            "seq": 5,
+            "tool": "crm.export",
+            "ts": 6,
+            "v": 2
+          },
+          {
+            "body_state": "returned",
+            "c14n": "JCS",
+            "call_id": "15d42567717e39b8ff1881a14ec42f96",
+            "chain_id": "vectors",
+            "duration_ms": 7,
+            "event": "outcome",
+            "hash": "919b70ea66d3a6dcb028d436c606d4503711d465968f2cccca769a14b2d9d28a",
+            "invoked_params_hash": "fce526871286f8690b26b26fd968b9ad482f5e34e453b7fb8907fce528457a9c",
+            "node": "vectors:n1",
+            "prev_hash": "78288abb02a9742c4059f159b32eaf89a5d7685d2edd7a504df18b9c805e357e",
+            "seq": 6,
+            "ts": 7,
+            "v": 2
+          },
+          {
+            "agent": "summarizer",
+            "c14n": "JCS",
+            "chain_id": "vectors",
+            "event": "done",
+            "hash": "9d99da710ca7ae8dd731099360fc5304746df3d926933c6dcdf61e2033bf2c95",
+            "node": "vectors:n1",
+            "prev_hash": "919b70ea66d3a6dcb028d436c606d4503711d465968f2cccca769a14b2d9d28a",
+            "seq": 7,
+            "ts": 8,
+            "v": 2
+          },
+          {
+            "agent": "orchestrator",
+            "c14n": "JCS",
+            "chain_id": "vectors",
+            "event": "done",
+            "hash": "53349075656990a1bde24c34e2a4bcd4b70826a208924a86c9cf2647a3a0fc9e",
+            "node": "vectors:n0",
+            "prev_hash": "9d99da710ca7ae8dd731099360fc5304746df3d926933c6dcdf61e2033bf2c95",
+            "seq": 8,
+            "ts": 9,
+            "v": 2
+          }
+        ],
+        "envelopes": [
+          {
+            "observed": {
+              "at": "2026-09-01T11:00:00Z",
+              "method": "sidecar:ledger-tail",
+              "result": "matched"
+            },
+            "sig": "4d3f7cda3b454df481e8c6e62c88b5ce90cb4375e208384088396d8d79030ca83d3c0cf73b4cb797609221d1d2c352b2801d860f5bf658b4d43f998382754006",
+            "subject": {
+              "chain_id": "vectors",
+              "entry_hash": "5339c1271ede46a2b783871e7e65e4f0018e8f141f30ef760e8d3e6b0f31bb80",
+              "event": "spawn",
+              "node": "vectors:n1",
+              "seq": 1
+            },
+            "typ": "delegation-event-observation",
+            "v": 1,
+            "witness": {
+              "alg": "EdDSA",
+              "kid": "witness-interop-v1"
+            }
+          }
+        ],
+        "note": "offline-verifiable: attenu_guard.evidence.verify_bundle(bundle, signer)",
+        "redaction": {
+          "ok": true,
+          "violations": []
+        },
+        "v": 2
+      },
+      "description": "The binding member, altered by one nibble: the subject's `entry_hash` names an entry that is not the one at its `seq`, and the envelope was re-signed afterwards so the signature is sound and only the claim is wrong. `entry_hash` is the ONLY subject member that is evidence of which entry the witness signed; the rest are locators. A verifier finds the entry at `seq`, recomputes its hash from the bundle, and compares. Required: `envelope_subject_mismatch` at the seq and node of the entry the envelope covers. The ledger is untouched, so nothing else fails.",
+      "expect": "reject",
+      "expect_failures": [
+        {
+          "node": "vectors:n1",
+          "reason": "envelope_subject_mismatch",
+          "seq": 1
+        }
+      ],
+      "expect_states": {
+        "0": "process-asserted",
+        "1": "process-asserted",
+        "2": "process-asserted",
+        "3": "process-asserted",
+        "4": "process-asserted",
+        "5": "process-asserted",
+        "6": "process-asserted",
+        "7": "process-asserted",
+        "8": "process-asserted"
+      },
+      "name": "reject_subject_mismatch",
+      "signer": {
+        "alg": "HS256",
+        "kid": "bundle-interop-v1",
+        "secret_hex": "617474656e752d67756172642d62756e646c652d766563746f72732d76312d66697865642d736563726574"
+      },
+      "witness_keys": [
+        {
+          "alg": "EdDSA",
+          "kid": "witness-interop-v1",
+          "public_key_hex": "175690a2bd6cdde8dc82af9df6529ad86ca740d9adf9cf06caeafd151fa15249"
+        },
+        {
+          "alg": "EdDSA",
+          "kid": "witness-interop-v1-b",
+          "public_key_hex": "99fb1b490a5fb16480f2dac356b30e07152d74c1afa2e70901b7e485d08aca9f"
+        }
+      ]
+    },
+    {
+      "bundle": {
+        "anchor": {
+          "c14n": "JCS",
+          "chain_id": "vectors",
+          "head": "53349075656990a1bde24c34e2a4bcd4b70826a208924a86c9cf2647a3a0fc9e",
+          "kid": "bundle-interop-v1",
+          "seq": 8,
+          "sig": "0c49095924277666675466722fb40d0b297416622a49b50e05896fa550654dcf",
+          "ts": 0,
+          "v": 2,
+          "verified": true
+        },
+        "c14n": "JCS",
+        "chain_id": "vectors",
+        "entries": [
+          {
+            "agent": "orchestrator",
+            "authority": {
+              "constraints": [
+                {
+                  "key": "max_rows",
+                  "max": 100000
+                }
+              ],
+              "scopes": [
+                "crm.*",
+                "mail.send"
+              ],
+              "ttl": 3600
+            },
+            "c14n": "JCS",
+            "chain_id": "vectors",
+            "event": "root",
+            "hash": "fba88ffa70b6d8a976a06d4ccf3e00c573eccd9eccdbac56ced056057da8daa6",
+            "node": "vectors:n0",
+            "params_salt": "098023016893b040de8e953490e91ae4",
+            "prev_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+            "seq": 0,
+            "ts": 1,
+            "v": 2
+          },
+          {
+            "agent": "summarizer",
+            "c14n": "JCS",
+            "chain_id": "vectors",
+            "event": "spawn",
+            "granted": {
+              "constraints": [
+                {
+                  "key": "max_rows",
+                  "max": 5000
+                }
+              ],
+              "scopes": [
+                "crm.read"
+              ],
+              "ttl": 900
+            },
+            "hash": "5339c1271ede46a2b783871e7e65e4f0018e8f141f30ef760e8d3e6b0f31bb8d",
+            "node": "vectors:n1",
+            "parent": "vectors:n0",
+            "prev_hash": "fba88ffa70b6d8a976a06d4ccf3e00c573eccd9eccdbac56ced056057da8daa6",
+            "requested": {
+              "constraints": [
+                {
+                  "key": "max_rows",
+                  "max": 5000
+                }
+              ],
+              "scopes": [
+                "crm.read"
+              ],
+              "ttl": 900
+            },
+            "seq": 1,
+            "task": "summarize Q3 pipeline",
+            "ts": 2,
+            "v": 2
+          },
+          {
+            "adapter": {
+              "hook_path": "wrap_tool",
+              "module": "attenu_guard.adapters.example",
+              "version": "1.0.0"
+            },
+            "authorized_params_hash": "d1901bc20e47587a42017724672f7c5fca81f8a6151a6933e5b62482367586a1",
+            "c14n": "JCS",
+            "call_id": "eb099aeb221783e1442261f15df4fb35",
+            "capture": "wrapper_sync",
+            "chain_id": "vectors",
+            "context": {},
+            "event": "allow",
+            "hash": "6a55969c228f85cca9e5c4ff195fce20fc3a76d8d2afae4788bfa0f3e621340b",
+            "node": "vectors:n0",
+            "prev_hash": "5339c1271ede46a2b783871e7e65e4f0018e8f141f30ef760e8d3e6b0f31bb8d",
+            "scope": "mail.send",
+            "seq": 2,
+            "tool": "mail.send",
+            "ts": 3,
+            "v": 2
+          },
+          {
+            "body_state": "returned",
+            "c14n": "JCS",
+            "call_id": "eb099aeb221783e1442261f15df4fb35",
+            "chain_id": "vectors",
+            "duration_ms": 12,
+            "event": "outcome",
+            "hash": "b5c9da99d2ba0874a150e05307994b35b5c6c3cc7a2dda35a067632404988f62",
+            "invoked_params_hash": "d1901bc20e47587a42017724672f7c5fca81f8a6151a6933e5b62482367586a1",
+            "node": "vectors:n0",
+            "prev_hash": "6a55969c228f85cca9e5c4ff195fce20fc3a76d8d2afae4788bfa0f3e621340b",
+            "seq": 3,
+            "ts": 4,
+            "v": 2
+          },
+          {
+            "adapter": {
+              "hook_path": "wrap_tool",
+              "module": "attenu_guard.adapters.example",
+              "version": "1.0.0"
+            },
+            "authorized_params_hash": "fce526871286f8690b26b26fd968b9ad482f5e34e453b7fb8907fce528457a9c",
+            "c14n": "JCS",
+            "call_id": "15d42567717e39b8ff1881a14ec42f96",
+            "capture": "wrapper_sync",
+            "chain_id": "vectors",
+            "context": {
+              "rows": 120
+            },
+            "event": "allow",
+            "hash": "7230444ce8d0178ca0352ca46bfe8c7518bad7c098f77e0103156bfcc1eb4a7b",
+            "node": "vectors:n1",
+            "prev_hash": "b5c9da99d2ba0874a150e05307994b35b5c6c3cc7a2dda35a067632404988f62",
+            "scope": "crm.read",
+            "seq": 4,
+            "tool": "crm.read",
+            "ts": 5,
+            "v": 2
+          },
+          {
+            "c14n": "JCS",
+            "call_id": "b19e6c109fd52df399317b62beac78b4",
+            "chain_id": "vectors",
+            "context": {
+              "rows": 120
+            },
+            "disposition": "out_of_authority",
+            "event": "deny",
+            "hash": "78288abb02a9742c4059f159b32eaf89a5d7685d2edd7a504df18b9c805e357e",
+            "node": "vectors:n1",
+            "prev_hash": "7230444ce8d0178ca0352ca46bfe8c7518bad7c098f77e0103156bfcc1eb4a7b",
+            "reason": "scope_not_granted",
+            "reasons": [
+              {
+                "code": "scope_not_granted",
+                "constraint": null,
+                "limit": null,
+                "message": "scope 'crm.export' not covered by held scopes ['crm.read']",
+                "requested": "crm.export"
+              }
+            ],
+            "scope": "crm.export",
+            "seq": 5,
+            "tool": "crm.export",
+            "ts": 6,
+            "v": 2
+          },
+          {
+            "body_state": "returned",
+            "c14n": "JCS",
+            "call_id": "15d42567717e39b8ff1881a14ec42f96",
+            "chain_id": "vectors",
+            "duration_ms": 7,
+            "event": "outcome",
+            "hash": "919b70ea66d3a6dcb028d436c606d4503711d465968f2cccca769a14b2d9d28a",
+            "invoked_params_hash": "fce526871286f8690b26b26fd968b9ad482f5e34e453b7fb8907fce528457a9c",
+            "node": "vectors:n1",
+            "prev_hash": "78288abb02a9742c4059f159b32eaf89a5d7685d2edd7a504df18b9c805e357e",
+            "seq": 6,
+            "ts": 7,
+            "v": 2
+          },
+          {
+            "agent": "summarizer",
+            "c14n": "JCS",
+            "chain_id": "vectors",
+            "event": "done",
+            "hash": "9d99da710ca7ae8dd731099360fc5304746df3d926933c6dcdf61e2033bf2c95",
+            "node": "vectors:n1",
+            "prev_hash": "919b70ea66d3a6dcb028d436c606d4503711d465968f2cccca769a14b2d9d28a",
+            "seq": 7,
+            "ts": 8,
+            "v": 2
+          },
+          {
+            "agent": "orchestrator",
+            "c14n": "JCS",
+            "chain_id": "vectors",
+            "event": "done",
+            "hash": "53349075656990a1bde24c34e2a4bcd4b70826a208924a86c9cf2647a3a0fc9e",
+            "node": "vectors:n0",
+            "prev_hash": "9d99da710ca7ae8dd731099360fc5304746df3d926933c6dcdf61e2033bf2c95",
+            "seq": 8,
+            "ts": 9,
+            "v": 2
+          }
+        ],
+        "envelopes": [
+          {
+            "observed": {
+              "at": "2026-09-01T11:00:00Z",
+              "method": "sidecar:ledger-tail",
+              "result": "matched"
+            },
+            "sig": "20ca93901c2fbf49989bbdc93d959a30c007db4e19e18e1647fe265a7a2cc79689673b844249eb2805047dba1f6fc935c9649664a860ec9f614c7313c64a8401",
+            "subject": {
+              "chain_id": "vectors",
+              "entry_hash": "5339c1271ede46a2b783871e7e65e4f0018e8f141f30ef760e8d3e6b0f31bb8d",
+              "event": "spawn",
+              "node": "vectors:n1",
+              "seq": 1
+            },
+            "typ": "delegation-event-observation",
+            "v": 1,
+            "witness": {
+              "alg": "EdDSA",
+              "kid": "witness-interop-v1"
+            }
+          }
+        ],
+        "note": "offline-verifiable: attenu_guard.evidence.verify_bundle(bundle, signer)",
+        "redaction": {
+          "ok": true,
+          "violations": []
+        },
+        "v": 2
+      },
+      "description": "Signed by 'witness-interop-v1-b', whose key IS in `witness_keys`, while `witness.kid` still names 'witness-interop-v1'. Everything else is correct: the subject matches the entry, the member sets are right, the version is known and the witness is trusted, so the signature is the only thing wrong. A signature that verifies under some OTHER trusted key is not witness-signed \u2014 the kid names the key, and that is the key it has to verify under. This is the only row in this file where `envelope_bad_signature` is what fails; every other row is re-signed after its change. Required: `envelope_bad_signature` at the seq and node of the entry the envelope covers.",
+      "expect": "reject",
+      "expect_failures": [
+        {
+          "node": "vectors:n1",
+          "reason": "envelope_bad_signature",
+          "seq": 1
+        }
+      ],
+      "expect_states": {
+        "0": "process-asserted",
+        "1": "process-asserted",
+        "2": "process-asserted",
+        "3": "process-asserted",
+        "4": "process-asserted",
+        "5": "process-asserted",
+        "6": "process-asserted",
+        "7": "process-asserted",
+        "8": "process-asserted"
+      },
+      "name": "reject_bad_signature",
+      "signer": {
+        "alg": "HS256",
+        "kid": "bundle-interop-v1",
+        "secret_hex": "617474656e752d67756172642d62756e646c652d766563746f72732d76312d66697865642d736563726574"
+      },
+      "witness_keys": [
+        {
+          "alg": "EdDSA",
+          "kid": "witness-interop-v1",
+          "public_key_hex": "175690a2bd6cdde8dc82af9df6529ad86ca740d9adf9cf06caeafd151fa15249"
+        },
+        {
+          "alg": "EdDSA",
+          "kid": "witness-interop-v1-b",
+          "public_key_hex": "99fb1b490a5fb16480f2dac356b30e07152d74c1afa2e70901b7e485d08aca9f"
+        }
+      ]
+    },
+    {
+      "bundle": {
+        "anchor": {
+          "c14n": "JCS",
+          "chain_id": "vectors",
+          "head": "53349075656990a1bde24c34e2a4bcd4b70826a208924a86c9cf2647a3a0fc9e",
+          "kid": "bundle-interop-v1",
+          "seq": 8,
+          "sig": "0c49095924277666675466722fb40d0b297416622a49b50e05896fa550654dcf",
+          "ts": 0,
+          "v": 2,
+          "verified": true
+        },
+        "c14n": "JCS",
+        "chain_id": "vectors",
+        "entries": [
+          {
+            "agent": "orchestrator",
+            "authority": {
+              "constraints": [
+                {
+                  "key": "max_rows",
+                  "max": 100000
+                }
+              ],
+              "scopes": [
+                "crm.*",
+                "mail.send"
+              ],
+              "ttl": 3600
+            },
+            "c14n": "JCS",
+            "chain_id": "vectors",
+            "event": "root",
+            "hash": "fba88ffa70b6d8a976a06d4ccf3e00c573eccd9eccdbac56ced056057da8daa6",
+            "node": "vectors:n0",
+            "params_salt": "098023016893b040de8e953490e91ae4",
+            "prev_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+            "seq": 0,
+            "ts": 1,
+            "v": 2
+          },
+          {
+            "agent": "summarizer",
+            "c14n": "JCS",
+            "chain_id": "vectors",
+            "event": "spawn",
+            "granted": {
+              "constraints": [
+                {
+                  "key": "max_rows",
+                  "max": 5000
+                }
+              ],
+              "scopes": [
+                "crm.read"
+              ],
+              "ttl": 900
+            },
+            "hash": "5339c1271ede46a2b783871e7e65e4f0018e8f141f30ef760e8d3e6b0f31bb8d",
+            "node": "vectors:n1",
+            "parent": "vectors:n0",
+            "prev_hash": "fba88ffa70b6d8a976a06d4ccf3e00c573eccd9eccdbac56ced056057da8daa6",
+            "requested": {
+              "constraints": [
+                {
+                  "key": "max_rows",
+                  "max": 5000
+                }
+              ],
+              "scopes": [
+                "crm.read"
+              ],
+              "ttl": 900
+            },
+            "seq": 1,
+            "task": "summarize Q3 pipeline",
+            "ts": 2,
+            "v": 2
+          },
+          {
+            "adapter": {
+              "hook_path": "wrap_tool",
+              "module": "attenu_guard.adapters.example",
+              "version": "1.0.0"
+            },
+            "authorized_params_hash": "d1901bc20e47587a42017724672f7c5fca81f8a6151a6933e5b62482367586a1",
+            "c14n": "JCS",
+            "call_id": "eb099aeb221783e1442261f15df4fb35",
+            "capture": "wrapper_sync",
+            "chain_id": "vectors",
+            "context": {},
+            "event": "allow",
+            "hash": "6a55969c228f85cca9e5c4ff195fce20fc3a76d8d2afae4788bfa0f3e621340b",
+            "node": "vectors:n0",
+            "prev_hash": "5339c1271ede46a2b783871e7e65e4f0018e8f141f30ef760e8d3e6b0f31bb8d",
+            "scope": "mail.send",
+            "seq": 2,
+            "tool": "mail.send",
+            "ts": 3,
+            "v": 2
+          },
+          {
+            "body_state": "returned",
+            "c14n": "JCS",
+            "call_id": "eb099aeb221783e1442261f15df4fb35",
+            "chain_id": "vectors",
+            "duration_ms": 12,
+            "event": "outcome",
+            "hash": "b5c9da99d2ba0874a150e05307994b35b5c6c3cc7a2dda35a067632404988f62",
+            "invoked_params_hash": "d1901bc20e47587a42017724672f7c5fca81f8a6151a6933e5b62482367586a1",
+            "node": "vectors:n0",
+            "prev_hash": "6a55969c228f85cca9e5c4ff195fce20fc3a76d8d2afae4788bfa0f3e621340b",
+            "seq": 3,
+            "ts": 4,
+            "v": 2
+          },
+          {
+            "adapter": {
+              "hook_path": "wrap_tool",
+              "module": "attenu_guard.adapters.example",
+              "version": "1.0.0"
+            },
+            "authorized_params_hash": "fce526871286f8690b26b26fd968b9ad482f5e34e453b7fb8907fce528457a9c",
+            "c14n": "JCS",
+            "call_id": "15d42567717e39b8ff1881a14ec42f96",
+            "capture": "wrapper_sync",
+            "chain_id": "vectors",
+            "context": {
+              "rows": 120
+            },
+            "event": "allow",
+            "hash": "7230444ce8d0178ca0352ca46bfe8c7518bad7c098f77e0103156bfcc1eb4a7b",
+            "node": "vectors:n1",
+            "prev_hash": "b5c9da99d2ba0874a150e05307994b35b5c6c3cc7a2dda35a067632404988f62",
+            "scope": "crm.read",
+            "seq": 4,
+            "tool": "crm.read",
+            "ts": 5,
+            "v": 2
+          },
+          {
+            "c14n": "JCS",
+            "call_id": "b19e6c109fd52df399317b62beac78b4",
+            "chain_id": "vectors",
+            "context": {
+              "rows": 120
+            },
+            "disposition": "out_of_authority",
+            "event": "deny",
+            "hash": "78288abb02a9742c4059f159b32eaf89a5d7685d2edd7a504df18b9c805e357e",
+            "node": "vectors:n1",
+            "prev_hash": "7230444ce8d0178ca0352ca46bfe8c7518bad7c098f77e0103156bfcc1eb4a7b",
+            "reason": "scope_not_granted",
+            "reasons": [
+              {
+                "code": "scope_not_granted",
+                "constraint": null,
+                "limit": null,
+                "message": "scope 'crm.export' not covered by held scopes ['crm.read']",
+                "requested": "crm.export"
+              }
+            ],
+            "scope": "crm.export",
+            "seq": 5,
+            "tool": "crm.export",
+            "ts": 6,
+            "v": 2
+          },
+          {
+            "body_state": "returned",
+            "c14n": "JCS",
+            "call_id": "15d42567717e39b8ff1881a14ec42f96",
+            "chain_id": "vectors",
+            "duration_ms": 7,
+            "event": "outcome",
+            "hash": "919b70ea66d3a6dcb028d436c606d4503711d465968f2cccca769a14b2d9d28a",
+            "invoked_params_hash": "fce526871286f8690b26b26fd968b9ad482f5e34e453b7fb8907fce528457a9c",
+            "node": "vectors:n1",
+            "prev_hash": "78288abb02a9742c4059f159b32eaf89a5d7685d2edd7a504df18b9c805e357e",
+            "seq": 6,
+            "ts": 7,
+            "v": 2
+          },
+          {
+            "agent": "summarizer",
+            "c14n": "JCS",
+            "chain_id": "vectors",
+            "event": "done",
+            "hash": "9d99da710ca7ae8dd731099360fc5304746df3d926933c6dcdf61e2033bf2c95",
+            "node": "vectors:n1",
+            "prev_hash": "919b70ea66d3a6dcb028d436c606d4503711d465968f2cccca769a14b2d9d28a",
+            "seq": 7,
+            "ts": 8,
+            "v": 2
+          },
+          {
+            "agent": "orchestrator",
+            "c14n": "JCS",
+            "chain_id": "vectors",
+            "event": "done",
+            "hash": "53349075656990a1bde24c34e2a4bcd4b70826a208924a86c9cf2647a3a0fc9e",
+            "node": "vectors:n0",
+            "prev_hash": "9d99da710ca7ae8dd731099360fc5304746df3d926933c6dcdf61e2033bf2c95",
+            "seq": 8,
+            "ts": 9,
+            "v": 2
+          }
+        ],
+        "envelopes": [
+          {
+            "observed": {
+              "at": "2026-09-01T11:00:00Z",
+              "method": "sidecar:ledger-tail",
+              "result": "matched"
+            },
+            "sig": "5971f1a7ac555dd49b34b8875367fda70a6862a2b399f023fd4c74bd2ebaebe6b4689d1c46772fb1cc5df1fb866ba6d3fff00748393f61ba07fc14b68d20ad0e",
+            "subject": {
+              "chain_id": "vectors",
+              "entry_hash": "5339c1271ede46a2b783871e7e65e4f0018e8f141f30ef760e8d3e6b0f31bb8d",
+              "event": "spawn",
+              "node": "vectors:n1",
+              "seq": 1
+            },
+            "typ": "delegation-event-observation",
+            "v": 2,
+            "witness": {
+              "alg": "EdDSA",
+              "kid": "witness-interop-v1"
+            }
+          }
+        ],
+        "note": "offline-verifiable: attenu_guard.evidence.verify_bundle(bundle, signer)",
+        "redaction": {
+          "ok": true,
+          "violations": []
+        },
+        "v": 2
+      },
+      "description": "`v: 2`, re-signed, and everything else untouched. The version commits the exact signed member set of the whole envelope, the subject included, so a verifier that meets a version it does not know refuses rather than reading the members it recognises and ignoring the rest. The signature is valid, which is the point: a verifier that checks the signature first still has to refuse. Required: `envelope_unknown_version` at the seq and node of the entry the envelope covers. A different `typ` is the same failure, for the same reason \u2014 it is a different contract.",
+      "expect": "reject",
+      "expect_failures": [
+        {
+          "node": "vectors:n1",
+          "reason": "envelope_unknown_version",
+          "seq": 1
+        }
+      ],
+      "expect_states": {
+        "0": "process-asserted",
+        "1": "process-asserted",
+        "2": "process-asserted",
+        "3": "process-asserted",
+        "4": "process-asserted",
+        "5": "process-asserted",
+        "6": "process-asserted",
+        "7": "process-asserted",
+        "8": "process-asserted"
+      },
+      "name": "reject_unknown_version",
+      "signer": {
+        "alg": "HS256",
+        "kid": "bundle-interop-v1",
+        "secret_hex": "617474656e752d67756172642d62756e646c652d766563746f72732d76312d66697865642d736563726574"
+      },
+      "witness_keys": [
+        {
+          "alg": "EdDSA",
+          "kid": "witness-interop-v1",
+          "public_key_hex": "175690a2bd6cdde8dc82af9df6529ad86ca740d9adf9cf06caeafd151fa15249"
+        },
+        {
+          "alg": "EdDSA",
+          "kid": "witness-interop-v1-b",
+          "public_key_hex": "99fb1b490a5fb16480f2dac356b30e07152d74c1afa2e70901b7e485d08aca9f"
+        }
+      ]
+    },
+    {
+      "bundle": {
+        "anchor": {
+          "c14n": "JCS",
+          "chain_id": "vectors",
+          "head": "53349075656990a1bde24c34e2a4bcd4b70826a208924a86c9cf2647a3a0fc9e",
+          "kid": "bundle-interop-v1",
+          "seq": 8,
+          "sig": "0c49095924277666675466722fb40d0b297416622a49b50e05896fa550654dcf",
+          "ts": 0,
+          "v": 2,
+          "verified": true
+        },
+        "c14n": "JCS",
+        "chain_id": "vectors",
+        "entries": [
+          {
+            "agent": "orchestrator",
+            "authority": {
+              "constraints": [
+                {
+                  "key": "max_rows",
+                  "max": 100000
+                }
+              ],
+              "scopes": [
+                "crm.*",
+                "mail.send"
+              ],
+              "ttl": 3600
+            },
+            "c14n": "JCS",
+            "chain_id": "vectors",
+            "event": "root",
+            "hash": "fba88ffa70b6d8a976a06d4ccf3e00c573eccd9eccdbac56ced056057da8daa6",
+            "node": "vectors:n0",
+            "params_salt": "098023016893b040de8e953490e91ae4",
+            "prev_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+            "seq": 0,
+            "ts": 1,
+            "v": 2
+          },
+          {
+            "agent": "summarizer",
+            "c14n": "JCS",
+            "chain_id": "vectors",
+            "event": "spawn",
+            "granted": {
+              "constraints": [
+                {
+                  "key": "max_rows",
+                  "max": 5000
+                }
+              ],
+              "scopes": [
+                "crm.read"
+              ],
+              "ttl": 900
+            },
+            "hash": "5339c1271ede46a2b783871e7e65e4f0018e8f141f30ef760e8d3e6b0f31bb8d",
+            "node": "vectors:n1",
+            "parent": "vectors:n0",
+            "prev_hash": "fba88ffa70b6d8a976a06d4ccf3e00c573eccd9eccdbac56ced056057da8daa6",
+            "requested": {
+              "constraints": [
+                {
+                  "key": "max_rows",
+                  "max": 5000
+                }
+              ],
+              "scopes": [
+                "crm.read"
+              ],
+              "ttl": 900
+            },
+            "seq": 1,
+            "task": "summarize Q3 pipeline",
+            "ts": 2,
+            "v": 2
+          },
+          {
+            "adapter": {
+              "hook_path": "wrap_tool",
+              "module": "attenu_guard.adapters.example",
+              "version": "1.0.0"
+            },
+            "authorized_params_hash": "d1901bc20e47587a42017724672f7c5fca81f8a6151a6933e5b62482367586a1",
+            "c14n": "JCS",
+            "call_id": "eb099aeb221783e1442261f15df4fb35",
+            "capture": "wrapper_sync",
+            "chain_id": "vectors",
+            "context": {},
+            "event": "allow",
+            "hash": "6a55969c228f85cca9e5c4ff195fce20fc3a76d8d2afae4788bfa0f3e621340b",
+            "node": "vectors:n0",
+            "prev_hash": "5339c1271ede46a2b783871e7e65e4f0018e8f141f30ef760e8d3e6b0f31bb8d",
+            "scope": "mail.send",
+            "seq": 2,
+            "tool": "mail.send",
+            "ts": 3,
+            "v": 2
+          },
+          {
+            "body_state": "returned",
+            "c14n": "JCS",
+            "call_id": "eb099aeb221783e1442261f15df4fb35",
+            "chain_id": "vectors",
+            "duration_ms": 12,
+            "event": "outcome",
+            "hash": "b5c9da99d2ba0874a150e05307994b35b5c6c3cc7a2dda35a067632404988f62",
+            "invoked_params_hash": "d1901bc20e47587a42017724672f7c5fca81f8a6151a6933e5b62482367586a1",
+            "node": "vectors:n0",
+            "prev_hash": "6a55969c228f85cca9e5c4ff195fce20fc3a76d8d2afae4788bfa0f3e621340b",
+            "seq": 3,
+            "ts": 4,
+            "v": 2
+          },
+          {
+            "adapter": {
+              "hook_path": "wrap_tool",
+              "module": "attenu_guard.adapters.example",
+              "version": "1.0.0"
+            },
+            "authorized_params_hash": "fce526871286f8690b26b26fd968b9ad482f5e34e453b7fb8907fce528457a9c",
+            "c14n": "JCS",
+            "call_id": "15d42567717e39b8ff1881a14ec42f96",
+            "capture": "wrapper_sync",
+            "chain_id": "vectors",
+            "context": {
+              "rows": 120
+            },
+            "event": "allow",
+            "hash": "7230444ce8d0178ca0352ca46bfe8c7518bad7c098f77e0103156bfcc1eb4a7b",
+            "node": "vectors:n1",
+            "prev_hash": "b5c9da99d2ba0874a150e05307994b35b5c6c3cc7a2dda35a067632404988f62",
+            "scope": "crm.read",
+            "seq": 4,
+            "tool": "crm.read",
+            "ts": 5,
+            "v": 2
+          },
+          {
+            "c14n": "JCS",
+            "call_id": "b19e6c109fd52df399317b62beac78b4",
+            "chain_id": "vectors",
+            "context": {
+              "rows": 120
+            },
+            "disposition": "out_of_authority",
+            "event": "deny",
+            "hash": "78288abb02a9742c4059f159b32eaf89a5d7685d2edd7a504df18b9c805e357e",
+            "node": "vectors:n1",
+            "prev_hash": "7230444ce8d0178ca0352ca46bfe8c7518bad7c098f77e0103156bfcc1eb4a7b",
+            "reason": "scope_not_granted",
+            "reasons": [
+              {
+                "code": "scope_not_granted",
+                "constraint": null,
+                "limit": null,
+                "message": "scope 'crm.export' not covered by held scopes ['crm.read']",
+                "requested": "crm.export"
+              }
+            ],
+            "scope": "crm.export",
+            "seq": 5,
+            "tool": "crm.export",
+            "ts": 6,
+            "v": 2
+          },
+          {
+            "body_state": "returned",
+            "c14n": "JCS",
+            "call_id": "15d42567717e39b8ff1881a14ec42f96",
+            "chain_id": "vectors",
+            "duration_ms": 7,
+            "event": "outcome",
+            "hash": "919b70ea66d3a6dcb028d436c606d4503711d465968f2cccca769a14b2d9d28a",
+            "invoked_params_hash": "fce526871286f8690b26b26fd968b9ad482f5e34e453b7fb8907fce528457a9c",
+            "node": "vectors:n1",
+            "prev_hash": "78288abb02a9742c4059f159b32eaf89a5d7685d2edd7a504df18b9c805e357e",
+            "seq": 6,
+            "ts": 7,
+            "v": 2
+          },
+          {
+            "agent": "summarizer",
+            "c14n": "JCS",
+            "chain_id": "vectors",
+            "event": "done",
+            "hash": "9d99da710ca7ae8dd731099360fc5304746df3d926933c6dcdf61e2033bf2c95",
+            "node": "vectors:n1",
+            "prev_hash": "919b70ea66d3a6dcb028d436c606d4503711d465968f2cccca769a14b2d9d28a",
+            "seq": 7,
+            "ts": 8,
+            "v": 2
+          },
+          {
+            "agent": "orchestrator",
+            "c14n": "JCS",
+            "chain_id": "vectors",
+            "event": "done",
+            "hash": "53349075656990a1bde24c34e2a4bcd4b70826a208924a86c9cf2647a3a0fc9e",
+            "node": "vectors:n0",
+            "prev_hash": "9d99da710ca7ae8dd731099360fc5304746df3d926933c6dcdf61e2033bf2c95",
+            "seq": 8,
+            "ts": 9,
+            "v": 2
+          }
+        ],
+        "envelopes": [
+          {
+            "observed": {
+              "at": "2026-09-01T11:00:00Z",
+              "method": "sidecar:ledger-tail",
+              "result": "matched"
+            },
+            "sig": "aeaba53b993c1e853471d2a14391a51af5dda672dd8fde327317ea4fc0ec29e5ee47e270d4ff584a982a915dcd4a9d0411aa557a51a0b6642f1dbb5498c26e09",
+            "subject": {
+              "chain_id": "vectors",
+              "entry_hash": "5339c1271ede46a2b783871e7e65e4f0018e8f141f30ef760e8d3e6b0f31bb8d",
+              "event": "spawn",
+              "node": "vectors:n1",
+              "seq": 1
+            },
+            "typ": "delegation-event-observation",
+            "v": 1,
+            "witness": {
+              "alg": "EdDSA",
+              "kid": "witness-interop-v1"
+            }
+          }
+        ],
+        "note": "offline-verifiable: attenu_guard.evidence.verify_bundle(bundle, signer)",
+        "redaction": {
+          "ok": true,
+          "violations": []
+        },
+        "v": 2
+      },
+      "description": "The same envelope serialized non-canonically and signed over THOSE bytes. The non-canonicality is an escape that does not survive a parse \u2014 the `typ` value's first character is written as a `\\u0064` escape \u2014 so a verifier handed the parsed object alone cannot see it. That is why the row supplies the bytes as received, in `raw_hex`: the invariant under test is that the received bytes equal JCS of what they parse to, which is separate from the signature. The signature itself is always over `JCS(envelope minus sig)`, so a verifier that recomputes that preimage ALSO gets `envelope_bad_signature` here and may report it; that is an extra, permitted by the minimal-set rule. The required failure is `envelope_non_canonical` at the seq and node of the entry the envelope covers, because scoring it must not depend on whether a deployment kept the bytes.",
+      "expect": "reject",
+      "expect_failures": [
+        {
+          "node": "vectors:n1",
+          "reason": "envelope_non_canonical",
+          "seq": 1
+        }
+      ],
+      "expect_states": {
+        "0": "process-asserted",
+        "1": "process-asserted",
+        "2": "process-asserted",
+        "3": "process-asserted",
+        "4": "process-asserted",
+        "5": "process-asserted",
+        "6": "process-asserted",
+        "7": "process-asserted",
+        "8": "process-asserted"
+      },
+      "name": "reject_non_canonical",
+      "raw_hex": "7b226f62736572766564223a7b226174223a22323032362d30392d30315431313a30303a30305a222c226d6574686f64223a22736964656361723a6c65646765722d7461696c222c22726573756c74223a226d617463686564227d2c22736967223a226165616261353362393933633165383533343731643261313433393161353161663564646136373264643866646533323733313765613466633065633239653565653437653237306434666635383461393832613931356463643461396430343131616135353761353161306236363432663164626235343938633236653039222c227375626a656374223a7b22636861696e5f6964223a22766563746f7273222c22656e7472795f68617368223a2235333339633132373165646534366132623738333837316537653635653466303031386538663134316633306566373630653864336536623066333162623864222c226576656e74223a22737061776e222c226e6f6465223a22766563746f72733a6e31222c22736571223a317d2c22747970223a225c7530303634656c65676174696f6e2d6576656e742d6f62736572766174696f6e222c2276223a312c227769746e657373223a7b22616c67223a224564445341222c226b6964223a227769746e6573732d696e7465726f702d7631227d7d",
+      "signer": {
+        "alg": "HS256",
+        "kid": "bundle-interop-v1",
+        "secret_hex": "617474656e752d67756172642d62756e646c652d766563746f72732d76312d66697865642d736563726574"
+      },
+      "witness_keys": [
+        {
+          "alg": "EdDSA",
+          "kid": "witness-interop-v1",
+          "public_key_hex": "175690a2bd6cdde8dc82af9df6529ad86ca740d9adf9cf06caeafd151fa15249"
+        },
+        {
+          "alg": "EdDSA",
+          "kid": "witness-interop-v1-b",
+          "public_key_hex": "99fb1b490a5fb16480f2dac356b30e07152d74c1afa2e70901b7e485d08aca9f"
+        }
+      ]
+    },
+    {
+      "bundle": {
+        "anchor": {
+          "c14n": "JCS",
+          "chain_id": "vectors",
+          "head": "53349075656990a1bde24c34e2a4bcd4b70826a208924a86c9cf2647a3a0fc9e",
+          "kid": "bundle-interop-v1",
+          "seq": 8,
+          "sig": "0c49095924277666675466722fb40d0b297416622a49b50e05896fa550654dcf",
+          "ts": 0,
+          "v": 2,
+          "verified": true
+        },
+        "c14n": "JCS",
+        "chain_id": "vectors",
+        "entries": [
+          {
+            "agent": "orchestrator",
+            "authority": {
+              "constraints": [
+                {
+                  "key": "max_rows",
+                  "max": 100000
+                }
+              ],
+              "scopes": [
+                "crm.*",
+                "mail.send"
+              ],
+              "ttl": 3600
+            },
+            "c14n": "JCS",
+            "chain_id": "vectors",
+            "event": "root",
+            "hash": "fba88ffa70b6d8a976a06d4ccf3e00c573eccd9eccdbac56ced056057da8daa6",
+            "node": "vectors:n0",
+            "params_salt": "098023016893b040de8e953490e91ae4",
+            "prev_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+            "seq": 0,
+            "ts": 1,
+            "v": 2
+          },
+          {
+            "agent": "summarizer",
+            "c14n": "JCS",
+            "chain_id": "vectors",
+            "event": "spawn",
+            "granted": {
+              "constraints": [
+                {
+                  "key": "max_rows",
+                  "max": 5000
+                }
+              ],
+              "scopes": [
+                "crm.read"
+              ],
+              "ttl": 900
+            },
+            "hash": "5339c1271ede46a2b783871e7e65e4f0018e8f141f30ef760e8d3e6b0f31bb8d",
+            "node": "vectors:n1",
+            "parent": "vectors:n0",
+            "prev_hash": "fba88ffa70b6d8a976a06d4ccf3e00c573eccd9eccdbac56ced056057da8daa6",
+            "requested": {
+              "constraints": [
+                {
+                  "key": "max_rows",
+                  "max": 5000
+                }
+              ],
+              "scopes": [
+                "crm.read"
+              ],
+              "ttl": 900
+            },
+            "seq": 1,
+            "task": "summarize Q3 pipeline",
+            "ts": 2,
+            "v": 2
+          },
+          {
+            "adapter": {
+              "hook_path": "wrap_tool",
+              "module": "attenu_guard.adapters.example",
+              "version": "1.0.0"
+            },
+            "authorized_params_hash": "d1901bc20e47587a42017724672f7c5fca81f8a6151a6933e5b62482367586a1",
+            "c14n": "JCS",
+            "call_id": "eb099aeb221783e1442261f15df4fb35",
+            "capture": "wrapper_sync",
+            "chain_id": "vectors",
+            "context": {},
+            "event": "allow",
+            "hash": "6a55969c228f85cca9e5c4ff195fce20fc3a76d8d2afae4788bfa0f3e621340b",
+            "node": "vectors:n0",
+            "prev_hash": "5339c1271ede46a2b783871e7e65e4f0018e8f141f30ef760e8d3e6b0f31bb8d",
+            "scope": "mail.send",
+            "seq": 2,
+            "tool": "mail.send",
+            "ts": 3,
+            "v": 2
+          },
+          {
+            "body_state": "returned",
+            "c14n": "JCS",
+            "call_id": "eb099aeb221783e1442261f15df4fb35",
+            "chain_id": "vectors",
+            "duration_ms": 12,
+            "event": "outcome",
+            "hash": "b5c9da99d2ba0874a150e05307994b35b5c6c3cc7a2dda35a067632404988f62",
+            "invoked_params_hash": "d1901bc20e47587a42017724672f7c5fca81f8a6151a6933e5b62482367586a1",
+            "node": "vectors:n0",
+            "prev_hash": "6a55969c228f85cca9e5c4ff195fce20fc3a76d8d2afae4788bfa0f3e621340b",
+            "seq": 3,
+            "ts": 4,
+            "v": 2
+          },
+          {
+            "adapter": {
+              "hook_path": "wrap_tool",
+              "module": "attenu_guard.adapters.example",
+              "version": "1.0.0"
+            },
+            "authorized_params_hash": "fce526871286f8690b26b26fd968b9ad482f5e34e453b7fb8907fce528457a9c",
+            "c14n": "JCS",
+            "call_id": "15d42567717e39b8ff1881a14ec42f96",
+            "capture": "wrapper_sync",
+            "chain_id": "vectors",
+            "context": {
+              "rows": 120
+            },
+            "event": "allow",
+            "hash": "7230444ce8d0178ca0352ca46bfe8c7518bad7c098f77e0103156bfcc1eb4a7b",
+            "node": "vectors:n1",
+            "prev_hash": "b5c9da99d2ba0874a150e05307994b35b5c6c3cc7a2dda35a067632404988f62",
+            "scope": "crm.read",
+            "seq": 4,
+            "tool": "crm.read",
+            "ts": 5,
+            "v": 2
+          },
+          {
+            "c14n": "JCS",
+            "call_id": "b19e6c109fd52df399317b62beac78b4",
+            "chain_id": "vectors",
+            "context": {
+              "rows": 120
+            },
+            "disposition": "out_of_authority",
+            "event": "deny",
+            "hash": "78288abb02a9742c4059f159b32eaf89a5d7685d2edd7a504df18b9c805e357e",
+            "node": "vectors:n1",
+            "prev_hash": "7230444ce8d0178ca0352ca46bfe8c7518bad7c098f77e0103156bfcc1eb4a7b",
+            "reason": "scope_not_granted",
+            "reasons": [
+              {
+                "code": "scope_not_granted",
+                "constraint": null,
+                "limit": null,
+                "message": "scope 'crm.export' not covered by held scopes ['crm.read']",
+                "requested": "crm.export"
+              }
+            ],
+            "scope": "crm.export",
+            "seq": 5,
+            "tool": "crm.export",
+            "ts": 6,
+            "v": 2
+          },
+          {
+            "body_state": "returned",
+            "c14n": "JCS",
+            "call_id": "15d42567717e39b8ff1881a14ec42f96",
+            "chain_id": "vectors",
+            "duration_ms": 7,
+            "event": "outcome",
+            "hash": "919b70ea66d3a6dcb028d436c606d4503711d465968f2cccca769a14b2d9d28a",
+            "invoked_params_hash": "fce526871286f8690b26b26fd968b9ad482f5e34e453b7fb8907fce528457a9c",
+            "node": "vectors:n1",
+            "prev_hash": "78288abb02a9742c4059f159b32eaf89a5d7685d2edd7a504df18b9c805e357e",
+            "seq": 6,
+            "ts": 7,
+            "v": 2
+          },
+          {
+            "agent": "summarizer",
+            "c14n": "JCS",
+            "chain_id": "vectors",
+            "event": "done",
+            "hash": "9d99da710ca7ae8dd731099360fc5304746df3d926933c6dcdf61e2033bf2c95",
+            "node": "vectors:n1",
+            "prev_hash": "919b70ea66d3a6dcb028d436c606d4503711d465968f2cccca769a14b2d9d28a",
+            "seq": 7,
+            "ts": 8,
+            "v": 2
+          },
+          {
+            "agent": "orchestrator",
+            "c14n": "JCS",
+            "chain_id": "vectors",
+            "event": "done",
+            "hash": "53349075656990a1bde24c34e2a4bcd4b70826a208924a86c9cf2647a3a0fc9e",
+            "node": "vectors:n0",
+            "prev_hash": "9d99da710ca7ae8dd731099360fc5304746df3d926933c6dcdf61e2033bf2c95",
+            "seq": 8,
+            "ts": 9,
+            "v": 2
+          }
+        ],
+        "envelopes": [
+          {
+            "observed": {
+              "at": "2026-09-01T11:00:00Z",
+              "method": "sidecar:ledger-tail",
+              "result": "matched"
+            },
+            "sig": "ac67128d989c737638d3e4a8a91f633513d46a4aa23c3e17dab1895dc9f13e2b72c804d5f86376d7226ec6e1c82420549210bd10a2465fa984cc9c083bd2c206",
+            "subject": {
+              "agent": "summarizer",
+              "chain_id": "vectors",
+              "entry_hash": "5339c1271ede46a2b783871e7e65e4f0018e8f141f30ef760e8d3e6b0f31bb8d",
+              "event": "spawn",
+              "node": "vectors:n1",
+              "seq": 1
+            },
+            "typ": "delegation-event-observation",
+            "v": 1,
+            "witness": {
+              "alg": "EdDSA",
+              "kid": "witness-interop-v1"
+            }
+          }
+        ],
+        "note": "offline-verifiable: attenu_guard.evidence.verify_bundle(bundle, signer)",
+        "redaction": {
+          "ok": true,
+          "violations": []
+        },
+        "v": 2
+      },
+      "description": "A member added to the subject with no version bump, re-signed: `agent`, taken truthfully off the very entry the subject covers, so the added member states nothing false. It is still a reject. A member added anywhere in the envelope changes what the witness signs, and by the contract that is a new version \u2014 which this envelope does not declare, so the digest would widen silently. Required: `envelope_unknown_member` at the seq and node of the entry the envelope covers. Note the direction: a member ADDED is unknown_member, while a subject MISSING a member its event requires is `envelope_subject_mismatch`.",
+      "expect": "reject",
+      "expect_failures": [
+        {
+          "node": "vectors:n1",
+          "reason": "envelope_unknown_member",
+          "seq": 1
+        }
+      ],
+      "expect_states": {
+        "0": "process-asserted",
+        "1": "process-asserted",
+        "2": "process-asserted",
+        "3": "process-asserted",
+        "4": "process-asserted",
+        "5": "process-asserted",
+        "6": "process-asserted",
+        "7": "process-asserted",
+        "8": "process-asserted"
+      },
+      "name": "reject_member_without_bump",
+      "signer": {
+        "alg": "HS256",
+        "kid": "bundle-interop-v1",
+        "secret_hex": "617474656e752d67756172642d62756e646c652d766563746f72732d76312d66697865642d736563726574"
+      },
+      "witness_keys": [
+        {
+          "alg": "EdDSA",
+          "kid": "witness-interop-v1",
+          "public_key_hex": "175690a2bd6cdde8dc82af9df6529ad86ca740d9adf9cf06caeafd151fa15249"
+        },
+        {
+          "alg": "EdDSA",
+          "kid": "witness-interop-v1-b",
+          "public_key_hex": "99fb1b490a5fb16480f2dac356b30e07152d74c1afa2e70901b7e485d08aca9f"
+        }
+      ]
+    },
+    {
+      "bundle": {
+        "anchor": {
+          "c14n": "JCS",
+          "chain_id": "vectors",
+          "head": "44ab492b40a24b98ef6f5fba22f48c9125bc784516ea0632bd5e17a454036b80",
+          "kid": "bundle-interop-v1",
+          "seq": 8,
+          "sig": "e7149d8f5236ca14355a2ee601a4b0c1b12de75fabc5487ddd1c427f802c2277",
+          "ts": 0,
+          "v": 2,
+          "verified": true
+        },
+        "c14n": "JCS",
+        "chain_id": "vectors",
+        "entries": [
+          {
+            "agent": "orchestrator",
+            "authority": {
+              "constraints": [
+                {
+                  "key": "max_rows",
+                  "max": 100000
+                }
+              ],
+              "scopes": [
+                "crm.*",
+                "mail.send"
+              ],
+              "ttl": 3600
+            },
+            "c14n": "JCS",
+            "chain_id": "vectors",
+            "event": "root",
+            "hash": "fba88ffa70b6d8a976a06d4ccf3e00c573eccd9eccdbac56ced056057da8daa6",
+            "node": "vectors:n0",
+            "params_salt": "098023016893b040de8e953490e91ae4",
+            "prev_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+            "seq": 0,
+            "ts": 1,
+            "v": 2
+          },
+          {
+            "agent": "summarizer",
+            "c14n": "JCS",
+            "chain_id": "vectors",
+            "event": "spawn",
+            "granted": {
+              "constraints": [
+                {
+                  "key": "max_rows",
+                  "max": 5000
+                }
+              ],
+              "scopes": [
+                "crm.read"
+              ],
+              "ttl": 900
+            },
+            "hash": "adcf81dfba25c1adb173746979d64ae963ba155fd23db39f3c8bdb3cf4d73467",
+            "node": "vectors:n1",
+            "parent": "vectors:n0",
+            "prev_hash": "fba88ffa70b6d8a976a06d4ccf3e00c573eccd9eccdbac56ced056057da8daa6",
+            "requested": {
+              "constraints": [
+                {
+                  "key": "max_rows",
+                  "max": 5000
+                }
+              ],
+              "scopes": [
+                "crm.read"
+              ],
+              "ttl": 900
+            },
+            "seq": 1,
+            "task": "summarize Q3 pipeline",
+            "ts": 99,
+            "v": 2
+          },
+          {
+            "adapter": {
+              "hook_path": "wrap_tool",
+              "module": "attenu_guard.adapters.example",
+              "version": "1.0.0"
+            },
+            "authorized_params_hash": "d1901bc20e47587a42017724672f7c5fca81f8a6151a6933e5b62482367586a1",
+            "c14n": "JCS",
+            "call_id": "eb099aeb221783e1442261f15df4fb35",
+            "capture": "wrapper_sync",
+            "chain_id": "vectors",
+            "context": {},
+            "event": "allow",
+            "hash": "49be641eac7e8bd67e722430f6b54d7a8a0ba4d910d2b9eeba7232dc41d35f54",
+            "node": "vectors:n0",
+            "prev_hash": "adcf81dfba25c1adb173746979d64ae963ba155fd23db39f3c8bdb3cf4d73467",
+            "scope": "mail.send",
+            "seq": 2,
+            "tool": "mail.send",
+            "ts": 3,
+            "v": 2
+          },
+          {
+            "body_state": "returned",
+            "c14n": "JCS",
+            "call_id": "eb099aeb221783e1442261f15df4fb35",
+            "chain_id": "vectors",
+            "duration_ms": 12,
+            "event": "outcome",
+            "hash": "8b02b301de7de3946c5209eb113d90c9269ec4a6e45c79a66669f3c4e1d4eb87",
+            "invoked_params_hash": "d1901bc20e47587a42017724672f7c5fca81f8a6151a6933e5b62482367586a1",
+            "node": "vectors:n0",
+            "prev_hash": "49be641eac7e8bd67e722430f6b54d7a8a0ba4d910d2b9eeba7232dc41d35f54",
+            "seq": 3,
+            "ts": 4,
+            "v": 2
+          },
+          {
+            "adapter": {
+              "hook_path": "wrap_tool",
+              "module": "attenu_guard.adapters.example",
+              "version": "1.0.0"
+            },
+            "authorized_params_hash": "fce526871286f8690b26b26fd968b9ad482f5e34e453b7fb8907fce528457a9c",
+            "c14n": "JCS",
+            "call_id": "15d42567717e39b8ff1881a14ec42f96",
+            "capture": "wrapper_sync",
+            "chain_id": "vectors",
+            "context": {
+              "rows": 120
+            },
+            "event": "allow",
+            "hash": "3cb9f868d044e625b85d0bca194a95f3d80b913f939f5aa81470db3ee1acb8a9",
+            "node": "vectors:n1",
+            "prev_hash": "8b02b301de7de3946c5209eb113d90c9269ec4a6e45c79a66669f3c4e1d4eb87",
+            "scope": "crm.read",
+            "seq": 4,
+            "tool": "crm.read",
+            "ts": 5,
+            "v": 2
+          },
+          {
+            "c14n": "JCS",
+            "call_id": "b19e6c109fd52df399317b62beac78b4",
+            "chain_id": "vectors",
+            "context": {
+              "rows": 120
+            },
+            "disposition": "out_of_authority",
+            "event": "deny",
+            "hash": "9cd79afaae1de09e888cd3dd7b169904f4f6117a63d9177c112d3ef57a6069b9",
+            "node": "vectors:n1",
+            "prev_hash": "3cb9f868d044e625b85d0bca194a95f3d80b913f939f5aa81470db3ee1acb8a9",
+            "reason": "scope_not_granted",
+            "reasons": [
+              {
+                "code": "scope_not_granted",
+                "constraint": null,
+                "limit": null,
+                "message": "scope 'crm.export' not covered by held scopes ['crm.read']",
+                "requested": "crm.export"
+              }
+            ],
+            "scope": "crm.export",
+            "seq": 5,
+            "tool": "crm.export",
+            "ts": 6,
+            "v": 2
+          },
+          {
+            "body_state": "returned",
+            "c14n": "JCS",
+            "call_id": "15d42567717e39b8ff1881a14ec42f96",
+            "chain_id": "vectors",
+            "duration_ms": 7,
+            "event": "outcome",
+            "hash": "f823ba8641729b775d56366cff4067376204f4cac8268402dc7fb8b20434481d",
+            "invoked_params_hash": "fce526871286f8690b26b26fd968b9ad482f5e34e453b7fb8907fce528457a9c",
+            "node": "vectors:n1",
+            "prev_hash": "9cd79afaae1de09e888cd3dd7b169904f4f6117a63d9177c112d3ef57a6069b9",
+            "seq": 6,
+            "ts": 7,
+            "v": 2
+          },
+          {
+            "agent": "summarizer",
+            "c14n": "JCS",
+            "chain_id": "vectors",
+            "event": "done",
+            "hash": "5f29f0d06bf27d626580f1550117562938e688ba6620f30c641bab56194bc2ba",
+            "node": "vectors:n1",
+            "prev_hash": "f823ba8641729b775d56366cff4067376204f4cac8268402dc7fb8b20434481d",
+            "seq": 7,
+            "ts": 8,
+            "v": 2
+          },
+          {
+            "agent": "orchestrator",
+            "c14n": "JCS",
+            "chain_id": "vectors",
+            "event": "done",
+            "hash": "44ab492b40a24b98ef6f5fba22f48c9125bc784516ea0632bd5e17a454036b80",
+            "node": "vectors:n0",
+            "prev_hash": "5f29f0d06bf27d626580f1550117562938e688ba6620f30c641bab56194bc2ba",
+            "seq": 8,
+            "ts": 9,
+            "v": 2
+          }
+        ],
+        "envelopes": [
+          {
+            "observed": {
+              "at": "2026-09-01T11:00:00Z",
+              "method": "sidecar:ledger-tail",
+              "result": "matched"
+            },
+            "sig": "9d915e8cb279236dbf0263038d9eb3a23859eba4394f8ed05d512af631bb9564684eb8cc9cd8cc95c37fc5c19e3a4d323afbc69752f0bdc4562fe0b21ed08509",
+            "subject": {
+              "chain_id": "vectors",
+              "entry_hash": "5339c1271ede46a2b783871e7e65e4f0018e8f141f30ef760e8d3e6b0f31bb8d",
+              "event": "spawn",
+              "node": "vectors:n1",
+              "seq": 1
+            },
+            "typ": "delegation-event-observation",
+            "v": 1,
+            "witness": {
+              "alg": "EdDSA",
+              "kid": "witness-interop-v1"
+            }
+          }
+        ],
+        "note": "offline-verifiable: attenu_guard.evidence.verify_bundle(bundle, signer)",
+        "redaction": {
+          "ok": true,
+          "violations": []
+        },
+        "v": 2
+      },
+      "description": "The entry the envelope covers, the `spawn` at seq 1, has its `ts` mutated on the BUNDLE side after the envelope was signed. The chain is re-hashed and a FRESH anchor signed over it, so the ledger is internally perfect and the anchor matches: a verifier that checks integrity, monotonicity, containment and execution binding accepts this bundle and reports nothing. The envelope itself still verifies \u2014 its signature is untouched and sound \u2014 and the entry no longer matches what it says. Required: `envelope_subject_mismatch` at the seq and node of the hop that carried it, and that is the whole minimal set. No chain-level integrity failure is raised here, and none may be: that failure comes from a real anchor mismatch and from nothing else.",
+      "expect": "reject",
+      "expect_failures": [
+        {
+          "node": "vectors:n1",
+          "reason": "envelope_subject_mismatch",
+          "seq": 1
+        }
+      ],
+      "expect_states": {
+        "0": "process-asserted",
+        "1": "process-asserted",
+        "2": "process-asserted",
+        "3": "process-asserted",
+        "4": "process-asserted",
+        "5": "process-asserted",
+        "6": "process-asserted",
+        "7": "process-asserted",
+        "8": "process-asserted"
+      },
+      "name": "reject_masked_bundle_mutation",
+      "signer": {
+        "alg": "HS256",
+        "kid": "bundle-interop-v1",
+        "secret_hex": "617474656e752d67756172642d62756e646c652d766563746f72732d76312d66697865642d736563726574"
+      },
+      "witness_keys": [
+        {
+          "alg": "EdDSA",
+          "kid": "witness-interop-v1",
+          "public_key_hex": "175690a2bd6cdde8dc82af9df6529ad86ca740d9adf9cf06caeafd151fa15249"
+        },
+        {
+          "alg": "EdDSA",
+          "kid": "witness-interop-v1-b",
+          "public_key_hex": "99fb1b490a5fb16480f2dac356b30e07152d74c1afa2e70901b7e485d08aca9f"
+        }
+      ]
+    },
+    {
+      "bundle": {
+        "anchor": {
+          "c14n": "JCS",
+          "chain_id": "vectors",
+          "head": "53349075656990a1bde24c34e2a4bcd4b70826a208924a86c9cf2647a3a0fc9e",
+          "kid": "bundle-interop-v1",
+          "seq": 8,
+          "sig": "0c49095924277666675466722fb40d0b297416622a49b50e05896fa550654dcf",
+          "ts": 0,
+          "v": 2,
+          "verified": true
+        },
+        "c14n": "JCS",
+        "chain_id": "vectors",
+        "entries": [
+          {
+            "agent": "orchestrator",
+            "authority": {
+              "constraints": [
+                {
+                  "key": "max_rows",
+                  "max": 100000
+                }
+              ],
+              "scopes": [
+                "crm.*",
+                "mail.send"
+              ],
+              "ttl": 3600
+            },
+            "c14n": "JCS",
+            "chain_id": "vectors",
+            "event": "root",
+            "hash": "fba88ffa70b6d8a976a06d4ccf3e00c573eccd9eccdbac56ced056057da8daa6",
+            "node": "vectors:n0",
+            "params_salt": "098023016893b040de8e953490e91ae4",
+            "prev_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+            "seq": 0,
+            "ts": 1,
+            "v": 2
+          },
+          {
+            "agent": "summarizer",
+            "c14n": "JCS",
+            "chain_id": "vectors",
+            "event": "spawn",
+            "granted": {
+              "constraints": [
+                {
+                  "key": "max_rows",
+                  "max": 5000
+                }
+              ],
+              "scopes": [
+                "crm.read"
+              ],
+              "ttl": 900
+            },
+            "hash": "adcf81dfba25c1adb173746979d64ae963ba155fd23db39f3c8bdb3cf4d73467",
+            "node": "vectors:n1",
+            "parent": "vectors:n0",
+            "prev_hash": "fba88ffa70b6d8a976a06d4ccf3e00c573eccd9eccdbac56ced056057da8daa6",
+            "requested": {
+              "constraints": [
+                {
+                  "key": "max_rows",
+                  "max": 5000
+                }
+              ],
+              "scopes": [
+                "crm.read"
+              ],
+              "ttl": 900
+            },
+            "seq": 1,
+            "task": "summarize Q3 pipeline",
+            "ts": 99,
+            "v": 2
+          },
+          {
+            "adapter": {
+              "hook_path": "wrap_tool",
+              "module": "attenu_guard.adapters.example",
+              "version": "1.0.0"
+            },
+            "authorized_params_hash": "d1901bc20e47587a42017724672f7c5fca81f8a6151a6933e5b62482367586a1",
+            "c14n": "JCS",
+            "call_id": "eb099aeb221783e1442261f15df4fb35",
+            "capture": "wrapper_sync",
+            "chain_id": "vectors",
+            "context": {},
+            "event": "allow",
+            "hash": "49be641eac7e8bd67e722430f6b54d7a8a0ba4d910d2b9eeba7232dc41d35f54",
+            "node": "vectors:n0",
+            "prev_hash": "adcf81dfba25c1adb173746979d64ae963ba155fd23db39f3c8bdb3cf4d73467",
+            "scope": "mail.send",
+            "seq": 2,
+            "tool": "mail.send",
+            "ts": 3,
+            "v": 2
+          },
+          {
+            "body_state": "returned",
+            "c14n": "JCS",
+            "call_id": "eb099aeb221783e1442261f15df4fb35",
+            "chain_id": "vectors",
+            "duration_ms": 12,
+            "event": "outcome",
+            "hash": "8b02b301de7de3946c5209eb113d90c9269ec4a6e45c79a66669f3c4e1d4eb87",
+            "invoked_params_hash": "d1901bc20e47587a42017724672f7c5fca81f8a6151a6933e5b62482367586a1",
+            "node": "vectors:n0",
+            "prev_hash": "49be641eac7e8bd67e722430f6b54d7a8a0ba4d910d2b9eeba7232dc41d35f54",
+            "seq": 3,
+            "ts": 4,
+            "v": 2
+          },
+          {
+            "adapter": {
+              "hook_path": "wrap_tool",
+              "module": "attenu_guard.adapters.example",
+              "version": "1.0.0"
+            },
+            "authorized_params_hash": "fce526871286f8690b26b26fd968b9ad482f5e34e453b7fb8907fce528457a9c",
+            "c14n": "JCS",
+            "call_id": "15d42567717e39b8ff1881a14ec42f96",
+            "capture": "wrapper_sync",
+            "chain_id": "vectors",
+            "context": {
+              "rows": 120
+            },
+            "event": "allow",
+            "hash": "3cb9f868d044e625b85d0bca194a95f3d80b913f939f5aa81470db3ee1acb8a9",
+            "node": "vectors:n1",
+            "prev_hash": "8b02b301de7de3946c5209eb113d90c9269ec4a6e45c79a66669f3c4e1d4eb87",
+            "scope": "crm.read",
+            "seq": 4,
+            "tool": "crm.read",
+            "ts": 5,
+            "v": 2
+          },
+          {
+            "c14n": "JCS",
+            "call_id": "b19e6c109fd52df399317b62beac78b4",
+            "chain_id": "vectors",
+            "context": {
+              "rows": 120
+            },
+            "disposition": "out_of_authority",
+            "event": "deny",
+            "hash": "9cd79afaae1de09e888cd3dd7b169904f4f6117a63d9177c112d3ef57a6069b9",
+            "node": "vectors:n1",
+            "prev_hash": "3cb9f868d044e625b85d0bca194a95f3d80b913f939f5aa81470db3ee1acb8a9",
+            "reason": "scope_not_granted",
+            "reasons": [
+              {
+                "code": "scope_not_granted",
+                "constraint": null,
+                "limit": null,
+                "message": "scope 'crm.export' not covered by held scopes ['crm.read']",
+                "requested": "crm.export"
+              }
+            ],
+            "scope": "crm.export",
+            "seq": 5,
+            "tool": "crm.export",
+            "ts": 6,
+            "v": 2
+          },
+          {
+            "body_state": "returned",
+            "c14n": "JCS",
+            "call_id": "15d42567717e39b8ff1881a14ec42f96",
+            "chain_id": "vectors",
+            "duration_ms": 7,
+            "event": "outcome",
+            "hash": "f823ba8641729b775d56366cff4067376204f4cac8268402dc7fb8b20434481d",
+            "invoked_params_hash": "fce526871286f8690b26b26fd968b9ad482f5e34e453b7fb8907fce528457a9c",
+            "node": "vectors:n1",
+            "prev_hash": "9cd79afaae1de09e888cd3dd7b169904f4f6117a63d9177c112d3ef57a6069b9",
+            "seq": 6,
+            "ts": 7,
+            "v": 2
+          },
+          {
+            "agent": "summarizer",
+            "c14n": "JCS",
+            "chain_id": "vectors",
+            "event": "done",
+            "hash": "5f29f0d06bf27d626580f1550117562938e688ba6620f30c641bab56194bc2ba",
+            "node": "vectors:n1",
+            "prev_hash": "f823ba8641729b775d56366cff4067376204f4cac8268402dc7fb8b20434481d",
+            "seq": 7,
+            "ts": 8,
+            "v": 2
+          },
+          {
+            "agent": "orchestrator",
+            "c14n": "JCS",
+            "chain_id": "vectors",
+            "event": "done",
+            "hash": "44ab492b40a24b98ef6f5fba22f48c9125bc784516ea0632bd5e17a454036b80",
+            "node": "vectors:n0",
+            "prev_hash": "5f29f0d06bf27d626580f1550117562938e688ba6620f30c641bab56194bc2ba",
+            "seq": 8,
+            "ts": 9,
+            "v": 2
+          }
+        ],
+        "envelopes": [
+          {
+            "observed": {
+              "at": "2026-09-01T11:00:00Z",
+              "method": "sidecar:ledger-tail",
+              "result": "matched"
+            },
+            "sig": "9d915e8cb279236dbf0263038d9eb3a23859eba4394f8ed05d512af631bb9564684eb8cc9cd8cc95c37fc5c19e3a4d323afbc69752f0bdc4562fe0b21ed08509",
+            "subject": {
+              "chain_id": "vectors",
+              "entry_hash": "5339c1271ede46a2b783871e7e65e4f0018e8f141f30ef760e8d3e6b0f31bb8d",
+              "event": "spawn",
+              "node": "vectors:n1",
+              "seq": 1
+            },
+            "typ": "delegation-event-observation",
+            "v": 1,
+            "witness": {
+              "alg": "EdDSA",
+              "kid": "witness-interop-v1"
+            }
+          },
+          {
+            "observed": {
+              "at": "2026-09-01T11:00:00Z",
+              "method": "sidecar:ledger-tail",
+              "result": "matched"
+            },
+            "sig": "cb823939065ebf2cb4d34c8e749c373481aaab46dcf2d6b8a72dd58b373dc4bb04e424d66573dac17d034dca672d69ee5e4fad3728471fcef73711ec6d56f009",
+            "subject": {
+              "call_id": "eb099aeb221783e1442261f15df4fb35",
+              "chain_id": "vectors",
+              "entry_hash": "6a55969c228f85cca9e5c4ff195fce20fc3a76d8d2afae4788bfa0f3e621340b",
+              "event": "allow",
+              "node": "vectors:n0",
+              "seq": 2
+            },
+            "typ": "delegation-event-observation",
+            "v": 1,
+            "witness": {
+              "alg": "EdDSA",
+              "kid": "witness-interop-v1"
+            }
+          }
+        ],
+        "note": "offline-verifiable: attenu_guard.evidence.verify_bundle(bundle, signer)",
+        "redaction": {
+          "ok": true,
+          "violations": []
+        },
+        "v": 2
+      },
+      "description": "reject_rehashed_chain_sparse with the mutated entry COVERED. The same `ts` mutation at seq 1, the same rehash of every later entry, the same original anchor; the one difference is that an envelope now covers the mutated entry as well as the hop after it. Required: `integrity(anchor)` at chain level, and `envelope_subject_mismatch` at seq 1, which is where the sparse row could not point. This build also reports the mismatch at seq 2, whose hash moved with the same rehash; that is an extra on a covered hop, inside the minimal-set rule. Every entry reports process-asserted.",
+      "expect": "reject",
+      "expect_failures": [
+        {
+          "node": null,
+          "reason": "integrity(anchor)",
+          "seq": null
+        },
+        {
+          "node": "vectors:n1",
+          "reason": "envelope_subject_mismatch",
+          "seq": 1
+        }
+      ],
+      "expect_states": {
+        "0": "process-asserted",
+        "1": "process-asserted",
+        "2": "process-asserted",
+        "3": "process-asserted",
+        "4": "process-asserted",
+        "5": "process-asserted",
+        "6": "process-asserted",
+        "7": "process-asserted",
+        "8": "process-asserted"
+      },
+      "name": "reject_rehashed_chain_anchored",
+      "signer": {
+        "alg": "HS256",
+        "kid": "bundle-interop-v1",
+        "secret_hex": "617474656e752d67756172642d62756e646c652d766563746f72732d76312d66697865642d736563726574"
+      },
+      "witness_keys": [
+        {
+          "alg": "EdDSA",
+          "kid": "witness-interop-v1",
+          "public_key_hex": "175690a2bd6cdde8dc82af9df6529ad86ca740d9adf9cf06caeafd151fa15249"
+        },
+        {
+          "alg": "EdDSA",
+          "kid": "witness-interop-v1-b",
+          "public_key_hex": "99fb1b490a5fb16480f2dac356b30e07152d74c1afa2e70901b7e485d08aca9f"
+        }
+      ]
+    },
+    {
+      "bundle": {
+        "c14n": "JCS",
+        "chain_id": "vectors",
+        "entries": [
+          {
+            "agent": "orchestrator",
+            "authority": {
+              "constraints": [
+                {
+                  "key": "max_rows",
+                  "max": 100000
+                }
+              ],
+              "scopes": [
+                "crm.*",
+                "mail.send"
+              ],
+              "ttl": 3600
+            },
+            "c14n": "JCS",
+            "chain_id": "vectors",
+            "event": "root",
+            "hash": "fba88ffa70b6d8a976a06d4ccf3e00c573eccd9eccdbac56ced056057da8daa6",
+            "node": "vectors:n0",
+            "params_salt": "098023016893b040de8e953490e91ae4",
+            "prev_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+            "seq": 0,
+            "ts": 1,
+            "v": 2
+          },
+          {
+            "agent": "summarizer",
+            "c14n": "JCS",
+            "chain_id": "vectors",
+            "event": "spawn",
+            "granted": {
+              "constraints": [
+                {
+                  "key": "max_rows",
+                  "max": 5000
+                }
+              ],
+              "scopes": [
+                "crm.read"
+              ],
+              "ttl": 900
+            },
+            "hash": "adcf81dfba25c1adb173746979d64ae963ba155fd23db39f3c8bdb3cf4d73467",
+            "node": "vectors:n1",
+            "parent": "vectors:n0",
+            "prev_hash": "fba88ffa70b6d8a976a06d4ccf3e00c573eccd9eccdbac56ced056057da8daa6",
+            "requested": {
+              "constraints": [
+                {
+                  "key": "max_rows",
+                  "max": 5000
+                }
+              ],
+              "scopes": [
+                "crm.read"
+              ],
+              "ttl": 900
+            },
+            "seq": 1,
+            "task": "summarize Q3 pipeline",
+            "ts": 99,
+            "v": 2
+          },
+          {
+            "adapter": {
+              "hook_path": "wrap_tool",
+              "module": "attenu_guard.adapters.example",
+              "version": "1.0.0"
+            },
+            "authorized_params_hash": "d1901bc20e47587a42017724672f7c5fca81f8a6151a6933e5b62482367586a1",
+            "c14n": "JCS",
+            "call_id": "eb099aeb221783e1442261f15df4fb35",
+            "capture": "wrapper_sync",
+            "chain_id": "vectors",
+            "context": {},
+            "event": "allow",
+            "hash": "49be641eac7e8bd67e722430f6b54d7a8a0ba4d910d2b9eeba7232dc41d35f54",
+            "node": "vectors:n0",
+            "prev_hash": "adcf81dfba25c1adb173746979d64ae963ba155fd23db39f3c8bdb3cf4d73467",
+            "scope": "mail.send",
+            "seq": 2,
+            "tool": "mail.send",
+            "ts": 3,
+            "v": 2
+          },
+          {
+            "body_state": "returned",
+            "c14n": "JCS",
+            "call_id": "eb099aeb221783e1442261f15df4fb35",
+            "chain_id": "vectors",
+            "duration_ms": 12,
+            "event": "outcome",
+            "hash": "8b02b301de7de3946c5209eb113d90c9269ec4a6e45c79a66669f3c4e1d4eb87",
+            "invoked_params_hash": "d1901bc20e47587a42017724672f7c5fca81f8a6151a6933e5b62482367586a1",
+            "node": "vectors:n0",
+            "prev_hash": "49be641eac7e8bd67e722430f6b54d7a8a0ba4d910d2b9eeba7232dc41d35f54",
+            "seq": 3,
+            "ts": 4,
+            "v": 2
+          },
+          {
+            "adapter": {
+              "hook_path": "wrap_tool",
+              "module": "attenu_guard.adapters.example",
+              "version": "1.0.0"
+            },
+            "authorized_params_hash": "fce526871286f8690b26b26fd968b9ad482f5e34e453b7fb8907fce528457a9c",
+            "c14n": "JCS",
+            "call_id": "15d42567717e39b8ff1881a14ec42f96",
+            "capture": "wrapper_sync",
+            "chain_id": "vectors",
+            "context": {
+              "rows": 120
+            },
+            "event": "allow",
+            "hash": "3cb9f868d044e625b85d0bca194a95f3d80b913f939f5aa81470db3ee1acb8a9",
+            "node": "vectors:n1",
+            "prev_hash": "8b02b301de7de3946c5209eb113d90c9269ec4a6e45c79a66669f3c4e1d4eb87",
+            "scope": "crm.read",
+            "seq": 4,
+            "tool": "crm.read",
+            "ts": 5,
+            "v": 2
+          },
+          {
+            "c14n": "JCS",
+            "call_id": "b19e6c109fd52df399317b62beac78b4",
+            "chain_id": "vectors",
+            "context": {
+              "rows": 120
+            },
+            "disposition": "out_of_authority",
+            "event": "deny",
+            "hash": "9cd79afaae1de09e888cd3dd7b169904f4f6117a63d9177c112d3ef57a6069b9",
+            "node": "vectors:n1",
+            "prev_hash": "3cb9f868d044e625b85d0bca194a95f3d80b913f939f5aa81470db3ee1acb8a9",
+            "reason": "scope_not_granted",
+            "reasons": [
+              {
+                "code": "scope_not_granted",
+                "constraint": null,
+                "limit": null,
+                "message": "scope 'crm.export' not covered by held scopes ['crm.read']",
+                "requested": "crm.export"
+              }
+            ],
+            "scope": "crm.export",
+            "seq": 5,
+            "tool": "crm.export",
+            "ts": 6,
+            "v": 2
+          },
+          {
+            "body_state": "returned",
+            "c14n": "JCS",
+            "call_id": "15d42567717e39b8ff1881a14ec42f96",
+            "chain_id": "vectors",
+            "duration_ms": 7,
+            "event": "outcome",
+            "hash": "f823ba8641729b775d56366cff4067376204f4cac8268402dc7fb8b20434481d",
+            "invoked_params_hash": "fce526871286f8690b26b26fd968b9ad482f5e34e453b7fb8907fce528457a9c",
+            "node": "vectors:n1",
+            "prev_hash": "9cd79afaae1de09e888cd3dd7b169904f4f6117a63d9177c112d3ef57a6069b9",
+            "seq": 6,
+            "ts": 7,
+            "v": 2
+          },
+          {
+            "agent": "summarizer",
+            "c14n": "JCS",
+            "chain_id": "vectors",
+            "event": "done",
+            "hash": "5f29f0d06bf27d626580f1550117562938e688ba6620f30c641bab56194bc2ba",
+            "node": "vectors:n1",
+            "prev_hash": "f823ba8641729b775d56366cff4067376204f4cac8268402dc7fb8b20434481d",
+            "seq": 7,
+            "ts": 8,
+            "v": 2
+          },
+          {
+            "agent": "orchestrator",
+            "c14n": "JCS",
+            "chain_id": "vectors",
+            "event": "done",
+            "hash": "44ab492b40a24b98ef6f5fba22f48c9125bc784516ea0632bd5e17a454036b80",
+            "node": "vectors:n0",
+            "prev_hash": "5f29f0d06bf27d626580f1550117562938e688ba6620f30c641bab56194bc2ba",
+            "seq": 8,
+            "ts": 9,
+            "v": 2
+          }
+        ],
+        "envelopes": [
+          {
+            "observed": {
+              "at": "2026-09-01T11:00:00Z",
+              "method": "sidecar:ledger-tail",
+              "result": "matched"
+            },
+            "sig": "9d915e8cb279236dbf0263038d9eb3a23859eba4394f8ed05d512af631bb9564684eb8cc9cd8cc95c37fc5c19e3a4d323afbc69752f0bdc4562fe0b21ed08509",
+            "subject": {
+              "chain_id": "vectors",
+              "entry_hash": "5339c1271ede46a2b783871e7e65e4f0018e8f141f30ef760e8d3e6b0f31bb8d",
+              "event": "spawn",
+              "node": "vectors:n1",
+              "seq": 1
+            },
+            "typ": "delegation-event-observation",
+            "v": 1,
+            "witness": {
+              "alg": "EdDSA",
+              "kid": "witness-interop-v1"
+            }
+          }
+        ],
+        "note": "offline-verifiable: attenu_guard.evidence.verify_bundle(bundle, signer)",
+        "redaction": {
+          "ok": true,
+          "violations": []
+        },
+        "v": 2
+      },
+      "description": "The same `ts` mutation at seq 1, every later entry rehashed, and NO anchor at all: the case carries `\"signer\": null`, the only one in this file that does, so no bundle-level anchor check runs. The chain re-hashes cleanly, monotonicity and containment hold, execution binding holds. Required: `envelope_subject_mismatch` at seq 1, and it is the ONLY check that fails. This is the row that fails only if the envelope check exists \u2014 a verifier without one accepts this bundle.",
+      "expect": "reject",
+      "expect_failures": [
+        {
+          "node": "vectors:n1",
+          "reason": "envelope_subject_mismatch",
+          "seq": 1
+        }
+      ],
+      "expect_states": {
+        "0": "process-asserted",
+        "1": "process-asserted",
+        "2": "process-asserted",
+        "3": "process-asserted",
+        "4": "process-asserted",
+        "5": "process-asserted",
+        "6": "process-asserted",
+        "7": "process-asserted",
+        "8": "process-asserted"
+      },
+      "name": "reject_rehashed_chain_unanchored",
+      "signer": null,
+      "witness_keys": [
+        {
+          "alg": "EdDSA",
+          "kid": "witness-interop-v1",
+          "public_key_hex": "175690a2bd6cdde8dc82af9df6529ad86ca740d9adf9cf06caeafd151fa15249"
+        },
+        {
+          "alg": "EdDSA",
+          "kid": "witness-interop-v1-b",
+          "public_key_hex": "99fb1b490a5fb16480f2dac356b30e07152d74c1afa2e70901b7e485d08aca9f"
+        }
+      ]
+    },
+    {
+      "bundle": {
+        "anchor": {
+          "c14n": "JCS",
+          "chain_id": "vectors",
+          "head": "53349075656990a1bde24c34e2a4bcd4b70826a208924a86c9cf2647a3a0fc9e",
+          "kid": "bundle-interop-v1",
+          "seq": 8,
+          "sig": "0c49095924277666675466722fb40d0b297416622a49b50e05896fa550654dcf",
+          "ts": 0,
+          "v": 2,
+          "verified": true
+        },
+        "c14n": "JCS",
+        "chain_id": "vectors",
+        "entries": [
+          {
+            "agent": "orchestrator",
+            "authority": {
+              "constraints": [
+                {
+                  "key": "max_rows",
+                  "max": 100000
+                }
+              ],
+              "scopes": [
+                "crm.*",
+                "mail.send"
+              ],
+              "ttl": 3600
+            },
+            "c14n": "JCS",
+            "chain_id": "vectors",
+            "event": "root",
+            "hash": "fba88ffa70b6d8a976a06d4ccf3e00c573eccd9eccdbac56ced056057da8daa6",
+            "node": "vectors:n0",
+            "params_salt": "098023016893b040de8e953490e91ae4",
+            "prev_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+            "seq": 0,
+            "ts": 1,
+            "v": 2
+          },
+          {
+            "agent": "summarizer",
+            "c14n": "JCS",
+            "chain_id": "vectors",
+            "event": "spawn",
+            "granted": {
+              "constraints": [
+                {
+                  "key": "max_rows",
+                  "max": 5000
+                }
+              ],
+              "scopes": [
+                "crm.read"
+              ],
+              "ttl": 900
+            },
+            "hash": "5339c1271ede46a2b783871e7e65e4f0018e8f141f30ef760e8d3e6b0f31bb8d",
+            "node": "vectors:n1",
+            "parent": "vectors:n0",
+            "prev_hash": "fba88ffa70b6d8a976a06d4ccf3e00c573eccd9eccdbac56ced056057da8daa6",
+            "requested": {
+              "constraints": [
+                {
+                  "key": "max_rows",
+                  "max": 5000
+                }
+              ],
+              "scopes": [
+                "crm.read"
+              ],
+              "ttl": 900
+            },
+            "seq": 1,
+            "task": "summarize Q3 pipeline",
+            "ts": 2,
+            "v": 2
+          },
+          {
+            "adapter": {
+              "hook_path": "wrap_tool",
+              "module": "attenu_guard.adapters.example",
+              "version": "1.0.0"
+            },
+            "authorized_params_hash": "d1901bc20e47587a42017724672f7c5fca81f8a6151a6933e5b62482367586a1",
+            "c14n": "JCS",
+            "call_id": "eb099aeb221783e1442261f15df4fb35",
+            "capture": "wrapper_sync",
+            "chain_id": "vectors",
+            "context": {},
+            "event": "allow",
+            "hash": "6a55969c228f85cca9e5c4ff195fce20fc3a76d8d2afae4788bfa0f3e621340b",
+            "node": "vectors:n0",
+            "prev_hash": "5339c1271ede46a2b783871e7e65e4f0018e8f141f30ef760e8d3e6b0f31bb8d",
+            "scope": "mail.send",
+            "seq": 2,
+            "tool": "mail.send",
+            "ts": 3,
+            "v": 2
+          },
+          {
+            "body_state": "returned",
+            "c14n": "JCS",
+            "call_id": "eb099aeb221783e1442261f15df4fb35",
+            "chain_id": "vectors",
+            "duration_ms": 12,
+            "event": "outcome",
+            "hash": "b5c9da99d2ba0874a150e05307994b35b5c6c3cc7a2dda35a067632404988f62",
+            "invoked_params_hash": "d1901bc20e47587a42017724672f7c5fca81f8a6151a6933e5b62482367586a1",
+            "node": "vectors:n0",
+            "prev_hash": "6a55969c228f85cca9e5c4ff195fce20fc3a76d8d2afae4788bfa0f3e621340b",
+            "seq": 3,
+            "ts": 4,
+            "v": 2
+          },
+          {
+            "adapter": {
+              "hook_path": "wrap_tool",
+              "module": "attenu_guard.adapters.example",
+              "version": "1.0.0"
+            },
+            "authorized_params_hash": "fce526871286f8690b26b26fd968b9ad482f5e34e453b7fb8907fce528457a9c",
+            "c14n": "JCS",
+            "call_id": "15d42567717e39b8ff1881a14ec42f96",
+            "capture": "wrapper_sync",
+            "chain_id": "vectors",
+            "context": {
+              "rows": 120
+            },
+            "event": "allow",
+            "hash": "7230444ce8d0178ca0352ca46bfe8c7518bad7c098f77e0103156bfcc1eb4a7b",
+            "node": "vectors:n1",
+            "prev_hash": "b5c9da99d2ba0874a150e05307994b35b5c6c3cc7a2dda35a067632404988f62",
+            "scope": "crm.read",
+            "seq": 4,
+            "tool": "crm.read",
+            "ts": 5,
+            "v": 2
+          },
+          {
+            "c14n": "JCS",
+            "call_id": "b19e6c109fd52df399317b62beac78b4",
+            "chain_id": "vectors",
+            "context": {
+              "rows": 120
+            },
+            "disposition": "out_of_authority",
+            "event": "deny",
+            "hash": "78288abb02a9742c4059f159b32eaf89a5d7685d2edd7a504df18b9c805e357e",
+            "node": "vectors:n1",
+            "prev_hash": "7230444ce8d0178ca0352ca46bfe8c7518bad7c098f77e0103156bfcc1eb4a7b",
+            "reason": "scope_not_granted",
+            "reasons": [
+              {
+                "code": "scope_not_granted",
+                "constraint": null,
+                "limit": null,
+                "message": "scope 'crm.export' not covered by held scopes ['crm.read']",
+                "requested": "crm.export"
+              }
+            ],
+            "scope": "crm.export",
+            "seq": 5,
+            "tool": "crm.export",
+            "ts": 6,
+            "v": 2
+          },
+          {
+            "body_state": "returned",
+            "c14n": "JCS",
+            "call_id": "15d42567717e39b8ff1881a14ec42f96",
+            "chain_id": "vectors",
+            "duration_ms": 7,
+            "event": "outcome",
+            "hash": "919b70ea66d3a6dcb028d436c606d4503711d465968f2cccca769a14b2d9d28a",
+            "invoked_params_hash": "fce526871286f8690b26b26fd968b9ad482f5e34e453b7fb8907fce528457a9c",
+            "node": "vectors:n1",
+            "prev_hash": "78288abb02a9742c4059f159b32eaf89a5d7685d2edd7a504df18b9c805e357e",
+            "seq": 6,
+            "ts": 7,
+            "v": 2
+          },
+          {
+            "agent": "summarizer",
+            "c14n": "JCS",
+            "chain_id": "vectors",
+            "event": "done",
+            "hash": "9d99da710ca7ae8dd731099360fc5304746df3d926933c6dcdf61e2033bf2c95",
+            "node": "vectors:n1",
+            "prev_hash": "919b70ea66d3a6dcb028d436c606d4503711d465968f2cccca769a14b2d9d28a",
+            "seq": 7,
+            "ts": 8,
+            "v": 2
+          },
+          {
+            "agent": "orchestrator",
+            "c14n": "JCS",
+            "chain_id": "vectors",
+            "event": "done",
+            "hash": "53349075656990a1bde24c34e2a4bcd4b70826a208924a86c9cf2647a3a0fc9e",
+            "node": "vectors:n0",
+            "prev_hash": "9d99da710ca7ae8dd731099360fc5304746df3d926933c6dcdf61e2033bf2c95",
+            "seq": 8,
+            "ts": 9,
+            "v": 2
+          }
+        ],
+        "envelopes": [
+          {
+            "observed": {
+              "at": "2026-09-01T11:00:00Z",
+              "method": "sidecar:ledger-tail",
+              "result": "matched"
+            },
+            "sig": "dbbda1285f6775b7ff3b76b4acf260dd7b8ba48b2dbf07093789aa5e184b838b54f56b96647439d73a9b67f6a105bc2a2f4325022a5ea047b27d3289ddcd7505",
+            "subject": {
+              "chain_id": "vectors",
+              "entry_hash": "5339c1271ede46a2b783871e7e65e4f0018e8f141f30ef760e8d3e6b0f31bb8d",
+              "event": "spawn",
+              "node": "vectors:n1",
+              "seq": 1
+            },
+            "typ": "delegation-event-observation",
+            "v": 1,
+            "witness": {
+              "alg": "EdDSA",
+              "kid": "witness-interop-v1-unlisted"
+            }
+          }
+        ],
+        "note": "offline-verifiable: attenu_guard.evidence.verify_bundle(bundle, signer)",
+        "redaction": {
+          "ok": true,
+          "violations": []
+        },
+        "v": 2
+      },
+      "description": "Signed by 'witness-interop-v1-unlisted', whose kid is not in `witness_keys` and whose public key this file never carries. The signature is genuine and the subject is correct; there is simply no reason to trust it. Required: `envelope_unknown_witness` at the seq and node of the entry the envelope covers. This row and reject_bad_signature are the two the `witness_keys` array exists to make checkable from the file alone: one names a key the file trusts and fails on the signature, the other carries a good signature from a key the file does not trust.",
+      "expect": "reject",
+      "expect_failures": [
+        {
+          "node": "vectors:n1",
+          "reason": "envelope_unknown_witness",
+          "seq": 1
+        }
+      ],
+      "expect_states": {
+        "0": "process-asserted",
+        "1": "process-asserted",
+        "2": "process-asserted",
+        "3": "process-asserted",
+        "4": "process-asserted",
+        "5": "process-asserted",
+        "6": "process-asserted",
+        "7": "process-asserted",
+        "8": "process-asserted"
+      },
+      "name": "reject_unknown_witness",
+      "signer": {
+        "alg": "HS256",
+        "kid": "bundle-interop-v1",
+        "secret_hex": "617474656e752d67756172642d62756e646c652d766563746f72732d76312d66697865642d736563726574"
+      },
+      "witness_keys": [
+        {
+          "alg": "EdDSA",
+          "kid": "witness-interop-v1",
+          "public_key_hex": "175690a2bd6cdde8dc82af9df6529ad86ca740d9adf9cf06caeafd151fa15249"
+        },
+        {
+          "alg": "EdDSA",
+          "kid": "witness-interop-v1-b",
+          "public_key_hex": "99fb1b490a5fb16480f2dac356b30e07152d74c1afa2e70901b7e485d08aca9f"
+        }
+      ]
+    },
+    {
+      "bundle": {
+        "anchor": {
+          "c14n": "JCS",
+          "chain_id": "vectors",
+          "head": "53349075656990a1bde24c34e2a4bcd4b70826a208924a86c9cf2647a3a0fc9e",
+          "kid": "bundle-interop-v1",
+          "seq": 8,
+          "sig": "0c49095924277666675466722fb40d0b297416622a49b50e05896fa550654dcf",
+          "ts": 0,
+          "v": 2,
+          "verified": true
+        },
+        "c14n": "JCS",
+        "chain_id": "vectors",
+        "entries": [
+          {
+            "agent": "orchestrator",
+            "authority": {
+              "constraints": [
+                {
+                  "key": "max_rows",
+                  "max": 100000
+                }
+              ],
+              "scopes": [
+                "crm.*",
+                "mail.send"
+              ],
+              "ttl": 3600
+            },
+            "c14n": "JCS",
+            "chain_id": "vectors",
+            "event": "root",
+            "hash": "fba88ffa70b6d8a976a06d4ccf3e00c573eccd9eccdbac56ced056057da8daa6",
+            "node": "vectors:n0",
+            "params_salt": "098023016893b040de8e953490e91ae4",
+            "prev_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+            "seq": 0,
+            "ts": 1,
+            "v": 2
+          },
+          {
+            "agent": "summarizer",
+            "c14n": "JCS",
+            "chain_id": "vectors",
+            "event": "spawn",
+            "granted": {
+              "constraints": [
+                {
+                  "key": "max_rows",
+                  "max": 5000
+                }
+              ],
+              "scopes": [
+                "crm.read"
+              ],
+              "ttl": 900
+            },
+            "hash": "5339c1271ede46a2b783871e7e65e4f0018e8f141f30ef760e8d3e6b0f31bb8d",
+            "node": "vectors:n1",
+            "parent": "vectors:n0",
+            "prev_hash": "fba88ffa70b6d8a976a06d4ccf3e00c573eccd9eccdbac56ced056057da8daa6",
+            "requested": {
+              "constraints": [
+                {
+                  "key": "max_rows",
+                  "max": 5000
+                }
+              ],
+              "scopes": [
+                "crm.read"
+              ],
+              "ttl": 900
+            },
+            "seq": 1,
+            "task": "summarize Q3 pipeline",
+            "ts": 2,
+            "v": 2
+          },
+          {
+            "adapter": {
+              "hook_path": "wrap_tool",
+              "module": "attenu_guard.adapters.example",
+              "version": "1.0.0"
+            },
+            "authorized_params_hash": "d1901bc20e47587a42017724672f7c5fca81f8a6151a6933e5b62482367586a1",
+            "c14n": "JCS",
+            "call_id": "eb099aeb221783e1442261f15df4fb35",
+            "capture": "wrapper_sync",
+            "chain_id": "vectors",
+            "context": {},
+            "event": "allow",
+            "hash": "6a55969c228f85cca9e5c4ff195fce20fc3a76d8d2afae4788bfa0f3e621340b",
+            "node": "vectors:n0",
+            "prev_hash": "5339c1271ede46a2b783871e7e65e4f0018e8f141f30ef760e8d3e6b0f31bb8d",
+            "scope": "mail.send",
+            "seq": 2,
+            "tool": "mail.send",
+            "ts": 3,
+            "v": 2
+          },
+          {
+            "body_state": "returned",
+            "c14n": "JCS",
+            "call_id": "eb099aeb221783e1442261f15df4fb35",
+            "chain_id": "vectors",
+            "duration_ms": 12,
+            "event": "outcome",
+            "hash": "b5c9da99d2ba0874a150e05307994b35b5c6c3cc7a2dda35a067632404988f62",
+            "invoked_params_hash": "d1901bc20e47587a42017724672f7c5fca81f8a6151a6933e5b62482367586a1",
+            "node": "vectors:n0",
+            "prev_hash": "6a55969c228f85cca9e5c4ff195fce20fc3a76d8d2afae4788bfa0f3e621340b",
+            "seq": 3,
+            "ts": 4,
+            "v": 2
+          },
+          {
+            "adapter": {
+              "hook_path": "wrap_tool",
+              "module": "attenu_guard.adapters.example",
+              "version": "1.0.0"
+            },
+            "authorized_params_hash": "fce526871286f8690b26b26fd968b9ad482f5e34e453b7fb8907fce528457a9c",
+            "c14n": "JCS",
+            "call_id": "15d42567717e39b8ff1881a14ec42f96",
+            "capture": "wrapper_sync",
+            "chain_id": "vectors",
+            "context": {
+              "rows": 120
+            },
+            "event": "allow",
+            "hash": "7230444ce8d0178ca0352ca46bfe8c7518bad7c098f77e0103156bfcc1eb4a7b",
+            "node": "vectors:n1",
+            "prev_hash": "b5c9da99d2ba0874a150e05307994b35b5c6c3cc7a2dda35a067632404988f62",
+            "scope": "crm.read",
+            "seq": 4,
+            "tool": "crm.read",
+            "ts": 5,
+            "v": 2
+          },
+          {
+            "c14n": "JCS",
+            "call_id": "b19e6c109fd52df399317b62beac78b4",
+            "chain_id": "vectors",
+            "context": {
+              "rows": 120
+            },
+            "disposition": "out_of_authority",
+            "event": "deny",
+            "hash": "78288abb02a9742c4059f159b32eaf89a5d7685d2edd7a504df18b9c805e357e",
+            "node": "vectors:n1",
+            "prev_hash": "7230444ce8d0178ca0352ca46bfe8c7518bad7c098f77e0103156bfcc1eb4a7b",
+            "reason": "scope_not_granted",
+            "reasons": [
+              {
+                "code": "scope_not_granted",
+                "constraint": null,
+                "limit": null,
+                "message": "scope 'crm.export' not covered by held scopes ['crm.read']",
+                "requested": "crm.export"
+              }
+            ],
+            "scope": "crm.export",
+            "seq": 5,
+            "tool": "crm.export",
+            "ts": 6,
+            "v": 2
+          },
+          {
+            "body_state": "returned",
+            "c14n": "JCS",
+            "call_id": "15d42567717e39b8ff1881a14ec42f96",
+            "chain_id": "vectors",
+            "duration_ms": 7,
+            "event": "outcome",
+            "hash": "919b70ea66d3a6dcb028d436c606d4503711d465968f2cccca769a14b2d9d28a",
+            "invoked_params_hash": "fce526871286f8690b26b26fd968b9ad482f5e34e453b7fb8907fce528457a9c",
+            "node": "vectors:n1",
+            "prev_hash": "78288abb02a9742c4059f159b32eaf89a5d7685d2edd7a504df18b9c805e357e",
+            "seq": 6,
+            "ts": 7,
+            "v": 2
+          },
+          {
+            "agent": "summarizer",
+            "c14n": "JCS",
+            "chain_id": "vectors",
+            "event": "done",
+            "hash": "9d99da710ca7ae8dd731099360fc5304746df3d926933c6dcdf61e2033bf2c95",
+            "node": "vectors:n1",
+            "prev_hash": "919b70ea66d3a6dcb028d436c606d4503711d465968f2cccca769a14b2d9d28a",
+            "seq": 7,
+            "ts": 8,
+            "v": 2
+          },
+          {
+            "agent": "orchestrator",
+            "c14n": "JCS",
+            "chain_id": "vectors",
+            "event": "done",
+            "hash": "53349075656990a1bde24c34e2a4bcd4b70826a208924a86c9cf2647a3a0fc9e",
+            "node": "vectors:n0",
+            "prev_hash": "9d99da710ca7ae8dd731099360fc5304746df3d926933c6dcdf61e2033bf2c95",
+            "seq": 8,
+            "ts": 9,
+            "v": 2
+          }
+        ],
+        "envelopes": [
+          {
+            "observed": {
+              "at": "2026-09-01T11:00:00Z",
+              "method": "sidecar:ledger-tail",
+              "result": "matched"
+            },
+            "sig": "3311446555bcc0e5d143dddfe6aa3ab1a6261bd842b240897ca79c54622ed2ca50239844ba399242ce5eaf3bce2b452636ab0f624daced848e362798a1eb9905",
+            "subject": {
+              "chain_id": "vectors",
+              "entry_hash": "5339c1271ede46a2b783871e7e65e4f0018e8f141f30ef760e8d3e6b0f31bb8d",
+              "event": "spawn",
+              "node": "vectors:n0",
+              "seq": 1
+            },
+            "typ": "delegation-event-observation",
+            "v": 1,
+            "witness": {
+              "alg": "EdDSA",
+              "kid": "witness-interop-v1"
+            }
+          }
+        ],
+        "note": "offline-verifiable: attenu_guard.evidence.verify_bundle(bundle, signer)",
+        "redaction": {
+          "ok": true,
+          "violations": []
+        },
+        "v": 2
+      },
+      "description": "The ledger and `entry_hash` are untouched; `subject.node` is the only change, set to 'vectors:n0' \u2014 another node in the same chain, so a verifier that looks the entry up by node lands on a real entry that is the WRONG one. The envelope is re-signed. Required: `envelope_subject_mismatch` at the FOUND entry's seq and node, which is the entry `seq` locates (vectors:n1 at seq 1) and not the node the subject names. `seq` is the lookup key and there is nothing to compare it against; the locators are checked against the entry it found, and one that disagrees is this failure at that position. This pins the position rule for a disagreeing locator on its own, since reject_subject_mismatch only exercises the hash.",
+      "expect": "reject",
+      "expect_failures": [
+        {
+          "node": "vectors:n1",
+          "reason": "envelope_subject_mismatch",
+          "seq": 1
+        }
+      ],
+      "expect_states": {
+        "0": "process-asserted",
+        "1": "process-asserted",
+        "2": "process-asserted",
+        "3": "process-asserted",
+        "4": "process-asserted",
+        "5": "process-asserted",
+        "6": "process-asserted",
+        "7": "process-asserted",
+        "8": "process-asserted"
+      },
+      "name": "reject_locator_mismatch",
+      "signer": {
+        "alg": "HS256",
+        "kid": "bundle-interop-v1",
+        "secret_hex": "617474656e752d67756172642d62756e646c652d766563746f72732d76312d66697865642d736563726574"
+      },
+      "witness_keys": [
+        {
+          "alg": "EdDSA",
+          "kid": "witness-interop-v1",
+          "public_key_hex": "175690a2bd6cdde8dc82af9df6529ad86ca740d9adf9cf06caeafd151fa15249"
+        },
+        {
+          "alg": "EdDSA",
+          "kid": "witness-interop-v1-b",
+          "public_key_hex": "99fb1b490a5fb16480f2dac356b30e07152d74c1afa2e70901b7e485d08aca9f"
+        }
+      ]
+    },
+    {
+      "bundle": {
+        "anchor": {
+          "c14n": "JCS",
+          "chain_id": "vectors",
+          "head": "53349075656990a1bde24c34e2a4bcd4b70826a208924a86c9cf2647a3a0fc9e",
+          "kid": "bundle-interop-v1",
+          "seq": 8,
+          "sig": "0c49095924277666675466722fb40d0b297416622a49b50e05896fa550654dcf",
+          "ts": 0,
+          "v": 2,
+          "verified": true
+        },
+        "c14n": "JCS",
+        "chain_id": "vectors",
+        "entries": [
+          {
+            "agent": "orchestrator",
+            "authority": {
+              "constraints": [
+                {
+                  "key": "max_rows",
+                  "max": 100000
+                }
+              ],
+              "scopes": [
+                "crm.*",
+                "mail.send"
+              ],
+              "ttl": 3600
+            },
+            "c14n": "JCS",
+            "chain_id": "vectors",
+            "event": "root",
+            "hash": "fba88ffa70b6d8a976a06d4ccf3e00c573eccd9eccdbac56ced056057da8daa6",
+            "node": "vectors:n0",
+            "params_salt": "098023016893b040de8e953490e91ae4",
+            "prev_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+            "seq": 0,
+            "ts": 1,
+            "v": 2
+          },
+          {
+            "agent": "summarizer",
+            "c14n": "JCS",
+            "chain_id": "vectors",
+            "event": "spawn",
+            "granted": {
+              "constraints": [
+                {
+                  "key": "max_rows",
+                  "max": 5000
+                }
+              ],
+              "scopes": [
+                "crm.read"
+              ],
+              "ttl": 900
+            },
+            "hash": "5339c1271ede46a2b783871e7e65e4f0018e8f141f30ef760e8d3e6b0f31bb8d",
+            "node": "vectors:n1",
+            "parent": "vectors:n0",
+            "prev_hash": "fba88ffa70b6d8a976a06d4ccf3e00c573eccd9eccdbac56ced056057da8daa6",
+            "requested": {
+              "constraints": [
+                {
+                  "key": "max_rows",
+                  "max": 5000
+                }
+              ],
+              "scopes": [
+                "crm.read"
+              ],
+              "ttl": 900
+            },
+            "seq": 1,
+            "task": "summarize Q3 pipeline",
+            "ts": 2,
+            "v": 2
+          },
+          {
+            "adapter": {
+              "hook_path": "wrap_tool",
+              "module": "attenu_guard.adapters.example",
+              "version": "1.0.0"
+            },
+            "authorized_params_hash": "d1901bc20e47587a42017724672f7c5fca81f8a6151a6933e5b62482367586a1",
+            "c14n": "JCS",
+            "call_id": "eb099aeb221783e1442261f15df4fb35",
+            "capture": "wrapper_sync",
+            "chain_id": "vectors",
+            "context": {},
+            "event": "allow",
+            "hash": "6a55969c228f85cca9e5c4ff195fce20fc3a76d8d2afae4788bfa0f3e621340b",
+            "node": "vectors:n0",
+            "prev_hash": "5339c1271ede46a2b783871e7e65e4f0018e8f141f30ef760e8d3e6b0f31bb8d",
+            "scope": "mail.send",
+            "seq": 2,
+            "tool": "mail.send",
+            "ts": 3,
+            "v": 2
+          },
+          {
+            "body_state": "returned",
+            "c14n": "JCS",
+            "call_id": "eb099aeb221783e1442261f15df4fb35",
+            "chain_id": "vectors",
+            "duration_ms": 12,
+            "event": "outcome",
+            "hash": "b5c9da99d2ba0874a150e05307994b35b5c6c3cc7a2dda35a067632404988f62",
+            "invoked_params_hash": "d1901bc20e47587a42017724672f7c5fca81f8a6151a6933e5b62482367586a1",
+            "node": "vectors:n0",
+            "prev_hash": "6a55969c228f85cca9e5c4ff195fce20fc3a76d8d2afae4788bfa0f3e621340b",
+            "seq": 3,
+            "ts": 4,
+            "v": 2
+          },
+          {
+            "adapter": {
+              "hook_path": "wrap_tool",
+              "module": "attenu_guard.adapters.example",
+              "version": "1.0.0"
+            },
+            "authorized_params_hash": "fce526871286f8690b26b26fd968b9ad482f5e34e453b7fb8907fce528457a9c",
+            "c14n": "JCS",
+            "call_id": "15d42567717e39b8ff1881a14ec42f96",
+            "capture": "wrapper_sync",
+            "chain_id": "vectors",
+            "context": {
+              "rows": 120
+            },
+            "event": "allow",
+            "hash": "7230444ce8d0178ca0352ca46bfe8c7518bad7c098f77e0103156bfcc1eb4a7b",
+            "node": "vectors:n1",
+            "prev_hash": "b5c9da99d2ba0874a150e05307994b35b5c6c3cc7a2dda35a067632404988f62",
+            "scope": "crm.read",
+            "seq": 4,
+            "tool": "crm.read",
+            "ts": 5,
+            "v": 2
+          },
+          {
+            "c14n": "JCS",
+            "call_id": "b19e6c109fd52df399317b62beac78b4",
+            "chain_id": "vectors",
+            "context": {
+              "rows": 120
+            },
+            "disposition": "out_of_authority",
+            "event": "deny",
+            "hash": "78288abb02a9742c4059f159b32eaf89a5d7685d2edd7a504df18b9c805e357e",
+            "node": "vectors:n1",
+            "prev_hash": "7230444ce8d0178ca0352ca46bfe8c7518bad7c098f77e0103156bfcc1eb4a7b",
+            "reason": "scope_not_granted",
+            "reasons": [
+              {
+                "code": "scope_not_granted",
+                "constraint": null,
+                "limit": null,
+                "message": "scope 'crm.export' not covered by held scopes ['crm.read']",
+                "requested": "crm.export"
+              }
+            ],
+            "scope": "crm.export",
+            "seq": 5,
+            "tool": "crm.export",
+            "ts": 6,
+            "v": 2
+          },
+          {
+            "body_state": "returned",
+            "c14n": "JCS",
+            "call_id": "15d42567717e39b8ff1881a14ec42f96",
+            "chain_id": "vectors",
+            "duration_ms": 7,
+            "event": "outcome",
+            "hash": "919b70ea66d3a6dcb028d436c606d4503711d465968f2cccca769a14b2d9d28a",
+            "invoked_params_hash": "fce526871286f8690b26b26fd968b9ad482f5e34e453b7fb8907fce528457a9c",
+            "node": "vectors:n1",
+            "prev_hash": "78288abb02a9742c4059f159b32eaf89a5d7685d2edd7a504df18b9c805e357e",
+            "seq": 6,
+            "ts": 7,
+            "v": 2
+          },
+          {
+            "agent": "summarizer",
+            "c14n": "JCS",
+            "chain_id": "vectors",
+            "event": "done",
+            "hash": "9d99da710ca7ae8dd731099360fc5304746df3d926933c6dcdf61e2033bf2c95",
+            "node": "vectors:n1",
+            "prev_hash": "919b70ea66d3a6dcb028d436c606d4503711d465968f2cccca769a14b2d9d28a",
+            "seq": 7,
+            "ts": 8,
+            "v": 2
+          },
+          {
+            "agent": "orchestrator",
+            "c14n": "JCS",
+            "chain_id": "vectors",
+            "event": "done",
+            "hash": "53349075656990a1bde24c34e2a4bcd4b70826a208924a86c9cf2647a3a0fc9e",
+            "node": "vectors:n0",
+            "prev_hash": "9d99da710ca7ae8dd731099360fc5304746df3d926933c6dcdf61e2033bf2c95",
+            "seq": 8,
+            "ts": 9,
+            "v": 2
+          }
+        ],
+        "envelopes": [
+          {
+            "observed": {
+              "at": "2026-09-01T11:00:00Z",
+              "method": "sidecar:ledger-tail",
+              "result": "matched"
+            },
+            "sig": "9d915e8cb279236dbf0263038d9eb3a23859eba4394f8ed05d512af631bb9564684eb8cc9cd8cc95c37fc5c19e3a4d323afbc69752f0bdc4562fe0b21ed08509",
+            "subject": {
+              "chain_id": "vectors",
+              "entry_hash": "5339c1271ede46a2b783871e7e65e4f0018e8f141f30ef760e8d3e6b0f31bb8d",
+              "event": "spawn",
+              "node": "vectors:n1",
+              "seq": 1
+            },
+            "typ": "delegation-event-observation",
+            "v": 1,
+            "witness": {
+              "alg": "EdDSA",
+              "kid": "witness-interop-v1"
+            }
+          },
+          {
+            "observed": {
+              "at": "2026-09-01T11:00:00Z",
+              "method": "sidecar:ledger-tail",
+              "result": "not_matched"
+            },
+            "sig": "91240c692cb1d77222f7d45012f8705e8943d0789538c2e042abe271c8cc200e5e570816343014e04bff5a9a087f6502f79e77e0a515a4f076a9db41eb3dda0d",
+            "subject": {
+              "chain_id": "vectors",
+              "entry_hash": "5339c1271ede46a2b783871e7e65e4f0018e8f141f30ef760e8d3e6b0f31bb8d",
+              "event": "spawn",
+              "node": "vectors:n1",
+              "seq": 1
+            },
+            "typ": "delegation-event-observation",
+            "v": 1,
+            "witness": {
+              "alg": "EdDSA",
+              "kid": "witness-interop-v1-b"
+            }
+          }
+        ],
+        "note": "offline-verifiable: attenu_guard.evidence.verify_bundle(bundle, signer)",
+        "redaction": {
+          "ok": true,
+          "violations": []
+        },
+        "v": 2
+      },
+      "description": "Two envelopes over the SAME entry, the `spawn` at seq 1. Both are honest on their own: the first is valid_spawn_envelope's, signed by 'witness-interop-v1' and saying `matched`; the second is signed by 'witness-interop-v1-b' \u2014 a second key the trust set carries \u2014 over the same subject, saying `not_matched`. Nothing is malformed and both signatures verify, which is the point: a verifier that keeps one state per entry and overwrites it silently reports whichever envelope it read LAST, so the same bundle in the other order scores differently, and anyone who can append an envelope can decide what the earlier witness said. Required: `envelope_duplicate_subject` at the covered entry (vectors:n1 at seq 1), positioned like every other envelope failure, and seq 1 MUST report `process-asserted` \u2014 a contradicted observation is not a clean one. The first envelope's result stands as what that witness said; the ENTRY is what stops being witness-signed.",
+      "expect": "reject",
+      "expect_failures": [
+        {
+          "node": "vectors:n1",
+          "reason": "envelope_duplicate_subject",
+          "seq": 1
+        }
+      ],
+      "expect_states": {
+        "0": "process-asserted",
+        "1": "process-asserted",
+        "2": "process-asserted",
+        "3": "process-asserted",
+        "4": "process-asserted",
+        "5": "process-asserted",
+        "6": "process-asserted",
+        "7": "process-asserted",
+        "8": "process-asserted"
+      },
+      "name": "reject_duplicate_subject",
+      "signer": {
+        "alg": "HS256",
+        "kid": "bundle-interop-v1",
+        "secret_hex": "617474656e752d67756172642d62756e646c652d766563746f72732d76312d66697865642d736563726574"
+      },
+      "witness_keys": [
+        {
+          "alg": "EdDSA",
+          "kid": "witness-interop-v1",
+          "public_key_hex": "175690a2bd6cdde8dc82af9df6529ad86ca740d9adf9cf06caeafd151fa15249"
+        },
+        {
+          "alg": "EdDSA",
+          "kid": "witness-interop-v1-b",
+          "public_key_hex": "99fb1b490a5fb16480f2dac356b30e07152d74c1afa2e70901b7e485d08aca9f"
+        }
+      ]
+    },
+    {
+      "bundle": {
+        "anchor": {
+          "c14n": "JCS",
+          "chain_id": "vectors",
+          "head": "53349075656990a1bde24c34e2a4bcd4b70826a208924a86c9cf2647a3a0fc9e",
+          "kid": "bundle-interop-v1",
+          "seq": 8,
+          "sig": "0c49095924277666675466722fb40d0b297416622a49b50e05896fa550654dcf",
+          "ts": 0,
+          "v": 2,
+          "verified": true
+        },
+        "c14n": "JCS",
+        "chain_id": "vectors",
+        "entries": [
+          {
+            "agent": "orchestrator",
+            "authority": {
+              "constraints": [
+                {
+                  "key": "max_rows",
+                  "max": 100000
+                }
+              ],
+              "scopes": [
+                "crm.*",
+                "mail.send"
+              ],
+              "ttl": 3600
+            },
+            "c14n": "JCS",
+            "chain_id": "vectors",
+            "event": "root",
+            "hash": "fba88ffa70b6d8a976a06d4ccf3e00c573eccd9eccdbac56ced056057da8daa6",
+            "node": "vectors:n0",
+            "params_salt": "098023016893b040de8e953490e91ae4",
+            "prev_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+            "seq": 0,
+            "ts": 1,
+            "v": 2
+          },
+          {
+            "agent": "summarizer",
+            "c14n": "JCS",
+            "chain_id": "vectors",
+            "event": "spawn",
+            "granted": {
+              "constraints": [
+                {
+                  "key": "max_rows",
+                  "max": 5000
+                }
+              ],
+              "scopes": [
+                "crm.read"
+              ],
+              "ttl": 900
+            },
+            "hash": "5339c1271ede46a2b783871e7e65e4f0018e8f141f30ef760e8d3e6b0f31bb8d",
+            "node": "vectors:n1",
+            "parent": "vectors:n0",
+            "prev_hash": "fba88ffa70b6d8a976a06d4ccf3e00c573eccd9eccdbac56ced056057da8daa6",
+            "requested": {
+              "constraints": [
+                {
+                  "key": "max_rows",
+                  "max": 5000
+                }
+              ],
+              "scopes": [
+                "crm.read"
+              ],
+              "ttl": 900
+            },
+            "seq": 1,
+            "task": "summarize Q3 pipeline",
+            "ts": 2,
+            "v": 2
+          },
+          {
+            "adapter": {
+              "hook_path": "wrap_tool",
+              "module": "attenu_guard.adapters.example",
+              "version": "1.0.0"
+            },
+            "authorized_params_hash": "d1901bc20e47587a42017724672f7c5fca81f8a6151a6933e5b62482367586a1",
+            "c14n": "JCS",
+            "call_id": "eb099aeb221783e1442261f15df4fb35",
+            "capture": "wrapper_sync",
+            "chain_id": "vectors",
+            "context": {},
+            "event": "allow",
+            "hash": "6a55969c228f85cca9e5c4ff195fce20fc3a76d8d2afae4788bfa0f3e621340b",
+            "node": "vectors:n0",
+            "prev_hash": "5339c1271ede46a2b783871e7e65e4f0018e8f141f30ef760e8d3e6b0f31bb8d",
+            "scope": "mail.send",
+            "seq": 2,
+            "tool": "mail.send",
+            "ts": 3,
+            "v": 2
+          },
+          {
+            "body_state": "returned",
+            "c14n": "JCS",
+            "call_id": "eb099aeb221783e1442261f15df4fb35",
+            "chain_id": "vectors",
+            "duration_ms": 12,
+            "event": "outcome",
+            "hash": "b5c9da99d2ba0874a150e05307994b35b5c6c3cc7a2dda35a067632404988f62",
+            "invoked_params_hash": "d1901bc20e47587a42017724672f7c5fca81f8a6151a6933e5b62482367586a1",
+            "node": "vectors:n0",
+            "prev_hash": "6a55969c228f85cca9e5c4ff195fce20fc3a76d8d2afae4788bfa0f3e621340b",
+            "seq": 3,
+            "ts": 4,
+            "v": 2
+          },
+          {
+            "adapter": {
+              "hook_path": "wrap_tool",
+              "module": "attenu_guard.adapters.example",
+              "version": "1.0.0"
+            },
+            "authorized_params_hash": "fce526871286f8690b26b26fd968b9ad482f5e34e453b7fb8907fce528457a9c",
+            "c14n": "JCS",
+            "call_id": "15d42567717e39b8ff1881a14ec42f96",
+            "capture": "wrapper_sync",
+            "chain_id": "vectors",
+            "context": {
+              "rows": 120
+            },
+            "event": "allow",
+            "hash": "7230444ce8d0178ca0352ca46bfe8c7518bad7c098f77e0103156bfcc1eb4a7b",
+            "node": "vectors:n1",
+            "prev_hash": "b5c9da99d2ba0874a150e05307994b35b5c6c3cc7a2dda35a067632404988f62",
+            "scope": "crm.read",
+            "seq": 4,
+            "tool": "crm.read",
+            "ts": 5,
+            "v": 2
+          },
+          {
+            "c14n": "JCS",
+            "call_id": "b19e6c109fd52df399317b62beac78b4",
+            "chain_id": "vectors",
+            "context": {
+              "rows": 120
+            },
+            "disposition": "out_of_authority",
+            "event": "deny",
+            "hash": "78288abb02a9742c4059f159b32eaf89a5d7685d2edd7a504df18b9c805e357e",
+            "node": "vectors:n1",
+            "prev_hash": "7230444ce8d0178ca0352ca46bfe8c7518bad7c098f77e0103156bfcc1eb4a7b",
+            "reason": "scope_not_granted",
+            "reasons": [
+              {
+                "code": "scope_not_granted",
+                "constraint": null,
+                "limit": null,
+                "message": "scope 'crm.export' not covered by held scopes ['crm.read']",
+                "requested": "crm.export"
+              }
+            ],
+            "scope": "crm.export",
+            "seq": 5,
+            "tool": "crm.export",
+            "ts": 6,
+            "v": 2
+          },
+          {
+            "body_state": "returned",
+            "c14n": "JCS",
+            "call_id": "15d42567717e39b8ff1881a14ec42f96",
+            "chain_id": "vectors",
+            "duration_ms": 7,
+            "event": "outcome",
+            "hash": "919b70ea66d3a6dcb028d436c606d4503711d465968f2cccca769a14b2d9d28a",
+            "invoked_params_hash": "fce526871286f8690b26b26fd968b9ad482f5e34e453b7fb8907fce528457a9c",
+            "node": "vectors:n1",
+            "prev_hash": "78288abb02a9742c4059f159b32eaf89a5d7685d2edd7a504df18b9c805e357e",
+            "seq": 6,
+            "ts": 7,
+            "v": 2
+          },
+          {
+            "agent": "summarizer",
+            "c14n": "JCS",
+            "chain_id": "vectors",
+            "event": "done",
+            "hash": "9d99da710ca7ae8dd731099360fc5304746df3d926933c6dcdf61e2033bf2c95",
+            "node": "vectors:n1",
+            "prev_hash": "919b70ea66d3a6dcb028d436c606d4503711d465968f2cccca769a14b2d9d28a",
+            "seq": 7,
+            "ts": 8,
+            "v": 2
+          },
+          {
+            "agent": "orchestrator",
+            "c14n": "JCS",
+            "chain_id": "vectors",
+            "event": "done",
+            "hash": "53349075656990a1bde24c34e2a4bcd4b70826a208924a86c9cf2647a3a0fc9e",
+            "node": "vectors:n0",
+            "prev_hash": "9d99da710ca7ae8dd731099360fc5304746df3d926933c6dcdf61e2033bf2c95",
+            "seq": 8,
+            "ts": 9,
+            "v": 2
+          }
+        ],
+        "envelopes": [
+          {
+            "observed": {
+              "at": "2026-09-01T11:00:00Z",
+              "method": "sidecar:ledger-tail",
+              "result": "matched"
+            },
+            "sig": "fde5cede7d397bb45fba283551a1d11dfac1bb076a254ae9ecea74c04f6415cade46fa0bc661b356d78f4b75da196bf7616d4beccaca0da708b2a466f012ac02",
+            "subject": {
+              "chain_id": "vectors",
+              "entry_hash": "5339c1271ede46a2b783871e7e65e4f0018e8f141f30ef760e8d3e6b0f31bb8d",
+              "event": "spawn",
+              "node": "vectors:n1",
+              "seq": 1
+            },
+            "typ": "delegation-event-observation",
+            "v": 1,
+            "witness": {
+              "alg": "none",
+              "kid": "witness-interop-v1"
+            }
+          }
+        ],
+        "note": "offline-verifiable: attenu_guard.evidence.verify_bundle(bundle, signer)",
+        "redaction": {
+          "ok": true,
+          "violations": []
+        },
+        "v": 2
+      },
+      "description": "`witness.alg` set to \"none\", re-signed with 'witness-interop-v1''s real key so the signature is genuine and the kid is one the trust set carries. Everything else is valid_spawn_envelope. envelope v1 defines EdDSA and no other algorithm, so the alg is checked against the CONTRACT and not merely against whatever the trust-set row happens to say: a verifier that compares the envelope's alg with the row's alg accepts this envelope the moment both say \"none\", and one that ignores the alg entirely hands \"none\" or \"HS256\" to its Ed25519 verifier and reports a signature failure, which names the wrong cause. Required: `envelope_unknown_witness` at the covered entry (vectors:n1 at seq 1), and seq 1 MUST report `process-asserted`.",
+      "expect": "reject",
+      "expect_failures": [
+        {
+          "node": "vectors:n1",
+          "reason": "envelope_unknown_witness",
+          "seq": 1
+        }
+      ],
+      "expect_states": {
+        "0": "process-asserted",
+        "1": "process-asserted",
+        "2": "process-asserted",
+        "3": "process-asserted",
+        "4": "process-asserted",
+        "5": "process-asserted",
+        "6": "process-asserted",
+        "7": "process-asserted",
+        "8": "process-asserted"
+      },
+      "name": "reject_unknown_alg",
+      "signer": {
+        "alg": "HS256",
+        "kid": "bundle-interop-v1",
+        "secret_hex": "617474656e752d67756172642d62756e646c652d766563746f72732d76312d66697865642d736563726574"
+      },
+      "witness_keys": [
+        {
+          "alg": "EdDSA",
+          "kid": "witness-interop-v1",
+          "public_key_hex": "175690a2bd6cdde8dc82af9df6529ad86ca740d9adf9cf06caeafd151fa15249"
+        },
+        {
+          "alg": "EdDSA",
+          "kid": "witness-interop-v1-b",
+          "public_key_hex": "99fb1b490a5fb16480f2dac356b30e07152d74c1afa2e70901b7e485d08aca9f"
+        }
+      ]
+    }
+  ],
+  "description": "Observer-envelope vectors (envelope v1) for attenu-guard evidence bundles. An envelope is a witness's Ed25519 signature over the IDENTITY of one committed ledger entry \u2014 `chain_id`, `node`, `seq`, `entry_hash`, `event`, and `call_id` on an allow \u2014 carried beside the ledger in the bundle's top-level `envelopes` array. It is never required: an absent envelope is the status quo and every entry of a bundle without them reports `process-asserted`. A present one must verify, and a broken one lands in the same failure list as the chain-level checks. Each case carries `witness_keys`, the Ed25519 public keys a verifier trusts for it (`public_key_hex` is the raw 32-byte key, lowercase hex; `alg` is EdDSA), and `expect_states`, the per-entry state for EVERY entry in the chain, `witness-signed` or `process-asserted`. `expect` is \"accept\" or \"reject\"; for a rejecting case `expect_failures` is the MINIMAL set of failures that MUST appear, each with the exact reason and the exact position (`seq`/`node`, null when the failure is chain-level). A conformant verifier MAY report more, never fewer, and never at a different position \u2014 subject to two rules: an envelope failure lands only on the hop that envelope covers, never on a hop coverage skipped; and no chain-level integrity failure is ever raised because an envelope failed. `sig` is over JCS(envelope minus its \"sig\" member), lowercase hex over the raw signature bytes; `entry_hash` is the entry's hash recomputed from the bundle as hex(SHA-256(prev_hash_ascii || JCS(entry without hash))). `version` is the compatibility contract and does not move when cases are appended; `revision` does. See tests/vectors/README.md.",
+  "revision": "envelope_vectors_v1.1",
+  "version": "envelope_vectors_v1"
+}
