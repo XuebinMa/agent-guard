@@ -10,6 +10,46 @@ The `[Unreleased]` heading is rolled forward manually before each release; do no
 ## [Unreleased]
 
 ### Added
+- **`guard-verify` scores the attenu-guard observer-envelope corpus: 18 of 18,
+  first run.** An observer envelope is an Ed25519 signature over the identity
+  of one committed ledger entry — the question a ledger cannot answer about
+  itself, which is whether anything outside the writing process ever saw the
+  event. `guard-verify attenu-envelope-vectors` runs the published corpus;
+  `verify_bundle_with_envelopes` is the API.
+
+  **The first number is 18 of 18, and that is not the verifier getting
+  better.** The bundle corpus scored 9 of 17 first, with every check right and
+  every reason name wrong. That result was the argument for publishing the
+  envelope vectors as text *before* anyone implemented them, and attenu-guard's
+  README quotes it as the reason they did. So a clean first run is the
+  process working, not the implementation being sharper — and it says only
+  that two implementations agree on one frozen corpus.
+
+  Both permitted extras land where the corpus says they may: an
+  `envelope_bad_signature` alongside `envelope_non_canonical` on the row whose
+  bytes were re-signed, and a second `envelope_subject_mismatch` on the other
+  covered hop of a rehashed chain.
+
+  Three decisions the corpus pins that are worth naming:
+
+  - **The entry hash is recomputed, never read.** Reading the stored `hash`
+    would let the edit that moved an entry also move what the envelope is
+    compared against, which is exactly the attack the envelope exists to catch.
+  - **An entry is claimed the moment `subject.seq` finds it**, before the
+    envelope is judged on anything else, so a second envelope over one entry
+    cannot escape the one-envelope rule by also being malformed. Without that,
+    array order decides the state.
+  - **`witness.alg` is contract, not negotiation.** Comparing it only against
+    the trust-set row accepts `"none"` the moment both sides say so; ignoring
+    it hands a non-Ed25519 envelope to an Ed25519 verifier and blames the
+    signature, which was never the problem.
+
+  Written from the published format description, without reading either
+  reference implementation — the same discipline as the bundle verifier, since
+  agreement is evidence about the format only when the code is not shared. The
+  fixture's sha256 was checked against the published hash before scoring, and
+  is pinned by a test.
+
 - **Credential isolation has a page, and a way to check it.** The README said
   twice that keeping credentials away from the agent is a deployment decision
   this code cannot enforce, and both times stopped there. A reader who wanted

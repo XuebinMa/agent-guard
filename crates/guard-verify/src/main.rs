@@ -157,6 +157,16 @@ enum Commands {
         #[arg(short, long)]
         vectors: PathBuf,
     },
+    /// Score this verifier against an attenu-guard observer-envelope corpus.
+    ///
+    /// The same minimal-set rule as the bundle corpus, plus a state for every
+    /// entry: an accepting case asserts what each entry is, not merely that
+    /// nothing failed.
+    AttenuEnvelopeVectors {
+        /// Path to an `envelope_vectors_v1`-shaped JSON corpus.
+        #[arg(short, long)]
+        vectors: PathBuf,
+    },
 }
 
 #[derive(Clone, Debug, ValueEnum)]
@@ -723,6 +733,7 @@ fn main() {
         } => cmd_report(audit, since, agent_id, format.clone()),
         Commands::AttenuBundle { bundle, signer } => cmd_attenu_bundle(bundle, signer),
         Commands::AttenuVectors { vectors } => cmd_attenu_vectors(vectors),
+        Commands::AttenuEnvelopeVectors { vectors } => cmd_attenu_envelope_vectors(vectors),
     }
 }
 
@@ -838,6 +849,76 @@ fn cmd_attenu_vectors(vectors_path: &Path) {
                 "        unaccounted calls: {}",
                 score.report.unaccounted_calls.join(", ")
             );
+        }
+        for extra in &score.additional {
+            println!(
+                "        additional (permitted): {} seq={:?} node={:?}",
+                extra.reason, extra.seq, extra.node
+            );
+        }
+    }
+
+    println!();
+    println!("{conformant}/{} conformant", scores.len());
+    if conformant != scores.len() {
+        std::process::exit(1);
+    }
+}
+
+fn cmd_attenu_envelope_vectors(vectors_path: &Path) {
+    let raw = match std::fs::read_to_string(vectors_path) {
+        Ok(raw) => raw,
+        Err(err) => {
+            eprintln!("Failed to read {}: {err}", vectors_path.display());
+            std::process::exit(2);
+        }
+    };
+    let file: attenu::corpus::EnvelopeVectorFile = match serde_json::from_str(&raw) {
+        Ok(file) => file,
+        Err(err) => {
+            eprintln!("Invalid corpus {}: {err}", vectors_path.display());
+            std::process::exit(2);
+        }
+    };
+
+    println!("corpus:   {}", file.version);
+    if let Some(revision) = &file.revision {
+        println!("revision: {revision}");
+    }
+    println!("cases:    {}", file.cases.len());
+    println!();
+
+    let scores = attenu::corpus::score_envelope_corpus(&file);
+    let mut conformant = 0usize;
+    for score in &scores {
+        let status = if score.conformant {
+            conformant += 1;
+            "PASS"
+        } else {
+            "FAIL"
+        };
+        println!("{status}  {}", score.name);
+        for problem in &score.problems {
+            println!("        problem: {problem}");
+        }
+        if let Some(envelopes) = &score.report.envelopes {
+            let witnessed: Vec<String> = envelopes
+                .states
+                .iter()
+                .enumerate()
+                .filter(|(_, state)| state.state() == "witness-signed")
+                .map(|(index, state)| match state {
+                    attenu::EntryWitness::WitnessSigned {
+                        result: Some(result),
+                    } => {
+                        format!("{index} witness-signed ({result})")
+                    }
+                    _ => format!("{index} witness-signed"),
+                })
+                .collect();
+            if !witnessed.is_empty() {
+                println!("        entries: {}", witnessed.join(", "));
+            }
         }
         for extra in &score.additional {
             println!(

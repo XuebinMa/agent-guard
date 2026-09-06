@@ -1,4 +1,5 @@
-use super::corpus::{score_corpus, VectorFile};
+use super::corpus::{score_corpus, score_envelope_corpus, EnvelopeVectorFile, VectorFile};
+use super::envelope::EntryWitness;
 use super::*;
 use sha2::{Digest, Sha256};
 
@@ -183,4 +184,123 @@ fn attenu_containment_is_checked_on_every_dimension() {
             report.failures
         );
     }
+}
+
+const ENVELOPE_CORPUS: &str = include_str!("../../fixtures/attenu/envelope_vectors_v1.json");
+
+fn envelope_corpus() -> EnvelopeVectorFile {
+    serde_json::from_str(ENVELOPE_CORPUS).expect("envelope corpus parses")
+}
+
+/// Same reasoning as the bundle fixture: a conformance result is a claim about
+/// the published bytes, so a silent edit has to fail here rather than quietly
+/// become a claim about our own copy. This hash is the one attenu-guard
+/// published and a second independent runner reported.
+#[test]
+fn attenu_envelope_fixture_bytes_are_pinned() {
+    let digest = Sha256::digest(ENVELOPE_CORPUS.as_bytes());
+    assert_eq!(
+        hex::encode(digest),
+        "6a57d75ebec881d39d5a1805793a20f9a6d7bff021b70782dcb57c43b276df64"
+    );
+    assert_eq!(ENVELOPE_CORPUS.len(), 185_227);
+}
+
+#[test]
+fn attenu_envelope_corpus_version_is_the_one_we_implement() {
+    let file = envelope_corpus();
+    assert_eq!(file.version, "envelope_vectors_v1");
+    assert_eq!(file.revision.as_deref(), Some("envelope_vectors_v1.1"));
+}
+
+/// Every case scores: acceptance matches, every entry's state matches, and
+/// each required failure appears with its exact reason at its exact position.
+#[test]
+fn attenu_envelope_corpus_scores_conformant() {
+    let file = envelope_corpus();
+    assert_eq!(file.cases.len(), 18);
+
+    let scores = score_envelope_corpus(&file);
+    let failed: Vec<String> = scores
+        .iter()
+        .filter(|score| !score.conformant)
+        .map(|score| format!("{}: {}", score.name, score.problems.join("; ")))
+        .collect();
+
+    assert!(failed.is_empty(), "non-conformant cases: {failed:?}");
+}
+
+/// An absent envelope is the status quo, not a downgrade: a bundle written
+/// before this contract existed still verifies, and every entry reports
+/// `process-asserted` rather than the verifier inventing a finding.
+#[test]
+fn attenu_absent_envelopes_leave_the_bundle_exactly_as_it_was() {
+    let file = envelope_corpus();
+    let case = file
+        .cases
+        .iter()
+        .find(|case| case.name == "absent_envelope")
+        .expect("case present");
+    assert!(case.bundle.get("envelopes").is_none());
+
+    let scores = score_envelope_corpus(&file);
+    let score = scores
+        .iter()
+        .find(|score| score.name == "absent_envelope")
+        .expect("scored");
+
+    assert!(score.report.accepted);
+    assert!(score.report.failures.is_empty());
+    let envelopes = score.report.envelopes.as_ref().expect("states reported");
+    assert!(envelopes
+        .states
+        .iter()
+        .all(|state| matches!(state, EntryWitness::ProcessAsserted)));
+}
+
+/// Two honest envelopes over one entry are a contradiction by construction,
+/// so the entry stops being witness-signed. Without this, whichever envelope
+/// was read last would decide the state and the same bundle in the other
+/// array order would score differently.
+#[test]
+fn attenu_a_second_envelope_over_one_entry_forfeits_the_entry() {
+    let file = envelope_corpus();
+    let scores = score_envelope_corpus(&file);
+    let score = scores
+        .iter()
+        .find(|score| score.name == "reject_duplicate_subject")
+        .expect("scored");
+
+    assert!(!score.report.accepted);
+    let envelopes = score.report.envelopes.as_ref().expect("states reported");
+    assert_eq!(
+        envelopes.states[1],
+        EntryWitness::ProcessAsserted,
+        "the covered entry must not keep the first envelope's state"
+    );
+}
+
+/// The subject's `entry_hash` is recomputed from the bundle, never read from
+/// beside it. `reject_masked_bundle_mutation` is the row that separates the
+/// two: the ledger was rewritten consistently and re-anchored, so every
+/// chain-level check passes and only the envelope disagrees.
+#[test]
+fn attenu_envelope_binds_to_a_recomputed_hash_not_a_stored_one() {
+    let file = envelope_corpus();
+    let scores = score_envelope_corpus(&file);
+    let score = scores
+        .iter()
+        .find(|score| score.name == "reject_masked_bundle_mutation")
+        .expect("scored");
+
+    assert!(!score.report.accepted);
+    assert!(
+        score
+            .report
+            .failures
+            .iter()
+            .all(|failure| failure.reason == "envelope_subject_mismatch"),
+        "nothing at chain level may be reported here: {:?}",
+        score.report.failures
+    );
 }
