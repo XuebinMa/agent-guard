@@ -9,6 +9,8 @@ The `[Unreleased]` heading is rolled forward manually before each release; do no
 
 ## [Unreleased]
 
+## [0.2.3] - 2026-09-06
+
 ### Added
 - **`guard-verify` scores the attenu-guard observer-envelope corpus: 18 of 18,
   first run.** An observer envelope is an Ed25519 signature over the identity
@@ -71,6 +73,16 @@ The `[Unreleased]` heading is rolled forward manually before each release; do no
   this project keeps trying not to ship.
 
 ### Fixed
+- **The version bumper enumerates crate manifests instead of listing them.**
+  `scripts/release/bump-version.sh` carried a hand-written list of
+  `crates/*/Cargo.toml`, and `agent-guard-broker` — added at 0.2.2, after that
+  list was written — was silently left behind on this bump. Its `=0.2.2` pin
+  was unsatisfiable against a 0.2.3 workspace, and the only thing that noticed
+  was cargo failing to resolve: `scripts/check-version-consistency.sh` reported
+  the tree consistent, because it checks the version markers and not the
+  inter-crate pins. The list is now a filesystem glob, so a crate added
+  tomorrow is covered today.
+
 - **The plugin now installs the command the hook names.** `npx agent-guard-plugin init`
   installed `guard-hook` and nothing else, while the gate it wired up printed
   `agent-guard push --remote origin --branch main` when it stopped a push. That

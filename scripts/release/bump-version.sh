@@ -65,17 +65,19 @@ def plain(p):
 badge_old = old.replace("-", "--")
 badge_new = new.replace("-", "--")
 
+# Every crate manifest, enumerated rather than listed. The list used to be
+# written out by hand, and `agent-guard-broker` — added at 0.2.2, after the
+# list was — was silently left behind on the 0.2.3 bump: its `=0.2.2` pin was
+# unsatisfiable against a 0.2.3 workspace, and the only thing that noticed was
+# cargo failing to resolve. A crate added tomorrow is covered today.
+crate_manifests = sorted(
+    str(p.relative_to(root)) for p in (root / "crates").glob("*/Cargo.toml")
+)
+
 targets = [
     plain("Cargo.toml"),
     plain("pyproject.toml"),
-    plain("crates/agent-guard-sdk/Cargo.toml"),
-    plain("crates/agent-guard-sandbox/Cargo.toml"),
-    plain("crates/agent-guard-validators/Cargo.toml"),
-    plain("crates/agent-guard-cli/Cargo.toml"),
-    plain("crates/guard-verify/Cargo.toml"),
-    plain("crates/guard-hook/Cargo.toml"),
-    plain("crates/agent-guard-node/Cargo.toml"),
-    plain("crates/agent-guard-python/Cargo.toml"),
+    *(plain(p) for p in crate_manifests),
     plain("crates/agent-guard-node/package.json"),
     plain("crates/agent-guard-node/package-lock.json"),
     plain("crates/agent-guard-python/pyproject.toml"),
