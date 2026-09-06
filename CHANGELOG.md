@@ -71,6 +71,22 @@ The `[Unreleased]` heading is rolled forward manually before each release; do no
   this project keeps trying not to ship.
 
 ### Fixed
+- **The plugin now installs the command the hook names.** `npx agent-guard-plugin init`
+  installed `guard-hook` and nothing else, while the gate it wired up printed
+  `agent-guard push --remote origin --branch main` when it stopped a push. That
+  command ships in `agent-guard-cli`, which was never installed and never
+  mentioned — so the documented first run ended at `command not found`.
+
+  This is the same dead end as the fix below, one step further out: that one
+  made the command parse, and a human still did not have the binary. `init`
+  installs both crates, reports a partial install per binary rather than as one
+  success, and says what each missing binary costs.
+
+  A test reads the hint's own source, extracts every `<name> push --remote`
+  command it prints, and asserts the plugin installs `<name>`. The invariant
+  spans a Rust crate and a Node installer, which is why two rounds of testing
+  each side passed while the path between them was broken.
+
 - **The command the hook tells you to run now runs.** A refused push printed
   `agent-guard push --remote origin --branch main`, and running exactly that
   died on a missing `--policy`. The hint added in 0.2.2 existed to remove a

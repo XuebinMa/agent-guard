@@ -82,7 +82,19 @@ function policyWithFileAudit(presetText, auditFilePath) {
   return presetText;
 }
 
+// The binaries `init` installs, and why each one has to be there.
+//
+// `guard-hook` alone is not enough. When the gate stops a push it names
+// `agent-guard push` as the way to perform it properly, so shipping the gate
+// without the command it names leaves a human at a `command not found` — the
+// dead end the hint exists to remove, moved one step further out.
+const BINARIES = [
+  { crate: 'guard-hook', bin: 'guard-hook', why: 'the PreToolUse gate' },
+  { crate: 'agent-guard-cli', bin: 'agent-guard', why: 'the broker path the gate names' },
+];
+
 module.exports = {
+  BINARIES,
   HOOK_ID,
   MATCHER,
   buildHookEntry,

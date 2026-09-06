@@ -17,7 +17,7 @@ const os = require('node:os');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 
-const { HOOK_ID, withHook, withoutHook, policyWithFileAudit } = require('../lib/init.js');
+const { BINARIES, HOOK_ID, withHook, withoutHook, policyWithFileAudit } = require('../lib/init.js');
 
 const PKG = require('../package.json');
 
@@ -52,8 +52,8 @@ function parseArgs(argv) {
   return opts;
 }
 
-// Locate an executable `guard-hook`: PATH first, then the cargo bin dir.
-function resolveBinary() {
+// Locate an executable by name: PATH first, then the cargo bin dir.
+function resolveBinary(bin) {
   const isWin = process.platform === 'win32';
   const extensions = isWin
     ? (process.env.PATHEXT || '.EXE;.CMD;.BAT').split(';')
@@ -61,7 +61,7 @@ function resolveBinary() {
   for (const dir of (process.env.PATH || '').split(path.delimiter)) {
     if (!dir) continue;
     for (const extension of extensions) {
-      const candidate = path.join(dir, `guard-hook${extension.toLowerCase()}`);
+      const candidate = path.join(dir, `${bin}${extension.toLowerCase()}`);
       try {
         fs.accessSync(candidate, fs.constants.X_OK);
         return candidate;
@@ -70,39 +70,60 @@ function resolveBinary() {
       }
     }
   }
-  const cargoBin = path.join(os.homedir(), '.cargo', 'bin', `guard-hook${isWin ? '.exe' : ''}`);
+  const cargoBin = path.join(os.homedir(), '.cargo', 'bin', `${bin}${isWin ? '.exe' : ''}`);
   if (fs.existsSync(cargoBin)) return cargoBin;
   return null;
 }
 
-function installBinary(dryRun) {
-  const existing = resolveBinary();
+function installOne({ crate, bin, why }, dryRun) {
+  const existing = resolveBinary(bin);
   if (existing) {
-    log(`✓ guard-hook already installed: ${existing}`);
+    log(`✓ ${bin} already installed: ${existing}`);
     return existing;
   }
   if (spawnSync('cargo', ['--version']).status !== 0) {
     warn('! cargo not found. Install Rust (https://rustup.rs) then run:');
-    warn(`    cargo install guard-hook --version ${PKG.version} --locked`);
-    warn('  (the hook fails open until the binary is present, so nothing is blocked meanwhile)');
+    warn(`    cargo install ${crate} --version ${PKG.version} --locked`);
     return null;
   }
   if (dryRun) {
-    log(`[dry-run] would run: cargo install guard-hook --version ${PKG.version} --locked`);
-    return 'guard-hook';
+    log(`[dry-run] would run: cargo install ${crate} --version ${PKG.version} --locked`);
+    return bin;
   }
-  log('Installing guard-hook via cargo (this can take a few minutes)…');
+  log(`Installing ${bin} (${why}) via cargo (this can take a few minutes)…`);
   const r = spawnSync(
     'cargo',
-    ['install', 'guard-hook', '--version', PKG.version, '--locked'],
+    ['install', crate, '--version', PKG.version, '--locked'],
     { stdio: 'inherit' },
   );
   if (r.status !== 0) {
-    warn('! cargo install failed; install manually with:');
-    warn(`    cargo install guard-hook --version ${PKG.version} --locked`);
+    warn(`! cargo install ${crate} failed; install manually with:`);
+    warn(`    cargo install ${crate} --version ${PKG.version} --locked`);
     return null;
   }
-  return resolveBinary() || 'guard-hook';
+  return resolveBinary(bin) || bin;
+}
+
+// Install every binary in BINARIES, not just the gate.
+//
+// The gate alone leaves the human it stops at a `command not found`: it names
+// `agent-guard push` as the way to perform the push properly, and that command
+// ships in a different crate. A partial install is reported per binary rather
+// than as one success, because the two fail independently.
+function installBinaries(dryRun) {
+  const resolved = {};
+  for (const entry of BINARIES) {
+    resolved[entry.bin] = installOne(entry, dryRun);
+  }
+  const missing = BINARIES.filter((entry) => !resolved[entry.bin]);
+  if (missing.length) {
+    warn('');
+    for (const entry of missing) {
+      warn(`! ${entry.bin} is not installed — ${entry.why} is unavailable.`);
+    }
+    warn('  (the hook fails open until guard-hook is present, so nothing is blocked meanwhile)');
+  }
+  return resolved;
 }
 
 function readJsonFile(file) {
@@ -134,7 +155,10 @@ function cmdInit(opts) {
   const auditPath = path.join(agentGuardDir, 'audit.jsonl');
   const settingsPath = opts.settingsPath || path.join(home, '.claude', 'settings.json');
 
-  const binPath = opts.skipBinary ? resolveBinary() || 'guard-hook' : installBinary(opts.dryRun);
+  const resolved = opts.skipBinary
+    ? Object.fromEntries(BINARIES.map((entry) => [entry.bin, resolveBinary(entry.bin) || entry.bin]))
+    : installBinaries(opts.dryRun);
+  const binPath = resolved['guard-hook'];
 
   if (opts.binaryOnly) {
     log('');
@@ -183,14 +207,14 @@ function help() {
 Bootstrap the agent-guard outbound gate into Claude Code.
 
 Usage:
-  npx agent-guard-plugin init [options]          install binary + policy + PreToolUse hook
+  npx agent-guard-plugin init [options]          install binaries + policy + PreToolUse hook
   npx agent-guard-plugin uninstall [--dry-run]   remove the hook from settings.json
 
 Options:
   --dry-run         show changes without writing anything
   --force           overwrite an existing policy file
-  --binary-only     only install the guard-hook binary (use with the marketplace plugin)
-  --skip-binary     do not run cargo install (assume guard-hook is present)
+  --binary-only     only install the binaries (use with the marketplace plugin)
+  --skip-binary     do not run cargo install (assume the binaries are present)
   --agent-id <id>   audit agent id recorded by the hook (default: claude-code)
   --settings <path> target settings.json (default: ~/.claude/settings.json)
   -h, --help        show this help
