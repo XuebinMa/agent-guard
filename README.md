@@ -251,6 +251,11 @@ whatever credential its own process holds, which is a boundary only if the
 agent has none of its own. The Claude Code hook remains fail-open advisory: an
 agent with a credential can still push without consulting any of this.
 
+That gap is closed outside this repository, so
+[Credential isolation](docs/guides/operations/credential-isolation.md) says how
+— and gives you a one-command check that tells you whether you actually have
+it, rather than leaving you to assume.
+
 ---
 
 ## Why Developers Adopt It
