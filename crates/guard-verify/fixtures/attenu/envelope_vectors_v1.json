@@ -4993,9 +4993,308 @@
           "public_key_hex": "99fb1b490a5fb16480f2dac356b30e07152d74c1afa2e70901b7e485d08aca9f"
         }
       ]
+    },
+    {
+      "bundle": {
+        "anchor": {
+          "c14n": "JCS",
+          "chain_id": "vectors",
+          "head": "53349075656990a1bde24c34e2a4bcd4b70826a208924a86c9cf2647a3a0fc9e",
+          "kid": "bundle-interop-v1",
+          "seq": 8,
+          "sig": "0c49095924277666675466722fb40d0b297416622a49b50e05896fa550654dcf",
+          "ts": 0,
+          "v": 2,
+          "verified": true
+        },
+        "c14n": "JCS",
+        "chain_id": "vectors",
+        "entries": [
+          {
+            "agent": "orchestrator",
+            "authority": {
+              "constraints": [
+                {
+                  "key": "max_rows",
+                  "max": 100000
+                }
+              ],
+              "scopes": [
+                "crm.*",
+                "mail.send"
+              ],
+              "ttl": 3600
+            },
+            "c14n": "JCS",
+            "chain_id": "vectors",
+            "event": "root",
+            "hash": "fba88ffa70b6d8a976a06d4ccf3e00c573eccd9eccdbac56ced056057da8daa6",
+            "node": "vectors:n0",
+            "params_salt": "098023016893b040de8e953490e91ae4",
+            "prev_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+            "seq": 0,
+            "ts": 1,
+            "v": 2
+          },
+          {
+            "agent": "summarizer",
+            "c14n": "JCS",
+            "chain_id": "vectors",
+            "event": "spawn",
+            "granted": {
+              "constraints": [
+                {
+                  "key": "max_rows",
+                  "max": 5000
+                }
+              ],
+              "scopes": [
+                "crm.read"
+              ],
+              "ttl": 900
+            },
+            "hash": "5339c1271ede46a2b783871e7e65e4f0018e8f141f30ef760e8d3e6b0f31bb8d",
+            "node": "vectors:n1",
+            "parent": "vectors:n0",
+            "prev_hash": "fba88ffa70b6d8a976a06d4ccf3e00c573eccd9eccdbac56ced056057da8daa6",
+            "requested": {
+              "constraints": [
+                {
+                  "key": "max_rows",
+                  "max": 5000
+                }
+              ],
+              "scopes": [
+                "crm.read"
+              ],
+              "ttl": 900
+            },
+            "seq": 1,
+            "task": "summarize Q3 pipeline",
+            "ts": 2,
+            "v": 2
+          },
+          {
+            "adapter": {
+              "hook_path": "wrap_tool",
+              "module": "attenu_guard.adapters.example",
+              "version": "1.0.0"
+            },
+            "authorized_params_hash": "d1901bc20e47587a42017724672f7c5fca81f8a6151a6933e5b62482367586a1",
+            "c14n": "JCS",
+            "call_id": "eb099aeb221783e1442261f15df4fb35",
+            "capture": "wrapper_sync",
+            "chain_id": "vectors",
+            "context": {},
+            "event": "allow",
+            "hash": "6a55969c228f85cca9e5c4ff195fce20fc3a76d8d2afae4788bfa0f3e621340b",
+            "node": "vectors:n0",
+            "prev_hash": "5339c1271ede46a2b783871e7e65e4f0018e8f141f30ef760e8d3e6b0f31bb8d",
+            "scope": "mail.send",
+            "seq": 2,
+            "tool": "mail.send",
+            "ts": 3,
+            "v": 2
+          },
+          {
+            "body_state": "returned",
+            "c14n": "JCS",
+            "call_id": "eb099aeb221783e1442261f15df4fb35",
+            "chain_id": "vectors",
+            "duration_ms": 12,
+            "event": "outcome",
+            "hash": "b5c9da99d2ba0874a150e05307994b35b5c6c3cc7a2dda35a067632404988f62",
+            "invoked_params_hash": "d1901bc20e47587a42017724672f7c5fca81f8a6151a6933e5b62482367586a1",
+            "node": "vectors:n0",
+            "prev_hash": "6a55969c228f85cca9e5c4ff195fce20fc3a76d8d2afae4788bfa0f3e621340b",
+            "seq": 3,
+            "ts": 4,
+            "v": 2
+          },
+          {
+            "adapter": {
+              "hook_path": "wrap_tool",
+              "module": "attenu_guard.adapters.example",
+              "version": "1.0.0"
+            },
+            "authorized_params_hash": "fce526871286f8690b26b26fd968b9ad482f5e34e453b7fb8907fce528457a9c",
+            "c14n": "JCS",
+            "call_id": "15d42567717e39b8ff1881a14ec42f96",
+            "capture": "wrapper_sync",
+            "chain_id": "vectors",
+            "context": {
+              "rows": 120
+            },
+            "event": "allow",
+            "hash": "7230444ce8d0178ca0352ca46bfe8c7518bad7c098f77e0103156bfcc1eb4a7b",
+            "node": "vectors:n1",
+            "prev_hash": "b5c9da99d2ba0874a150e05307994b35b5c6c3cc7a2dda35a067632404988f62",
+            "scope": "crm.read",
+            "seq": 4,
+            "tool": "crm.read",
+            "ts": 5,
+            "v": 2
+          },
+          {
+            "c14n": "JCS",
+            "call_id": "b19e6c109fd52df399317b62beac78b4",
+            "chain_id": "vectors",
+            "context": {
+              "rows": 120
+            },
+            "disposition": "out_of_authority",
+            "event": "deny",
+            "hash": "78288abb02a9742c4059f159b32eaf89a5d7685d2edd7a504df18b9c805e357e",
+            "node": "vectors:n1",
+            "prev_hash": "7230444ce8d0178ca0352ca46bfe8c7518bad7c098f77e0103156bfcc1eb4a7b",
+            "reason": "scope_not_granted",
+            "reasons": [
+              {
+                "code": "scope_not_granted",
+                "constraint": null,
+                "limit": null,
+                "message": "scope 'crm.export' not covered by held scopes ['crm.read']",
+                "requested": "crm.export"
+              }
+            ],
+            "scope": "crm.export",
+            "seq": 5,
+            "tool": "crm.export",
+            "ts": 6,
+            "v": 2
+          },
+          {
+            "body_state": "returned",
+            "c14n": "JCS",
+            "call_id": "15d42567717e39b8ff1881a14ec42f96",
+            "chain_id": "vectors",
+            "duration_ms": 7,
+            "event": "outcome",
+            "hash": "919b70ea66d3a6dcb028d436c606d4503711d465968f2cccca769a14b2d9d28a",
+            "invoked_params_hash": "fce526871286f8690b26b26fd968b9ad482f5e34e453b7fb8907fce528457a9c",
+            "node": "vectors:n1",
+            "prev_hash": "78288abb02a9742c4059f159b32eaf89a5d7685d2edd7a504df18b9c805e357e",
+            "seq": 6,
+            "ts": 7,
+            "v": 2
+          },
+          {
+            "agent": "summarizer",
+            "c14n": "JCS",
+            "chain_id": "vectors",
+            "event": "done",
+            "hash": "9d99da710ca7ae8dd731099360fc5304746df3d926933c6dcdf61e2033bf2c95",
+            "node": "vectors:n1",
+            "prev_hash": "919b70ea66d3a6dcb028d436c606d4503711d465968f2cccca769a14b2d9d28a",
+            "seq": 7,
+            "ts": 8,
+            "v": 2
+          },
+          {
+            "agent": "orchestrator",
+            "c14n": "JCS",
+            "chain_id": "vectors",
+            "event": "done",
+            "hash": "53349075656990a1bde24c34e2a4bcd4b70826a208924a86c9cf2647a3a0fc9e",
+            "node": "vectors:n0",
+            "prev_hash": "9d99da710ca7ae8dd731099360fc5304746df3d926933c6dcdf61e2033bf2c95",
+            "seq": 8,
+            "ts": 9,
+            "v": 2
+          }
+        ],
+        "envelopes": [
+          {
+            "observed": {
+              "at": "2026-09-01T11:00:00Z",
+              "method": "sidecar:ledger-tail",
+              "result": "matched"
+            },
+            "sig": "9d915e8cb279236dbf0263038d9eb3a23859eba4394f8ed05d512af631bb9564684eb8cc9cd8cc95c37fc5c19e3a4d323afbc69752f0bdc4562fe0b21ed08509",
+            "subject": {
+              "chain_id": "vectors",
+              "entry_hash": "5339c1271ede46a2b783871e7e65e4f0018e8f141f30ef760e8d3e6b0f31bb8d",
+              "event": "spawn",
+              "node": "vectors:n1",
+              "seq": 1
+            },
+            "typ": "delegation-event-observation",
+            "v": 1,
+            "witness": {
+              "alg": "EdDSA",
+              "kid": "witness-interop-v1"
+            }
+          },
+          {
+            "observed": {
+              "at": "2026-09-01T11:00:00Z",
+              "method": "sidecar:ledger-tail",
+              "result": "not_matched"
+            },
+            "sig": "81240c692cb1d77222f7d45012f8705e8943d0789538c2e042abe271c8cc200e5e570816343014e04bff5a9a087f6502f79e77e0a515a4f076a9db41eb3dda0d",
+            "subject": {
+              "chain_id": "vectors",
+              "entry_hash": "5339c1271ede46a2b783871e7e65e4f0018e8f141f30ef760e8d3e6b0f31bb8d",
+              "event": "spawn",
+              "node": "vectors:n1",
+              "seq": 1
+            },
+            "typ": "delegation-event-observation",
+            "v": 1,
+            "witness": {
+              "alg": "EdDSA",
+              "kid": "witness-interop-v1-b"
+            }
+          }
+        ],
+        "note": "offline-verifiable: attenu_guard.evidence.verify_bundle(bundle, signer)",
+        "redaction": {
+          "ok": true,
+          "violations": []
+        },
+        "v": 2
+      },
+      "description": "reject_duplicate_subject with one further change: the second envelope's `sig` has a single hex nibble flipped, so it does not verify. This is the one row besides reject_bad_signature where the witness does NOT re-sign after the change, and the row says so because the file's convention is that it does.\n\nRow 17 cannot separate two verifiers that both reject it. One CLAIMS the entry the moment `subject.seq` finds it and judges the rest of the envelope afterwards; the other judges the envelope first and only counts a claim for one that survived. On row 17 both envelopes are sound, so both verifiers reach the duplicate rule and both report it. Here they part: claiming first reports `envelope_duplicate_subject` at seq 1 and seq 1 falls back to `process-asserted`; judging first stops at the broken signature, never reaches the duplicate rule, counts no claim, and leaves seq 1 reporting `witness-signed` on the strength of the FIRST envelope alone. A consumer reading states is then told the entry is witness-signed while two witnesses contradicted each other \u2014 which is the harm the duplicate rule exists to prevent, reappearing because the second envelope was defective in a second way as well.\n\nRequired: `envelope_duplicate_subject` at the covered entry (vectors:n1 at seq 1), and seq 1 MUST report `process-asserted`. `envelope_bad_signature` at that same seq is a permitted EXTRA and not a required failure: a verifier that counts the claim and then keeps checking the envelope reports both and is conformant, exactly as reject_non_canonical permits an extra `envelope_bad_signature`. Reporting it INSTEAD is not conformant \u2014 that is fewer than the minimal set. Proposed by Xuebin Ma (@XuebinMa, agent-guard) on a2aproject/A2A#1575 after scoring revision envelope_vectors_v1.1 18 of 18; appended after row 18, so nothing above it moved.",
+      "expect": "reject",
+      "expect_failures": [
+        {
+          "node": "vectors:n1",
+          "reason": "envelope_duplicate_subject",
+          "seq": 1
+        }
+      ],
+      "expect_states": {
+        "0": "process-asserted",
+        "1": "process-asserted",
+        "2": "process-asserted",
+        "3": "process-asserted",
+        "4": "process-asserted",
+        "5": "process-asserted",
+        "6": "process-asserted",
+        "7": "process-asserted",
+        "8": "process-asserted"
+      },
+      "name": "reject_duplicate_subject_defective_second",
+      "signer": {
+        "alg": "HS256",
+        "kid": "bundle-interop-v1",
+        "secret_hex": "617474656e752d67756172642d62756e646c652d766563746f72732d76312d66697865642d736563726574"
+      },
+      "witness_keys": [
+        {
+          "alg": "EdDSA",
+          "kid": "witness-interop-v1",
+          "public_key_hex": "175690a2bd6cdde8dc82af9df6529ad86ca740d9adf9cf06caeafd151fa15249"
+        },
+        {
+          "alg": "EdDSA",
+          "kid": "witness-interop-v1-b",
+          "public_key_hex": "99fb1b490a5fb16480f2dac356b30e07152d74c1afa2e70901b7e485d08aca9f"
+        }
+      ]
     }
   ],
   "description": "Observer-envelope vectors (envelope v1) for attenu-guard evidence bundles. An envelope is a witness's Ed25519 signature over the IDENTITY of one committed ledger entry \u2014 `chain_id`, `node`, `seq`, `entry_hash`, `event`, and `call_id` on an allow \u2014 carried beside the ledger in the bundle's top-level `envelopes` array. It is never required: an absent envelope is the status quo and every entry of a bundle without them reports `process-asserted`. A present one must verify, and a broken one lands in the same failure list as the chain-level checks. Each case carries `witness_keys`, the Ed25519 public keys a verifier trusts for it (`public_key_hex` is the raw 32-byte key, lowercase hex; `alg` is EdDSA), and `expect_states`, the per-entry state for EVERY entry in the chain, `witness-signed` or `process-asserted`. `expect` is \"accept\" or \"reject\"; for a rejecting case `expect_failures` is the MINIMAL set of failures that MUST appear, each with the exact reason and the exact position (`seq`/`node`, null when the failure is chain-level). A conformant verifier MAY report more, never fewer, and never at a different position \u2014 subject to two rules: an envelope failure lands only on the hop that envelope covers, never on a hop coverage skipped; and no chain-level integrity failure is ever raised because an envelope failed. `sig` is over JCS(envelope minus its \"sig\" member), lowercase hex over the raw signature bytes; `entry_hash` is the entry's hash recomputed from the bundle as hex(SHA-256(prev_hash_ascii || JCS(entry without hash))). `version` is the compatibility contract and does not move when cases are appended; `revision` does. See tests/vectors/README.md.",
-  "revision": "envelope_vectors_v1.1",
+  "revision": "envelope_vectors_v1.2",
   "version": "envelope_vectors_v1"
 }

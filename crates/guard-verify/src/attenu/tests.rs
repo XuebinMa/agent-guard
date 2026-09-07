@@ -201,16 +201,16 @@ fn attenu_envelope_fixture_bytes_are_pinned() {
     let digest = Sha256::digest(ENVELOPE_CORPUS.as_bytes());
     assert_eq!(
         hex::encode(digest),
-        "6a57d75ebec881d39d5a1805793a20f9a6d7bff021b70782dcb57c43b276df64"
+        "a8be5ff764a86122ca09e94340416b7169531bf5d0cc76a0b1fc87f8272eb16e"
     );
-    assert_eq!(ENVELOPE_CORPUS.len(), 185_227);
+    assert_eq!(ENVELOPE_CORPUS.len(), 197_346);
 }
 
 #[test]
 fn attenu_envelope_corpus_version_is_the_one_we_implement() {
     let file = envelope_corpus();
     assert_eq!(file.version, "envelope_vectors_v1");
-    assert_eq!(file.revision.as_deref(), Some("envelope_vectors_v1.1"));
+    assert_eq!(file.revision.as_deref(), Some("envelope_vectors_v1.2"));
 }
 
 /// Every case scores: acceptance matches, every entry's state matches, and
@@ -218,7 +218,7 @@ fn attenu_envelope_corpus_version_is_the_one_we_implement() {
 #[test]
 fn attenu_envelope_corpus_scores_conformant() {
     let file = envelope_corpus();
-    assert_eq!(file.cases.len(), 18);
+    assert_eq!(file.cases.len(), 19);
 
     let scores = score_envelope_corpus(&file);
     let failed: Vec<String> = scores
@@ -277,6 +277,40 @@ fn attenu_a_second_envelope_over_one_entry_forfeits_the_entry() {
         envelopes.states[1],
         EntryWitness::ProcessAsserted,
         "the covered entry must not keep the first envelope's state"
+    );
+}
+
+/// Row 19, added at revision `envelope_vectors_v1.2` after this verifier's
+/// author reported that row 17 could not separate two orderings.
+///
+/// Row 17 carries two envelopes that are both valid, so a verifier that judges
+/// an envelope before claiming its entry reaches the same answer. Here the
+/// second envelope is also malformed: claiming first still reports the
+/// duplicate and the entry falls back, while judging first reports only the
+/// signature and leaves the entry witness-signed — a state nobody witnessed.
+#[test]
+fn attenu_a_defective_second_envelope_still_forfeits_the_entry() {
+    let file = envelope_corpus();
+    let scores = score_envelope_corpus(&file);
+    let score = scores
+        .iter()
+        .find(|score| score.name == "reject_duplicate_subject_defective_second")
+        .expect("row 19 present");
+
+    assert!(!score.report.accepted);
+    assert!(
+        score.report.failures.iter().any(|failure| {
+            failure.reason == "envelope_duplicate_subject" && failure.seq == Some(1)
+        }),
+        "the duplicate must be reported even though the second envelope is also broken: {:?}",
+        score.report.failures
+    );
+
+    let envelopes = score.report.envelopes.as_ref().expect("states reported");
+    assert_eq!(
+        envelopes.states[1],
+        EntryWitness::ProcessAsserted,
+        "a contested entry must not keep the first envelope's state"
     );
 }
 

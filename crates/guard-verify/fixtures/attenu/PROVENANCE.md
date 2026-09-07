@@ -23,9 +23,13 @@ in `src/attenu/tests.rs` fails if this file changes.
 Vendored verbatim from the same repository,
 `tests/vectors/envelopes/envelope_vectors_v1.json`, unmodified.
 
-- revision: `envelope_vectors_v1.1`, eighteen cases
-- size: 185,227 bytes
-- sha256: `6a57d75ebec881d39d5a1805793a20f9a6d7bff021b70782dcb57c43b276df64`
+- revision: `envelope_vectors_v1.2`, nineteen cases
+- size: 197,346 bytes
+- sha256: `a8be5ff764a86122ca09e94340416b7169531bf5d0cc76a0b1fc87f8272eb16e`
+
+Row 19, `reject_duplicate_subject_defective_second`, exists because this
+verifier's author reported that row 17 could not separate claim-first from
+judge-first ordering. Rows 1 to 18 are unchanged from `v1.1`.
 
 The hash is the one attenu-guard published and a second independent runner
 reported for the same file, so byte identity was established before scoring

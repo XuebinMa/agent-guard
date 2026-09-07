@@ -9,6 +9,29 @@ The `[Unreleased]` heading is rolled forward manually before each release; do no
 
 ## [Unreleased]
 
+### Changed
+- **The envelope corpus moves to `envelope_vectors_v1.2`, and the verifier
+  scores 19 of 19 unmodified.** Row 19,
+  `reject_duplicate_subject_defective_second`, exists because this verifier's
+  author reported that row 17 could not separate two orderings: with both
+  envelopes valid, claiming an entry before judging the envelope and judging
+  before claiming reach the same answer. The new row makes the second envelope
+  also malformed, where they diverge — claim-first reports the duplicate and
+  the entry falls back to `process-asserted`, judge-first reports only the
+  signature and leaves the entry `witness-signed`, a state nobody witnessed.
+
+  attenu-guard confirmed the row separates by moving that block after the
+  signature check in a copy of its own verifier and watching row 19 fail while
+  row 17 still passed. It ships in attenu-guard 0.15.0 and attenu-guard-ts
+  0.9.0; rows 1 to 18 are byte-identical to `v1.1`.
+
+  Passing it required no change here, which is the expected result and not
+  evidence of much: the row was written from this implementation's own
+  description of the gap. What it does establish is that the description was
+  executable — someone else built the discriminating case from it and two
+  independent implementations agree on the answer.
+
+
 ## [0.2.3] - 2026-09-06
 
 ### Added
