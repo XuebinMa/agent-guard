@@ -810,22 +810,55 @@ fn cmd_attenu_bundle(bundle_path: &Path, signer_path: &Path) {
     }
 }
 
-/// Score this verifier against a published vector corpus.
-fn cmd_attenu_vectors(vectors_path: &Path) {
-    let raw = match std::fs::read_to_string(vectors_path) {
+/// Read and parse a corpus file, or exit saying why.
+fn read_corpus<T: serde::de::DeserializeOwned>(path: &Path) -> T {
+    let raw = match std::fs::read_to_string(path) {
         Ok(raw) => raw,
         Err(err) => {
-            eprintln!("Failed to read {}: {err}", vectors_path.display());
+            eprintln!("Failed to read {}: {err}", path.display());
             std::process::exit(2);
         }
     };
-    let file: attenu::corpus::VectorFile = match serde_json::from_str(&raw) {
+    match serde_json::from_str(&raw) {
         Ok(file) => file,
         Err(err) => {
-            eprintln!("Invalid corpus {}: {err}", vectors_path.display());
+            eprintln!("Invalid corpus {}: {err}", path.display());
             std::process::exit(2);
         }
-    };
+    }
+}
+
+fn status(conformant: bool) -> &'static str {
+    if conformant {
+        "PASS"
+    } else {
+        "FAIL"
+    }
+}
+
+/// Failures beyond the required minimal set. Permitted, and printed so a
+/// diagnostic difference between implementations stays visible.
+fn print_extras(additional: &[attenu::Failure]) {
+    for extra in additional {
+        println!(
+            "        additional (permitted): {} seq={:?} node={:?}",
+            extra.reason, extra.seq, extra.node
+        );
+    }
+}
+
+/// Print the tally, and exit non-zero when anything failed.
+fn finish_corpus(conformant: usize, total: usize) {
+    println!();
+    println!("{conformant}/{total} conformant");
+    if conformant != total {
+        std::process::exit(1);
+    }
+}
+
+/// Score this verifier against a published bundle corpus.
+fn cmd_attenu_vectors(vectors_path: &Path) {
+    let file: attenu::corpus::VectorFile = read_corpus(vectors_path);
 
     println!("corpus: {}", file.version);
     println!("cases:  {}", file.cases.len());
@@ -834,13 +867,10 @@ fn cmd_attenu_vectors(vectors_path: &Path) {
     let scores = attenu::corpus::score_corpus(&file);
     let mut conformant = 0usize;
     for score in &scores {
-        let status = if score.conformant {
+        if score.conformant {
             conformant += 1;
-            "PASS"
-        } else {
-            "FAIL"
-        };
-        println!("{status}  {}", score.name);
+        }
+        println!("{}  {}", status(score.conformant), score.name);
         for problem in &score.problems {
             println!("        problem: {problem}");
         }
@@ -850,36 +880,14 @@ fn cmd_attenu_vectors(vectors_path: &Path) {
                 score.report.unaccounted_calls.join(", ")
             );
         }
-        for extra in &score.additional {
-            println!(
-                "        additional (permitted): {} seq={:?} node={:?}",
-                extra.reason, extra.seq, extra.node
-            );
-        }
+        print_extras(&score.additional);
     }
-
-    println!();
-    println!("{conformant}/{} conformant", scores.len());
-    if conformant != scores.len() {
-        std::process::exit(1);
-    }
+    finish_corpus(conformant, scores.len());
 }
 
+/// Score this verifier against a published observer-envelope corpus.
 fn cmd_attenu_envelope_vectors(vectors_path: &Path) {
-    let raw = match std::fs::read_to_string(vectors_path) {
-        Ok(raw) => raw,
-        Err(err) => {
-            eprintln!("Failed to read {}: {err}", vectors_path.display());
-            std::process::exit(2);
-        }
-    };
-    let file: attenu::corpus::EnvelopeVectorFile = match serde_json::from_str(&raw) {
-        Ok(file) => file,
-        Err(err) => {
-            eprintln!("Invalid corpus {}: {err}", vectors_path.display());
-            std::process::exit(2);
-        }
-    };
+    let file: attenu::corpus::EnvelopeVectorFile = read_corpus(vectors_path);
 
     println!("corpus:   {}", file.version);
     if let Some(revision) = &file.revision {
@@ -891,13 +899,10 @@ fn cmd_attenu_envelope_vectors(vectors_path: &Path) {
     let scores = attenu::corpus::score_envelope_corpus(&file);
     let mut conformant = 0usize;
     for score in &scores {
-        let status = if score.conformant {
+        if score.conformant {
             conformant += 1;
-            "PASS"
-        } else {
-            "FAIL"
-        };
-        println!("{status}  {}", score.name);
+        }
+        println!("{}  {}", status(score.conformant), score.name);
         for problem in &score.problems {
             println!("        problem: {problem}");
         }
@@ -906,33 +911,21 @@ fn cmd_attenu_envelope_vectors(vectors_path: &Path) {
                 .states
                 .iter()
                 .enumerate()
-                .filter(|(_, state)| state.state() == "witness-signed")
-                .map(|(index, state)| match state {
-                    attenu::EntryWitness::WitnessSigned {
-                        result: Some(result),
-                    } => {
-                        format!("{index} witness-signed ({result})")
-                    }
-                    _ => format!("{index} witness-signed"),
+                .filter_map(|(index, state)| match state {
+                    attenu::EntryWitness::WitnessSigned { result } => Some(match result {
+                        Some(result) => format!("{index} witness-signed ({result})"),
+                        None => format!("{index} witness-signed"),
+                    }),
+                    attenu::EntryWitness::ProcessAsserted => None,
                 })
                 .collect();
             if !witnessed.is_empty() {
                 println!("        entries: {}", witnessed.join(", "));
             }
         }
-        for extra in &score.additional {
-            println!(
-                "        additional (permitted): {} seq={:?} node={:?}",
-                extra.reason, extra.seq, extra.node
-            );
-        }
+        print_extras(&score.additional);
     }
-
-    println!();
-    println!("{conformant}/{} conformant", scores.len());
-    if conformant != scores.len() {
-        std::process::exit(1);
-    }
+    finish_corpus(conformant, scores.len());
 }
 
 fn read_json(path: &Path) -> serde_json::Value {

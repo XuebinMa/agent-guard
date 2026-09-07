@@ -10,6 +10,31 @@ The `[Unreleased]` heading is rolled forward manually before each release; do no
 ## [Unreleased]
 
 ### Changed
+- **The anomaly histories are `VecDeque`, so dropping the oldest entry is
+  constant rather than a thousand moves.** `cap_history` dropped the front of a
+  `Vec`, which shifts every remaining element. At `HISTORY_CAP` that is a
+  thousand moves on **every tool call**, on the hottest path in the SDK.
+  `pop_front` is O(1).
+
+  `ActorState::call_history` and `denial_history` change type. They are `pub`
+  in a `pub mod`, so this is a public change; nothing in this workspace or in
+  either binding reads them.
+
+- **The two corpus commands stopped being one function written twice.**
+  Reading and parsing a corpus, printing the permitted extras, and the tally
+  with its exit code were duplicated between the bundle and envelope runs.
+
+  Only the parts that pay were extracted. A first attempt also factored out the
+  per-case printing behind a five-parameter helper, which made the file **seven
+  lines longer** than the duplication it removed — two nine-line call sites for
+  one saved loop. That part was put back inline and only the three clear wins
+  kept, for a net seven lines fewer and no duplication left.
+
+  `guard-verify/src/main.rs` remains over the 800-line guidance either way;
+  getting it under means moving commands into modules, which this is not.
+
+
+### Changed
 - **The envelope corpus moves to `envelope_vectors_v1.2`, and the verifier
   scores 19 of 19 unmodified.** Row 19,
   `reject_duplicate_subject_defective_second`, exists because this verifier's

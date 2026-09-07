@@ -27,7 +27,7 @@
 
 use agent_guard_core::{AnomalyConfig, AnomalyEvidence, AnomalyRule};
 use chrono::{DateTime, Utc};
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
@@ -48,8 +48,8 @@ impl Observation {
 }
 
 pub struct ActorState {
-    pub call_history: Vec<Observation>,
-    pub denial_history: Vec<Observation>,
+    pub call_history: VecDeque<Observation>,
+    pub denial_history: VecDeque<Observation>,
     /// Set when the history cap dropped older entries, so the counts derived
     /// from these vectors are lower bounds rather than exact.
     pub calls_truncated: bool,
@@ -68,8 +68,8 @@ pub struct ActorState {
 impl Default for ActorState {
     fn default() -> Self {
         Self {
-            call_history: Vec::new(),
-            denial_history: Vec::new(),
+            call_history: VecDeque::new(),
+            denial_history: VecDeque::new(),
             calls_truncated: false,
             denials_truncated: false,
             is_locked: false,
@@ -126,7 +126,7 @@ fn evidence_from(
     rule: AnomalyRule,
     window_seconds: u64,
     threshold: usize,
-    history: &[Observation],
+    history: &VecDeque<Observation>,
     truncated: bool,
 ) -> AnomalyEvidence {
     AnomalyEvidence {
@@ -141,9 +141,14 @@ fn evidence_from(
 
 /// Drop the oldest entry when the cap is reached, reporting whether anything
 /// was lost so the resulting count is not silently presented as exact.
-fn cap_history(history: &mut Vec<Observation>, truncated: &mut bool) {
+///
+/// The histories are `VecDeque` for this function alone. Dropping the front of
+/// a `Vec` shifts every remaining element, and at the cap that is a thousand
+/// moves on every tool call; `pop_front` is constant. Nothing else here needs a
+/// deque, so a reader who sees one is reading the reason.
+fn cap_history(history: &mut VecDeque<Observation>, truncated: &mut bool) {
     while history.len() > HISTORY_CAP {
-        history.remove(0);
+        history.pop_front();
         *truncated = true;
     }
 }
@@ -193,7 +198,7 @@ impl AnomalyDetector {
         let call_window = Duration::from_secs(config.rate_limit.window_seconds);
         let call_cutoff = now - call_window;
         state.call_history.retain(|o| o.at > call_cutoff);
-        state.call_history.push(observation);
+        state.call_history.push_back(observation);
         cap_history(&mut state.call_history, &mut state.calls_truncated);
 
         if state.call_history.len() > config.rate_limit.max_calls {
@@ -273,7 +278,7 @@ impl AnomalyDetector {
             return;
         }
 
-        state.denial_history.push(observation);
+        state.denial_history.push_back(observation);
         cap_history(&mut state.denial_history, &mut state.denials_truncated);
 
         let fuse_window = Duration::from_secs(config.deny_fuse.window_seconds);
