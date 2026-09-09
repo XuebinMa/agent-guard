@@ -132,6 +132,7 @@ fn verify(
     }
     binding::check_call_id_uniqueness(&entries, &mut failures);
     let unaccounted_calls = binding::check_execution_binding(&entries, &mut failures);
+    authority::check_policy_field(&entries, &mut failures);
     authority::check_authority(&entries, &mut failures);
 
     let envelopes = trust

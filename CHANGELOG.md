@@ -9,6 +9,35 @@ The `[Unreleased]` heading is rolled forward manually before each release; do no
 
 ## [Unreleased]
 
+### Fixed
+- **The bundle corpus moves to `bundle_vectors_v1.4`, and this verifier scored
+  17 of 20 against it before knowing the field existed.** Two rows added at
+  v1.4 pin the `policy` field, and one added at v1.3 pins the accepting case
+  none of it was implemented against here.
+
+  `policy` marks an allow the adapter let through without an authorization
+  check. Its scope is a label rather than a claim of held authority, so a
+  verifier must not test it for containment — running an honest un-gated allow
+  through containment rejects a bundle for something the entry never asserted.
+  That much this build got wrong by rejecting the accepting row.
+
+  The other half is where the corpus is sharper than the obvious reading:
+  **the exemption is earned by the one value the format defines, not by the
+  field being present.** Keying on presence lets a marker anyone can write
+  excuse an out-of-authority action. And `policy` is allow-only, so a `spawn`
+  carrying even a defined value is invalid at the spawn.
+
+  The check runs on every bundle rather than inside the execution-binding
+  pass. Binding is checked on `schema_version=2` chains only, so a `policy`
+  check living there never runs on a v1 chain and every undefined value buys
+  the exemption it should not have — which the corpus README names as the
+  mistake reference implementations have made.
+
+  One change, after which 20 of 20. attenu-guard reports that its own
+  unreleased branch and its TypeScript verifier had the same hole, caught in
+  pre-release review; nothing released carried it.
+
+
 ### Changed
 - **The anomaly histories are `VecDeque`, so dropping the oldest entry is
   constant rather than a thousand moves.** `cap_history` dropped the front of a

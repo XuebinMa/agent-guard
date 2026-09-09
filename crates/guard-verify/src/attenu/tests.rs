@@ -18,9 +18,9 @@ fn attenu_corpus_fixture_bytes_are_pinned() {
     let digest = Sha256::digest(CORPUS.as_bytes());
     assert_eq!(
         hex::encode(digest),
-        "54311d68c8342c01ce233f4b1aea251125a4f3323fd9776c01843d3b2f5700ea"
+        "58d3546d67b1bafd8c96e0a01ae80b4b722f46af3459f19ee2b0ef34893da00d"
     );
-    assert_eq!(CORPUS.len(), 146_765);
+    assert_eq!(CORPUS.len(), 175_552);
 }
 
 #[test]
@@ -33,7 +33,7 @@ fn attenu_corpus_version_is_the_one_we_implement() {
 #[test]
 fn attenu_bundle_corpus_scores_conformant() {
     let file = corpus();
-    assert_eq!(file.cases.len(), 17);
+    assert_eq!(file.cases.len(), 20);
 
     let scores = score_corpus(&file);
     let failed: Vec<String> = scores
@@ -184,6 +184,65 @@ fn attenu_containment_is_checked_on_every_dimension() {
             report.failures
         );
     }
+}
+
+/// `policy` marks an allow the adapter let through without an authorization
+/// check, so its scope is a label rather than a claim of held authority and
+/// there is nothing to contain. Running it through containment rejects an
+/// honest bundle for something the entry never asserted.
+#[test]
+fn attenu_an_ungated_allow_is_not_tested_for_containment() {
+    let score = score_for("valid_bundle_v2_ungated_allow");
+    assert!(
+        score.report.accepted,
+        "an honest un-gated allow must not be rejected: {:?}",
+        score.report.failures
+    );
+}
+
+/// The exemption is earned by the one value the format defines, not by the
+/// field being present. Keying on presence lets any marker excuse an
+/// out-of-authority action.
+#[test]
+fn attenu_an_undefined_policy_value_buys_no_exemption() {
+    let score = score_for("reject_unknown_policy_value");
+    assert!(!score.report.accepted);
+    for reason in ["invalid_allow", "containment"] {
+        assert!(
+            score
+                .report
+                .failures
+                .iter()
+                .any(|failure| { failure.reason == reason && failure.seq == Some(6) }),
+            "{reason} must be reported at seq 6: {:?}",
+            score.report.failures
+        );
+    }
+}
+
+/// `policy` answers how an allow came to be. Anywhere else it means nothing,
+/// so checking the value without checking where it may appear accepts this.
+#[test]
+fn attenu_policy_outside_an_allow_is_reported_where_it_sits() {
+    let score = score_for("reject_policy_on_spawn");
+    assert!(!score.report.accepted);
+    assert!(
+        score
+            .report
+            .failures
+            .iter()
+            .any(|failure| { failure.reason == "policy_on_non_allow" && failure.seq == Some(1) }),
+        "the spawn is where it sits: {:?}",
+        score.report.failures
+    );
+}
+
+/// One scored case by name.
+fn score_for(name: &str) -> super::corpus::CaseScore {
+    score_corpus(&corpus())
+        .into_iter()
+        .find(|score| score.name == name)
+        .expect("case present in the corpus")
 }
 
 const ENVELOPE_CORPUS: &str = include_str!("../../fixtures/attenu/envelope_vectors_v1.json");

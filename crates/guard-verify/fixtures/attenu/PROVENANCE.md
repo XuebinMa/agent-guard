@@ -5,9 +5,14 @@
 `tests/vectors/bundles/bundle_vectors_v1.json`, which is licensed
 Apache-2.0. It is unmodified.
 
-- revision: the `bundle_vectors_v1.2` corpus shipped in attenu-guard 0.12.1, taken at tag `v0.12.1`
-- size: 146,765 bytes
-- sha256: `54311d68c8342c01ce233f4b1aea251125a4f3323fd9776c01843d3b2f5700ea`
+- revision: `bundle_vectors_v1.4`, twenty cases, shipped in attenu-guard 0.16.0 and attenu-guard-ts 0.10.0
+- size: 175,552 bytes
+- sha256: `58d3546d67b1bafd8c96e0a01ae80b4b722f46af3459f19ee2b0ef34893da00d`
+
+Rows 19 and 20 pin the `policy` field: an allow may carry it, the only value
+v1 defines is `unlisted`, and an undefined value buys no containment
+exemption. This verifier scored **17 of 20** against them before the field
+existed here.
 
 It supersedes the 69,573-byte `v0.11.0` revision this directory carried
 first (sha256 `90d7fa70…`), which had eight cases and no delegation
