@@ -9,6 +9,43 @@ The `[Unreleased]` heading is rolled forward manually before each release; do no
 
 ## [Unreleased]
 
+### Changed
+- **The push preview leads with what you must not skim past, and a shape the
+  broker will not perform is declined before you are asked.**
+
+  Every preview rendered as the same block with different values in it, so a
+  routine fast-forward and a push that discards remote history were the same
+  shape to a skimming eye. Anthropic's telemetry puts approval at roughly 93%
+  of prompts, and a study where the malicious command was printed directly
+  above the prompt still had two thirds of readers approve it — so more text is
+  not the fix. What pharmacy did for look-alike drug names was make the
+  *difference* salient rather than the label longer, and that is what this is:
+  a non-fast-forward or an undetermined update now states its consequence
+  above the details instead of inside a line of equal weight.
+
+  Deliberately not fired on: commit count. Without knowing what the reader
+  expected, a large number is not a surprise, and a marker that fires on volume
+  is one people learn to dismiss.
+
+  Separately, `run_push` now declines a shape `execute_push` will not perform,
+  before asking and before issuing a grant. It used to ask, spend a one-use
+  grant, and then refuse at execution — so a human paid attention and an
+  approval for a refusal that was knowable before either. `RefUpdateKind::is_executable`
+  is the one place that set is written; `execute_push` reads it too, because
+  two copies drift silently and the drift is an offer the execution then
+  refuses.
+
+  **A read-back confirmation was written and removed.** Requiring the branch
+  name typed back is the surgical time-out, and it was the other half of this
+  change until running it showed there is nothing to gate: every shape that
+  raises a consequence is one the broker refuses anyway, so it only asked a
+  human to type in front of a wall. Worth revisiting if the executable set
+  grows to include a shape worth pausing over; shipping it now would have been
+  friction sold as safety.
+
+  `preview.rs` is a new module. The ordinary path is byte-for-byte unchanged:
+  a fast-forward still prints what it printed and still costs one keystroke.
+
 ## [0.2.4] - 2026-09-09
 
 ### Security
