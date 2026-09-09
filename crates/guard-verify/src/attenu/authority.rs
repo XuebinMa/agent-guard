@@ -84,6 +84,33 @@ fn scope_matches(pattern: &str, scope: &str) -> bool {
 /// Walk the ledger in order, tracking each node's authority as it is
 /// established, and check every delegation and every allow against it.
 ///
+/// The only `policy` value this format version defines.
+const DEFINED_POLICY: &str = "unlisted";
+
+/// Where `policy` may appear, and what it may say.
+///
+/// `policy` answers how an *allow* came to be, so on a `spawn`, `root`,
+/// `outcome` or `deny` it means nothing and the entry is invalid. On an allow,
+/// the only value v1 defines is `unlisted`.
+///
+/// This runs on every bundle rather than inside the execution-binding pass.
+/// Binding is checked on `schema_version=2` chains only, so a `policy` check
+/// living there never runs on a v1 chain — and every undefined value then buys
+/// the containment exemption it should not have. The corpus README names that
+/// as the mistake reference implementations have made.
+pub fn check_policy_field(entries: &[Value], failures: &mut Vec<Failure>) {
+    for entry in entries {
+        let Some(policy) = entry.get("policy") else {
+            continue;
+        };
+        if entry_str(entry, "event").as_deref() != Some("allow") {
+            failures.push(Failure::at(entry, "policy_on_non_allow"));
+        } else if policy.as_str() != Some(DEFINED_POLICY) {
+            failures.push(Failure::at(entry, "invalid_allow"));
+        }
+    }
+}
+
 /// The corpus names the two failures these rules produce: `monotonicity` for
 /// a delegation granting more than its parent holds, `containment` for an
 /// allow authorizing a scope outside what the acting node was granted. Both
@@ -120,6 +147,18 @@ pub fn check_authority(entries: &[Value], failures: &mut Vec<Failure>) {
                 authorities.insert(node, granted);
             }
             Some("allow") => {
+                // A `policy`-marked allow records a call the adapter let
+                // through without an authorization check. Its `scope` is a
+                // label, not a claim of held authority, so there is nothing to
+                // contain and testing it rejects an honest bundle.
+                //
+                // The exemption is earned by the one value the format defines,
+                // never by the field being present: keying on presence lets a
+                // marker anyone can write excuse an out-of-authority action,
+                // which is the whole point of the row that pins it.
+                if entry.get("policy").and_then(Value::as_str) == Some(DEFINED_POLICY) {
+                    continue;
+                }
                 let Some(scope) = entry_str(entry, "scope") else {
                     continue;
                 };
