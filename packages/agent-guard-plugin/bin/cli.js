@@ -75,33 +75,59 @@ function resolveBinary(bin) {
   return null;
 }
 
-function installOne({ crate, bin, why }, dryRun) {
-  const existing = resolveBinary(bin);
-  if (existing) {
-    log(`✓ ${bin} already installed: ${existing}`);
-    return existing;
+function cargoBinaryPath(bin) {
+  const root = process.env.CARGO_INSTALL_ROOT || process.env.CARGO_HOME || path.join(os.homedir(), '.cargo');
+  return path.join(root, 'bin', `${bin}${process.platform === 'win32' ? '.exe' : ''}`);
+}
+
+function hasExactVersion(executable, bin, version, run = spawnSync) {
+  if (!executable) return false;
+  const result = run(executable, ['--version'], { encoding: 'utf8' });
+  if (result.status !== 0) return false;
+  return String(result.stdout || '').trim() === `${bin} ${version}`;
+}
+
+function installOne({ crate, bin, why }, dryRun, operations = {}) {
+  const resolve = operations.resolveBinary || resolveBinary;
+  const cargoPath = operations.cargoBinaryPath || cargoBinaryPath;
+  const run = operations.spawnSync || spawnSync;
+  const existing = resolve(bin);
+  const cargoBinary = cargoPath(bin);
+  for (const candidate of [...new Set([existing, cargoBinary].filter(Boolean))]) {
+    if (hasExactVersion(candidate, bin, PKG.version, run)) {
+      log(`✓ ${bin} ${PKG.version} installed: ${candidate}`);
+      return candidate;
+    }
   }
-  if (spawnSync('cargo', ['--version']).status !== 0) {
+
+  if (existing) {
+    warn(`! ${existing} is not ${bin} ${PKG.version}; refusing to reuse it.`);
+  }
+  if (run('cargo', ['--version']).status !== 0) {
     warn('! cargo not found. Install Rust (https://rustup.rs) then run:');
-    warn(`    cargo install ${crate} --version ${PKG.version} --locked`);
+    warn(`    cargo install ${crate} --version ${PKG.version} --locked --force`);
     return null;
   }
   if (dryRun) {
-    log(`[dry-run] would run: cargo install ${crate} --version ${PKG.version} --locked`);
+    log(`[dry-run] would run: cargo install ${crate} --version ${PKG.version} --locked --force`);
     return bin;
   }
   log(`Installing ${bin} (${why}) via cargo (this can take a few minutes)…`);
-  const r = spawnSync(
+  const r = run(
     'cargo',
-    ['install', crate, '--version', PKG.version, '--locked'],
+    ['install', crate, '--version', PKG.version, '--locked', '--force'],
     { stdio: 'inherit' },
   );
   if (r.status !== 0) {
     warn(`! cargo install ${crate} failed; install manually with:`);
-    warn(`    cargo install ${crate} --version ${PKG.version} --locked`);
+    warn(`    cargo install ${crate} --version ${PKG.version} --locked --force`);
     return null;
   }
-  return resolveBinary(bin) || bin;
+  if (!hasExactVersion(cargoBinary, bin, PKG.version, run)) {
+    warn(`! cargo completed, but ${cargoBinary} is not ${bin} ${PKG.version}.`);
+    return null;
+  }
+  return cargoBinary;
 }
 
 // Install every binary in BINARIES, not just the gate.
@@ -246,4 +272,8 @@ function main() {
   }
 }
 
-main();
+if (require.main === module) {
+  main();
+}
+
+module.exports = { cargoBinaryPath, hasExactVersion, installOne };

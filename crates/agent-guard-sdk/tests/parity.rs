@@ -175,11 +175,15 @@ fn test_parity_network_outbound() {
     }
 
     let guard = Guard::from_yaml("version: 1\ndefault_mode: full_access").unwrap();
-    // Try a simple ping or curl
+    // Keep a host-level deadline even when the sandbox drops packets instead
+    // of returning a permission error. Without it, the release gate can wait
+    // indefinitely on a network policy that is working as intended.
     let cmd = if cfg!(windows) {
-        "ping -n 1 8.8.8.8"
+        "ping -n 1 -w 2000 8.8.8.8"
+    } else if cfg!(target_os = "macos") {
+        "ping -c 1 -t 2 8.8.8.8"
     } else {
-        "ping -c 1 8.8.8.8"
+        "ping -c 1 -w 2 8.8.8.8"
     };
 
     let res = guard.execute(

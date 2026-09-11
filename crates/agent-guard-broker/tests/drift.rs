@@ -10,7 +10,14 @@
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-use agent_guard_broker::{drift_against, resolve_push_transaction, Drift};
+use agent_guard_broker::{BrokerGitOptions, Drift, PushBroker};
+
+fn broker() -> PushBroker {
+    PushBroker::new(BrokerGitOptions {
+        trusted_config: None,
+        allow_local_file_remote: true,
+    })
+}
 
 fn git(repo: &Path, args: &[&str]) -> String {
     let out = Command::new("git")
@@ -63,9 +70,12 @@ fn repo_with_remote() -> (tempfile::TempDir, PathBuf, PathBuf) {
 #[test]
 fn an_unchanged_repository_reports_no_drift() {
     let (_dir, work, _remote) = repo_with_remote();
-    let approved = resolve_push_transaction(&work, "origin", "main").expect("resolves");
+    let broker = broker();
+    let approved = broker
+        .resolve_push_transaction(&work, "origin", "main")
+        .expect("resolves");
 
-    let drift = drift_against(&approved, &work).expect("re-resolves");
+    let drift = broker.drift_against(&approved, &work).expect("re-resolves");
 
     assert!(drift.is_empty(), "unexpected drift: {drift:?}");
 }
@@ -75,17 +85,22 @@ fn an_unchanged_repository_reports_no_drift() {
 #[test]
 fn a_further_local_commit_is_drift() {
     let (_dir, work, _remote) = repo_with_remote();
-    let approved = resolve_push_transaction(&work, "origin", "main").expect("resolves");
+    let broker = broker();
+    let approved = broker
+        .resolve_push_transaction(&work, "origin", "main")
+        .expect("resolves");
 
     let sneaked = commit(&work, "added after approval");
 
-    let drift = drift_against(&approved, &work).expect("re-resolves");
+    let drift = broker.drift_against(&approved, &work).expect("re-resolves");
 
     assert!(
         drift.contains(&Drift::LocalMoved),
         "a new local commit must be drift: {drift:?}"
     );
-    let current = resolve_push_transaction(&work, "origin", "main").expect("resolves");
+    let current = broker
+        .resolve_push_transaction(&work, "origin", "main")
+        .expect("resolves");
     assert_eq!(current.local_oid, sneaked);
 }
 
@@ -94,7 +109,10 @@ fn a_further_local_commit_is_drift() {
 #[test]
 fn a_remote_advanced_by_someone_else_is_drift() {
     let (_dir, work, remote) = repo_with_remote();
-    let approved = resolve_push_transaction(&work, "origin", "main").expect("resolves");
+    let broker = broker();
+    let approved = broker
+        .resolve_push_transaction(&work, "origin", "main")
+        .expect("resolves");
 
     // A second clone stands in for the other party.
     let other = _dir.path().join("other");
@@ -109,7 +127,7 @@ fn a_remote_advanced_by_someone_else_is_drift() {
     commit(&other, "theirs");
     git(&other, &["push", "origin", "main"]);
 
-    let drift = drift_against(&approved, &work).expect("re-resolves");
+    let drift = broker.drift_against(&approved, &work).expect("re-resolves");
 
     assert!(
         drift.contains(&Drift::RemoteMoved),
@@ -121,7 +139,10 @@ fn a_remote_advanced_by_someone_else_is_drift() {
 #[test]
 fn a_repointed_remote_is_drift() {
     let (_dir, work, _remote) = repo_with_remote();
-    let approved = resolve_push_transaction(&work, "origin", "main").expect("resolves");
+    let broker = broker();
+    let approved = broker
+        .resolve_push_transaction(&work, "origin", "main")
+        .expect("resolves");
 
     let elsewhere = _dir.path().join("elsewhere.git");
     Command::new("git")
@@ -134,7 +155,7 @@ fn a_repointed_remote_is_drift() {
         &["remote", "set-url", "origin", elsewhere.to_str().unwrap()],
     );
 
-    let drift = drift_against(&approved, &work).expect("re-resolves");
+    let drift = broker.drift_against(&approved, &work).expect("re-resolves");
 
     assert!(
         drift.contains(&Drift::RemoteUrlChanged),
@@ -148,7 +169,10 @@ fn a_repointed_remote_is_drift() {
 #[test]
 fn drift_is_detected_even_when_the_update_kind_is_unchanged() {
     let (_dir, work, _remote) = repo_with_remote();
-    let approved = resolve_push_transaction(&work, "origin", "main").expect("resolves");
+    let broker = broker();
+    let approved = broker
+        .resolve_push_transaction(&work, "origin", "main")
+        .expect("resolves");
     assert_eq!(
         approved.kind,
         agent_guard_broker::RefUpdateKind::FastForward
@@ -156,7 +180,9 @@ fn drift_is_detected_even_when_the_update_kind_is_unchanged() {
 
     commit(&work, "third");
 
-    let current = resolve_push_transaction(&work, "origin", "main").expect("resolves");
+    let current = broker
+        .resolve_push_transaction(&work, "origin", "main")
+        .expect("resolves");
     assert_eq!(current.kind, approved.kind, "the kind is unchanged");
     assert_ne!(
         current.digest(),
@@ -164,6 +190,6 @@ fn drift_is_detected_even_when_the_update_kind_is_unchanged() {
         "but the effect is not, and the digest must say so"
     );
 
-    let drift = drift_against(&approved, &work).expect("re-resolves");
+    let drift = broker.drift_against(&approved, &work).expect("re-resolves");
     assert!(!drift.is_empty());
 }

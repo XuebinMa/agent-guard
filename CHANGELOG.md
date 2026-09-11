@@ -9,7 +9,45 @@ The `[Unreleased]` heading is rolled forward manually before each release; do no
 
 ## [Unreleased]
 
+## [0.2.4] - 2026-09-09
+
+### Security
+- **The push broker no longer lets an agent-controlled repository choose what
+  the credential-bearing Git process executes or where it pushes.** Versions
+  0.2.2 and 0.2.3 previewed `remote.<name>.url` but executed `git push` with the
+  remote name. A configured `pushurl` could therefore send the approved object
+  to a different destination while the receipt named the fetch URL. The same
+  process loaded repository `pre-push` hooks and execution-bearing Git config.
+
+  The broker now resolves exactly one repository-local push URL and uses that
+  literal URL for both `ls-remote` and `push`. Remote contact and execution run
+  from a broker-owned temporary bare snapshot containing regular refs and
+  primary objects but no repository config, hooks, alternates or replace refs.
+  HTTPS and SSH are allowed by default; other transports fail closed and local
+  files require an explicit test/demo opt-in.
+
+- **The broker reads credential and transport configuration only from a
+  dedicated host-owned file.** `agent-guard push --git-config <path>`,
+  `AGENT_GUARD_BROKER_GIT_CONFIG`, and
+  `~/.agent-guard/broker.gitconfig` form the lookup order. The file is copied
+  before use and limited to `credential.*`, `http.*`, and `ssh.variant`.
+  Repository paths, symlinks, group/world-writable files, includes, URL
+  rewrites and execution-bearing keys are refused.
+
+- **The hook no longer turns an unusual remote or branch into an injectable
+  remediation command.** Copyable broker hints are emitted only for the
+  broker's restricted plain-name grammar; whitespace, shell metacharacters,
+  quotes, substitutions, backslashes, newlines and option-like names receive
+  prose guidance with no runnable command.
+
 ### Fixed
+- The transaction used for grant spending is now the same object used by Git
+  and sealed into the receipt. A grant consumed before a later refusal remains
+  named in that receipt, and expected negative Git statuses are distinguished
+  from fatal transport failures.
+- The npm plugin verifies the exact version of both installed binaries. A
+  stale or unrelated PATH binary is not reused; the matching cargo-installed
+  binary is force-installed and verified before being wired into the hook.
 - **The bundle corpus moves to `bundle_vectors_v1.4`, and this verifier scored
   17 of 20 against it before knowing the field existed.** Two rows added at
   v1.4 pin the `policy` field, and one added at v1.3 pins the accepting case

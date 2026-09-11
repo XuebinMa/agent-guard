@@ -21,7 +21,7 @@ use std::path::{Path, PathBuf};
 use std::process;
 
 use agent_guard_broker::{
-    execute_push_with_receipt, issue_grant, resolve_push_transaction, PushAttempt, PushTransaction,
+    issue_grant, validate_push_target, BrokerGitOptions, PushAttempt, PushBroker, PushTransaction,
     RefUpdateKind, Witness,
 };
 use agent_guard_sdk::approval::{
@@ -92,7 +92,16 @@ enum Commands {
         /// Where one-use authorizations are kept.
         #[arg(long)]
         grants: Option<PathBuf>,
-        /// Write the receipt here as JSON. It is printed either way.
+        /// Host-owned Git config used only for credentials and HTTP/SSH
+        /// transport settings. Defaults to `$AGENT_GUARD_BROKER_GIT_CONFIG`,
+        /// then `~/.agent-guard/broker.gitconfig`.
+        #[arg(long)]
+        git_config: Option<PathBuf>,
+        /// Permit a local filesystem remote. Intended only for isolated tests
+        /// and demos; HTTPS and SSH are the production defaults.
+        #[arg(long)]
+        allow_local_file_remote: bool,
+        /// Persist the execution-stage receipt here as JSON.
         #[arg(long)]
         receipt: Option<PathBuf>,
     },
@@ -124,8 +133,20 @@ fn main() {
             branch,
             yes,
             grants,
+            git_config,
+            allow_local_file_remote,
             receipt,
-        } => run_push(policy, &repo, &remote, &branch, yes, grants, receipt),
+        } => run_push(PushCommandOptions {
+            policy,
+            repo,
+            remote,
+            branch,
+            yes,
+            grants,
+            git_config,
+            allow_local_file_remote,
+            receipt_path: receipt,
+        }),
     };
     process::exit(exit_code);
 }
@@ -270,6 +291,30 @@ mod tests {
         );
     }
 
+    #[test]
+    fn push_accepts_the_explicit_broker_boundary_options() {
+        let parsed = Cli::try_parse_from([
+            "agent-guard",
+            "push",
+            "--remote",
+            "origin",
+            "--branch",
+            "main",
+            "--git-config",
+            "/host/broker.gitconfig",
+            "--allow-local-file-remote",
+        ]);
+        assert!(parsed.is_ok(), "{:?}", parsed.err());
+    }
+
+    #[test]
+    fn an_explicit_missing_broker_config_fails_before_git() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let missing = dir.path().join("missing.gitconfig");
+        let error = broker_git_config_path(Some(missing.clone())).expect_err("missing fails");
+        assert!(error.contains(&missing.display().to_string()), "{error}");
+    }
+
     /// The location `packages/agent-guard-plugin/bin/cli.js` writes the policy
     /// to and wires the hook to read. A push resolved against some other file
     /// would be judged by rules the refusal never applied, so these two paths
@@ -359,15 +404,39 @@ mod tests {
 /// 4. **Execution**, which re-resolves and spends the authorization against
 ///    what it just resolved. Reading a preview takes seconds, and a
 ///    repository can move during them.
-fn run_push(
+struct PushCommandOptions {
     policy: Option<PathBuf>,
-    repo: &Path,
-    remote: &str,
-    branch: &str,
+    repo: PathBuf,
+    remote: String,
+    branch: String,
     yes: bool,
     grants: Option<PathBuf>,
+    git_config: Option<PathBuf>,
+    allow_local_file_remote: bool,
     receipt_path: Option<PathBuf>,
-) -> i32 {
+}
+
+fn run_push(options: PushCommandOptions) -> i32 {
+    let PushCommandOptions {
+        policy,
+        repo,
+        remote,
+        branch,
+        yes,
+        grants,
+        git_config,
+        allow_local_file_remote,
+        receipt_path,
+    } = options;
+    let repo = repo.as_path();
+    let remote = remote.as_str();
+    let branch = branch.as_str();
+
+    if let Err(error) = validate_push_target(remote, branch) {
+        eprintln!("agent-guard: invalid push target: {error}");
+        return 2;
+    }
+
     let named_by_caller = policy.is_some();
     let policy_path = policy.unwrap_or_else(default_policy_path);
 
@@ -410,7 +479,19 @@ fn run_push(
         return 1;
     }
 
-    let transaction = match resolve_push_transaction(repo, remote, branch) {
+    let git_config = match broker_git_config_path(git_config) {
+        Ok(path) => path,
+        Err(message) => {
+            eprintln!("agent-guard: {message}");
+            return 2;
+        }
+    };
+    let broker = PushBroker::new(BrokerGitOptions {
+        trusted_config: Some(git_config),
+        allow_local_file_remote,
+    });
+
+    let transaction = match broker.resolve_push_transaction(repo, remote, branch) {
         Ok(transaction) => transaction,
         Err(error) => {
             eprintln!("agent-guard: could not resolve the push: {error}");
@@ -447,7 +528,7 @@ fn run_push(
     };
 
     let receipt =
-        execute_push_with_receipt(repo, &grant_dir, &grant, &policy_hash, Utc::now(), None);
+        broker.execute_push_with_receipt(repo, &grant_dir, &grant, &policy_hash, Utc::now(), None);
 
     if let Some(path) = receipt_path {
         match serde_json::to_vec_pretty(&receipt) {
@@ -550,6 +631,21 @@ fn default_grant_dir() -> PathBuf {
     std::env::var("AGENT_GUARD_GRANTS")
         .map(PathBuf::from)
         .unwrap_or_else(|_| dirs_home().join(".agent-guard").join("grants"))
+}
+
+fn broker_git_config_path(explicit: Option<PathBuf>) -> Result<PathBuf, String> {
+    let path = explicit
+        .or_else(|| std::env::var_os("AGENT_GUARD_BROKER_GIT_CONFIG").map(PathBuf::from))
+        .unwrap_or_else(|| dirs_home().join(".agent-guard").join("broker.gitconfig"));
+    if path.is_file() {
+        Ok(path)
+    } else {
+        Err(format!(
+            "no host-owned broker Git config at {}. Create an empty mode-0600 file there, set \
+             AGENT_GUARD_BROKER_GIT_CONFIG, or pass --git-config.",
+            path.display()
+        ))
+    }
 }
 
 fn dirs_home() -> PathBuf {

@@ -14,6 +14,9 @@
 //!
 //! [`resolve_push_transaction`] answers those questions from the repository
 //! and the remote. What it returns is what an approval is about.
+//! The repository is treated as hostile input: remote contact and execution
+//! happen from a broker-owned snapshot that contains no repository config or
+//! hooks, and the exact approved push URL is passed to Git.
 //!
 //! ## The order the pieces run in
 //!
@@ -61,7 +64,7 @@ mod receipt;
 mod transaction;
 
 pub use execute::{execute_push, execute_push_with_receipt, ExecuteError, PushOutcome};
-pub use git::GitError;
+pub use git::{validate_push_target, BrokerGitOptions, GitError, PushBroker};
 pub use grant::{issue_grant, peek_grant, spend_grant, GrantError, PushGrant};
 pub use receipt::{PushAttempt, PushReceipt, Witness};
 pub use transaction::{

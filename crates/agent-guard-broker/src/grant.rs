@@ -91,6 +91,10 @@ fn grant_path(dir: &Path, id: &str) -> Result<PathBuf, GrantError> {
     Ok(dir.join(format!("{id}.json")))
 }
 
+pub(crate) fn grant_was_spent(dir: &Path, id: &str) -> bool {
+    grant_path(&dir.join("spent"), id).is_ok_and(|path| path.is_file())
+}
+
 /// Record a human decision about `transaction` and return the grant id.
 pub fn issue_grant(
     dir: &Path,

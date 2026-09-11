@@ -2,43 +2,20 @@
 //!
 //! ## The order is the security property
 //!
-//! Resolve first, then spend the grant against what was just resolved, then
-//! push. Spending against a freshly resolved transaction makes authorization
-//! and drift detection the same check: a grant is bound to a digest, so a
-//! transaction that moved no longer matches the grant and cannot be spent.
-//! There is no separate "did it drift?" step to forget to call.
-//!
-//! ## Both ends are pinned in the push itself
-//!
-//! A gap remains between resolving and pushing, and neither end stops moving
-//! during it, so the push is written so that git enforces the approval rather
-//! than trusting a reading taken moments earlier:
-//!
-//! - the **source** is the approved object id, not the branch name. Pushing
-//!   `main` would send whatever `main` points at when git runs, which is not
-//!   necessarily what the human saw.
-//! - the **destination** carries a lease on the remote object id that was
-//!   approved, so the server refuses if the remote is no longer what the
-//!   human was shown. A remote advanced by someone else is a state nobody
-//!   approved, even when the update would still fast-forward.
-//!
-//! ## What this does not establish
-//!
-//! Credential isolation is a deployment property this code cannot verify.
-//! The push inherits this process's environment, so it uses whatever
-//! credential the broker has. That is only a boundary if the agent has none
-//! of its own; nothing here can check that, and nothing here prevents an
-//! agent holding a credential from pushing without a grant.
+//! Resolve once in a broker-owned Git snapshot, spend the grant against that
+//! transaction, then push that same transaction from that same snapshot. The
+//! source is the approved object id, the destination is the approved push URL,
+//! and a lease pins the remote object the human saw.
 
 use std::path::Path;
 
 use chrono::{DateTime, Utc};
 use thiserror::Error;
 
-use crate::git::{run, GitError};
-use crate::grant::{peek_grant, spend_grant, GrantError, PushGrant};
+use crate::git::{GitError, GitSnapshot, PushBroker};
+use crate::grant::{grant_was_spent, peek_grant, spend_grant, GrantError, PushGrant};
 use crate::receipt::{PushAttempt, PushReceipt, Witness};
-use crate::transaction::{resolve_push_transaction, PushTransaction, RefUpdateKind};
+use crate::transaction::{PushTransaction, RefUpdateKind};
 
 /// What the broker did, and to what.
 #[derive(Debug, Clone)]
@@ -71,7 +48,8 @@ pub enum ExecuteError {
     Push(#[source] GitError),
 }
 
-/// Push exactly what `grant_id` authorized, or refuse.
+/// Compatibility wrapper using strict defaults: no inherited Git config and
+/// no local-file remote.
 pub fn execute_push(
     repo: &Path,
     grant_dir: &Path,
@@ -79,68 +57,120 @@ pub fn execute_push(
     policy_hash: &str,
     now: DateTime<Utc>,
 ) -> Result<PushOutcome, ExecuteError> {
-    // Advisory read: it only decides what to resolve. The spend below is
-    // what authenticates, and it compares a digest covering every field that
-    // defines the effect.
-    let target = peek_grant(grant_dir, grant_id).map_err(ExecuteError::Unauthorized)?;
-
-    let current = resolve_push_transaction(repo, &target.remote, &target.branch)
-        .map_err(ExecuteError::Resolve)?;
-
-    // Spending against the freshly resolved transaction is the drift check.
-    let grant =
-        spend_grant(grant_dir, grant_id, &current, policy_hash, now).map_err(
-            |error| match error {
-                GrantError::TransactionMismatch { .. } => ExecuteError::Drift(error),
-                other => ExecuteError::Unauthorized(other),
-            },
-        )?;
-
-    // Only the shapes the first supported slice covers. Anything that would
-    // discard history fails closed rather than being forced through, and the
-    // grant is already spent, so a refusal here costs a fresh approval.
-    match current.kind {
-        RefUpdateKind::FastForward | RefUpdateKind::Create => {}
-        kind => return Err(ExecuteError::UnsupportedShape { kind }),
-    }
-
-    let git_output = push_pinned(repo, &current).map_err(ExecuteError::Push)?;
-
-    Ok(PushOutcome {
-        pushed_oid: current.local_oid,
-        branch: current.branch,
-        remote_url: current.remote_url,
-        grant,
-        git_output,
-    })
+    PushBroker::default().execute_push(repo, grant_dir, grant_id, policy_hash, now)
 }
 
-/// Run the push with both ends pinned.
-fn push_pinned(repo: &Path, tx: &PushTransaction) -> Result<String, GitError> {
+struct ExecutionAttempt {
+    transaction: Option<PushTransaction>,
+    grant_id: Option<String>,
+    result: Result<PushOutcome, ExecuteError>,
+}
+
+impl PushBroker {
+    /// Push exactly what `grant_id` authorized from an isolated snapshot.
+    pub fn execute_push(
+        &self,
+        repo: &Path,
+        grant_dir: &Path,
+        grant_id: &str,
+        policy_hash: &str,
+        now: DateTime<Utc>,
+    ) -> Result<PushOutcome, ExecuteError> {
+        self.execute_attempt(repo, grant_dir, grant_id, policy_hash, now)
+            .result
+    }
+
+    fn execute_attempt(
+        &self,
+        repo: &Path,
+        grant_dir: &Path,
+        grant_id: &str,
+        policy_hash: &str,
+        now: DateTime<Utc>,
+    ) -> ExecutionAttempt {
+        // Advisory only. Spending below authenticates the target and consumes
+        // the grant before any push is attempted.
+        let target = match peek_grant(grant_dir, grant_id) {
+            Ok(target) => target,
+            Err(error) => {
+                return ExecutionAttempt {
+                    transaction: None,
+                    grant_id: None,
+                    result: Err(ExecuteError::Unauthorized(error)),
+                }
+            }
+        };
+
+        // Keep this snapshot alive through the push. There is one resolution,
+        // so the transaction signed into the receipt is the one executed.
+        let resolved = match self.resolve_with_snapshot(repo, &target.remote, &target.branch) {
+            Ok(resolved) => resolved,
+            Err(error) => {
+                return ExecutionAttempt {
+                    transaction: None,
+                    grant_id: None,
+                    result: Err(ExecuteError::Resolve(error)),
+                }
+            }
+        };
+        let current = resolved.transaction;
+
+        let grant = match spend_grant(grant_dir, grant_id, &current, policy_hash, now) {
+            Ok(grant) => grant,
+            Err(error) => {
+                let result = match error {
+                    GrantError::TransactionMismatch { .. } => ExecuteError::Drift(error),
+                    other => ExecuteError::Unauthorized(other),
+                };
+                return ExecutionAttempt {
+                    transaction: Some(current),
+                    grant_id: grant_was_spent(grant_dir, grant_id).then(|| grant_id.to_string()),
+                    result: Err(result),
+                };
+            }
+        };
+        let consumed_grant_id = Some(grant.grant_id.clone());
+
+        let result = match current.kind {
+            RefUpdateKind::FastForward | RefUpdateKind::Create => {
+                push_pinned(&resolved.snapshot, &current)
+                    .map(|git_output| PushOutcome {
+                        pushed_oid: current.local_oid.clone(),
+                        branch: current.branch.clone(),
+                        remote_url: current.remote_url.clone(),
+                        grant,
+                        git_output,
+                    })
+                    .map_err(ExecuteError::Push)
+            }
+            kind => Err(ExecuteError::UnsupportedShape { kind }),
+        };
+
+        ExecutionAttempt {
+            transaction: Some(current),
+            grant_id: consumed_grant_id,
+            result,
+        }
+    }
+}
+
+/// Run the push with both ends pinned from the broker-owned repository.
+fn push_pinned(snapshot: &GitSnapshot, tx: &PushTransaction) -> Result<String, GitError> {
     let refspec = format!("{}:refs/heads/{}", tx.local_oid, tx.branch);
 
     match &tx.remote_oid {
-        // Updating a branch: require the remote to still be the object the
-        // human was shown. The lease is a precondition, not permission to
-        // force; a non-fast-forward was already refused above.
         Some(remote_oid) => {
             let lease = format!("--force-with-lease=refs/heads/{}:{}", tx.branch, remote_oid);
-            run(repo, &["push", &lease, &tx.remote, &refspec])
+            snapshot.push(&["push", "--no-verify", &lease, &tx.remote_url, &refspec])
         }
-        // Creating a branch: require that it still does not exist.
         None => {
             let lease = format!("--force-with-lease=refs/heads/{}:", tx.branch);
-            run(repo, &["push", &lease, &tx.remote, &refspec])
+            snapshot.push(&["push", "--no-verify", &lease, &tx.remote_url, &refspec])
         }
     }
 }
 
-/// Execute, and record what happened either way.
-///
-/// This is the entry point a broker should use. [`execute_push`] returns a
-/// `Result` and leaves the caller to decide whether a refusal is worth
-/// recording; this one records both, because a broker that only writes down
-/// its successes cannot show that it ever declined.
+/// Compatibility wrapper using strict defaults.
 pub fn execute_push_with_receipt(
     repo: &Path,
     grant_dir: &Path,
@@ -149,31 +179,44 @@ pub fn execute_push_with_receipt(
     now: DateTime<Utc>,
     signing_key: Option<&ed25519_dalek::SigningKey>,
 ) -> PushReceipt {
-    // Resolved separately from the attempt so a refusal can still describe
-    // what it refused. A failure here leaves the receipt without a
-    // transaction, which is the truthful shape for an attempt that never got
-    // far enough to have an effect.
-    let transaction = peek_grant(grant_dir, grant_id)
-        .ok()
-        .and_then(|target| resolve_push_transaction(repo, &target.remote, &target.branch).ok());
+    PushBroker::default().execute_push_with_receipt(
+        repo,
+        grant_dir,
+        grant_id,
+        policy_hash,
+        now,
+        signing_key,
+    )
+}
 
-    let (attempt, grant_id_used) = match execute_push(repo, grant_dir, grant_id, policy_hash, now) {
-        Ok(outcome) => (PushAttempt::Pushed, Some(outcome.grant.grant_id)),
-        Err(error) => (
-            PushAttempt::Refused {
+impl PushBroker {
+    /// Execute once and seal the exact transaction and consumed grant into a
+    /// receipt. A refusal before resolution legitimately has neither.
+    pub fn execute_push_with_receipt(
+        &self,
+        repo: &Path,
+        grant_dir: &Path,
+        grant_id: &str,
+        policy_hash: &str,
+        now: DateTime<Utc>,
+        signing_key: Option<&ed25519_dalek::SigningKey>,
+    ) -> PushReceipt {
+        let attempt = self.execute_attempt(repo, grant_dir, grant_id, policy_hash, now);
+        let outcome = match attempt.result {
+            Ok(_) => PushAttempt::Pushed,
+            Err(error) => PushAttempt::Refused {
                 reason: error.to_string(),
             },
-            None,
-        ),
-    };
+        };
 
-    PushReceipt {
-        version: 1,
-        at: now,
-        transaction,
-        grant_id: grant_id_used,
-        attempt,
-        witness: Witness::Unsigned,
+        PushReceipt {
+            version: 1,
+            at: now,
+            transaction: attempt.transaction,
+            grant_id: attempt.grant_id,
+            attempt: outcome,
+            witness: Witness::Unsigned,
+        }
+        .seal(signing_key)
     }
-    .seal(signing_key)
 }

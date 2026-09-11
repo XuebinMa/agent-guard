@@ -14,6 +14,8 @@ const {
   isAgentGuardEntry,
   policyWithFileAudit,
 } = require('../lib/init.js');
+const { hasExactVersion, installOne } = require('../bin/cli.js');
+const PACKAGE_VERSION = require('../package.json').version;
 
 const CMD = 'guard-hook check --policy /home/u/.claude/agent-guard/policy.yaml --agent-id claude-code';
 
@@ -132,4 +134,59 @@ test('the plugin installs every binary the hook tells a human to run', () => {
       `the hook prints "${bin} push --remote …" but init does not install ${bin}`,
     );
   }
+});
+
+test('binary reuse requires the exact package version', () => {
+  for (const bin of ['guard-hook', 'agent-guard']) {
+    const run = (command) => ({
+      status: 0,
+      stdout: command === `/exact/${bin}`
+        ? `${bin} ${PACKAGE_VERSION}\n`
+        : `${bin} 0.0.0\n`,
+    });
+    assert.equal(hasExactVersion(`/exact/${bin}`, bin, PACKAGE_VERSION, run), true);
+    assert.equal(hasExactVersion(`/old/${bin}`, bin, PACKAGE_VERSION, run), false);
+  }
+});
+
+test('a stale PATH binary is replaced and the cargo binary is reverified', () => {
+  let installed = false;
+  let installArgs = null;
+  const run = (command, args) => {
+    if (command === '/path/guard-hook') {
+      return { status: 0, stdout: 'guard-hook 0.2.2\n' };
+    }
+    if (command === '/cargo/bin/guard-hook') {
+      return {
+        status: installed ? 0 : 1,
+        stdout: installed ? `guard-hook ${PACKAGE_VERSION}\n` : '',
+      };
+    }
+    if (command === 'cargo' && args[0] === '--version') {
+      return { status: 0, stdout: 'cargo 1.90.0\n' };
+    }
+    if (command === 'cargo' && args[0] === 'install') {
+      installed = true;
+      installArgs = args;
+      return { status: 0, stdout: '' };
+    }
+    throw new Error(`unexpected command ${command}`);
+  };
+
+  const resolved = installOne(
+    { crate: 'guard-hook', bin: 'guard-hook', why: 'test' },
+    false,
+    {
+      resolveBinary: () => '/path/guard-hook',
+      cargoBinaryPath: () => '/cargo/bin/guard-hook',
+      spawnSync: run,
+    },
+  );
+
+  assert.equal(resolved, '/cargo/bin/guard-hook');
+  assert.ok(installArgs.includes('--force'));
+  assert.deepEqual(
+    installArgs.slice(0, 5),
+    ['install', 'guard-hook', '--version', PACKAGE_VERSION, '--locked'],
+  );
 });

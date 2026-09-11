@@ -2,26 +2,22 @@
 
 One-command setup for the [agent-guard](https://github.com/XuebinMa/agent-guard) advisory outbound hook in Claude Code.
 
-The `v0.2.0` source is not published to npm or crates.io yet. From the repository
-root, install and initialize the matching checkout with:
-
 This path is intentionally fail-open on installation/runtime errors and does
 not own Git credentials or execution. Treat it as an advisory host integration,
 not an isolation boundary against an agent that can bypass the hook.
 
 ```bash
-cargo install --path crates/guard-hook --locked
-node packages/agent-guard-plugin/bin/cli.js init --skip-binary
+npx agent-guard-plugin init
+install -m 600 /dev/null ~/.agent-guard/broker.gitconfig
 ```
 
-After the synchronized `v0.2.0` release, `npx agent-guard-plugin init` becomes
-the standalone setup path and installs the exact same `guard-hook` version. The
-current npm `latest` tag is still `0.2.0-rc1`, so it is not a substitute for
-these source-checkout instructions. See the [plugin guide](https://github.com/XuebinMa/agent-guard/blob/main/docs/guides/operations/claude-code-plugin.md).
+The second line creates the host-owned configuration required by
+`agent-guard push`; keep it outside any agent-writable checkout. See the
+[plugin guide](https://github.com/XuebinMa/agent-guard/blob/main/docs/guides/operations/claude-code-plugin.md).
 
 ## What `init` does
 
-1. **Installs both matching binaries** with `cargo install <crate> --version <plugin-version> --locked` (Rust required):
+1. **Installs both matching binaries** with `cargo install <crate> --version <plugin-version> --locked --force` (Rust required). An existing binary is reused only after its `--version` output exactly matches the plugin:
    - `guard-hook` — the PreToolUse gate itself.
    - `agent-guard-cli`, providing `agent-guard` — the broker path the gate *names*. When the gate stops a push it tells you to run `agent-guard push`, so installing the gate without this leaves you at a `command not found`.
 

@@ -16,8 +16,8 @@
 # workflow publishes each crate in dependency order and sequences crates.io,
 # PyPI, and npm to reduce partial releases.
 
-# Use a single shared version across all workspace crates so the nine
-# crates always release together and inter-crate `version = "=0.2.0"`
+# Use a single shared version across all workspace crates so the ten
+# crates always release together and inter-crate exact-version
 # pins stay consistent.
 shared-version = true
 

@@ -9,6 +9,7 @@
 //! `agent-guard push` would send someone to a command that refuses, and would
 //! imply the broker offers a route to the thing policy just stopped.
 
+use agent_guard_broker::validate_push_target;
 use agent_guard_validators::bash::{git_push_intents, GitPushDetection, GitPushIntent};
 
 /// What to tell someone whose push was refused, if anything.
@@ -49,17 +50,28 @@ pub(crate) fn broker_hint(command: &str) -> Option<String> {
 
     let remote = intent.remote.as_deref()?;
     match single_branch(intent) {
+        Some(branch) if validate_push_target(remote, branch).is_err() => {
+            Some(unsafe_target_explanation())
+        }
         Some(branch) => Some(format!(
             "To have the Guard perform this push, with a preview of exactly \
              what it would change: agent-guard push --remote {remote} --branch {branch}"
         )),
         // The command did not name a branch, so neither can the hint. Naming
         // the wrong one would be worse than naming none.
-        None => Some(format!(
-            "To have the Guard perform this push, name the branch: \
-             agent-guard push --remote {remote} --branch <branch>"
-        )),
+        None => Some(
+            "To have the Guard perform this push, run agent-guard push and provide the remote and \
+             branch explicitly. No copyable command was generated because the requested branch \
+             was absent or not a plain branch name."
+                .to_string(),
+        ),
     }
+}
+
+fn unsafe_target_explanation() -> String {
+    "The push target contains characters agent-guard does not place in a copyable shell command. \
+     Run agent-guard push yourself and provide a plain remote and branch name."
+        .to_string()
 }
 
 /// The shapes the broker refuses, named the way a human would say them.
@@ -113,6 +125,27 @@ mod tests {
     }
 
     #[test]
+    fn shell_metacharacters_never_enter_a_copyable_hint() {
+        for command in [
+            "git push origin 'main;touch /tmp/hint-pwn'",
+            "git push 'bad remote' main",
+            "git push 'origin;touch /tmp/hint-pwn' main",
+            "git push origin 'main$(touch /tmp/hint-pwn)'",
+            "git push origin 'main\"quoted'",
+            "git push origin \"main'quoted\"",
+            "git push origin 'main\\name'",
+            "git push origin 'main\nnext'",
+            "git push origin '-leading-option'",
+        ] {
+            let hint = broker_hint(command).expect("recognized push gets an explanation");
+            assert!(
+                !hint.contains("agent-guard push --remote"),
+                "unsafe values must not become a runnable command: {hint}"
+            );
+        }
+    }
+
+    #[test]
     fn a_force_push_is_not_sent_to_a_command_that_refuses_it() {
         let hint = broker_hint("git push --force origin main").expect("a push gets a hint");
         assert!(hint.contains("does not perform force pushes"), "{hint}");
@@ -135,14 +168,15 @@ mod tests {
     #[test]
     fn a_push_without_a_branch_asks_for_one_instead_of_inventing_it() {
         let hint = broker_hint("git push origin").expect("a push gets a hint");
-        assert!(hint.contains("--branch <branch>"), "{hint}");
+        assert!(!hint.contains("agent-guard push --remote"), "{hint}");
+        assert!(hint.contains("provide the remote and branch"), "{hint}");
     }
 
     #[test]
     fn a_mapped_refspec_is_not_guessed_at() {
         let hint = broker_hint("git push origin HEAD:main").expect("a push gets a hint");
         assert!(
-            hint.contains("--branch <branch>"),
+            !hint.contains("agent-guard push --remote"),
             "a source:destination refspec must not be guessed: {hint}"
         );
     }

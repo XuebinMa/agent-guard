@@ -2,10 +2,10 @@
 
 | Field | Details |
 | :--- | :--- |
-| **Status** | 🟡 Preview (v0.2.0-rc1) |
+| **Status** | 🟡 Preview (v0.2.4) |
 | **Audience** | Claude Code users who want the agent-guard outbound gate installed as a plugin |
 | **Version** | 0.1 |
-| **Last Reviewed** | 2026-05-29 |
+| **Last Reviewed** | 2026-09-09 |
 | **Related Docs** | [Claude Code Hook](claude-code-hook.md), [Observability](observability.md) |
 
 ---
@@ -28,20 +28,18 @@ The plugin is the distribution wrapper. The actual evaluation is done by the `gu
 
 ## Install
 
-The current `v0.2.0` source has not been published to npm or crates.io. Use the
-checkout path below until the synchronized release completes.
-
-### Option A — current source checkout
+### Option A — synchronized installer
 
 ```bash
-cargo install --path crates/guard-hook --locked
-node packages/agent-guard-plugin/bin/cli.js init --skip-binary
+npx agent-guard-plugin init
+install -m 600 /dev/null ~/.agent-guard/broker.gitconfig
 ```
 
-This builds the current `guard-hook`, writes the current outbound policy to
-`~/.claude/agent-guard/policy.yaml`, and wires the hook into
-`~/.claude/settings.json`. The edit is idempotent and preserves other settings
-and hooks. Add `--dry-run` to preview.
+The installer requires Rust, installs matching `guard-hook` and `agent-guard`
+binaries, writes the outbound policy, and wires the hook. A binary is reused
+only when its reported version exactly matches the plugin. The second command
+creates the separate host-owned config required by the push broker; add trusted
+credential or HTTP settings there when SSH-agent authentication is not used.
 
 ### Option B — Claude Code marketplace plugin
 
@@ -52,16 +50,12 @@ The repo doubles as a single-plugin marketplace:
 /plugin install agent-guard@agent-guard
 ```
 
-Then install the evaluation binary (the plugin **fails open** until it is present, so the gate is a no-op until you do):
+Then install both matching binaries (the plugin **fails open** until the hook is present):
 
 ```bash
-cargo install --path crates/guard-hook --locked
+cargo install guard-hook --version 0.2.4 --locked --force
+cargo install agent-guard-cli --version 0.2.4 --locked --force
 ```
-
-After `v0.2.0` is published to both registries, the synchronized convenience
-installer will be `npx agent-guard-plugin init`. The current unversioned npm
-command still resolves to `0.2.0-rc1` and must not be used as a current-source
-installation instruction.
 
 `cargo install` drops `guard-hook` into `~/.cargo/bin`, which the plugin's wrapper finds automatically.
 
@@ -82,9 +76,9 @@ The wrapper is **fail-open by contract**: a missing binary or missing policy emi
 
 That makes the plugin an **advisory decision-only integration**. It does not own
 Git credentials or execute the push, and it cannot contain an agent that can
-avoid the built-in tool/hook path. Use Guard-owned execution where available;
-the planned broker-enforced Git push path is the boundary intended for hostile
-agent isolation.
+avoid the built-in tool/hook path. The separately invoked `agent-guard push`
+broker owns execution only when its host credential and dedicated Git config
+are unreachable from the agent; see [Credential isolation](credential-isolation.md).
 
 ---
 

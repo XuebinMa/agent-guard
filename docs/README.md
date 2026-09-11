@@ -1,4 +1,4 @@
-# agent-guard Documentation Hub (v0.2.3)
+# agent-guard Documentation Hub (v0.2.4)
 
 `agent-guard` is an execution control layer for agent side effects. This hub is organized around the current developer path first: understand the short-term wedge, get a real execution boundary in place, then go deeper into reference, operations, and historical or maintainer-only material when needed.
 
@@ -8,7 +8,7 @@
 
 ## 📣 Release Status
 
-- **Source version** → `v0.2.3`
+- **Source version** → `v0.2.4`
 - **Latest published release** → [`v0.2.3`](https://github.com/XuebinMa/agent-guard/releases/tag/v0.2.3) — crates.io, PyPI, npm
 - **Community Thread** → [GitHub Discussions #1](https://github.com/XuebinMa/agent-guard/discussions/1)
 

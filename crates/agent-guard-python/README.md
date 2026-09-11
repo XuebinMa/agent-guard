@@ -71,15 +71,21 @@ Current boundary note:
 
 ## 🔧 Installation
 
-Version `0.2.0` is not on PyPI yet. Install it from a repository checkout
+The latest published package is `0.2.3`:
+
+```bash
+python -m pip install agent-guard-python==0.2.3
+```
+
+To test the unreleased `0.2.4` source, install it from a repository checkout
 (requires Python and a Rust toolchain):
 
 ```bash
 python -m pip install ./crates/agent-guard-python
 ```
 
-After the synchronized release, the distribution name will be
-`agent-guard-python`; the import name remains `agent_guard`:
+The distribution name is `agent-guard-python`; the import name remains
+`agent_guard`:
 
 ```python
 from agent_guard import Guard
