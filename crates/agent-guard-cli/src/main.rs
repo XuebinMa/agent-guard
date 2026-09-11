@@ -251,146 +251,6 @@ fn fail(error: &ApprovalError) -> i32 {
     1
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use agent_guard_sdk::approval::ApprovalStatus;
-    use tempfile::tempdir;
-
-    fn ledger() -> (tempfile::TempDir, ApprovalLedger) {
-        let dir = tempdir().expect("tempdir");
-        let ledger = ApprovalLedger::open(dir.path().join("approvals.jsonl"));
-        (dir, ledger)
-    }
-
-    /// The hook prints this command verbatim to a human whose push it just
-    /// stopped (`guard-hook`'s `broker_hint`). If running it dies on a missing
-    /// argument, the refusal has moved the dead end one step later instead of
-    /// removing it — which is the whole reason that hint exists.
-    ///
-    /// The shape the hook prints therefore has to be a shape this CLI accepts,
-    /// and that is an invariant spanning two crates that nothing else checks.
-    #[test]
-    fn the_command_the_hook_prints_is_one_this_cli_accepts() {
-        let parsed = Cli::try_parse_from([
-            "agent-guard",
-            "push",
-            "--remote",
-            "origin",
-            "--branch",
-            "main",
-        ]);
-
-        assert!(
-            parsed.is_ok(),
-            "a human runs exactly this after a refusal: {}",
-            parsed
-                .err()
-                .map(|error| error.to_string())
-                .unwrap_or_default()
-        );
-    }
-
-    #[test]
-    fn push_accepts_the_explicit_broker_boundary_options() {
-        let parsed = Cli::try_parse_from([
-            "agent-guard",
-            "push",
-            "--remote",
-            "origin",
-            "--branch",
-            "main",
-            "--git-config",
-            "/host/broker.gitconfig",
-            "--allow-local-file-remote",
-        ]);
-        assert!(parsed.is_ok(), "{:?}", parsed.err());
-    }
-
-    #[test]
-    fn an_explicit_missing_broker_config_fails_before_git() {
-        let dir = tempfile::tempdir().expect("tempdir");
-        let missing = dir.path().join("missing.gitconfig");
-        let error = broker_git_config_path(Some(missing.clone())).expect_err("missing fails");
-        assert!(error.contains(&missing.display().to_string()), "{error}");
-    }
-
-    /// The location `packages/agent-guard-plugin/bin/cli.js` writes the policy
-    /// to and wires the hook to read. A push resolved against some other file
-    /// would be judged by rules the refusal never applied, so these two paths
-    /// are one fact: changing it here means changing it there.
-    #[test]
-    fn the_default_policy_is_where_the_plugin_installs_it() {
-        assert_eq!(
-            plugin_policy_path(Path::new("/home/someone")),
-            PathBuf::from("/home/someone/.claude/agent-guard/policy.yaml")
-        );
-    }
-
-    #[test]
-    fn approve_flips_pending_to_approved_and_exits_zero() {
-        let (_dir, ledger) = ledger();
-        ledger
-            .create_pending("r1", "bash", "h", "git push", None, None)
-            .expect("create");
-
-        let code = run_decision(&ledger, "r1", Some("alice".into()), Decision::Approve);
-
-        assert_eq!(code, 0);
-        let record = ledger.get("r1").unwrap().unwrap();
-        assert_eq!(record.status, ApprovalStatus::Approved);
-        assert_eq!(record.decided_by.as_deref(), Some("alice"));
-    }
-
-    #[test]
-    fn deny_flips_pending_to_denied() {
-        let (_dir, ledger) = ledger();
-        ledger
-            .create_pending("r1", "bash", "h", "m", None, None)
-            .expect("create");
-
-        let code = run_decision(&ledger, "r1", None, Decision::Deny);
-
-        assert_eq!(code, 0);
-        assert_eq!(
-            ledger.get("r1").unwrap().unwrap().status,
-            ApprovalStatus::Denied
-        );
-    }
-
-    #[test]
-    fn deciding_unknown_request_exits_nonzero() {
-        let (_dir, ledger) = ledger();
-        assert_eq!(run_decision(&ledger, "ghost", None, Decision::Approve), 1);
-    }
-
-    #[test]
-    fn deciding_twice_exits_nonzero() {
-        let (_dir, ledger) = ledger();
-        ledger
-            .create_pending("r1", "bash", "h", "m", None, None)
-            .expect("create");
-        assert_eq!(run_decision(&ledger, "r1", None, Decision::Approve), 0);
-        assert_eq!(run_decision(&ledger, "r1", None, Decision::Deny), 1);
-    }
-
-    #[test]
-    fn show_missing_request_exits_nonzero() {
-        let (_dir, ledger) = ledger();
-        assert_eq!(run_show(&ledger, "ghost"), 1);
-    }
-
-    #[test]
-    fn list_and_show_present_existing_requests() {
-        let (_dir, ledger) = ledger();
-        ledger
-            .create_pending("r1", "bash", "h", "m", None, None)
-            .expect("create");
-        assert_eq!(run_list(&ledger), 0);
-        assert_eq!(run_show(&ledger, "r1"), 0);
-    }
-}
-
 /// Resolve, show, authorize and execute one push.
 ///
 /// The order is deliberate and each step can refuse:
@@ -659,4 +519,144 @@ fn actor() -> String {
     std::env::var("USER")
         .or_else(|_| std::env::var("USERNAME"))
         .unwrap_or_else(|_| "unknown".to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use agent_guard_sdk::approval::ApprovalStatus;
+    use tempfile::tempdir;
+
+    fn ledger() -> (tempfile::TempDir, ApprovalLedger) {
+        let dir = tempdir().expect("tempdir");
+        let ledger = ApprovalLedger::open(dir.path().join("approvals.jsonl"));
+        (dir, ledger)
+    }
+
+    /// The hook prints this command verbatim to a human whose push it just
+    /// stopped (`guard-hook`'s `broker_hint`). If running it dies on a missing
+    /// argument, the refusal has moved the dead end one step later instead of
+    /// removing it — which is the whole reason that hint exists.
+    ///
+    /// The shape the hook prints therefore has to be a shape this CLI accepts,
+    /// and that is an invariant spanning two crates that nothing else checks.
+    #[test]
+    fn the_command_the_hook_prints_is_one_this_cli_accepts() {
+        let parsed = Cli::try_parse_from([
+            "agent-guard",
+            "push",
+            "--remote",
+            "origin",
+            "--branch",
+            "main",
+        ]);
+
+        assert!(
+            parsed.is_ok(),
+            "a human runs exactly this after a refusal: {}",
+            parsed
+                .err()
+                .map(|error| error.to_string())
+                .unwrap_or_default()
+        );
+    }
+
+    #[test]
+    fn push_accepts_the_explicit_broker_boundary_options() {
+        let parsed = Cli::try_parse_from([
+            "agent-guard",
+            "push",
+            "--remote",
+            "origin",
+            "--branch",
+            "main",
+            "--git-config",
+            "/host/broker.gitconfig",
+            "--allow-local-file-remote",
+        ]);
+        assert!(parsed.is_ok(), "{:?}", parsed.err());
+    }
+
+    #[test]
+    fn an_explicit_missing_broker_config_fails_before_git() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let missing = dir.path().join("missing.gitconfig");
+        let error = broker_git_config_path(Some(missing.clone())).expect_err("missing fails");
+        assert!(error.contains(&missing.display().to_string()), "{error}");
+    }
+
+    /// The location `packages/agent-guard-plugin/bin/cli.js` writes the policy
+    /// to and wires the hook to read. A push resolved against some other file
+    /// would be judged by rules the refusal never applied, so these two paths
+    /// are one fact: changing it here means changing it there.
+    #[test]
+    fn the_default_policy_is_where_the_plugin_installs_it() {
+        assert_eq!(
+            plugin_policy_path(Path::new("/home/someone")),
+            PathBuf::from("/home/someone/.claude/agent-guard/policy.yaml")
+        );
+    }
+
+    #[test]
+    fn approve_flips_pending_to_approved_and_exits_zero() {
+        let (_dir, ledger) = ledger();
+        ledger
+            .create_pending("r1", "bash", "h", "git push", None, None)
+            .expect("create");
+
+        let code = run_decision(&ledger, "r1", Some("alice".into()), Decision::Approve);
+
+        assert_eq!(code, 0);
+        let record = ledger.get("r1").unwrap().unwrap();
+        assert_eq!(record.status, ApprovalStatus::Approved);
+        assert_eq!(record.decided_by.as_deref(), Some("alice"));
+    }
+
+    #[test]
+    fn deny_flips_pending_to_denied() {
+        let (_dir, ledger) = ledger();
+        ledger
+            .create_pending("r1", "bash", "h", "m", None, None)
+            .expect("create");
+
+        let code = run_decision(&ledger, "r1", None, Decision::Deny);
+
+        assert_eq!(code, 0);
+        assert_eq!(
+            ledger.get("r1").unwrap().unwrap().status,
+            ApprovalStatus::Denied
+        );
+    }
+
+    #[test]
+    fn deciding_unknown_request_exits_nonzero() {
+        let (_dir, ledger) = ledger();
+        assert_eq!(run_decision(&ledger, "ghost", None, Decision::Approve), 1);
+    }
+
+    #[test]
+    fn deciding_twice_exits_nonzero() {
+        let (_dir, ledger) = ledger();
+        ledger
+            .create_pending("r1", "bash", "h", "m", None, None)
+            .expect("create");
+        assert_eq!(run_decision(&ledger, "r1", None, Decision::Approve), 0);
+        assert_eq!(run_decision(&ledger, "r1", None, Decision::Deny), 1);
+    }
+
+    #[test]
+    fn show_missing_request_exits_nonzero() {
+        let (_dir, ledger) = ledger();
+        assert_eq!(run_show(&ledger, "ghost"), 1);
+    }
+
+    #[test]
+    fn list_and_show_present_existing_requests() {
+        let (_dir, ledger) = ledger();
+        ledger
+            .create_pending("r1", "bash", "h", "m", None, None)
+            .expect("create");
+        assert_eq!(run_list(&ledger), 0);
+        assert_eq!(run_show(&ledger, "r1"), 0);
+    }
 }

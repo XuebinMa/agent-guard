@@ -77,6 +77,14 @@ The `[Unreleased]` heading is rolled forward manually before each release; do no
 
 
 ### Changed
+- **The broker CLI now applies its safe target grammar to execution, not only
+  to hook hints.** Remote and branch names must begin with an ASCII letter or
+  digit and then use only ASCII letters, digits, `.`, `_`, `/`, or `-`.
+  Names that Git itself accepts, including `_wip`, non-ASCII names, and names
+  containing `+`, are therefore refused by `agent-guard push`. Create or
+  rename a safe remote alias or branch to use the broker; a plain Git push is
+  outside this broker boundary.
+
 - **The anomaly histories are `VecDeque`, so dropping the oldest entry is
   constant rather than a thousand moves.** `cap_history` dropped the front of a
   `Vec`, which shifts every remaining element. At `HISTORY_CAP` that is a

@@ -152,7 +152,20 @@ either — it is a broker that cannot do its job.
 
 Finally run the broker itself. It must show the push URL rather than merely the
 remote name. A repository `pre-push` hook or `remote.<name>.pushurl` is input to
-the preview, never code or an implicit second destination in the broker.
+the preview, never code or an implicit second destination in the broker. These
+claims are executable, not just prose: the
+[adversarial Broker boundary suite](../../../crates/agent-guard-broker/tests/security_boundary.rs)
+pins the push URL, repository-hook and config isolation, refusal receipts,
+protocol policy, and unsafe repository layouts.
+
+## Operational cost
+
+The isolated repository is a copy, not a shared object-store view: every
+preview copies the source repository's primary objects, and an approved push
+copies them again when it re-resolves the transaction. Plan for copy time and
+temporary disk use proportional to the primary object store. Benchmark a
+representative large repository on the broker host before rollout; do not
+assume the cost measured on a small source checkout predicts production.
 
 ## What it still does not buy
 
@@ -170,6 +183,12 @@ Even with Deployment A, be careful what you claim:
 - **The repository remains hostile input.** The isolated snapshot prevents its
   hooks and config from executing, but malformed or racing repository data can
   still cause a safe refusal.
+- **The broker's `PATH` is trusted.** It inherits `PATH` to locate `git` and
+  programs Git deliberately invokes. If the agent can write any directory on
+  that path, it can replace a trusted executable.
+- **The broker's `HOME` is trusted.** Host SSH may read `~/.ssh/config`; if
+  the agent can edit it, directives such as `ProxyCommand` can execute code
+  in the credential-bearing process.
 - **This covers `git push`.** Other ways code leaves a machine — a package
   publish, an HTTP upload, a copy to shared storage — are governed by policy
   where they are recognised, and by nothing where they are not.
