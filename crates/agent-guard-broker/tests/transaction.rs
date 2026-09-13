@@ -12,7 +12,14 @@
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-use agent_guard_broker::{resolve_push_transaction, RefUpdateKind};
+use agent_guard_broker::{BrokerGitOptions, PushBroker, RefUpdateKind};
+
+fn broker() -> PushBroker {
+    PushBroker::new(BrokerGitOptions {
+        trusted_config: None,
+        allow_local_file_remote: true,
+    })
+}
 
 fn git(repo: &Path, args: &[&str]) -> String {
     let out = Command::new("git")
@@ -71,7 +78,9 @@ fn resolves_the_commits_a_fast_forward_would_add() {
     let second = commit(&work, "second");
     let third = commit(&work, "third");
 
-    let tx = resolve_push_transaction(&work, "origin", "main").expect("resolves");
+    let tx = broker()
+        .resolve_push_transaction(&work, "origin", "main")
+        .expect("resolves");
 
     assert_eq!(tx.remote_url, remote.to_str().unwrap());
     assert_eq!(tx.local_oid, third);
@@ -84,6 +93,82 @@ fn resolves_the_commits_a_fast_forward_would_add() {
     );
 }
 
+/// A remote's push URL is the destination Git will update. The fetch URL is
+/// not an acceptable preview target because approving it would authorize a
+/// different endpoint from the one that receives the objects.
+#[test]
+fn resolves_the_push_url_not_the_fetch_url() {
+    let (dir, work, fetch_remote) = repo_with_remote();
+    let push_remote = dir.path().join("push.git");
+    Command::new("git")
+        .args(["clone", "--bare"])
+        .arg(&fetch_remote)
+        .arg(&push_remote)
+        .output()
+        .expect("clone bare push remote");
+    git(
+        &work,
+        &[
+            "remote",
+            "set-url",
+            "--push",
+            "origin",
+            push_remote.to_str().unwrap(),
+        ],
+    );
+
+    let tx = broker()
+        .resolve_push_transaction(&work, "origin", "main")
+        .expect("resolves");
+
+    assert_eq!(tx.remote_url, push_remote.to_str().unwrap());
+}
+
+/// One approval describes one destination. Git accepts several push URLs for
+/// a remote, but a transaction with one `remote_url` cannot truthfully
+/// authorize all of them.
+#[test]
+fn several_push_urls_fail_closed() {
+    let (dir, work, _remote) = repo_with_remote();
+    let second = dir.path().join("second.git");
+    let third = dir.path().join("third.git");
+    for remote in [&second, &third] {
+        Command::new("git")
+            .args(["init", "--bare", "-b", "main"])
+            .arg(remote)
+            .output()
+            .expect("git init --bare");
+        git(
+            &work,
+            &[
+                "remote",
+                "set-url",
+                "--add",
+                "--push",
+                "origin",
+                remote.to_str().unwrap(),
+            ],
+        );
+    }
+
+    let result = broker().resolve_push_transaction(&work, "origin", "main");
+
+    assert!(
+        result.is_err(),
+        "several destinations must be refused: {result:?}"
+    );
+}
+
+#[test]
+fn an_empty_push_url_does_not_fall_back_to_the_fetch_url() {
+    let (_dir, work, _remote) = repo_with_remote();
+    git(&work, &["config", "--add", "remote.origin.pushurl", ""]);
+
+    let result = broker().resolve_push_transaction(&work, "origin", "main");
+
+    assert!(result.is_err(), "an empty push destination must be refused");
+}
+
 /// A branch the remote does not have is a create, not an update, and has no
 /// remote object id to compare against.
 #[test]
@@ -92,7 +177,9 @@ fn resolves_a_new_branch_as_a_create() {
     git(&work, &["checkout", "-b", "feature"]);
     let head = commit(&work, "on feature");
 
-    let tx = resolve_push_transaction(&work, "origin", "feature").expect("resolves");
+    let tx = broker()
+        .resolve_push_transaction(&work, "origin", "feature")
+        .expect("resolves");
 
     assert_eq!(tx.kind, RefUpdateKind::Create);
     assert_eq!(tx.remote_oid, None);
@@ -112,7 +199,9 @@ fn resolves_a_rewritten_history_as_not_fast_forward() {
     git(&work, &["reset", "--hard", "HEAD~1"]);
     let rewritten = commit(&work, "different second");
 
-    let tx = resolve_push_transaction(&work, "origin", "main").expect("resolves");
+    let tx = broker()
+        .resolve_push_transaction(&work, "origin", "main")
+        .expect("resolves");
 
     assert_eq!(tx.kind, RefUpdateKind::NotFastForward);
     assert_eq!(tx.local_oid, rewritten);
@@ -128,7 +217,9 @@ fn resolves_a_rewritten_history_as_not_fast_forward() {
 fn resolves_an_already_pushed_branch_as_up_to_date() {
     let (_dir, work, _remote) = repo_with_remote();
 
-    let tx = resolve_push_transaction(&work, "origin", "main").expect("resolves");
+    let tx = broker()
+        .resolve_push_transaction(&work, "origin", "main")
+        .expect("resolves");
 
     assert_eq!(tx.kind, RefUpdateKind::UpToDate);
     assert_eq!(
@@ -165,7 +256,9 @@ fn an_unfetched_remote_object_is_undetermined_not_not_fast_forward() {
     git(&other, &["push", "origin", "main"]);
 
     commit(&work, "ours");
-    let tx = resolve_push_transaction(&work, "origin", "main").expect("resolves");
+    let tx = broker()
+        .resolve_push_transaction(&work, "origin", "main")
+        .expect("resolves");
 
     assert_eq!(
         tx.kind,

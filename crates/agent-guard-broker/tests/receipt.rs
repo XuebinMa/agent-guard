@@ -8,10 +8,15 @@
 use std::path::Path;
 use std::process::Command;
 
-use agent_guard_broker::{
-    execute_push_with_receipt, issue_grant, resolve_push_transaction, PushAttempt, Witness,
-};
+use agent_guard_broker::{issue_grant, BrokerGitOptions, PushAttempt, PushBroker, Witness};
 use chrono::{Duration, Utc};
+
+fn broker() -> PushBroker {
+    PushBroker::new(BrokerGitOptions {
+        trusted_config: None,
+        allow_local_file_remote: true,
+    })
+}
 
 fn git(repo: &Path, args: &[&str]) -> String {
     let out = Command::new("git")
@@ -79,12 +84,15 @@ fn signing_key() -> ed25519_dalek::SigningKey {
 fn a_successful_push_is_witnessed_and_signed() {
     let f = fixture();
     let pushed = commit(&f.work, "second");
-    let tx = resolve_push_transaction(&f.work, "origin", "main").expect("resolves");
+    let broker = broker();
+    let tx = broker
+        .resolve_push_transaction(&f.work, "origin", "main")
+        .expect("resolves");
     let grant =
         issue_grant(&f.grants, &tx, "policy-1", "human", Duration::minutes(5)).expect("issues");
 
     let key = signing_key();
-    let receipt = execute_push_with_receipt(
+    let receipt = broker.execute_push_with_receipt(
         &f.work,
         &f.grants,
         &grant,
@@ -113,12 +121,15 @@ fn a_successful_push_is_witnessed_and_signed() {
 fn a_push_without_a_signing_key_still_produces_a_receipt() {
     let f = fixture();
     let pushed = commit(&f.work, "second");
-    let tx = resolve_push_transaction(&f.work, "origin", "main").expect("resolves");
+    let broker = broker();
+    let tx = broker
+        .resolve_push_transaction(&f.work, "origin", "main")
+        .expect("resolves");
     let grant =
         issue_grant(&f.grants, &tx, "policy-1", "human", Duration::minutes(5)).expect("issues");
 
     let receipt =
-        execute_push_with_receipt(&f.work, &f.grants, &grant, "policy-1", Utc::now(), None);
+        broker.execute_push_with_receipt(&f.work, &f.grants, &grant, "policy-1", Utc::now(), None);
 
     assert_eq!(receipt.attempt, PushAttempt::Pushed);
     assert_eq!(
@@ -142,7 +153,10 @@ fn a_push_without_a_signing_key_still_produces_a_receipt() {
 fn a_refused_push_is_recorded_with_its_reason() {
     let f = fixture();
     commit(&f.work, "second");
-    let tx = resolve_push_transaction(&f.work, "origin", "main").expect("resolves");
+    let broker = broker();
+    let tx = broker
+        .resolve_push_transaction(&f.work, "origin", "main")
+        .expect("resolves");
     let grant =
         issue_grant(&f.grants, &tx, "policy-1", "human", Duration::minutes(5)).expect("issues");
 
@@ -151,7 +165,7 @@ fn a_refused_push_is_recorded_with_its_reason() {
     commit(&f.work, "after approval");
 
     let key = signing_key();
-    let receipt = execute_push_with_receipt(
+    let receipt = broker.execute_push_with_receipt(
         &f.work,
         &f.grants,
         &grant,
@@ -166,6 +180,11 @@ fn a_refused_push_is_recorded_with_its_reason() {
         }
         other => panic!("expected a refusal, got {other:?}"),
     }
+    assert_eq!(
+        receipt.grant_id.as_deref(),
+        Some(grant.as_str()),
+        "a consumed grant remains part of the attempt even when execution is refused"
+    );
     assert!(
         receipt.verify(&key.verifying_key()),
         "a refusal is witnessed too and is signed like any other outcome"
@@ -178,13 +197,16 @@ fn a_refused_push_is_recorded_with_its_reason() {
 fn editing_the_outcome_breaks_the_signature() {
     let f = fixture();
     commit(&f.work, "second");
-    let tx = resolve_push_transaction(&f.work, "origin", "main").expect("resolves");
+    let broker = broker();
+    let tx = broker
+        .resolve_push_transaction(&f.work, "origin", "main")
+        .expect("resolves");
     let grant =
         issue_grant(&f.grants, &tx, "policy-1", "human", Duration::minutes(5)).expect("issues");
     commit(&f.work, "after approval");
 
     let key = signing_key();
-    let mut receipt = execute_push_with_receipt(
+    let mut receipt = broker.execute_push_with_receipt(
         &f.work,
         &f.grants,
         &grant,

@@ -28,7 +28,7 @@ cargo install cargo-deny cargo-audit cargo-cyclonedx --locked
 
 ## Repository layout
 
-Nine crates under `crates/`, layered bottom-up:
+Ten crates under `crates/`, layered bottom-up:
 
 ```
 agent-guard-core          ← types, YAML policy engine, audit, attestation
@@ -41,6 +41,7 @@ agent-guard-sdk           ← Guard struct, anomaly detection, metrics, provenan
 agent-guard-python        ← PyO3 bindings (maturin, abi3-py310)
 agent-guard-node          ← napi-rs bindings
 guard-verify              ← CLI: receipt verification + host-boundary doctor
+agent-guard-broker        ← isolated, credential-bearing Git push transaction boundary
 agent-guard-cli           ← CLI: interactive approval workflow
 guard-hook                ← Claude Code PreToolUse hook adapter
 ```
@@ -176,13 +177,13 @@ git push origin main v<semver>         # push manually after review
 
 `<level>` is one of `patch`, `minor`, `major`, `alpha`, `beta`, `rc`, or `release`. The configuration:
 
-- Uses a **shared version** across all nine workspace crates so they always release together (matches the `version = "=0.2.0"` inter-crate pin in `Cargo.toml`).
+- Uses a **shared version** across all ten workspace crates so they always release together (matches the `version = "=0.2.4"` inter-crate pin in `Cargo.toml`).
 - Creates **one tag per workspace** (`v<semver>`) rather than a tag per crate.
-- Publishes the seven public Rust crates individually in dependency order; the
+- Publishes the eight public Rust crates individually in dependency order; the
   Python and Node binding crates remain `publish = false` because they ship via
   PyPI and npm.
 - **Does not auto-push** — you push the tag explicitly so the release becomes visible only after a final review.
-- **Does NOT roll `CHANGELOG.md`** automatically — `cargo-release`'s `pre-release-replacements` resolves paths per-crate, which would rewrite a workspace-level CHANGELOG nine times. Update `CHANGELOG.md` by hand before each release: rename the current `## [Unreleased]` heading to `## [<new-version>] — <date>` and add a fresh `## [Unreleased]` stub above it.
+- **Does NOT roll `CHANGELOG.md`** automatically — `cargo-release`'s `pre-release-replacements` resolves paths per-crate, which would rewrite a workspace-level CHANGELOG ten times. Update `CHANGELOG.md` by hand before each release: rename the current `## [Unreleased]` heading to `## [<new-version>] — <date>` and add a fresh `## [Unreleased]` stub above it.
 
 Recommended pre-release sequence:
 

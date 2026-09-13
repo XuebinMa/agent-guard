@@ -15,7 +15,7 @@ mod types_tests {
         assert!(CustomToolId::new("acme.sql.query").is_ok());
         assert!(CustomToolId::new("my-tool_v2").is_ok());
         assert!(CustomToolId::new("a").is_ok());
-        assert!(CustomToolId::new(&"x".repeat(64)).is_ok());
+        assert!(CustomToolId::new("x".repeat(64)).is_ok());
     }
 
     #[test]
@@ -25,7 +25,7 @@ mod types_tests {
 
     #[test]
     fn custom_tool_id_too_long() {
-        assert!(CustomToolId::new(&"x".repeat(65)).is_err());
+        assert!(CustomToolId::new("x".repeat(65)).is_err());
     }
 
     #[test]

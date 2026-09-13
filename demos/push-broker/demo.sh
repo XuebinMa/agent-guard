@@ -48,6 +48,9 @@ ran() { printf '%s$ %s%s\n' "$DIM" "$1" "$OFF"; }
 # records out of the terminal without anything being filtered away: the
 # records are still written, and counted at the end of this script.
 POLICY="$WORK/policy.yaml"
+BROKER_GIT_CONFIG="$WORK/broker.gitconfig"
+: > "$BROKER_GIT_CONFIG"
+chmod 600 "$BROKER_GIT_CONFIG"
 sed -e "s|  output: stdout|  output: file\\
   file_path: $WORK/audit.jsonl|" "$PRESET" > "$POLICY"
 
@@ -93,23 +96,24 @@ hook_says "git push origin main"
 
 # --- 2 -----------------------------------------------------------------------
 say "2. That command shows the effect before asking, then performs it."
-ran "agent-guard push --remote origin --branch main"
+ran "agent-guard push --remote origin --branch main --allow-local-file-remote"
 # The command shown above is the command run below. `agent-guard push` reads
 # AGENT_GUARD_POLICY when no --policy is given, which is how this script aims
 # it at the workspace policy without printing one thing and running another.
 export AGENT_GUARD_POLICY="$POLICY"
+export AGENT_GUARD_BROKER_GIT_CONFIG="$BROKER_GIT_CONFIG"
 if [ "${DEMO_AUTO:-}" = "1" ]; then
   printf 'y\n' | "$PUSH" push \
-    --remote origin --branch main \
+    --remote origin --branch main --allow-local-file-remote \
     --grants "$WORK/grants" --receipt "$WORK/receipt.json"
 else
   "$PUSH" push \
-    --remote origin --branch main \
+    --remote origin --branch main --allow-local-file-remote \
     --grants "$WORK/grants" --receipt "$WORK/receipt.json"
 fi
 
 # --- 3 -----------------------------------------------------------------------
-say "3. A receipt for the attempt, whatever the outcome was."
+say "3. A receipt for the broker execution-stage attempt."
 python3 -c '
 import json, sys
 r = json.load(open(sys.argv[1]))

@@ -4,7 +4,7 @@ use std::path::Path;
 
 use serde::{Deserialize, Serialize};
 
-use crate::git::{run, succeeds, GitError};
+use crate::git::{GitError, GitSnapshot, PushBroker};
 
 /// How the remote reference would change.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -39,9 +39,8 @@ pub enum RefUpdateKind {
 pub struct PushTransaction {
     /// The remote as named on the command line, e.g. `origin`.
     pub remote: String,
-    /// What that name resolves to. A remote can be renamed or repointed
-    /// between an approval and a push, so the URL is part of the transaction
-    /// rather than a detail of the repository.
+    /// The single push URL the broker will pass to both `ls-remote` and
+    /// `push`. This is never replaced by the remote name during execution.
     pub remote_url: String,
     /// The branch being pushed, without `refs/heads/`.
     pub branch: String,
@@ -61,7 +60,8 @@ pub struct PushTransaction {
 
 /// Resolve the transaction a push of `branch` to `remote` would perform.
 ///
-/// Every field is read at call time. A transaction is a snapshot of two
+/// Every field is read at call time from an isolated, broker-owned Git
+/// snapshot. A transaction is a snapshot of two
 /// moving things — the local repository and the remote — and says nothing
 /// about whether either still holds when a push eventually runs. Re-resolving
 /// and comparing is how that is checked; this function does not do it.
@@ -70,16 +70,56 @@ pub fn resolve_push_transaction(
     remote: &str,
     branch: &str,
 ) -> Result<PushTransaction, GitError> {
-    let remote_url = run(repo, &["remote", "get-url", remote])?;
-    let local_ref = format!("refs/heads/{branch}");
-    let local_oid = run(repo, &["rev-parse", "--verify", &local_ref])?;
+    PushBroker::default().resolve_push_transaction(repo, remote, branch)
+}
 
-    let remote_oid = resolve_remote_oid(repo, remote, branch)?;
+pub(crate) struct ResolvedPush {
+    pub(crate) transaction: PushTransaction,
+    pub(crate) snapshot: GitSnapshot,
+}
+
+impl PushBroker {
+    pub fn resolve_push_transaction(
+        &self,
+        repo: &Path,
+        remote: &str,
+        branch: &str,
+    ) -> Result<PushTransaction, GitError> {
+        Ok(self
+            .resolve_with_snapshot(repo, remote, branch)?
+            .transaction)
+    }
+
+    pub(crate) fn resolve_with_snapshot(
+        &self,
+        repo: &Path,
+        remote: &str,
+        branch: &str,
+    ) -> Result<ResolvedPush, GitError> {
+        let snapshot = GitSnapshot::capture(repo, remote, branch, &self.options)?;
+        let transaction = resolve_from_snapshot(&snapshot, remote, branch)?;
+        Ok(ResolvedPush {
+            transaction,
+            snapshot,
+        })
+    }
+}
+
+fn resolve_from_snapshot(
+    snapshot: &GitSnapshot,
+    remote: &str,
+    branch: &str,
+) -> Result<PushTransaction, GitError> {
+    let remote_url = snapshot.remote_url.clone();
+    let local_ref = format!("refs/heads/{branch}");
+    let local_oid = snapshot.run(&["rev-parse", "--verify", &local_ref])?;
+
+    let remote_oid = resolve_remote_oid(snapshot, &remote_url, branch)?;
 
     let (kind, added_commits) = match remote_oid.as_deref() {
         None => (
             RefUpdateKind::Create,
-            Some(commits_between(repo, None, &local_oid)?),
+            Some(commits_between(snapshot, None, &local_oid)?),
         ),
         Some(remote_oid) if remote_oid == local_oid => (RefUpdateKind::UpToDate, Some(Vec::new())),
         // The remote is ahead by objects never fetched here. Neither
@@ -88,14 +128,14 @@ pub fn resolve_push_transaction(
         // reads identically to a genuine non-fast-forward, and the second
         // fails outright. Both questions are unanswerable, and saying so is
         // the only truthful option.
-        Some(remote_oid) if !has_object(repo, remote_oid)? => (RefUpdateKind::Undetermined, None),
+        Some(remote_oid) if !has_object(snapshot, remote_oid)? => {
+            (RefUpdateKind::Undetermined, None)
+        }
         Some(remote_oid) => {
             // `merge-base --is-ancestor` exits non-zero for "not an ancestor",
             // which is an answer rather than a failure.
-            let fast_forward = succeeds(
-                repo,
-                &["merge-base", "--is-ancestor", remote_oid, &local_oid],
-            )?;
+            let fast_forward =
+                snapshot.status_is(&["merge-base", "--is-ancestor", remote_oid, &local_oid], 1)?;
             let kind = if fast_forward {
                 RefUpdateKind::FastForward
             } else {
@@ -103,7 +143,7 @@ pub fn resolve_push_transaction(
             };
             (
                 kind,
-                Some(commits_between(repo, Some(remote_oid), &local_oid)?),
+                Some(commits_between(snapshot, Some(remote_oid), &local_oid)?),
             )
         }
     };
@@ -124,16 +164,16 @@ pub fn resolve_push_transaction(
 /// This queries the remote itself rather than reading the local
 /// remote-tracking ref, which is a cached answer that may be arbitrarily
 /// stale and is exactly what a preview must not be built on.
-fn resolve_remote_oid(repo: &Path, remote: &str, branch: &str) -> Result<Option<String>, GitError> {
+fn resolve_remote_oid(
+    snapshot: &GitSnapshot,
+    remote_url: &str,
+    branch: &str,
+) -> Result<Option<String>, GitError> {
     let refspec = format!("refs/heads/{branch}");
-    let output = run(repo, &["ls-remote", "--exit-code", remote, &refspec]);
-
-    let listing = match output {
-        Ok(listing) => listing,
-        // `--exit-code` reports "no matching ref" as a failure; for a branch
-        // the remote simply does not have yet, that is the answer.
-        Err(GitError::Failed { .. }) => return Ok(None),
-        Err(other) => return Err(other),
+    let Some(listing) =
+        snapshot.run_optional(&["ls-remote", "--exit-code", remote_url, &refspec], 2)?
+    else {
+        return Ok(None);
     };
 
     if listing.is_empty() {
@@ -145,7 +185,7 @@ fn resolve_remote_oid(repo: &Path, remote: &str, branch: &str) -> Result<Option<
         .next()
         .and_then(|line| line.split_whitespace().next())
         .ok_or_else(|| GitError::Unexpected {
-            command: format!("ls-remote {remote} {refspec}"),
+            command: format!("ls-remote {remote_url} {refspec}"),
             detail: listing.clone(),
         })?;
 
@@ -153,17 +193,21 @@ fn resolve_remote_oid(repo: &Path, remote: &str, branch: &str) -> Result<Option<
 }
 
 /// Whether this repository holds the object at all.
-fn has_object(repo: &Path, oid: &str) -> Result<bool, GitError> {
-    succeeds(repo, &["cat-file", "-e", &format!("{oid}^{{commit}}")])
+fn has_object(snapshot: &GitSnapshot, oid: &str) -> Result<bool, GitError> {
+    snapshot.object_is_commit(oid)
 }
 
 /// The commits `to` has that `from` does not, newest first.
-fn commits_between(repo: &Path, from: Option<&str>, to: &str) -> Result<Vec<String>, GitError> {
+fn commits_between(
+    snapshot: &GitSnapshot,
+    from: Option<&str>,
+    to: &str,
+) -> Result<Vec<String>, GitError> {
     let range = match from {
         Some(from) => format!("{from}..{to}"),
         None => to.to_string(),
     };
-    let listing = run(repo, &["rev-list", &range])?;
+    let listing = snapshot.run(&["rev-list", &range])?;
     Ok(listing
         .lines()
         .map(str::trim)
@@ -253,6 +297,16 @@ impl PushTransaction {
 /// "the repository no longer answers" is not the same as "the effect changed"
 /// and must not be reported as an approved push being safe.
 pub fn drift_against(approved: &PushTransaction, repo: &Path) -> Result<Vec<Drift>, GitError> {
-    let current = resolve_push_transaction(repo, &approved.remote, &approved.branch)?;
-    Ok(current.drift_from(approved))
+    PushBroker::default().drift_against(approved, repo)
+}
+
+impl PushBroker {
+    pub fn drift_against(
+        &self,
+        approved: &PushTransaction,
+        repo: &Path,
+    ) -> Result<Vec<Drift>, GitError> {
+        let current = self.resolve_push_transaction(repo, &approved.remote, &approved.branch)?;
+        Ok(current.drift_from(approved))
+    }
 }

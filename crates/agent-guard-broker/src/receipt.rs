@@ -1,8 +1,10 @@
 //! What the broker witnessed.
 //!
-//! ## A receipt is emitted for every attempt
+//! ## A receipt is emitted for every execution-stage attempt
 //!
-//! Including refusals, and including runs with no signing key. The one thing
+//! Once [`crate::execute_push_with_receipt`] is entered, including refusals
+//! and runs with no signing key. Policy denials, preview failures and a human
+//! declining before execution are not broker execution attempts. The one thing
 //! a receipt must never be is absent: an operator reading "no receipt" will
 //! conclude "no push was attempted", and reaching that conclusion because a
 //! key was not configured is being misled by their own tooling. That failure
@@ -56,7 +58,8 @@ pub enum Witness {
 pub struct PushReceipt {
     pub version: u8,
     pub at: DateTime<Utc>,
-    /// The transaction as resolved immediately before the attempt.
+    /// The exact transaction resolved once and then presented to the grant
+    /// check and Git execution.
     ///
     /// `None` when the attempt was refused before anything could be
     /// resolved — a grant id that names nothing, for instance. Such an

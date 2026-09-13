@@ -4,7 +4,7 @@
 > Your agent writes code and runs tests freely; agent-guard makes the outbound
 > intent visible and gives the host a decision before code leaves the machine.
 
-[![Version](https://img.shields.io/badge/Version-0.2.3-blue.svg)]()
+[![Version](https://img.shields.io/badge/Version-0.2.4-blue.svg)]()
 [![Focus](https://img.shields.io/badge/Focus-Outbound%20Control-green.svg)]()
 [![License](https://img.shields.io/badge/License-MIT-yellow.svg)]()
 [![MSRV](https://img.shields.io/badge/MSRV-1.79-orange.svg)]()
@@ -99,11 +99,16 @@ cargo install guard-verify --locked
 `agent-guard-cli` is what performs the push shown above. From a repository:
 
 ```bash
+install -m 600 /dev/null ~/.agent-guard/broker.gitconfig
 agent-guard push --remote origin --branch main
 ```
 
 That is the command the hook names when it stops a push, and it runs as
-printed. The policy defaults to `$AGENT_GUARD_POLICY`, then to the one
+printed after the host-owned broker config has been created. The config path
+defaults to `$AGENT_GUARD_BROKER_GIT_CONFIG`, then
+`~/.agent-guard/broker.gitconfig`; it is deliberately separate from the
+agent-writable repository and ordinary global Git config. The policy defaults
+to `$AGENT_GUARD_POLICY`, then to the one
 `npx agent-guard-plugin init` installs — the same policy that refused the
 push. Name another with `--policy`. Whichever is used is printed in the
 preview, so the rules a push was judged by are never left implied.
@@ -130,7 +135,7 @@ checkout with `npm ci --prefix crates/agent-guard-node && npm run build
 
 ## Release Status
 
-- **Source version**: `v0.2.3`
+- **Source version**: `v0.2.4`
 - **Latest published release**: [`v0.2.3`](https://github.com/XuebinMa/agent-guard/releases/tag/v0.2.3) — crates.io, PyPI, npm
 - **Announcement**: [GitHub Discussions #1](https://github.com/XuebinMa/agent-guard/discussions/1)
 
@@ -237,24 +242,25 @@ action rather than advising on it:
    what it just resolved. The push pins the approved object id rather than the
    branch name, and leases the approved remote object id, so neither end can
    move between your decision and the push.
-5. **A receipt** for every attempt, including refusals. Signed when a broker
-   key is configured, and plainly marked unsigned when not — never absent,
-   because a missing receipt reads as "no push was attempted".
+5. **A receipt** once the broker execution stage is entered, including Git or
+   authorization refusals. `--receipt <path>` persists it. Policy denials,
+   preview failures and a human declining before execution are not execution
+   attempts and do not produce a receipt.
 
 Ordinary non-force pushes of one branch are what it performs today. Force,
 mirror, remote branch removal, tags and multiple refspecs fail closed, and the
 hook says so rather than pointing you at a command that would refuse.
 
-**What this does not do:** keeping credentials away from the agent is a
-deployment decision, not something this code can enforce. The broker uses
-whatever credential its own process holds, which is a boundary only if the
-agent has none of its own. The Claude Code hook remains fail-open advisory: an
-agent with a credential can still push without consulting any of this.
+The broker treats the checkout as hostile input: it resolves one push URL,
+copies regular refs and objects into a temporary bare repository, and executes
+there without repository hooks or config. Keeping the host-owned broker config
+and credentials away from the agent remains a deployment decision. The Claude
+Code hook is still fail-open advisory; an agent with its own credential can
+push without consulting the broker.
 
-That gap is closed outside this repository, so
-[Credential isolation](docs/guides/operations/credential-isolation.md) says how
-— and gives you a one-command check that tells you whether you actually have
-it, rather than leaving you to assume.
+[Credential isolation](docs/guides/operations/credential-isolation.md) lists
+the code and deployment requirements together and gives you a check that tells
+you whether the agent can authenticate independently.
 
 ---
 
@@ -300,6 +306,9 @@ For that layer, see [MartinLoop](https://github.com/Keesan12/martin-loop): it wr
 
 What is strong today (action layer):
 
+- the push broker resolves one exact push URL, snapshots branch refs and
+  primary objects into an isolated bare repository, revalidates both object
+  ids at execution, and never loads repository hooks or execution config
 - recognized direct Git push entry points and explicitly modeled wrappers are
   normalized into one policy decision; force, mirror, delete, and destructive
   refspec forms cannot fall back to a weaker raw string match
@@ -322,9 +331,9 @@ What is experimental and opt-in (content layer):
 
 What is roadmap (primary product boundary):
 
-- broker-enforced GitHub push for one repository and one branch: exact preview,
-  short-lived one-use authorization, execution-time remote-state revalidation,
-  Guard-held credentials, and a signed outcome receipt
+- productized host separation for the existing broker path, so its dedicated
+  Git configuration, credentials, SSH setup and signing key are unreachable
+  from the agent rather than merely documented as deployment prerequisites
 
 What to understand before integrating:
 
@@ -336,7 +345,7 @@ What to understand before integrating:
 - broader policy workflow and control-plane ideas are future expansion paths, not the phase-one hook
 - the advisory shell layer cannot prove arbitrary launcher semantics or stop a
   process that bypasses the hook; that class-level guarantee requires the
-  planned credential-isolated broker
+  broker to run in a credential-isolated deployment
 
 ---
 

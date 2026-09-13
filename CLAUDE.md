@@ -12,7 +12,7 @@ remain supported, but new product work should not expand them horizontally. The
 target broker boundary is: an agent may write and test freely; agent-guard
 decides and executes which exact Git change may leave the machine.
 Plumbing-level `git send-pack` is part of that same outbound boundary, not a
-separate feature surface. Current source version: 0.2.0 (unpublished).
+separate feature surface. Current source version: 0.2.4.
 
 ## Build & Test Commands
 
@@ -53,7 +53,7 @@ cd crates/agent-guard-node && npm run build
 
 ## Workspace Architecture
 
-Nine crates under `crates/`, layered bottom-up:
+Ten crates under `crates/`, layered bottom-up:
 
 ```
 agent-guard-core          ← foundational types, YAML policy engine, audit, attestation
@@ -66,6 +66,7 @@ agent-guard-sdk           ← main integration point: Guard struct, anomaly dete
 agent-guard-python        ← PyO3 bindings (maturin, abi3-py310)
 agent-guard-node          ← napi-rs bindings
 guard-verify              ← CLI: execution-receipt verification + host-boundary doctor
+agent-guard-broker        ← isolated, credential-bearing Git push transaction boundary
 agent-guard-cli           ← CLI: interactive approval workflow (bin: agent-guard)
 guard-hook                ← Claude Code PreToolUse hook adapter (bin: guard-hook)
 ```
@@ -81,10 +82,11 @@ guard-hook                ← Claude Code PreToolUse hook adapter (bin: guard-ho
 - Guard-owned execution can emit an Ed25519-signed receipt only when an
   explicit signing key is configured. Ordinary JSONL decision records are not
   signed.
-- The strategic target is a separate broker-enforced Git push path: structured
-  intent, exact preview, one-use short-lived authorization, execution-time
-  policy/remote-state revalidation, Guard-held credentials, and a signed
-  receipt.
+- The broker-enforced Git push path provides structured intent, an exact push
+  URL preview, one-use short-lived authorization, execution-time policy and
+  remote-state revalidation, an isolated temporary repository, and optional
+  signed receipts. Credential isolation remains a deployment property: it is
+  real only when the agent cannot reach the broker's config or credentials.
 
 The broader SDK features remain maintained, but avoid new generic-agent,
 sandbox, DLP, framework-adapter, or control-plane expansion until that Git
@@ -140,7 +142,7 @@ GitHub Actions (`.github/workflows/ci.yml`) uses `./scripts/verify.sh` as the sh
 ## Release Process
 
 `CONTRIBUTING.md` § Releasing is the source of truth. Durable facts learned from cutting `0.2.0-rc2`:
-- The version lives in ONE `workspace.package` field plus `=x.y.z` inter-crate pins, but `scripts/check-version-consistency.sh` enforces ~10 more markers (node `package.json` **and** `package-lock.json`, both `pyproject.toml`s, `plugin.json`, `marketplace.json`, plugin `package.json`, README badge — note the shields.io double-dash `0.2.0--rcN` — README/docs release links, docs/README title). Roll `CHANGELOG.md` `[Unreleased]` by hand.
+- The version lives in ONE `workspace.package` field plus `=x.y.z` inter-crate pins, but `scripts/check-version-consistency.sh` enforces ~10 more markers (node `package.json` **and** `package-lock.json`, both `pyproject.toml`s, `plugin.json`, `marketplace.json`, plugin `package.json`, README badge — note the shields.io double dash for prereleases — README/docs release links, docs/README title). Roll `CHANGELOG.md` `[Unreleased]` by hand.
 - Prefer landing the bump as a normal PR and tagging the **main merge commit** afterwards — tagging a branch commit gets orphaned by squash-merge.
 - Remote/cloud sessions **cannot push tags**: the session git proxy scopes pushes to the designated branch and returns 403 on tag refs. Hand the tag/Release step to the maintainer (GitHub UI "Draft a new release" creates tag + Release in one step).
 - Historical version strings (old CHANGELOG headings, `docs/archive/`, era status markers) stay untouched on a bump; only current-facing markers move.

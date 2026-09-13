@@ -2,12 +2,18 @@
 
 `agent-guard push` is a boundary only if the agent cannot push on its own.
 
-This page is about the half of that sentence the code cannot deliver. The
-broker runs `git` as a subprocess and inherits its own process environment
-([`crates/agent-guard-broker/src/git.rs`](../../../crates/agent-guard-broker/src/git.rs)),
-so it pushes with whatever credential that process happens to hold. Nothing in
-this repository creates the separation, and nothing in it can check whether you
-have it. It is a property of how you run things.
+The broker now treats the working repository as hostile input. It copies the
+regular refs and primary object database into a temporary bare repository,
+loads no repository hooks or config there, and contacts the exact push URL the
+human approved. That closes the repository-to-broker code-execution path, but
+it cannot create the other half of the boundary: the credential must still be
+unreachable from the agent process.
+
+The broker reads credentials and transport settings only from a host-owned
+config selected with `--git-config`, `AGENT_GUARD_BROKER_GIT_CONFIG`, or
+`~/.agent-guard/broker.gitconfig`. It also inherits the host's SSH agent socket
+when present. Those resources are part of the trusted broker environment;
+nothing in this repository can prove that the agent cannot reach them.
 
 So: how to actually get it, and how to prove to yourself that you did.
 
@@ -27,18 +33,25 @@ pushing.** That is worth having — a preview resolved from the remote is not
 something `git push` gives you — but it is not containment, and calling it
 containment would be the overclaim this project exists to avoid.
 
-## The requirement, in one sentence
+## The requirements
 
-> The push credential must live somewhere the agent's process cannot read.
+All four must hold:
+
+1. The push credential is somewhere the agent process cannot read.
+2. The broker Git config is outside the repository and cannot be written by
+   the agent.
+3. The Git binary and host SSH configuration are trusted.
+4. The broker uses its isolated execution path rather than a plain host-side
+   `git push` in the agent-writable checkout.
 
 Everything below is a way to satisfy that. Note what it rules out: same user,
 same session, no container is **not** a boundary, because a POSIX process can
 read its own user's files. No amount of configuration inside agent-guard
 changes that.
 
-## Deployment A — the agent in a container, the credential on the host
+## Deployment A — agent container, isolated host broker
 
-The one that actually holds, and the one to prefer.
+This is the preferred deployment when every prerequisite below is met.
 
 Run the agent in a container with the repository bind-mounted, and give that
 container no way to authenticate to the remote:
@@ -50,9 +63,26 @@ container no way to authenticate to the remote:
   would accept — an inherited environment is the most common accidental grant
 - set `GIT_TERMINAL_PROMPT=0` so a push fails instead of hanging on a prompt
 
-You then run `agent-guard push` on the host, in the same repository, where your
-credential is. The agent can write code and run tests against the mounted
-working tree; it cannot make anything leave the machine.
+On the host, create the dedicated config outside the checkout:
+
+```bash
+install -m 600 /dev/null ~/.agent-guard/broker.gitconfig
+```
+
+An empty file is sufficient for SSH authentication through `SSH_AUTH_SOCK`.
+HTTPS users may put an explicit `credential.helper` and required `http.*`
+settings in this file. Includes, URL rewrites, remote definitions, protocol
+overrides, hooks and arbitrary `core.*` commands are rejected.
+
+You then run `agent-guard push` on the host, against the same repository, where
+your credential is. The repository supplies data only: the broker does not run
+its hooks, use its credential helpers, honour its URL rewrites, or pass its
+remote name to `git push`. The agent can continue writing code and commits,
+while the host broker decides which exact object and URL may leave.
+
+The strict 0.2.4 slice deliberately rejects linked worktrees, partial clones,
+object alternates, multiple push URLs and special Git transports. Convert to a
+normal checkout rather than weakening these checks.
 
 What the agent hits when it tries is a real authentication failure, not a
 policy message — which is the point. The hook's refusal becomes advice on top
@@ -96,7 +126,8 @@ this is safe against a real repository. It creates nothing; confirm with
 `git ls-remote --heads origin credential-isolation-probe` if you want to see
 that for yourself.
 
-**With no credential reachable**, git fails before it can push:
+**With no credential reachable**, plain Git in the agent environment fails
+before it can push:
 
 ```
 fatal: could not read Username for 'https://github.com': terminal prompts disabled
@@ -119,6 +150,23 @@ Run the same command from wherever you intend to run `agent-guard push`, and
 expect the opposite result. A setup where both sides fail is not isolation
 either — it is a broker that cannot do its job.
 
+Finally run the broker itself. It must show the push URL rather than merely the
+remote name. A repository `pre-push` hook or `remote.<name>.pushurl` is input to
+the preview, never code or an implicit second destination in the broker. These
+claims are executable, not just prose: the
+[adversarial Broker boundary suite](../../../crates/agent-guard-broker/tests/security_boundary.rs)
+pins the push URL, repository-hook and config isolation, refusal receipts,
+protocol policy, and unsafe repository layouts.
+
+## Operational cost
+
+The isolated repository is a copy, not a shared object-store view: every
+preview copies the source repository's primary objects, and an approved push
+copies them again when it re-resolves the transaction. Plan for copy time and
+temporary disk use proportional to the primary object store. Benchmark a
+representative large repository on the broker host before rollout; do not
+assume the cost measured on a small source checkout predicts production.
+
 ## What it still does not buy
 
 Even with Deployment A, be careful what you claim:
@@ -132,6 +180,15 @@ Even with Deployment A, be careful what you claim:
 - **A human still has to read the preview.** The broker refuses a transaction
   that moved after approval, but it cannot tell whether the change you approved
   is the change you wanted.
+- **The repository remains hostile input.** The isolated snapshot prevents its
+  hooks and config from executing, but malformed or racing repository data can
+  still cause a safe refusal.
+- **The broker's `PATH` is trusted.** It inherits `PATH` to locate `git` and
+  programs Git deliberately invokes. If the agent can write any directory on
+  that path, it can replace a trusted executable.
+- **The broker's `HOME` is trusted.** Host SSH may read `~/.ssh/config`; if
+  the agent can edit it, directives such as `ProxyCommand` can execute code
+  in the credential-bearing process.
 - **This covers `git push`.** Other ways code leaves a machine — a package
   publish, an HTTP upload, a copy to shared storage — are governed by policy
   where they are recognised, and by nothing where they are not.

@@ -10,8 +10,15 @@
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-use agent_guard_broker::{execute_push, issue_grant, resolve_push_transaction, ExecuteError};
+use agent_guard_broker::{issue_grant, BrokerGitOptions, ExecuteError, PushBroker};
 use chrono::{Duration, Utc};
+
+fn broker() -> PushBroker {
+    PushBroker::new(BrokerGitOptions {
+        trusted_config: None,
+        allow_local_file_remote: true,
+    })
+}
 
 fn git(repo: &Path, args: &[&str]) -> String {
     let out = Command::new("git")
@@ -82,14 +89,52 @@ fn an_approved_push_lands_exactly_that_object() {
     let f = fixture();
     let approved_oid = commit(&f.work, "second");
 
-    let tx = resolve_push_transaction(&f.work, "origin", "main").expect("resolves");
+    let broker = broker();
+    let tx = broker
+        .resolve_push_transaction(&f.work, "origin", "main")
+        .expect("resolves");
     let grant =
         issue_grant(&f.grants, &tx, "policy-1", "human", Duration::minutes(5)).expect("issues");
 
-    let outcome = execute_push(&f.work, &f.grants, &grant, "policy-1", Utc::now()).expect("pushes");
+    let outcome = broker
+        .execute_push(&f.work, &f.grants, &grant, "policy-1", Utc::now())
+        .expect("pushes");
 
     assert_eq!(outcome.pushed_oid, approved_oid);
     assert_eq!(remote_head(&f.remote), approved_oid);
+}
+
+/// The work repository belongs to the agent. Its hooks are input, not broker
+/// code, and must never run in the credential-bearing process.
+#[cfg(unix)]
+#[test]
+fn a_repository_pre_push_hook_is_not_executed_by_the_broker() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let f = fixture();
+    commit(&f.work, "second");
+    let marker = f.work.parent().expect("parent").join("hook-ran");
+    let hook = f.work.join(".git/hooks/pre-push");
+    std::fs::write(&hook, format!("#!/bin/sh\ntouch '{}'\n", marker.display())).expect("hook");
+    let mut permissions = std::fs::metadata(&hook).expect("metadata").permissions();
+    permissions.set_mode(0o755);
+    std::fs::set_permissions(&hook, permissions).expect("chmod");
+
+    let broker = broker();
+    let tx = broker
+        .resolve_push_transaction(&f.work, "origin", "main")
+        .expect("resolves");
+    let grant =
+        issue_grant(&f.grants, &tx, "policy-1", "human", Duration::minutes(5)).expect("issues");
+
+    broker
+        .execute_push(&f.work, &f.grants, &grant, "policy-1", Utc::now())
+        .expect("pushes");
+
+    assert!(
+        !marker.exists(),
+        "the broker executed an agent-controlled hook"
+    );
 }
 
 /// The agent commits again between approval and execution. The push must
@@ -98,14 +143,17 @@ fn an_approved_push_lands_exactly_that_object() {
 fn a_commit_made_after_approval_does_not_ride_along() {
     let f = fixture();
     let approved_oid = commit(&f.work, "second");
-    let tx = resolve_push_transaction(&f.work, "origin", "main").expect("resolves");
+    let broker = broker();
+    let tx = broker
+        .resolve_push_transaction(&f.work, "origin", "main")
+        .expect("resolves");
     let grant =
         issue_grant(&f.grants, &tx, "policy-1", "human", Duration::minutes(5)).expect("issues");
 
     let sneaked = commit(&f.work, "added after approval");
     assert_ne!(sneaked, approved_oid);
 
-    let result = execute_push(&f.work, &f.grants, &grant, "policy-1", Utc::now());
+    let result = broker.execute_push(&f.work, &f.grants, &grant, "policy-1", Utc::now());
 
     assert!(
         matches!(result, Err(ExecuteError::Drift { .. })),
@@ -124,7 +172,10 @@ fn a_commit_made_after_approval_does_not_ride_along() {
 fn a_remote_advanced_after_approval_is_refused() {
     let f = fixture();
     commit(&f.work, "second");
-    let tx = resolve_push_transaction(&f.work, "origin", "main").expect("resolves");
+    let broker = broker();
+    let tx = broker
+        .resolve_push_transaction(&f.work, "origin", "main")
+        .expect("resolves");
     let grant =
         issue_grant(&f.grants, &tx, "policy-1", "human", Duration::minutes(5)).expect("issues");
 
@@ -140,7 +191,7 @@ fn a_remote_advanced_after_approval_is_refused() {
     let theirs = commit(&other, "theirs");
     git(&other, &["push", "origin", "main"]);
 
-    let result = execute_push(&f.work, &f.grants, &grant, "policy-1", Utc::now());
+    let result = broker.execute_push(&f.work, &f.grants, &grant, "policy-1", Utc::now());
 
     assert!(result.is_err(), "got {result:?}");
     assert_eq!(
@@ -162,11 +213,14 @@ fn a_non_fast_forward_is_refused_before_any_push() {
     git(&f.work, &["reset", "--hard", "HEAD~1"]);
     commit(&f.work, "rewritten");
 
-    let tx = resolve_push_transaction(&f.work, "origin", "main").expect("resolves");
+    let broker = broker();
+    let tx = broker
+        .resolve_push_transaction(&f.work, "origin", "main")
+        .expect("resolves");
     let grant =
         issue_grant(&f.grants, &tx, "policy-1", "human", Duration::minutes(5)).expect("issues");
 
-    let result = execute_push(&f.work, &f.grants, &grant, "policy-1", Utc::now());
+    let result = broker.execute_push(&f.work, &f.grants, &grant, "policy-1", Utc::now());
 
     assert!(
         matches!(result, Err(ExecuteError::UnsupportedShape { .. })),
@@ -184,14 +238,19 @@ fn a_non_fast_forward_is_refused_before_any_push() {
 fn a_grant_cannot_drive_two_pushes() {
     let f = fixture();
     commit(&f.work, "second");
-    let tx = resolve_push_transaction(&f.work, "origin", "main").expect("resolves");
+    let broker = broker();
+    let tx = broker
+        .resolve_push_transaction(&f.work, "origin", "main")
+        .expect("resolves");
     let grant =
         issue_grant(&f.grants, &tx, "policy-1", "human", Duration::minutes(5)).expect("issues");
 
-    execute_push(&f.work, &f.grants, &grant, "policy-1", Utc::now()).expect("first push");
+    broker
+        .execute_push(&f.work, &f.grants, &grant, "policy-1", Utc::now())
+        .expect("first push");
     let third = commit(&f.work, "third");
 
-    let result = execute_push(&f.work, &f.grants, &grant, "policy-1", Utc::now());
+    let result = broker.execute_push(&f.work, &f.grants, &grant, "policy-1", Utc::now());
 
     assert!(result.is_err(), "got {result:?}");
     assert_ne!(remote_head(&f.remote), third);
