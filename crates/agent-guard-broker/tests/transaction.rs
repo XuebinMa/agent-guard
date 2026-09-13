@@ -274,3 +274,19 @@ fn an_unfetched_remote_object_is_undetermined_not_not_fast_forward() {
         "the remote tip is still known even when its history is not"
     );
 }
+
+/// The shapes the broker performs, asked as a question rather than restated.
+///
+/// A caller that wants to decline before spending a human's attention and a
+/// one-use grant has to know the same set `execute_push` enforces. Two copies
+/// of that set drift, and the drift is silent: the offer says yes and the
+/// execution says no, after the grant is gone.
+#[test]
+fn only_the_shapes_the_broker_performs_report_executable() {
+    assert!(RefUpdateKind::FastForward.is_executable());
+    assert!(RefUpdateKind::Create.is_executable());
+
+    assert!(!RefUpdateKind::NotFastForward.is_executable());
+    assert!(!RefUpdateKind::Undetermined.is_executable());
+    assert!(!RefUpdateKind::UpToDate.is_executable());
+}
