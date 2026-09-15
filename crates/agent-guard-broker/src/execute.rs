@@ -131,19 +131,18 @@ impl PushBroker {
         };
         let consumed_grant_id = Some(grant.grant_id.clone());
 
-        let result = match current.kind {
-            RefUpdateKind::FastForward | RefUpdateKind::Create => {
-                push_pinned(&resolved.snapshot, &current)
-                    .map(|git_output| PushOutcome {
-                        pushed_oid: current.local_oid.clone(),
-                        branch: current.branch.clone(),
-                        remote_url: current.remote_url.clone(),
-                        grant,
-                        git_output,
-                    })
-                    .map_err(ExecuteError::Push)
-            }
-            kind => Err(ExecuteError::UnsupportedShape { kind }),
+        let result = if current.kind.is_executable() {
+            push_pinned(&resolved.snapshot, &current)
+                .map(|git_output| PushOutcome {
+                    pushed_oid: current.local_oid.clone(),
+                    branch: current.branch.clone(),
+                    remote_url: current.remote_url.clone(),
+                    grant,
+                    git_output,
+                })
+                .map_err(ExecuteError::Push)
+        } else {
+            Err(ExecuteError::UnsupportedShape { kind: current.kind })
         };
 
         ExecutionAttempt {

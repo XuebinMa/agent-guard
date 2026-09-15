@@ -16,13 +16,12 @@
 //! The ledger path defaults to `$AGENT_GUARD_APPROVALS` or
 //! `<home>/.agent-guard/approvals.jsonl`; override with `--ledger`.
 
-use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 use std::process;
 
 use agent_guard_broker::{
-    issue_grant, validate_push_target, BrokerGitOptions, PushAttempt, PushBroker, PushTransaction,
-    RefUpdateKind, Witness,
+    issue_grant, validate_push_target, BrokerGitOptions, PushAttempt, PushBroker, RefUpdateKind,
+    Witness,
 };
 use agent_guard_sdk::approval::{
     default_ledger_path, ApprovalError, ApprovalLedger, ApprovalRecord,
@@ -30,6 +29,8 @@ use agent_guard_sdk::approval::{
 use agent_guard_sdk::{Context, Guard, GuardDecision, GuardInput, Tool};
 use chrono::{Duration, Utc};
 use clap::{Parser, Subcommand};
+
+mod preview;
 
 #[derive(Parser)]
 #[command(
@@ -359,14 +360,22 @@ fn run_push(options: PushCommandOptions) -> i32 {
         }
     };
 
-    print_preview(&transaction, &policy_path);
+    preview::print_preview(&transaction, &policy_path);
 
     if matches!(transaction.kind, RefUpdateKind::UpToDate) {
         println!("\nNothing to push.");
         return 0;
     }
 
-    if !yes && !confirm() {
+    // Decline before asking, when the broker will not perform this shape.
+    // Asking first spends a human's attention and then a one-use grant on a
+    // refusal that was knowable before either.
+    if !transaction.kind.is_executable() {
+        println!("\nNot pushed: the broker does not perform this shape.");
+        return 1;
+    }
+
+    if !yes && !preview::confirm() {
         println!("\nNot pushed.");
         return 1;
     }
@@ -420,57 +429,6 @@ fn run_push(options: PushCommandOptions) -> i32 {
 }
 
 /// Show the effect, in the order someone deciding would ask about it.
-fn print_preview(tx: &PushTransaction, policy_path: &Path) {
-    // Named, even when it was not asked for. Approving a push means approving
-    // it under some set of rules, and a default that goes unstated is a rule
-    // set the person deciding never saw.
-    println!("policy:  {}", policy_path.display());
-    println!("remote:  {} ({})", tx.remote, tx.remote_url);
-    println!("branch:  {}", tx.branch);
-    println!(
-        "update:  {}",
-        match tx.kind {
-            RefUpdateKind::Create => "creates the branch on the remote",
-            RefUpdateKind::FastForward => "fast-forward",
-            RefUpdateKind::NotFastForward =>
-                "NOT a fast-forward: this would discard remote commits",
-            RefUpdateKind::UpToDate => "already up to date",
-            RefUpdateKind::Undetermined =>
-                "cannot be determined: the remote holds objects this repository has not fetched",
-        }
-    );
-    match &tx.remote_oid {
-        Some(oid) => println!("remote is at {oid}"),
-        None => println!("remote does not have this branch yet"),
-    }
-    println!("would move it to {}", tx.local_oid);
-
-    match &tx.added_commits {
-        Some(commits) if commits.is_empty() => println!("adds no commits"),
-        Some(commits) => {
-            println!("adds {} commit(s):", commits.len());
-            for oid in commits {
-                println!("  {oid}");
-            }
-        }
-        // Not "adds no commits": the question could not be answered, and an
-        // empty list would read as an answer.
-        None => println!("commits added: unknown until this repository fetches the remote"),
-    }
-}
-
-fn confirm() -> bool {
-    print!("\nPush this? [y/N] ");
-    if io::stdout().flush().is_err() {
-        return false;
-    }
-    let mut answer = String::new();
-    if io::stdin().read_line(&mut answer).is_err() {
-        return false;
-    }
-    matches!(answer.trim(), "y" | "Y" | "yes")
-}
-
 /// Where the Claude Code plugin installs the policy.
 ///
 /// `packages/agent-guard-plugin/bin/cli.js` writes it here and points the

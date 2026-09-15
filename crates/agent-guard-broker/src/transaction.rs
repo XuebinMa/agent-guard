@@ -34,6 +34,19 @@ pub enum RefUpdateKind {
     Undetermined,
 }
 
+impl RefUpdateKind {
+    /// Whether the broker performs this shape today.
+    ///
+    /// `execute_push` is the enforcer; this is the same set asked as a
+    /// question, so a caller can decline before spending a human's attention
+    /// and a one-use grant on something that fails at execution. Both read
+    /// this, because two copies of the set drift silently — the offer says
+    /// yes, the execution says no, and by then the grant is gone.
+    pub fn is_executable(self) -> bool {
+        matches!(self, RefUpdateKind::FastForward | RefUpdateKind::Create)
+    }
+}
+
 /// What an approval would be about: the effect, resolved, not the request.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PushTransaction {
