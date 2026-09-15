@@ -9,6 +9,8 @@ The `[Unreleased]` heading is rolled forward manually before each release; do no
 
 ## [Unreleased]
 
+## [0.2.5] - 2026-09-14
+
 ### Security
 - Updated the locked `rustls` dependency from 0.23.40 to 0.23.45 to address
   RUSTSEC-2026-0285, which allowed selected TLS 1.3 handshake messages to be

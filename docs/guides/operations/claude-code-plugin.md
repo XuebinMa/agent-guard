@@ -2,7 +2,7 @@
 
 | Field | Details |
 | :--- | :--- |
-| **Status** | 🟡 Preview (v0.2.4) |
+| **Status** | 🟡 Preview (v0.2.5) |
 | **Audience** | Claude Code users who want the agent-guard outbound gate installed as a plugin |
 | **Version** | 0.1 |
 | **Last Reviewed** | 2026-09-09 |
@@ -53,8 +53,8 @@ The repo doubles as a single-plugin marketplace:
 Then install both matching binaries (the plugin **fails open** until the hook is present):
 
 ```bash
-cargo install guard-hook --version 0.2.4 --locked --force
-cargo install agent-guard-cli --version 0.2.4 --locked --force
+cargo install guard-hook --version 0.2.5 --locked --force
+cargo install agent-guard-cli --version 0.2.5 --locked --force
 ```
 
 `cargo install` drops `guard-hook` into `~/.cargo/bin`, which the plugin's wrapper finds automatically.
