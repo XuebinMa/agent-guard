@@ -9,6 +9,11 @@ The `[Unreleased]` heading is rolled forward manually before each release; do no
 
 ## [Unreleased]
 
+### Security
+- Updated the locked `rustls` dependency from 0.23.40 to 0.23.45 to address
+  RUSTSEC-2026-0285, which allowed selected TLS 1.3 handshake messages to be
+  accepted at the wrong encryption level.
+
 ### Changed
 - **The push preview leads with what you must not skim past, and a shape the
   broker will not perform is declined before you are asked.**
