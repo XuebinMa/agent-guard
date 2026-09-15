@@ -12,7 +12,7 @@ remain supported, but new product work should not expand them horizontally. The
 target broker boundary is: an agent may write and test freely; agent-guard
 decides and executes which exact Git change may leave the machine.
 Plumbing-level `git send-pack` is part of that same outbound boundary, not a
-separate feature surface. Current source version: 0.2.4.
+separate feature surface. Current source version: 0.2.5.
 
 ## Build & Test Commands
 

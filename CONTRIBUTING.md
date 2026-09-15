@@ -177,7 +177,7 @@ git push origin main v<semver>         # push manually after review
 
 `<level>` is one of `patch`, `minor`, `major`, `alpha`, `beta`, `rc`, or `release`. The configuration:
 
-- Uses a **shared version** across all ten workspace crates so they always release together (matches the `version = "=0.2.4"` inter-crate pin in `Cargo.toml`).
+- Uses a **shared version** across all ten workspace crates so they always release together (matches the `version = "=0.2.5"` inter-crate pin in `Cargo.toml`).
 - Creates **one tag per workspace** (`v<semver>`) rather than a tag per crate.
 - Publishes the eight public Rust crates individually in dependency order; the
   Python and Node binding crates remain `publish = false` because they ship via
