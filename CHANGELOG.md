@@ -9,6 +9,38 @@ The `[Unreleased]` heading is rolled forward manually before each release; do no
 
 ## [Unreleased]
 
+### Changed
+- **`guard-verify` reads schema-v1 attenu chains instead of rejecting them
+  outright.** Every bundle in `bundle_vectors_v1.4` is a `schema_version=2`
+  chain, so no published row exercised a v1 ledger, and this verifier failed
+  any v1 bundle wholesale under a reason of its own. attenu-guard has accepted
+  a v1-chain row for the next corpus revision (a2aproject/A2A#1575), so the v1
+  rules are pinned now, from the corpus README alone, before that row exists:
+
+  - version consistency uses the README's tokens: `unsupported_version` (was
+    `unsupported_schema_version`, a name no row had ever checked),
+    `anchor_version_mismatch`, `root_version_mismatch` and
+    `mixed_entry_versions`, the last reported once, at the first entry that
+    disagrees — the root included, since the README exempts no entry;
+  - an undefined `policy` value is `invalid_policy` on a v1 chain and stays
+    `invalid_allow`, the v2 record check's name, on a v2 chain. The rule is
+    version-independent, and on neither does the value buy a containment
+    exemption;
+  - execution binding runs on v2 chains only. `attenu-bundle` output gains
+    `execution_binding`, which is `"not applicable"` on a v1 chain rather than
+    leaving an empty failure list to imply the pairs were found sound.
+
+  **Not implemented: `v2_field_on_v1`.** The README names the reason but not
+  which entry fields are v2-only. Guessing the list would reject canonical v1
+  rows this verifier cannot see, so the reason is left out and the question
+  is raised upstream instead. `unsupported_canonicalization` is likewise
+  outside the contract: the README has no token for a non-JCS `c14n`.
+
+  The v1 cases are derived by re-declaring a published v2 case as v1 and
+  re-sealing it, so they test this verifier's reading of the format, not the
+  upcoming row. The bundle corpus still scores 20 of 20 and the envelope
+  corpus 19 of 19.
+
 ## [0.2.5] - 2026-09-14
 
 ### Security

@@ -9,8 +9,8 @@
 use std::collections::{BTreeMap, HashMap};
 
 use super::{
-    verify_bundle, verify_bundle_with_envelopes, BundleReport, Failure, Signer, TrustSet,
-    WitnessKey,
+    verify_bundle, verify_bundle_with_envelopes, BundleReport, ExecutionBinding, Failure, Signer,
+    TrustSet, WitnessKey,
 };
 use serde::Deserialize;
 use serde_json::Value;
@@ -159,6 +159,7 @@ fn score_envelope_case(case: &EnvelopeVectorCase) -> EnvelopeCaseScore {
                 report: BundleReport {
                     accepted: false,
                     failures: Vec::new(),
+                    execution_binding: ExecutionBinding::NotRun,
                     unaccounted_calls: Vec::new(),
                     envelopes: None,
                 },

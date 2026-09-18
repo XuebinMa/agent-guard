@@ -1,4 +1,4 @@
-//! Offline verifier for attenu-guard evidence bundles (schema v2).
+//! Offline verifier for attenu-guard evidence bundles (schema v1 and v2).
 //!
 //! This is a from-scratch, third-party implementation written against the
 //! published format description in `attenu-io/attenu-guard`
@@ -12,17 +12,24 @@
 //! 1. every entry hash reproduces from the previous hash and the entry body;
 //! 2. the anchor signature verifies and commits to the head this ledger
 //!    actually reproduces;
-//! 3. every `call_id` is issued once;
-//! 4. every outcome binds to exactly one authorization, ordered before it, on
-//!    the same node, with the arguments that were authorized;
-//! 5. every delegation is a subset of its parent and every allowed scope was
-//!    inside the acting node's authority.
+//! 3. on a `schema_version=2` chain, every `call_id` is issued once and every
+//!    outcome binds to exactly one authorization, ordered before it, on the
+//!    same node, with the arguments that were authorized (on a v1 chain the
+//!    binding is "not applicable");
+//! 4. every delegation is a subset of its parent and every allowed scope was
+//!    inside the acting node's authority;
+//! 5. the bundle, its anchor and its entries declare one version.
+//!
+//! Not implemented: `v2_field_on_v1`. The README names the reason but not
+//! which entry fields are v2-only, and guessing the list would fail the
+//! canonical v1 rows it cannot see.
 
 mod authority;
 mod binding;
 mod chain;
 pub mod corpus;
 mod envelope;
+mod version;
 
 pub use envelope::{EntryWitness, EnvelopeReport, TrustSet, WitnessKey};
 
@@ -68,10 +75,28 @@ pub struct Signer {
     pub secret_hex: String,
 }
 
+/// Whether the execution-binding pass ran on this ledger.
+///
+/// The format checks binding on `schema_version=2` chains only; on a v1 chain
+/// the report says "not applicable" rather than implying the pairs were found
+/// sound.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+pub enum ExecutionBinding {
+    #[serde(rename = "checked")]
+    Checked,
+    #[serde(rename = "not applicable")]
+    NotApplicable,
+    /// Verification never started, e.g. the trust set could not be built.
+    /// Distinct from `NotApplicable`, which is a statement about the format.
+    #[serde(rename = "not run")]
+    NotRun,
+}
+
 #[derive(Debug, Clone, Serialize)]
 pub struct BundleReport {
     pub accepted: bool,
     pub failures: Vec<Failure>,
+    pub execution_binding: ExecutionBinding,
     /// Authorized calls with no terminal observation. Not a failure: it
     /// bounds what the ledger proves rather than showing a broken rule.
     pub unaccounted_calls: Vec<String>,
@@ -117,11 +142,11 @@ fn verify(
         .cloned()
         .unwrap_or_default();
 
-    if bundle.get("v").and_then(Value::as_i64) != Some(2) {
-        failures.push(Failure::chain_level("unsupported_schema_version"));
-    }
+    let schema_version = version::check_versions(bundle, &entries, &mut failures);
     if let Some(c14n) = bundle.get("c14n").and_then(Value::as_str) {
         if c14n != "JCS" {
+            // Outside the contract: the README has no token for this, so the
+            // name is this verifier's own until a revision adds a row for it.
             failures.push(Failure::chain_level("unsupported_canonicalization"));
         }
     }
@@ -130,9 +155,21 @@ fn verify(
     if let Some(signer) = signer {
         chain::check_anchor(bundle.get("anchor"), &entries, signer, &mut failures);
     }
-    binding::check_call_id_uniqueness(&entries, &mut failures);
-    let unaccounted_calls = binding::check_execution_binding(&entries, &mut failures);
-    authority::check_policy_field(&entries, &mut failures);
+
+    // "Execution binding is checked on `schema_version=2` chains only; on a
+    // v1 bundle these cannot occur and the report says `not applicable`."
+    // A version this verifier does not read is checked as v2: it is already
+    // rejected, and reporting what can still be established beats reporting
+    // less.
+    let (execution_binding, unaccounted_calls) = if schema_version == Some(version::V1) {
+        (ExecutionBinding::NotApplicable, Vec::new())
+    } else {
+        binding::check_call_id_uniqueness(&entries, &mut failures);
+        let unaccounted = binding::check_execution_binding(&entries, &mut failures);
+        (ExecutionBinding::Checked, unaccounted)
+    };
+
+    authority::check_policy_field(&entries, schema_version, &mut failures);
     authority::check_authority(&entries, &mut failures);
 
     let envelopes = trust
@@ -141,6 +178,7 @@ fn verify(
     BundleReport {
         accepted: failures.is_empty(),
         failures,
+        execution_binding,
         unaccounted_calls,
         envelopes,
     }
@@ -152,3 +190,5 @@ fn entry_str(entry: &Value, key: &str) -> Option<String> {
 
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod version_tests;

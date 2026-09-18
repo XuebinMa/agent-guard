@@ -98,7 +98,21 @@ const DEFINED_POLICY: &str = "unlisted";
 /// living there never runs on a v1 chain — and every undefined value then buys
 /// the containment exemption it should not have. The corpus README names that
 /// as the mistake reference implementations have made.
-pub fn check_policy_field(entries: &[Value], failures: &mut Vec<Failure>) {
+///
+/// The rule is version-independent; only the name differs. On a v2 chain the
+/// v2 record check owns the entry and the format calls an undefined value
+/// `invalid_allow`. A v1 chain has no record check, and the format calls it
+/// `invalid_policy`.
+pub fn check_policy_field(
+    entries: &[Value],
+    schema_version: Option<i64>,
+    failures: &mut Vec<Failure>,
+) {
+    let undefined_value = if schema_version == Some(super::version::V1) {
+        "invalid_policy"
+    } else {
+        "invalid_allow"
+    };
     for entry in entries {
         let Some(policy) = entry.get("policy") else {
             continue;
@@ -106,7 +120,7 @@ pub fn check_policy_field(entries: &[Value], failures: &mut Vec<Failure>) {
         if entry_str(entry, "event").as_deref() != Some("allow") {
             failures.push(Failure::at(entry, "policy_on_non_allow"));
         } else if policy.as_str() != Some(DEFINED_POLICY) {
-            failures.push(Failure::at(entry, "invalid_allow"));
+            failures.push(Failure::at(entry, undefined_value));
         }
     }
 }
