@@ -1,13 +1,8 @@
-use super::corpus::{score_corpus, score_envelope_corpus, EnvelopeVectorFile, VectorFile};
+use super::corpus::{score_corpus, score_envelope_corpus, EnvelopeVectorFile};
 use super::envelope::EntryWitness;
+use super::test_support::{corpus, CORPUS};
 use super::*;
 use sha2::{Digest, Sha256};
-
-const CORPUS: &str = include_str!("../../fixtures/attenu/bundle_vectors_v1.json");
-
-fn corpus() -> VectorFile {
-    serde_json::from_str(CORPUS).expect("corpus parses")
-}
 
 /// The corpus is evidence only while the bytes are the published ones. This
 /// pins the hash the upstream release and an independent third party both
@@ -23,9 +18,13 @@ fn attenu_corpus_fixture_bytes_are_pinned() {
     assert_eq!(CORPUS.len(), 175_552);
 }
 
+/// `version` is the compatibility contract and never moves; `revision` moves
+/// with each appended case and is what a report should name.
 #[test]
 fn attenu_corpus_version_is_the_one_we_implement() {
-    assert_eq!(corpus().version, "bundle_vectors_v1");
+    let file = corpus();
+    assert_eq!(file.version, "bundle_vectors_v1");
+    assert_eq!(file.revision.as_deref(), Some("bundle_vectors_v1.4"));
 }
 
 /// Every case scores: acceptance matches, and each required failure appears

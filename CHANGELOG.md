@@ -38,8 +38,41 @@ The `[Unreleased]` heading is rolled forward manually before each release; do no
 
   The v1 cases are derived by re-declaring a published v2 case as v1 and
   re-sealing it, so they test this verifier's reading of the format, not the
-  upcoming row. The bundle corpus still scores 20 of 20 and the envelope
-  corpus 19 of 19.
+  upcoming row.
+
+### Fixed
+- **The 20 of 20 `guard-verify` reported for `bundle_vectors_v1.4` never read
+  the counters one row pins.** The corpus README defines `expect_report` as
+  counters "a conformant implementation MUST reproduce exactly".
+  `valid_bundle_v2_ungated_allow` pins `actions_checked: 2, ungated: 1`, which
+  is the only thing separating a verifier that reports an un-gated allow from
+  one that silently skips it: both accept. The scorer deserialized past the
+  key, and the report had no such counters. The report now carries both under
+  the corpus's names. The scorer checks every pinned counter, and a counter
+  this verifier does not report fails the case instead of passing it. The
+  score is still 20 of 20, now with that row's counters in it; the envelope
+  corpus stays 19 of 19.
+
+  A pass over the README's reason table found three more places where this
+  verifier used a name of its own, or none:
+
+  - an outcome on a different node than its allow was `outcome_node_mismatch`;
+    the table's token is `cross_ref`;
+  - an allow by a node the bundle never spawned was `unreadable_authority`,
+    which the table puts on a root only; it is `containment`. A spawn from a
+    parent never established is now `monotonicity`, since a parent holding
+    nothing cannot contain a grant. That one is this verifier's reading: the
+    table names no reason for the shape;
+  - `missing_root` (zero or several roots) and `chain_id_mismatch` (an entry
+    or the anchor naming another chain) were never emitted.
+
+  `attenu-vectors` also prints the corpus revision it scored, which the README
+  says is what a report should name. Still not implemented, and now listed
+  where the verifier documents itself: the v2 record schema behind
+  `invalid_root`, `invalid_kill`, `invalid_deny` and `invalid_outcome`
+  (`invalid_allow` too, beyond the `policy` value), and
+  `expected_head_mismatch` / `expected_anchor_mismatch`, which need an
+  independently retained head that this verifier is not given.
 
 ## [0.2.5] - 2026-09-14
 

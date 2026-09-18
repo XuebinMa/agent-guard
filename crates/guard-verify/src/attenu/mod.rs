@@ -18,17 +18,29 @@
 //!    binding is "not applicable");
 //! 4. every delegation is a subset of its parent and every allowed scope was
 //!    inside the acting node's authority;
-//! 5. the bundle, its anchor and its entries declare one version.
+//! 5. the bundle, its anchor and its entries declare one version;
+//! 6. the ledger has exactly one root and names one chain throughout.
 //!
-//! Not implemented: `v2_field_on_v1`. The README names the reason but not
-//! which entry fields are v2-only, and guessing the list would fail the
-//! canonical v1 rows it cannot see.
+//! The report also carries the counters a case may pin in `expect_report`,
+//! under the corpus's own names: `actions_checked` and `ungated`.
+//!
+//! Not implemented, and not claimed:
+//!
+//! - `v2_field_on_v1`. The README names the reason but not which entry fields
+//!   are v2-only, and guessing the list would fail the canonical v1 rows it
+//!   cannot see.
+//! - The v2 record schema behind `invalid_root`, `invalid_kill`,
+//!   `invalid_deny` and `invalid_outcome`, and `invalid_allow` beyond the
+//!   `policy` value.
+//! - `expected_head_mismatch` and `expected_anchor_mismatch`, which need an
+//!   independently retained head or anchor that this verifier is not given.
 
 mod authority;
 mod binding;
 mod chain;
 pub mod corpus;
 mod envelope;
+mod structure;
 mod version;
 
 pub use envelope::{EntryWitness, EnvelopeReport, TrustSet, WitnessKey};
@@ -97,6 +109,12 @@ pub struct BundleReport {
     pub accepted: bool,
     pub failures: Vec<Failure>,
     pub execution_binding: ExecutionBinding,
+    /// Allows measured against the acting node's authority. This and
+    /// `ungated` are the corpus's `expect_report` counters, under its names.
+    pub actions_checked: usize,
+    /// Allows let through without an authorization check, marked
+    /// `"policy": "unlisted"`: recorded, and deliberately not measured.
+    pub ungated: usize,
     /// Authorized calls with no terminal observation. Not a failure: it
     /// bounds what the ledger proves rather than showing a broken rule.
     pub unaccounted_calls: Vec<String>,
@@ -143,6 +161,8 @@ fn verify(
         .unwrap_or_default();
 
     let schema_version = version::check_versions(bundle, &entries, &mut failures);
+    structure::check_root_count(&entries, &mut failures);
+    structure::check_chain_ids(bundle, &entries, &mut failures);
     if let Some(c14n) = bundle.get("c14n").and_then(Value::as_str) {
         if c14n != "JCS" {
             // Outside the contract: the README has no token for this, so the
@@ -170,7 +190,7 @@ fn verify(
     };
 
     authority::check_policy_field(&entries, schema_version, &mut failures);
-    authority::check_authority(&entries, &mut failures);
+    let measured = authority::check_authority(&entries, &mut failures);
 
     let envelopes = trust
         .map(|trust| envelope::check_envelopes(bundle, &entries, trust, received, &mut failures));
@@ -179,6 +199,8 @@ fn verify(
         accepted: failures.is_empty(),
         failures,
         execution_binding,
+        actions_checked: measured.actions_checked,
+        ungated: measured.ungated,
         unaccounted_calls,
         envelopes,
     }
@@ -188,6 +210,10 @@ fn entry_str(entry: &Value, key: &str) -> Option<String> {
     entry.get(key).and_then(Value::as_str).map(str::to_string)
 }
 
+#[cfg(test)]
+mod contract_tests;
+#[cfg(test)]
+mod test_support;
 #[cfg(test)]
 mod tests;
 #[cfg(test)]

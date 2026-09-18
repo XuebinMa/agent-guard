@@ -860,8 +860,11 @@ fn finish_corpus(conformant: usize, total: usize) {
 fn cmd_attenu_vectors(vectors_path: &Path) {
     let file: attenu::corpus::VectorFile = read_corpus(vectors_path);
 
-    println!("corpus: {}", file.version);
-    println!("cases:  {}", file.cases.len());
+    println!("corpus:   {}", file.version);
+    if let Some(revision) = &file.revision {
+        println!("revision: {revision}");
+    }
+    println!("cases:    {}", file.cases.len());
     println!();
 
     let scores = attenu::corpus::score_corpus(&file);

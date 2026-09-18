@@ -112,6 +112,8 @@ pub fn check_anchor(
     };
 
     if !signer.alg.eq_ignore_ascii_case("HS256") {
+        // Outside the contract: the corpus publishes HS256 only and names no
+        // reason for another algorithm, so this name is this verifier's own.
         failures.push(Failure::chain_level("unsupported_anchor_alg"));
         return;
     }

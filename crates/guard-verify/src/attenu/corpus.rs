@@ -23,11 +23,19 @@ pub struct VectorCase {
     pub expect: String,
     #[serde(default)]
     pub expect_failures: Vec<Failure>,
+    /// Named counters the report must reproduce exactly, on a case whose rule
+    /// accept/reject cannot separate. Absent means nothing is asserted.
+    #[serde(default)]
+    pub expect_report: BTreeMap<String, i64>,
 }
 
 #[derive(Debug, Deserialize)]
 pub struct VectorFile {
+    /// The compatibility contract; does not move.
     pub version: String,
+    /// Moves with each appended case, and is what a report should name.
+    #[serde(default)]
+    pub revision: Option<String>,
     pub cases: Vec<VectorCase>,
 }
 
@@ -74,6 +82,18 @@ fn score_case(case: &VectorCase) -> CaseScore {
         }
     }
 
+    for (counter, expected) in &case.expect_report {
+        match reported_counter(&report, counter) {
+            Some(actual) if actual == *expected => {}
+            Some(actual) => problems.push(format!(
+                "counter {counter}: expected {expected}, reported {actual}"
+            )),
+            None => problems.push(format!(
+                "counter {counter}: expected {expected}, not a counter this verifier reports"
+            )),
+        }
+    }
+
     let additional = report
         .failures
         .iter()
@@ -88,6 +108,20 @@ fn score_case(case: &VectorCase) -> CaseScore {
         additional,
         report,
     }
+}
+
+/// A report counter under the name the corpus gives it.
+///
+/// A name this verifier does not report fails the case rather than passing it
+/// on the counters it happens to know: a counter added in a later revision
+/// then shows up as a gap instead of as conformance.
+fn reported_counter(report: &BundleReport, name: &str) -> Option<i64> {
+    let value = match name {
+        "actions_checked" => report.actions_checked,
+        "ungated" => report.ungated,
+        _ => return None,
+    };
+    i64::try_from(value).ok()
 }
 
 /// One observer-envelope case.
@@ -160,6 +194,8 @@ fn score_envelope_case(case: &EnvelopeVectorCase) -> EnvelopeCaseScore {
                     accepted: false,
                     failures: Vec::new(),
                     execution_binding: ExecutionBinding::NotRun,
+                    actions_checked: 0,
+                    ungated: 0,
                     unaccounted_calls: Vec::new(),
                     envelopes: None,
                 },

@@ -11,55 +11,8 @@
 //! which entry fields are v2-only, so "the canonical v1 form" is not defined
 //! anywhere a third party can read, and these cases keep every field.
 
-use super::corpus::VectorFile;
+use super::test_support::{at, chain_level, published, reasons, reseal};
 use super::*;
-use hmac::{Hmac, Mac};
-use sha2::{Digest, Sha256};
-
-const CORPUS: &str = include_str!("../../fixtures/attenu/bundle_vectors_v1.json");
-const GENESIS_PREV: &str = "0000000000000000000000000000000000000000000000000000000000000000";
-
-fn published(name: &str) -> (Value, Signer) {
-    let file: VectorFile = serde_json::from_str(CORPUS).expect("corpus parses");
-    let case = file
-        .cases
-        .into_iter()
-        .find(|case| case.name == name)
-        .unwrap_or_else(|| panic!("case {name} present"));
-    (case.bundle, case.signer)
-}
-
-/// Recompute every entry hash and re-sign the anchor over the new head, so a
-/// derived bundle fails only for the rule under test and never for integrity.
-fn reseal(bundle: &mut Value, signer: &Signer) {
-    let mut prev = GENESIS_PREV.to_string();
-    let mut last_seq = 0;
-    let entries = bundle["entries"].as_array_mut().expect("entries");
-    for entry in entries.iter_mut() {
-        entry["prev_hash"] = Value::String(prev.clone());
-        let mut body = entry.clone();
-        body.as_object_mut().expect("entry object").remove("hash");
-        let mut hasher = Sha256::new();
-        hasher.update(prev.as_bytes());
-        hasher.update(crate::jcs::canonicalize(&body).expect("entry canonicalizes"));
-        prev = hex::encode(hasher.finalize());
-        entry["hash"] = Value::String(prev.clone());
-        last_seq = entry["seq"].as_i64().expect("seq");
-    }
-
-    let anchor = &mut bundle["anchor"];
-    anchor["head"] = Value::String(prev);
-    anchor["seq"] = Value::from(last_seq);
-    let mut body = anchor.clone();
-    let map = body.as_object_mut().expect("anchor object");
-    for member in ["kid", "sig", "verified"] {
-        map.remove(member);
-    }
-    let secret = hex::decode(&signer.secret_hex).expect("secret hex");
-    let mut mac = Hmac::<Sha256>::new_from_slice(&secret).expect("hmac key");
-    mac.update(&crate::jcs::canonicalize(&body).expect("anchor canonicalizes"));
-    anchor["sig"] = Value::String(hex::encode(mac.finalize().into_bytes()));
-}
 
 /// The same ledger declared as `version` everywhere it declares one.
 fn declared_as(name: &str, version: i64) -> (Value, Signer) {
@@ -71,24 +24,6 @@ fn declared_as(name: &str, version: i64) -> (Value, Signer) {
     }
     reseal(&mut bundle, &signer);
     (bundle, signer)
-}
-
-fn reasons(report: &BundleReport) -> Vec<(String, Option<i64>, Option<String>)> {
-    let mut found: Vec<_> = report
-        .failures
-        .iter()
-        .map(|failure| (failure.reason.clone(), failure.seq, failure.node.clone()))
-        .collect();
-    found.sort();
-    found
-}
-
-fn at(reason: &str, seq: i64, node: &str) -> (String, Option<i64>, Option<String>) {
-    (reason.to_string(), Some(seq), Some(node.to_string()))
-}
-
-fn chain_level(reason: &str) -> (String, Option<i64>, Option<String>) {
-    (reason.to_string(), None, None)
 }
 
 /// A v1 ledger is a supported ledger. Rejecting it outright was this

@@ -125,14 +125,31 @@ pub fn check_policy_field(
     }
 }
 
+/// What the containment pass measured, for the report's counters.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct Measured {
+    pub actions_checked: usize,
+    pub ungated: usize,
+}
+
 /// The corpus names the two failures these rules produce: `monotonicity` for
 /// a delegation granting more than its parent holds, `containment` for an
 /// allow authorizing a scope outside what the acting node was granted. Both
 /// tokens come from the corpus rather than from this implementation — the
 /// first revision to exercise containment had no such rows, so the names
 /// here were placeholders until it did.
-pub fn check_authority(entries: &[Value], failures: &mut Vec<Failure>) {
+///
+/// A node the ledger never established holds no authority at all: an allow
+/// by one is `containment`, as the README says, and a spawn from one grants
+/// more than its parent holds. `unreadable_authority` is left to the one
+/// place the README puts it, a root whose authority cannot be read.
+///
+/// The counts come from the same branch that decides what to measure, so
+/// what is reported as checked is what was checked.
+pub fn check_authority(entries: &[Value], failures: &mut Vec<Failure>) -> Measured {
     let mut authorities: HashMap<String, Authority> = HashMap::new();
+    let mut measured = Measured::default();
+    let no_authority = Authority::default();
 
     for entry in entries {
         let node = entry_str(entry, "node").unwrap_or_default();
@@ -150,10 +167,7 @@ pub fn check_authority(entries: &[Value], failures: &mut Vec<Failure>) {
                     continue;
                 };
                 let parent = entry_str(entry, "parent").unwrap_or_default();
-                let Some(parent_authority) = authorities.get(&parent) else {
-                    failures.push(Failure::at(entry, "unreadable_authority"));
-                    continue;
-                };
+                let parent_authority = authorities.get(&parent).unwrap_or(&no_authority);
                 let granted = Authority::parse(granted);
                 if !parent_authority.contains(&granted) {
                     failures.push(Failure::at(entry, "monotonicity"));
@@ -171,18 +185,20 @@ pub fn check_authority(entries: &[Value], failures: &mut Vec<Failure>) {
                 // marker anyone can write excuse an out-of-authority action,
                 // which is the whole point of the row that pins it.
                 if entry.get("policy").and_then(Value::as_str) == Some(DEFINED_POLICY) {
+                    measured.ungated += 1;
                     continue;
                 }
                 let Some(scope) = entry_str(entry, "scope") else {
                     continue;
                 };
-                match authorities.get(&node) {
-                    Some(authority) if authority.covers_scope(&scope) => {}
-                    Some(_) => failures.push(Failure::at(entry, "containment")),
-                    None => failures.push(Failure::at(entry, "unreadable_authority")),
+                measured.actions_checked += 1;
+                let authority = authorities.get(&node).unwrap_or(&no_authority);
+                if !authority.covers_scope(&scope) {
+                    failures.push(Failure::at(entry, "containment"));
                 }
             }
             _ => {}
         }
     }
+    measured
 }

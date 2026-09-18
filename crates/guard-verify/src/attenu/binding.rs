@@ -65,7 +65,7 @@ pub fn check_execution_binding(entries: &[Value], failures: &mut Vec<Failure>) -
         }
 
         if entry_str(entry, "node").unwrap_or_default() != allow.node {
-            failures.push(Failure::at(entry, "outcome_node_mismatch"));
+            failures.push(Failure::at(entry, "cross_ref"));
         }
 
         let invoked = entry_str(entry, "invoked_params_hash");
