@@ -134,11 +134,11 @@ enum Commands {
     },
     /// Verify an attenu-guard evidence bundle offline.
     ///
-    /// A third-party implementation of the published schema-v2 bundle
-    /// format: it recomputes the hash chain, re-checks the signed anchor
+    /// A third-party implementation of the published bundle format, schema
+    /// v1 and v2: it recomputes the hash chain, re-checks the signed anchor
     /// against the head the ledger actually reproduces, and re-derives the
-    /// delegation and execution-binding rules. It never reads the bundle's
-    /// own `verified` claim.
+    /// delegation rules and, on a v2 chain, the execution-binding rules. It
+    /// never reads the bundle's own `verified` claim.
     AttenuBundle {
         /// Path to a JSON file holding the bundle.
         #[arg(short, long)]
@@ -860,8 +860,11 @@ fn finish_corpus(conformant: usize, total: usize) {
 fn cmd_attenu_vectors(vectors_path: &Path) {
     let file: attenu::corpus::VectorFile = read_corpus(vectors_path);
 
-    println!("corpus: {}", file.version);
-    println!("cases:  {}", file.cases.len());
+    println!("corpus:   {}", file.version);
+    if let Some(revision) = &file.revision {
+        println!("revision: {revision}");
+    }
+    println!("cases:    {}", file.cases.len());
     println!();
 
     let scores = attenu::corpus::score_corpus(&file);

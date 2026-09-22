@@ -34,6 +34,71 @@ The `[Unreleased]` heading is rolled forward manually before each release; do no
   lexical copy of the escape list; that layer canonicalizes nothing, so it made
   no symlink guarantee before this change and makes none after it.
 
+### Changed
+- **`guard-verify` reads schema-v1 attenu chains instead of rejecting them
+  outright.** Every bundle in `bundle_vectors_v1.4` is a `schema_version=2`
+  chain, so no published row exercised a v1 ledger, and this verifier failed
+  any v1 bundle wholesale under a reason of its own. attenu-guard has accepted
+  a v1-chain row for the next corpus revision (a2aproject/A2A#1575), so the v1
+  rules are pinned now, from the corpus README alone, before that row exists:
+
+  - version consistency uses the README's tokens: `unsupported_version` (was
+    `unsupported_schema_version`, a name no row had ever checked),
+    `anchor_version_mismatch`, `root_version_mismatch` and
+    `mixed_entry_versions`, the last reported once, at the first entry that
+    disagrees — the root included, since the README exempts no entry;
+  - an undefined `policy` value is `invalid_policy` on a v1 chain and stays
+    `invalid_allow`, the v2 record check's name, on a v2 chain. The rule is
+    version-independent, and on neither does the value buy a containment
+    exemption;
+  - execution binding runs on v2 chains only. `attenu-bundle` output gains
+    `execution_binding`, which is `"not applicable"` on a v1 chain rather than
+    leaving an empty failure list to imply the pairs were found sound.
+
+  **Not implemented: `v2_field_on_v1`.** The README names the reason but not
+  which entry fields are v2-only. Guessing the list would reject canonical v1
+  rows this verifier cannot see, so the reason is left out and the question
+  is raised upstream instead. `unsupported_canonicalization` is likewise
+  outside the contract: the README has no token for a non-JCS `c14n`.
+
+  The v1 cases are derived by re-declaring a published v2 case as v1 and
+  re-sealing it, so they test this verifier's reading of the format, not the
+  upcoming row.
+
+### Fixed
+- **The 20 of 20 `guard-verify` reported for `bundle_vectors_v1.4` never read
+  the counters one row pins.** The corpus README defines `expect_report` as
+  counters "a conformant implementation MUST reproduce exactly".
+  `valid_bundle_v2_ungated_allow` pins `actions_checked: 2, ungated: 1`, which
+  is the only thing separating a verifier that reports an un-gated allow from
+  one that silently skips it: both accept. The scorer deserialized past the
+  key, and the report had no such counters. The report now carries both under
+  the corpus's names. The scorer checks every pinned counter, and a counter
+  this verifier does not report fails the case instead of passing it. The
+  score is still 20 of 20, now with that row's counters in it; the envelope
+  corpus stays 19 of 19.
+
+  A pass over the README's reason table found three more places where this
+  verifier used a name of its own, or none:
+
+  - an outcome on a different node than its allow was `outcome_node_mismatch`;
+    the table's token is `cross_ref`;
+  - an allow by a node the bundle never spawned was `unreadable_authority`,
+    which the table puts on a root only; it is `containment`. A spawn from a
+    parent never established is now `monotonicity`, since a parent holding
+    nothing cannot contain a grant. That one is this verifier's reading: the
+    table names no reason for the shape;
+  - `missing_root` (zero or several roots) and `chain_id_mismatch` (an entry
+    or the anchor naming another chain) were never emitted.
+
+  `attenu-vectors` also prints the corpus revision it scored, which the README
+  says is what a report should name. Still not implemented, and now listed
+  where the verifier documents itself: the v2 record schema behind
+  `invalid_root`, `invalid_kill`, `invalid_deny` and `invalid_outcome`
+  (`invalid_allow` too, beyond the `policy` value), and
+  `expected_head_mismatch` / `expected_anchor_mismatch`, which need an
+  independently retained head that this verifier is not given.
+
 ## [0.2.5] - 2026-09-14
 
 ### Security
