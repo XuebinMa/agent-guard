@@ -9,6 +9,31 @@ The `[Unreleased]` heading is rolled forward manually before each release; do no
 
 ## [Unreleased]
 
+### Security
+- **A path waived past the workspace bound by `workspace_escape_paths` stayed
+  waived wherever it led.** The globs are matched against the path as written,
+  and a match dropped the bound for that call entirely, so a symlink inside an
+  escape-listed root carried the exemption out of that root. With the escape
+  list this project dogfoods (`/tmp/**`, `**/.claude/projects/**`), an agent
+  able to create a link under `/tmp` could write through it anywhere the tool
+  policy did not separately deny — `deny_paths` still covered `/etc`, `~/.ssh`
+  and the rest of that list, and nothing else. The symlink containment added on
+  2026-05-15 held on every path except the ones a policy had opted out of the
+  bound for, which are exactly the paths a policy author reads as "somewhere
+  else I trust", not "anywhere at all".
+
+  An escape entry now waives the bound for the location it names, not for
+  whatever a path under it points at. The globs are re-checked against the
+  resolved path, and a path that no longer matches is held to the workspace
+  bound like any other. A link that stays inside the escape-listed root — the
+  case the list exists for — is unaffected.
+
+  Scope, stated plainly: this is the advisory hook's file-write boundary, which
+  `CLAUDE.md` already describes as decision-only and fail-open rather than
+  hostile-agent containment. Bash targets are governed by the validator's own
+  lexical copy of the escape list; that layer canonicalizes nothing, so it made
+  no symlink guarantee before this change and makes none after it.
+
 ### Changed
 - **`guard-verify` reads schema-v1 attenu chains instead of rejecting them
   outright.** Every bundle in `bundle_vectors_v1.4` is a `schema_version=2`

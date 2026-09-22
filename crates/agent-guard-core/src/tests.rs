@@ -1492,6 +1492,99 @@ tools:
     }
 
     #[test]
+    fn workspace_escape_paths_do_not_survive_a_symlink_out_of_the_escape_root() {
+        // An escape entry says "this other location is a legitimate root",
+        // and the glob is matched against the path as written. A symlink
+        // inside that root resolves out of it, so matching only the written
+        // path hands the rest of the filesystem to anyone who can place a
+        // link in an escape-listed directory: the 2026-05-15 symlink
+        // containment, missing on exactly the paths the policy waived the
+        // bound for.
+        let temp = tempfile::tempdir().expect("tempdir");
+        let root = temp.path().canonicalize().expect("canonicalize tempdir");
+        let escape_root = root.join("escape");
+        let outside = root.join("outside");
+        let workspace = root.join("workspace");
+        for dir in [&escape_root, &outside, &workspace] {
+            std::fs::create_dir_all(dir).expect("create dir");
+        }
+        symlink_for_test(&outside, &escape_root.join("link"));
+
+        let escape_str = escape_root.to_str().expect("escape root str");
+        let yaml = format!(
+            r#"
+version: 1
+default_mode: workspace_write
+tools:
+  write_file:
+    workspace_escape_paths:
+      - "{escape}/**"
+"#,
+            escape = escape_str,
+        );
+        let engine = PolicyEngine::from_yaml_str(&yaml).unwrap();
+        let mut context = ctx(crate::types::TrustLevel::Trusted);
+        context.working_directory = Some(workspace);
+
+        // Resolves to <outside>/planted.txt: outside the workspace, and
+        // outside the escape-listed root the exemption was granted for.
+        let payload = format!(r#"{{"path":"{escape_str}/link/planted.txt"}}"#);
+        let d = engine.check(&crate::types::Tool::WriteFile, &payload, &context);
+
+        if let GuardDecision::Deny { reason } = d {
+            assert_eq!(reason.code, crate::decision::DecisionCode::PathTraversal);
+        } else {
+            panic!("expected Deny(PathTraversal), got {d:?}");
+        }
+    }
+
+    #[test]
+    fn workspace_escape_paths_still_cover_a_symlink_inside_the_escape_root() {
+        // The other half: a link that stays inside the escape-listed root is
+        // what the escape exists for, and must keep working.
+        let temp = tempfile::tempdir().expect("tempdir");
+        let root = temp.path().canonicalize().expect("canonicalize tempdir");
+        let escape_root = root.join("escape");
+        let workspace = root.join("workspace");
+        for dir in [&escape_root, &workspace] {
+            std::fs::create_dir_all(dir).expect("create dir");
+        }
+        let inner = escape_root.join("inner");
+        std::fs::create_dir_all(&inner).expect("inner");
+        symlink_for_test(&inner, &escape_root.join("link"));
+
+        let escape_str = escape_root.to_str().expect("escape root str");
+        let yaml = format!(
+            r#"
+version: 1
+default_mode: workspace_write
+tools:
+  write_file:
+    workspace_escape_paths:
+      - "{escape}/**"
+"#,
+            escape = escape_str,
+        );
+        let engine = PolicyEngine::from_yaml_str(&yaml).unwrap();
+        let mut context = ctx(crate::types::TrustLevel::Trusted);
+        context.working_directory = Some(workspace);
+
+        let payload = format!(r#"{{"path":"{escape_str}/link/note.txt"}}"#);
+        let d = engine.check(&crate::types::Tool::WriteFile, &payload, &context);
+        assert_eq!(d, GuardDecision::Allow);
+    }
+
+    #[cfg(unix)]
+    fn symlink_for_test(target: &std::path::Path, link: &std::path::Path) {
+        std::os::unix::fs::symlink(target, link).expect("create symlink");
+    }
+
+    #[cfg(windows)]
+    fn symlink_for_test(target: &std::path::Path, link: &std::path::Path) {
+        std::os::windows::fs::symlink_dir(target, link).expect("create dir symlink");
+    }
+
+    #[test]
     fn workspace_escape_paths_only_applies_to_owning_tool() {
         // Escape list is per-tool: a path that escapes for write_file must
         // still trip PATH_TRAVERSAL on read_file (which has no escape list).
