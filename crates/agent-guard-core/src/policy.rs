@@ -215,6 +215,13 @@ pub struct ToolPolicy {
     /// `resolve_tool_path` is skipped and the path proceeds to the normal
     /// `deny` / `deny_paths` / `ask` / `allow` evaluation. Empty list = old
     /// behaviour (workspace bound is always enforced).
+    ///
+    /// The waiver is for the location the glob names, not for whatever a path
+    /// under it points at: an entry is matched against the path as written and
+    /// again against the resolved path, so a symlink leading out of the listed
+    /// location is held to the workspace bound like any other path. Bash
+    /// targets are governed by the validator's own lexical copy of this list,
+    /// which resolves nothing and so makes no such guarantee.
     #[serde(default)]
     pub workspace_escape_paths: Vec<String>,
     /// Optional content-layer policy (S6-4): scan this tool's text payload for
@@ -572,13 +579,16 @@ impl PolicyEngine {
                     // A path that matches the tool's `workspace_escape_paths`
                     // bypasses the workspace-bound check inside resolve_tool_path
                     // and is then subject to the normal deny / ask / allow flow.
-                    let escapes_workspace = tool_policy
-                        .map(|tp| {
-                            tp.workspace_escape_paths.iter().any(|pat| {
-                                path_glob_matches(pat, &path, context.working_directory.as_deref())
-                            })
+                    let escape_globs = tool_policy
+                        .map(|tp| tp.workspace_escape_paths.as_slice())
+                        .unwrap_or_default();
+                    let escapes = |candidate: &str| {
+                        escape_globs.iter().any(|pat| {
+                            path_glob_matches(pat, candidate, context.working_directory.as_deref())
                         })
-                        .unwrap_or(false);
+                    };
+
+                    let escapes_workspace = escapes(&path);
                     let effective_bound = if escapes_workspace {
                         None
                     } else {
@@ -586,7 +596,22 @@ impl PolicyEngine {
                     };
                     match resolve_tool_path(&path, effective_bound) {
                         Ok(resolved) => {
-                            ExtractedPayload::Path(resolved.to_string_lossy().into_owned())
+                            let resolved = resolved.to_string_lossy().into_owned();
+                            // The escape is granted on the path as written, so
+                            // a symlink inside an escape-listed root would
+                            // otherwise carry the exemption anywhere it points.
+                            // An exemption that does not survive resolution was
+                            // never one for this file: hold it to the workspace
+                            // bound after all.
+                            if escapes_workspace && !escapes(&resolved) {
+                                if let Err(deny) = resolve_tool_path(
+                                    &resolved,
+                                    context.working_directory.as_deref(),
+                                ) {
+                                    return deny;
+                                }
+                            }
+                            ExtractedPayload::Path(resolved)
                         }
                         Err(deny) => return deny,
                     }
