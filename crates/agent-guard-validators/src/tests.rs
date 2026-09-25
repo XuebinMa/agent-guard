@@ -1294,6 +1294,38 @@ mod bash_glued_redirection_and_link_tests {
     }
 
     #[test]
+    fn ln_source_outside_workspace_is_named_a_link_source_not_a_write_target() {
+        // The refusal is right and deliberate (the 2026-05-14 HIGH above).
+        // What was wrong is what it said: it called the link *source* a
+        // "write target", which reads as a misparse of the command — and the
+        // first thing a reader does with an apparent misparse is look for a
+        // way around the check. Name what is actually refused, and why.
+        let r = validate_bash_command("ln -s /etc/passwd workspace_link", ws(), workspace(), &[]);
+        let ValidationResult::Block { reason } = r else {
+            panic!("expected Block, got {r:?}");
+        };
+        assert!(reason.contains("link source '/etc/passwd'"), "{reason}");
+        assert!(!reason.contains("write target"), "{reason}");
+        // The SDK maps this text onto DecisionCode::PathOutsideWorkspace by
+        // substring, so the code must not move with the wording.
+        assert!(
+            reason.contains("outside the configured workspace"),
+            "{reason}"
+        );
+    }
+
+    #[test]
+    fn ln_destination_outside_workspace_is_still_a_write_target() {
+        // The other half of the split: the link name is what gets created, so
+        // when it is the operand outside the workspace it stays a write.
+        let r = validate_bash_command("ln -s file_a /etc/evil_link", ws(), workspace(), &[]);
+        let ValidationResult::Block { reason } = r else {
+            panic!("expected Block, got {r:?}");
+        };
+        assert!(reason.contains("write target '/etc/evil_link'"), "{reason}");
+    }
+
+    #[test]
     fn allows_ln_both_args_within_workspace() {
         // Source and destination both workspace-relative — legitimate use.
         let r = validate_bash_command("ln -s file_a file_b", ws(), workspace(), &[]);
