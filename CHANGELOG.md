@@ -32,6 +32,15 @@ The `[Unreleased]` heading is rolled forward manually before each release; do no
   does not rescue that case.
 
 ### Security
+- **`DecisionReason` no longer derives `Deserialize`, closing a
+  blank-approval-prompt path.** Its fields are `pub(crate)` and construction
+  funnels through `new`, which substitutes a placeholder for an empty message —
+  but a derived `Deserialize` populated those fields regardless of visibility,
+  so any downstream crate could synthesize a reason with an empty `message` from
+  JSON and wrap it in `AskUser`. `GuardDecision` and `RuntimeDecision` already
+  omit `Deserialize` for the same reason. Nothing deserializes `DecisionReason`
+  in-tree (audit records decompose it into flat fields), so the removal is
+  non-breaking; a `compile_fail` doctest locks it. Type-design audit finding.
 - **A path waived past the workspace bound by `workspace_escape_paths` stayed
   waived wherever it led.** The globs are matched against the path as written,
   and a match dropped the bound for that call entirely, so a symlink inside an

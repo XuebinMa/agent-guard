@@ -153,7 +153,26 @@ impl RuntimeDecision {
 // to undermine the audit trail. Construction goes through `new` and the
 // `with_*` builders (which always supply a non-empty `message`); `#[non_exhaustive]`
 // additionally blocks cross-crate struct literals that could bypass them.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+/// Why a decision was reached. Every emitted reason has a non-empty `message`,
+/// guaranteed at the single [`DecisionReason::new`] chokepoint.
+///
+/// `Deserialize` is intentionally omitted (mirroring `GuardDecision` /
+/// `RuntimeDecision`). The fields are `pub(crate)`, but a derived `Deserialize`
+/// populates them regardless of visibility, so it would let untrusted JSON
+/// synthesize a reason with an empty `message` — bypassing `new` — and wrap it
+/// in an `AskUser`, surfacing a blank approval prompt. Audit/UI consumers read
+/// the serialized form; nothing deserializes it back into a decision. This lock
+/// keeps the door shut (type-design audit, 2026-08-31):
+///
+/// ```compile_fail
+/// use agent_guard_core::DecisionReason;
+/// // DecisionReason must not be Deserialize: this must fail to compile.
+/// let _: DecisionReason = serde_json::from_str(
+///     r#"{"code":"DENIED_BY_RULE","message":"","details":null,"matched_rule":null}"#,
+/// )
+/// .unwrap();
+/// ```
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[non_exhaustive]
 pub struct DecisionReason {
     pub(crate) code: DecisionCode,
