@@ -9,6 +9,28 @@ The `[Unreleased]` heading is rolled forward manually before each release; do no
 
 ## [Unreleased]
 
+### Changed
+- **A refused `ln` now names the link source, instead of calling it a write
+  target.** `ln -s /etc/passwd workspace_link` is refused because the link
+  binds a name inside the workspace to a path outside it, and a later write
+  through that name lands outside — the first half of the 2026-05-14
+  path-traversal escape, and the reason this arm exists. The refusal reported
+  the source as a `write target`, which reads as a misparse of the command:
+  `ln -s` does not write its first operand. That is a costly thing for a
+  refusal to imply, because a reader who concludes the check misparsed their
+  command goes looking for a way around it rather than at what it refused —
+  which is what the author of this change did, ten minutes after installing
+  the build.
+
+  Verdicts are unchanged and all four `ln`/`link` regressions still pass. The
+  link name stays a write target when it is the operand outside the workspace;
+  only the source is reported as a source. The text keeps the substring the
+  SDK maps onto `PATH_OUTSIDE_WORKSPACE`, so the decision code does not move
+  with the wording, and it now states the consequence and points at
+  `workspace_escape_paths` for a location that is meant to be reachable. The
+  relative `../` refusal deliberately carries no such hint: the escape list
+  does not rescue that case.
+
 ### Security
 - **A path waived past the workspace bound by `workspace_escape_paths` stayed
   waived wherever it led.** The globs are matched against the path as written,

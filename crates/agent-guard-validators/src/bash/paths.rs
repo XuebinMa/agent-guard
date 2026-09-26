@@ -16,6 +16,37 @@ use super::wrappers::{command_name, leads_with_target_hiding_spawner, unwrap_com
 /// allow-listed away — the right posture when the real target is unverifiable.
 const UNVERIFIABLE_WRAPPER_TARGET: &str = "../agent-guard-unverifiable-wrapper-write-target";
 
+/// What an extracted operand is, so a refusal can name it correctly.
+///
+/// A link source is neither written nor read by `ln`; it is checked because
+/// the link binds a name inside the workspace to it. Reporting it as a write
+/// target reads as a misparse of the command, and a reader who believes the
+/// check misparsed their command goes looking for a way around it rather than
+/// at what it refused.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum TargetKind {
+    Write,
+    Read,
+    LinkSource,
+}
+
+impl TargetKind {
+    fn describe(self) -> &'static str {
+        match self {
+            TargetKind::Write => "write target",
+            TargetKind::Read => "read target",
+            TargetKind::LinkSource => "link source",
+        }
+    }
+}
+
+fn as_writes(targets: Vec<String>) -> Vec<(String, TargetKind)> {
+    targets
+        .into_iter()
+        .map(|target| (target, TargetKind::Write))
+        .collect()
+}
+
 pub fn validate_paths(
     command: &str,
     mode: PermissionMode,
@@ -31,14 +62,14 @@ pub fn validate_paths(
 
     let workspace = normalize_path(workspace);
 
-    for target in collect_write_targets(command) {
-        if let Some(block) = check_target(&target, "write", &workspace, escape_paths) {
+    for (target, kind) in collect_write_targets(command) {
+        if let Some(block) = check_target(&target, kind, &workspace, escape_paths) {
             return block;
         }
     }
 
     for target in collect_read_targets(command) {
-        if let Some(block) = check_target(&target, "read", &workspace, escape_paths) {
+        if let Some(block) = check_target(&target, TargetKind::Read, &workspace, escape_paths) {
             return block;
         }
     }
@@ -52,10 +83,11 @@ pub fn validate_paths(
 /// inside the workspace or is not a path this gate governs.
 fn check_target(
     target: &str,
-    kind: &str,
+    kind: TargetKind,
     workspace: &Path,
     escape_paths: &[String],
 ) -> Option<ValidationResult> {
+    let kind_name = kind.describe();
     let candidate = target.trim_matches(|c| c == '"' || c == '\'');
     if candidate.is_empty() || candidate.starts_with('$') || candidate == "/dev/null" {
         return None;
@@ -78,25 +110,34 @@ fn check_target(
         if !workspace.is_absolute() {
             return Some(ValidationResult::Block {
                 reason: format!(
-                    "{kind} target '{candidate}' cannot be verified: no absolute workspace root is configured"
+                    "{kind_name} '{candidate}' cannot be verified: no absolute workspace root is configured"
                 ),
             });
         }
 
         if !path_stays_within_workspace(path, workspace) {
-            return Some(ValidationResult::Block {
-                reason: format!("{kind} target '{candidate}' is outside the configured workspace"),
-            });
+            let mut reason =
+                format!("{kind_name} '{candidate}' is outside the configured workspace");
+            if kind == TargetKind::LinkSource {
+                // Without this the refusal states a fact the reader has to
+                // guess the significance of: the operand is not being written,
+                // the link that would point at it is.
+                reason.push_str(
+                    ": a later write through the link would land there; add it to \
+                     workspace_escape_paths if that location is meant to be reachable",
+                );
+            }
+            return Some(ValidationResult::Block { reason });
         }
 
         return None;
     }
 
     // Relative `../` escape is always suspicious regardless of policy, so it
-    // is never rescued by the escape list.
+    // is never rescued by the escape list — so no escape-list hint here.
     if has_parent_dir_escape(path) {
         return Some(ValidationResult::Block {
-            reason: format!("{kind} target '{candidate}' escapes the configured workspace"),
+            reason: format!("{kind_name} '{candidate}' escapes the configured workspace"),
         });
     }
 
@@ -146,7 +187,7 @@ fn path_stays_within_workspace(path: &Path, workspace: &Path) -> bool {
     normalized_path == workspace || normalized_path.starts_with(workspace)
 }
 
-fn collect_write_targets(command: &str) -> Vec<String> {
+fn collect_write_targets(command: &str) -> Vec<(String, TargetKind)> {
     let mut targets = flat_segments(command)
         .iter()
         .flat_map(|segment| write_targets_for_segment(segment))
@@ -193,7 +234,7 @@ fn resolved_argvs(command: &str) -> Vec<Vec<String>> {
     }
 }
 
-fn write_targets_for_segment(segment: &[String]) -> Vec<String> {
+fn write_targets_for_segment(segment: &[String]) -> Vec<(String, TargetKind)> {
     if segment.is_empty() {
         return Vec::new();
     }
@@ -211,12 +252,15 @@ fn write_targets_for_segment(segment: &[String]) -> Vec<String> {
     if leads_with_target_hiding_spawner(original) {
         if let Some(cmd) = segment.first().map(|s| command_name(s.as_str())) {
             if WRITE_COMMANDS.contains(&cmd) || STATE_MODIFYING_COMMANDS.contains(&cmd) {
-                return vec![UNVERIFIABLE_WRAPPER_TARGET.to_string()];
+                return vec![(UNVERIFIABLE_WRAPPER_TARGET.to_string(), TargetKind::Write)];
             }
         }
     }
 
-    let mut targets = Vec::new();
+    let mut targets: Vec<String> = Vec::new();
+    // `ln`/`link` sources: checked like a write target, reported as what they
+    // are. Kept apart from `targets` so only this one operand class changes.
+    let mut link_sources: Vec<String> = Vec::new();
 
     // Pass 1: collect redirection targets. A redirection (`>`, `>>`, `>&`) can
     // appear ANYWHERE in a simple command — before the command word
@@ -247,7 +291,7 @@ fn write_targets_for_segment(segment: &[String]) -> Vec<String> {
     // Pass 2: command-specific write operands. The command word is the first
     // positional token (redirections/targets already stripped above).
     let Some(command) = positional.first().map(|token| command_name(token.as_str())) else {
-        return targets;
+        return as_writes(targets);
     };
     let args = &positional[1..];
 
@@ -275,15 +319,33 @@ fn write_targets_for_segment(segment: &[String]) -> Vec<String> {
         "ln" | "link" => {
             // Both `ln -s` (symlink) and `ln` / `link` (hardlink) bind the
             // created name to the source: symlinks follow the source for
-            // future writes, hardlinks share its inode. Treat every non-flag
-            // arg as a target so a workspace-internal link whose source
-            // points outside the workspace is rejected (closes the
-            // 2026-05-14 HIGH path-traversal-escape finding).
-            targets.extend(
-                args.iter()
-                    .filter(|token| !token.starts_with('-'))
-                    .map(|token| token.to_string()),
-            );
+            // future writes, hardlinks share its inode. So the source is
+            // checked as well as the link name — a workspace-internal link
+            // whose source points outside is the first half of the 2026-05-14
+            // HIGH path-traversal-escape finding, and refusing it is the
+            // point of this arm.
+            //
+            // The two operands are separated only so each is reported as what
+            // it is. `ln -s A B` writes B and aliases A; with `-t DIR` every
+            // positional is a source, and a lone `A` creates its basename in
+            // the cwd, so A is a source there too.
+            let positional: Vec<String> = args
+                .iter()
+                .filter(|token| !token.starts_with('-'))
+                .map(|token| token.to_string())
+                .collect();
+
+            if let Some(directory) = target_directory_flag(args) {
+                link_sources.extend(positional);
+                targets.push(directory);
+            } else if let Some((link_name, sources)) = positional.split_last() {
+                if sources.is_empty() {
+                    link_sources.push(link_name.clone());
+                } else {
+                    link_sources.extend(sources.iter().cloned());
+                    targets.push(link_name.clone());
+                }
+            }
         }
         "dd" => {
             // `dd` writes to its `of=PATH` operand (reading from `if=` or, when
@@ -304,7 +366,13 @@ fn write_targets_for_segment(segment: &[String]) -> Vec<String> {
         _ => {}
     }
 
-    targets
+    let mut extracted = as_writes(targets);
+    extracted.extend(
+        link_sources
+            .into_iter()
+            .map(|source| (source, TargetKind::LinkSource)),
+    );
+    extracted
 }
 
 /// Extract the destination from GNU coreutils target-directory flags
