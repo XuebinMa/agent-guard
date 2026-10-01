@@ -57,9 +57,8 @@ version: 1
 tools:
   bash:
     mode: full_access
-    rules:
-      - deny: "rm -rf"
-        reason: "forbidden pattern"
+    deny:
+      - "rm -rf"
 "#;
 
 // ── Helper ─────────────────────────────────────────────────────────────────

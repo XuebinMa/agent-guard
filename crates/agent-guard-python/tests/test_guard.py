@@ -196,13 +196,43 @@ def test_policy_verification_accessor_reports_unsigned(guard):
     assert verification.error is None
 
 
-def test_signed_guard_reports_invalid_policy_in_check_mode():
-    guard = agent_guard.Guard.from_signed_yaml(
+def invalid_signed_guard():
+    return agent_guard.Guard.from_signed_yaml(
         POLICY,
         "0000000000000000000000000000000000000000000000000000000000000001",
         "ff" * 64,
     )
+
+
+def test_invalid_signed_policy_check_is_denied():
+    guard = invalid_signed_guard()
     decision = guard.check("bash", "ls -la", trust_level="trusted")
-    assert decision.outcome == "allow"
+    assert decision.outcome == "deny"
+    assert decision.code == "PolicyVerificationFailed"
     assert decision.policy_verification_status == "invalid"
     assert decision.policy_verification_error is not None
+
+
+def test_invalid_signed_policy_decide_is_denied():
+    decision = invalid_signed_guard().decide("bash", "ls -la", trust_level="trusted")
+    assert decision.outcome == "deny"
+    assert decision.code == "PolicyVerificationFailed"
+    assert decision.policy_verification_status == "invalid"
+
+
+def test_invalid_signed_policy_execute_is_denied():
+    result = invalid_signed_guard().execute(
+        "bash", "echo must-not-execute", trust_level="trusted", backend="none"
+    )
+    assert result.status == "denied"
+    assert result.decision.code == "PolicyVerificationFailed"
+    assert result.policy_verification_status == "invalid"
+
+
+def test_invalid_signed_policy_run_is_denied():
+    result = invalid_signed_guard().run(
+        "bash", "echo must-not-run", trust_level="trusted", backend="none"
+    )
+    assert result.outcome == "denied"
+    assert result.decision.code == "PolicyVerificationFailed"
+    assert result.policy_verification_status == "invalid"

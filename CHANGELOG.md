@@ -32,15 +32,36 @@ The `[Unreleased]` heading is rolled forward manually before each release; do no
   does not rescue that case.
 
 ### Security
+- **Policy typos and condition errors now fail closed.** Fixed-schema policy
+  objects reject unknown fields, empty selectors and invalid HTTP method
+  tokens during loading; valid extension methods remain available to explicit
+  rules. Invalid condition operand types are rejected when possible at load
+  time, and any residual runtime evaluation error produces an
+  `INTERNAL_ERROR` deny instead of silently making a deny/ask rule not match.
+  Invalid anomaly thresholds and audit destinations are rejected as well.
+- **An invalid signed policy now blocks every public decision entry point.**
+  `check`, `check_tool`, `decide`, `decide_tool`, `execute` and `run` all share
+  the same `POLICY_VERIFICATION_FAILED` chokepoint; callers can no longer use a
+  decision-only API to obtain `allow`/`execute` from a policy whose detached
+  signature failed verification.
+- **The Node framework adapter now defaults omitted trust to `Untrusted`.**
+  This matches the Rust and Python contract. Hosts that deliberately want the
+  broader trusted policy path must pass `Trusted` explicitly.
 - **`DecisionReason` no longer derives `Deserialize`, closing a
   blank-approval-prompt path.** Its fields are `pub(crate)` and construction
   funnels through `new`, which substitutes a placeholder for an empty message —
   but a derived `Deserialize` populated those fields regardless of visibility,
   so any downstream crate could synthesize a reason with an empty `message` from
   JSON and wrap it in `AskUser`. `GuardDecision` and `RuntimeDecision` already
-  omit `Deserialize` for the same reason. Nothing deserializes `DecisionReason`
-  in-tree (audit records decompose it into flat fields), so the removal is
-  non-breaking; a `compile_fail` doctest locks it. Type-design audit finding.
+  omit `Deserialize` for the same reason. Their approval variants are now
+  individually `non_exhaustive`, so downstream crates must use the validated
+  constructors and cannot supply a blank prompt with a struct literal; all
+  constructors also replace whitespace-only prompts/reasons. This is a source
+  compatibility change for downstream code that deserialized `DecisionReason`,
+  directly constructed approval variants, or destructured every variant field;
+  audit readers should deserialize the stable audit/receipt wire types instead.
+  A `compile_fail` doctest locks the deserialization boundary. Type-design audit
+  finding.
 - **A path waived past the workspace bound by `workspace_escape_paths` stayed
   waived wherever it led.** The globs are matched against the path as written,
   and a match dropped the bound for that call entirely, so a symlink inside an

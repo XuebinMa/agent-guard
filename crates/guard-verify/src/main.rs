@@ -637,10 +637,11 @@ fn cmd_demo_receipts(out_dir: &PathBuf) {
     for (outcome, command) in DEMO_BEATS {
         let decision = match *outcome {
             "allow" => GuardDecision::Allow,
-            "ask" => GuardDecision::AskUser {
-                message: "Confirmation required: rule 'prefix:git push' matched".to_string(),
-                reason: DecisionReason::new(DecisionCode::AskRequired, "ask rule matched"),
-            },
+            "ask" => GuardDecision::ask(
+                "Confirmation required: rule 'prefix:git push' matched",
+                DecisionCode::AskRequired,
+                "ask rule matched",
+            ),
             "deny" => GuardDecision::Deny {
                 reason: DecisionReason::new(DecisionCode::DeniedByRule, "deny rule matched"),
             },

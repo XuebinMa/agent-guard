@@ -75,7 +75,9 @@ fn outbound_preset_governs_recognized_and_conservative_git_push_candidates() {
         let payload = serde_json::json!({ "command": command }).to_string();
         let decision = guard.check_tool(SdkTool::Bash, payload, context.clone());
         match decision {
-            GuardDecision::AskUser { message, reason } => {
+            GuardDecision::AskUser {
+                message, reason, ..
+            } => {
                 assert!(
                     message.contains("origin"),
                     "preview missing remote: {message}"

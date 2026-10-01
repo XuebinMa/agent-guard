@@ -53,12 +53,48 @@ impl<'de> serde::Deserialize<'de> for Condition {
             }
         }
 
+        // Every supported condition variable is a string at runtime. Evaluate
+        // once with representative string values while loading the policy so
+        // operand type errors (for example, `trust_level > 3`) and expressions
+        // that do not produce a boolean cannot silently disable a rule later.
+        let validation_context = context_map! {
+            "actor" => "actor",
+            "agent_id" => "agent-id",
+            "session_id" => "session-id",
+            "trust_level" => "trusted",
+            "tool" => "bash",
+            "working_directory" => "/workspace",
+        }
+        .map_err(|e| {
+            serde::de::Error::custom(format!(
+                "condition type validation failed while building its context: {e}"
+            ))
+        })?;
+        node.eval_boolean_with_context(&validation_context)
+            .map_err(|e| {
+                serde::de::Error::custom(format!(
+                    "condition type validation failed: expression must evaluate to a boolean with string operands: {e}"
+                ))
+            })?;
+
         Ok(Condition { raw: s, node })
     }
 }
 
+#[derive(Debug, Error)]
+pub enum ConditionEvaluationError {
+    #[error("failed to construct the condition context: {0}")]
+    Context(String),
+    #[error("condition evaluation failed: {0}")]
+    Evaluation(String),
+}
+
 impl Condition {
-    pub fn evaluate(&self, tool: &Tool, context: &Context) -> bool {
+    pub fn evaluate(
+        &self,
+        tool: &Tool,
+        context: &Context,
+    ) -> Result<bool, ConditionEvaluationError> {
         let eval_ctx = context_map! {
             "actor" => context.actor.as_deref().unwrap_or(""),
             "agent_id" => context.agent_id.as_deref().unwrap_or(""),
@@ -66,25 +102,19 @@ impl Condition {
             "trust_level" => trust_level_str(&context.trust_level),
             "tool" => tool.name(),
             "working_directory" => context.working_directory.as_ref().and_then(|p| p.to_str()).unwrap_or(""),
-        };
-
-        if let Ok(ctx) = eval_ctx {
-            match self.node.eval_boolean_with_context(&ctx) {
-                Ok(b) => b,
-                Err(e) => {
-                    tracing::error!("Condition evaluation failed: {}", e);
-                    false
-                }
-            }
-        } else {
-            false
         }
+        .map_err(|e| ConditionEvaluationError::Context(e.to_string()))?;
+
+        self.node
+            .eval_boolean_with_context(&eval_ctx)
+            .map_err(|e| ConditionEvaluationError::Evaluation(e.to_string()))
     }
 }
 
 // ── Policy schema ─────────────────────────────────────────────────────────────
 
 #[derive(Debug, Deserialize, Clone)]
+#[serde(deny_unknown_fields)]
 pub struct PolicyFile {
     pub version: u32,
     #[serde(default = "default_mode")]
@@ -107,6 +137,7 @@ pub struct PolicyFile {
 }
 
 #[derive(Debug, Deserialize, Clone)]
+#[serde(deny_unknown_fields)]
 pub struct AnomalyConfig {
     #[serde(default = "default_true")]
     pub enabled: bool,
@@ -127,6 +158,7 @@ impl Default for AnomalyConfig {
 }
 
 #[derive(Debug, Deserialize, Clone)]
+#[serde(deny_unknown_fields)]
 pub struct DenyFuseConfig {
     #[serde(default = "default_false")]
     pub enabled: bool,
@@ -158,6 +190,7 @@ fn default_true() -> bool {
 }
 
 #[derive(Debug, Deserialize, Clone)]
+#[serde(deny_unknown_fields)]
 pub struct RateLimitConfig {
     #[serde(default = "default_window")]
     pub window_seconds: u64,
@@ -186,6 +219,7 @@ fn default_mode() -> PolicyMode {
 }
 
 #[derive(Debug, Deserialize, Default, Clone)]
+#[serde(deny_unknown_fields)]
 pub struct ToolsConfig {
     pub bash: Option<ToolPolicy>,
     pub read_file: Option<ToolPolicy>,
@@ -198,6 +232,7 @@ pub struct ToolsConfig {
 }
 
 #[derive(Debug, Deserialize, Default, Clone)]
+#[serde(deny_unknown_fields)]
 pub struct ToolPolicy {
     pub mode: Option<PolicyMode>,
     #[serde(default)]
@@ -234,6 +269,7 @@ pub struct ToolPolicy {
 
 /// Per-tool content-layer policy (S6-4).
 #[derive(Debug, Deserialize, Clone, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
 pub struct ContentPolicy {
     pub mode: ContentMode,
     /// Which detectors to run. Defaults to all of them.
@@ -292,6 +328,7 @@ impl<'de> serde::Deserialize<'de> for RulePattern {
 }
 
 #[derive(Debug, Deserialize, Clone)]
+#[serde(deny_unknown_fields)]
 pub struct RulePatternMap {
     pub prefix: Option<String>,
     pub regex: Option<String>,
@@ -323,6 +360,7 @@ pub enum PolicyMode {
 }
 
 #[derive(Debug, Deserialize, Default, Clone)]
+#[serde(deny_unknown_fields)]
 pub struct TrustConfig {
     pub untrusted: Option<TrustOverride>,
     pub trusted: Option<TrustOverride>,
@@ -330,11 +368,13 @@ pub struct TrustConfig {
 }
 
 #[derive(Debug, Deserialize, Default, Clone)]
+#[serde(deny_unknown_fields)]
 pub struct TrustOverride {
     pub override_mode: Option<PolicyMode>,
 }
 
-#[derive(Debug, Deserialize, Default, Clone, Serialize)]
+#[derive(Debug, Deserialize, Clone, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct AuditConfig {
     #[serde(default = "audit_enabled_default")]
     pub enabled: bool,
@@ -345,6 +385,21 @@ pub struct AuditConfig {
     pub include_payload_hash: bool,
     pub webhook_url: Option<String>,
     pub otlp_endpoint: Option<String>,
+}
+
+impl Default for AuditConfig {
+    fn default() -> Self {
+        Self {
+            // Preserve the historical behavior that omitting the entire audit
+            // block disables audit, while keeping `output` in a valid state.
+            enabled: false,
+            output: audit_output_default(),
+            file_path: None,
+            include_payload_hash: false,
+            webhook_url: None,
+            otlp_endpoint: None,
+        }
+    }
 }
 
 fn audit_enabled_default() -> bool {
@@ -397,10 +452,92 @@ struct CompiledTools {
     custom: HashMap<String, CompiledToolPolicy>,
 }
 
-fn compile_rule(rule: &RulePattern) -> Result<CompiledRulePattern, PolicyError> {
+fn is_http_method_token(value: &str) -> bool {
+    !value.is_empty()
+        && value.bytes().all(|byte| {
+            byte.is_ascii_alphanumeric()
+                || matches!(
+                    byte,
+                    b'!' | b'#'
+                        | b'$'
+                        | b'%'
+                        | b'&'
+                        | b'\''
+                        | b'*'
+                        | b'+'
+                        | b'-'
+                        | b'.'
+                        | b'^'
+                        | b'_'
+                        | b'`'
+                        | b'|'
+                        | b'~'
+                )
+        })
+}
+
+fn compile_rule(
+    rule: &RulePattern,
+    tool_name: &str,
+    supports_http_method: bool,
+) -> Result<CompiledRulePattern, PolicyError> {
     match rule {
-        RulePattern::Plain(s) => Ok(CompiledRulePattern::Plain(s.clone())),
+        RulePattern::Plain(s) => {
+            if s.trim().is_empty() {
+                return Err(PolicyError::ParseError(
+                    "rule selector string must not be empty".to_string(),
+                ));
+            }
+            Ok(CompiledRulePattern::Plain(s.clone()))
+        }
         RulePattern::Map(m) => {
+            for (selector, value) in [
+                ("prefix", m.prefix.as_deref()),
+                ("regex", m.regex.as_deref()),
+                ("plain", m.plain.as_deref()),
+            ] {
+                if value.is_some_and(|value| value.trim().is_empty()) {
+                    return Err(PolicyError::ParseError(format!(
+                        "rule {selector} selector must not be empty"
+                    )));
+                }
+            }
+
+            let method = match m.method.as_deref() {
+                Some(value) if value.trim().is_empty() => {
+                    return Err(PolicyError::ParseError(
+                        "rule method selector must not be empty".to_string(),
+                    ));
+                }
+                Some(_) if !supports_http_method => {
+                    return Err(PolicyError::ParseError(format!(
+                        "method selectors are only supported for tools.http_request, not tools.{tool_name}"
+                    )));
+                }
+                Some(value) => {
+                    if !is_http_method_token(value) {
+                        return Err(PolicyError::ParseError(format!(
+                            "invalid HTTP method '{value}' in rule; methods must be non-empty RFC 9110 tokens"
+                        )));
+                    }
+                    let normalized = value.to_ascii_uppercase();
+                    Some(normalized)
+                }
+                None => None,
+            };
+
+            if m.prefix.is_none()
+                && m.regex.is_none()
+                && m.plain.is_none()
+                && method.is_none()
+                && m.condition.is_none()
+            {
+                return Err(PolicyError::ParseError(
+                    "rule map must contain at least one non-empty selector or a valid condition"
+                        .to_string(),
+                ));
+            }
+
             let regex = match m.regex.as_ref() {
                 Some(src) => Some(Regex::new(src).map_err(|e| {
                     PolicyError::ParseError(format!("Invalid regex '{}': {}", src, e))
@@ -412,17 +549,22 @@ fn compile_rule(rule: &RulePattern) -> Result<CompiledRulePattern, PolicyError> 
                 regex_src: m.regex.clone(),
                 regex,
                 plain: m.plain.clone(),
-                method: m.method.as_ref().map(|s| s.to_ascii_uppercase()),
+                method,
                 condition: m.condition.clone(),
             }))
         }
     }
 }
 
-fn compile_tool_policy(p: &ToolPolicy) -> Result<CompiledToolPolicy, PolicyError> {
-    let deny = p.deny.iter().map(compile_rule).collect::<Result<_, _>>()?;
-    let allow = p.allow.iter().map(compile_rule).collect::<Result<_, _>>()?;
-    let ask = p.ask.iter().map(compile_rule).collect::<Result<_, _>>()?;
+fn compile_tool_policy(
+    p: &ToolPolicy,
+    tool_name: &str,
+    supports_http_method: bool,
+) -> Result<CompiledToolPolicy, PolicyError> {
+    let compile = |rule| compile_rule(rule, tool_name, supports_http_method);
+    let deny = p.deny.iter().map(compile).collect::<Result<_, _>>()?;
+    let allow = p.allow.iter().map(compile).collect::<Result<_, _>>()?;
+    let ask = p.ask.iter().map(compile).collect::<Result<_, _>>()?;
     for glob_pat in p
         .deny_paths
         .iter()
@@ -436,25 +578,29 @@ fn compile_tool_policy(p: &ToolPolicy) -> Result<CompiledToolPolicy, PolicyError
 }
 
 fn compile_tools(tools: &ToolsConfig) -> Result<CompiledTools, PolicyError> {
-    let bash = tools.bash.as_ref().map(compile_tool_policy).transpose()?;
+    let bash = tools
+        .bash
+        .as_ref()
+        .map(|p| compile_tool_policy(p, "bash", false))
+        .transpose()?;
     let read_file = tools
         .read_file
         .as_ref()
-        .map(compile_tool_policy)
+        .map(|p| compile_tool_policy(p, "read_file", false))
         .transpose()?;
     let write_file = tools
         .write_file
         .as_ref()
-        .map(compile_tool_policy)
+        .map(|p| compile_tool_policy(p, "write_file", false))
         .transpose()?;
     let http_request = tools
         .http_request
         .as_ref()
-        .map(compile_tool_policy)
+        .map(|p| compile_tool_policy(p, "http_request", true))
         .transpose()?;
     let mut custom = HashMap::with_capacity(tools.custom.len());
     for (k, v) in &tools.custom {
-        custom.insert(k.clone(), compile_tool_policy(v)?);
+        custom.insert(k.clone(), compile_tool_policy(v, k, false)?);
     }
     Ok(CompiledTools {
         bash,
@@ -463,6 +609,60 @@ fn compile_tools(tools: &ToolsConfig) -> Result<CompiledTools, PolicyError> {
         http_request,
         custom,
     })
+}
+
+fn validate_policy_configuration(policy: &PolicyFile) -> Result<(), PolicyError> {
+    let anomaly = &policy.anomaly;
+    for (field, value) in [
+        (
+            "anomaly.rate_limit.window_seconds",
+            anomaly.rate_limit.window_seconds,
+        ),
+        (
+            "anomaly.deny_fuse.window_seconds",
+            anomaly.deny_fuse.window_seconds,
+        ),
+    ] {
+        if value == 0 {
+            return Err(PolicyError::ParseError(format!(
+                "{field} must be greater than zero"
+            )));
+        }
+    }
+    for (field, value) in [
+        ("anomaly.rate_limit.max_calls", anomaly.rate_limit.max_calls),
+        ("anomaly.deny_fuse.threshold", anomaly.deny_fuse.threshold),
+    ] {
+        if value == 0 {
+            return Err(PolicyError::ParseError(format!(
+                "{field} must be greater than zero"
+            )));
+        }
+    }
+
+    match policy.audit.output.as_str() {
+        "stdout" => {}
+        "file" => {
+            if policy
+                .audit
+                .file_path
+                .as_deref()
+                .map(|path| path.trim().is_empty())
+                .unwrap_or(true)
+            {
+                return Err(PolicyError::ParseError(
+                    "audit.file_path must be non-empty when audit.output is 'file'".to_string(),
+                ));
+            }
+        }
+        output => {
+            return Err(PolicyError::ParseError(format!(
+                "audit.output must be either 'stdout' or 'file', not '{output}'"
+            )));
+        }
+    }
+
+    Ok(())
 }
 
 // ── PolicyEngine ──────────────────────────────────────────────────────────────
@@ -481,6 +681,7 @@ impl PolicyEngine {
         if policy.version != 1 {
             return Err(PolicyError::UnsupportedVersion(policy.version));
         }
+        validate_policy_configuration(&policy)?;
 
         let mut hasher = Sha256::new();
         hasher.update(yaml.as_bytes());
@@ -639,9 +840,12 @@ impl PolicyEngine {
             let compiled_tp = compiled_tp.expect("compiled tool policy missing for known tool");
 
             for (i, rule) in compiled_tp.deny.iter().enumerate() {
-                let res = pattern_matches(rule, match_value, http_method, tool, context);
+                let rule_ref = format!("tools.{}.deny[{}]", tool_name, i);
+                let res = match pattern_matches(rule, match_value, http_method, tool, context) {
+                    Ok(result) => result,
+                    Err(error) => return condition_evaluation_denied(rule_ref, error),
+                };
                 if res.matched {
-                    let rule_ref = format!("tools.{}.deny[{}]", tool_name, i);
                     let mut reason = DecisionReason::new(
                         DecisionCode::DeniedByRule,
                         format!("payload matched deny rule: {}", pattern_display(rule)),
@@ -672,9 +876,12 @@ impl PolicyEngine {
             }
 
             for (i, rule) in compiled_tp.ask.iter().enumerate() {
-                let res = pattern_matches(rule, match_value, http_method, tool, context);
+                let rule_ref = format!("tools.{}.ask[{}]", tool_name, i);
+                let res = match pattern_matches(rule, match_value, http_method, tool, context) {
+                    Ok(result) => result,
+                    Err(error) => return condition_evaluation_denied(rule_ref, error),
+                };
                 if res.matched {
-                    let rule_ref = format!("tools.{}.ask[{}]", tool_name, i);
                     let mut reason = DecisionReason::new(
                         DecisionCode::AskRequired,
                         format!("ask rule matched: {}", pattern_display(rule)),
@@ -710,8 +917,13 @@ impl PolicyEngine {
                 }
             }
 
-            for rule in compiled_tp.allow.iter() {
-                if pattern_matches(rule, match_value, http_method, tool, context).matched {
+            for (i, rule) in compiled_tp.allow.iter().enumerate() {
+                let rule_ref = format!("tools.{}.allow[{}]", tool_name, i);
+                let res = match pattern_matches(rule, match_value, http_method, tool, context) {
+                    Ok(result) => result,
+                    Err(error) => return condition_evaluation_denied(rule_ref, error),
+                };
+                if res.matched {
                     return GuardDecision::Allow;
                 }
             }
@@ -828,12 +1040,12 @@ fn pattern_matches(
     http_method: Option<&str>,
     tool: &Tool,
     context: &Context,
-) -> MatchResult {
+) -> Result<MatchResult, ConditionEvaluationError> {
     match rule {
-        CompiledRulePattern::Plain(s) => MatchResult {
+        CompiledRulePattern::Plain(s) => Ok(MatchResult {
             matched: value.contains(s.as_str()),
             condition: None,
-        },
+        }),
         CompiledRulePattern::Map(m) => {
             let mut result = MatchResult {
                 matched: false,
@@ -841,11 +1053,11 @@ fn pattern_matches(
             };
 
             if let Some(ref condition) = m.condition {
-                if !condition.evaluate(tool, context) {
-                    return MatchResult {
+                if !condition.evaluate(tool, context)? {
+                    return Ok(MatchResult {
                         matched: false,
                         condition: None,
-                    };
+                    });
                 }
             }
 
@@ -856,10 +1068,10 @@ fn pattern_matches(
                 match http_method {
                     Some(got) if got.eq_ignore_ascii_case(want) => {}
                     _ => {
-                        return MatchResult {
+                        return Ok(MatchResult {
                             matched: false,
                             condition: None,
-                        }
+                        })
                     }
                 }
             }
@@ -867,31 +1079,40 @@ fn pattern_matches(
             if let Some(ref prefix) = m.prefix {
                 if value.trim_start().starts_with(prefix.as_str()) {
                     result.matched = true;
-                    return result;
+                    return Ok(result);
                 }
             }
             if let Some(ref re) = m.regex {
                 if re.is_match(value) {
                     result.matched = true;
-                    return result;
+                    return Ok(result);
                 }
             }
             if let Some(ref plain) = m.plain {
                 if value.contains(plain.as_str()) {
                     result.matched = true;
-                    return result;
+                    return Ok(result);
                 }
             }
 
-            // If no match criteria (prefix, regex, plain) are provided,
-            // the existence of a condition that passed makes it a match.
+            // If no text criteria (prefix, regex, plain) are provided, a
+            // method selector or condition that passed makes the rule match.
             if m.prefix.is_none() && m.regex.is_none() && m.plain.is_none() {
                 result.matched = true;
             }
 
-            result
+            Ok(result)
         }
     }
+}
+
+fn condition_evaluation_denied(rule_ref: String, error: ConditionEvaluationError) -> GuardDecision {
+    let reason = DecisionReason::new(
+        DecisionCode::InternalError,
+        format!("policy condition could not be evaluated safely: {error}"),
+    )
+    .with_matched_rule(rule_ref);
+    GuardDecision::Deny { reason }
 }
 
 fn pattern_display(rule: &CompiledRulePattern) -> String {
@@ -974,4 +1195,79 @@ pub enum PolicyError {
     ParseError(String),
     #[error("unsupported policy version: {0}")]
     UnsupportedVersion(u32),
+}
+
+#[cfg(test)]
+mod condition_runtime_tests {
+    use super::*;
+
+    fn replace_first_condition_with_runtime_type_error(
+        engine: &mut PolicyEngine,
+        list: fn(&mut CompiledToolPolicy) -> &mut Vec<CompiledRulePattern>,
+    ) {
+        let invalid = Condition {
+            raw: "trust_level > 3".to_string(),
+            node: evalexpr::build_operator_tree("trust_level > 3").unwrap(),
+        };
+        let policy = engine.compiled.bash.as_mut().unwrap();
+        match &mut list(policy)[0] {
+            CompiledRulePattern::Map(rule) => rule.condition = Some(invalid),
+            CompiledRulePattern::Plain(_) => panic!("expected a map rule"),
+        }
+    }
+
+    fn assert_internal_error_deny(decision: GuardDecision, rule_ref: &str) {
+        match decision {
+            GuardDecision::Deny { reason } => {
+                assert_eq!(reason.code(), DecisionCode::InternalError);
+                assert_eq!(reason.matched_rule(), Some(rule_ref));
+                assert!(reason.message().contains("could not be evaluated safely"));
+            }
+            other => panic!("condition error must fail closed, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn deny_condition_runtime_error_fails_closed() {
+        let mut engine = PolicyEngine::from_yaml_str(
+            r#"
+version: 1
+default_mode: full_access
+tools:
+  bash:
+    deny:
+      - prefix: "danger"
+        if: 'actor == "bot"'
+"#,
+        )
+        .unwrap();
+        replace_first_condition_with_runtime_type_error(&mut engine, |policy| &mut policy.deny);
+
+        assert_internal_error_deny(
+            engine.check(&Tool::Bash, r#"{"command":"danger"}"#, &Context::default()),
+            "tools.bash.deny[0]",
+        );
+    }
+
+    #[test]
+    fn ask_condition_runtime_error_fails_closed_instead_of_becoming_approvable() {
+        let mut engine = PolicyEngine::from_yaml_str(
+            r#"
+version: 1
+default_mode: full_access
+tools:
+  bash:
+    ask:
+      - prefix: "deploy"
+        if: 'actor == "bot"'
+"#,
+        )
+        .unwrap();
+        replace_first_condition_with_runtime_type_error(&mut engine, |policy| &mut policy.ask);
+
+        assert_internal_error_deny(
+            engine.check(&Tool::Bash, r#"{"command":"deploy"}"#, &Context::default()),
+            "tools.bash.ask[0]",
+        );
+    }
 }

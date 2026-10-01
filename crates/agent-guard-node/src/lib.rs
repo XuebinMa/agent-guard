@@ -102,7 +102,9 @@ fn decision_from_rust(
             policy_verification_status: verification_status,
             policy_verification_error: verification_error,
         },
-        GuardDecision::AskUser { message, reason } => Decision {
+        GuardDecision::AskUser {
+            message, reason, ..
+        } => Decision {
             outcome: "ask_user".to_string(),
             message: Some(reason.message().to_string()),
             code: Some(format!("{:?}", reason.code())),
@@ -164,7 +166,9 @@ fn runtime_decision_from_rust(
             policy_verification_status: verification_status,
             policy_verification_error: verification_error,
         },
-        RustRuntimeDecision::AskForApproval { message, reason } => RuntimeDecision {
+        RustRuntimeDecision::AskForApproval {
+            message, reason, ..
+        } => RuntimeDecision {
             outcome: "ask_for_approval".to_string(),
             message: Some(reason.message().to_string()),
             code: Some(format!("{:?}", reason.code())),
@@ -373,7 +377,7 @@ fn runtime_outcome_from_rust(
             request_id,
             output: None,
             decision: Some(runtime_decision_from_rust(
-                RustRuntimeDecision::AskForApproval { message, reason },
+                RustRuntimeDecision::ask_for_approval_with_reason(message, reason),
                 policy_version.clone(),
                 policy_verification.clone(),
             )),

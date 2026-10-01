@@ -25,7 +25,7 @@
 //! 16. Unknown outer commands cannot downgrade embedded Git outbound intent.
 
 use agent_guard_sdk::{
-    guard::{Guard, RuntimeOutcome},
+    guard::{ExecuteOutcome, Guard, RuntimeOutcome},
     Context, DecisionCode, GuardDecision, GuardInput, HandoffResult, RuntimeDecision, Tool,
     TrustLevel,
 };
@@ -108,6 +108,23 @@ fn assert_deny_with_code(d: &GuardDecision, expected: DecisionCode) {
             reason.message()
         ),
         other => panic!("expected Deny({expected:?}), got {other:?}"),
+    }
+}
+
+fn invalid_signed_guard() -> Guard {
+    Guard::from_signed_yaml(
+        "version: 1\ndefault_mode: full_access\naudit:\n  enabled: false\nanomaly:\n  enabled: false\n",
+        "0000000000000000000000000000000000000000000000000000000000000001",
+        "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+    )
+    .expect("a syntactically valid policy with an invalid signature still constructs a fail-closed guard")
+}
+
+fn signed_policy_probe_input() -> GuardInput {
+    GuardInput {
+        tool: Tool::Bash,
+        payload: serde_json::json!({ "command": "echo signed-policy-probe" }).to_string(),
+        context: Context::default(),
     }
 }
 
@@ -525,7 +542,10 @@ fn sec32_unknown_prefix_cannot_downgrade_embedded_git_outbound_intent() {
     })
     .to_string();
     let decision = g.check_tool(Tool::Bash, &payload, ctx_workspace(&workspace));
-    let GuardDecision::AskUser { message, reason } = decision else {
+    let GuardDecision::AskUser {
+        message, reason, ..
+    } = decision
+    else {
         panic!("embedded ordinary push must ask")
     };
     // The security property of this test is carried by the three structured
@@ -890,6 +910,57 @@ fn sec25_write_file_without_working_directory_is_denied_without_writing() {
         !target.exists(),
         "WriteFile must not create a file without an explicit workspace"
     );
+}
+
+// ─── 33. Invalid signed policies fail closed at every public entry point ─────
+
+#[test]
+fn sec33_invalid_signed_policy_check_is_denied() {
+    let decision = invalid_signed_guard().check(&signed_policy_probe_input());
+    assert_deny_with_code(&decision, DecisionCode::PolicyVerificationFailed);
+}
+
+#[test]
+fn sec33_invalid_signed_policy_decide_is_denied() {
+    let decision = invalid_signed_guard().decide(&signed_policy_probe_input());
+    match decision {
+        RuntimeDecision::Deny { reason } => {
+            assert_eq!(reason.code(), DecisionCode::PolicyVerificationFailed)
+        }
+        other => panic!("invalid signed policy must not produce a runtime disposition: {other:?}"),
+    }
+}
+
+#[test]
+fn sec33_invalid_signed_policy_execute_is_denied() {
+    let outcome = invalid_signed_guard()
+        .execute(
+            &signed_policy_probe_input(),
+            &agent_guard_sandbox::NoopSandbox,
+        )
+        .expect("invalid policy verification should produce a denial, not a sandbox error");
+    match outcome {
+        ExecuteOutcome::Denied { decision, .. } => {
+            assert_deny_with_code(&decision, DecisionCode::PolicyVerificationFailed)
+        }
+        other => panic!("invalid signed policy must not execute: {other:?}"),
+    }
+}
+
+#[test]
+fn sec33_invalid_signed_policy_run_is_denied() {
+    let outcome = invalid_signed_guard()
+        .run(
+            &signed_policy_probe_input(),
+            &agent_guard_sandbox::NoopSandbox,
+        )
+        .expect("invalid policy verification should produce a denial, not a sandbox error");
+    match outcome {
+        RuntimeOutcome::Denied { reason, .. } => {
+            assert_eq!(reason.code(), DecisionCode::PolicyVerificationFailed)
+        }
+        other => panic!("invalid signed policy must not run or hand off: {other:?}"),
+    }
 }
 
 // ─── 28. Host-reported handoff outcomes can never masquerade as witnessed ───

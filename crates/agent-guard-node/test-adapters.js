@@ -74,6 +74,62 @@ async function testCreateGuardedExecutorCheckAllow() {
   assert.deepEqual(result, { ok: true, input: { expression: '2+2' } })
 }
 
+async function testOmittedTrustDefaultsToUntrusted() {
+  const seenTrustLevels = []
+  let handlerCalls = 0
+  const guard = {
+    check(_tool, _payload, context) {
+      seenTrustLevels.push(context.trustLevel)
+      if (context.trustLevel === 'Trusted') {
+        return { outcome: 'allow', policyVersion: 'policy-trust-default' }
+      }
+      return {
+        outcome: 'deny',
+        message: 'read-only policy blocks this mutation',
+        code: 'WriteInReadOnlyMode',
+        policyVersion: 'policy-trust-default',
+      }
+    },
+    async execute() {
+      throw new Error('execute must not be called in check mode')
+    },
+  }
+
+  const omittedTrust = createGuardedExecutor(guard, {
+    mode: 'check',
+    tool: 'write_file',
+  })(async () => {
+    handlerCalls += 1
+    return 'should-not-run'
+  })
+
+  await expectRejects(
+    () => omittedTrust({ path: '/tmp/blocked', content: 'blocked' }),
+    AgentGuardDeniedError,
+    (error) => {
+      assert.equal(error.code, 'WriteInReadOnlyMode')
+    }
+  )
+  assert.equal(handlerCalls, 0)
+  assert.deepEqual(seenTrustLevels, ['Untrusted'])
+
+  const explicitTrust = createGuardedExecutor(guard, {
+    mode: 'check',
+    tool: 'write_file',
+    trustLevel: 'Trusted',
+  })(async () => {
+    handlerCalls += 1
+    return 'explicitly-trusted'
+  })
+
+  assert.equal(
+    await explicitTrust({ path: '/tmp/allowed', content: 'allowed' }),
+    'explicitly-trusted'
+  )
+  assert.equal(handlerCalls, 1)
+  assert.deepEqual(seenTrustLevels, ['Untrusted', 'Trusted'])
+}
+
 async function testCreateGuardedExecutorCheckDeny() {
   let handlerCalls = 0
   const guard = createMockGuard({
@@ -429,6 +485,7 @@ async function testAdapterExecutionErrorWrapping() {
 
 async function main() {
   await testCreateGuardedExecutorCheckAllow()
+  await testOmittedTrustDefaultsToUntrusted()
   await testCreateGuardedExecutorCheckDeny()
   await testCreateGuardedExecutorCheckAsk()
   await testCreateGuardedExecutorEnforceExecutedAndMapped()

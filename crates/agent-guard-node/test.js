@@ -231,6 +231,57 @@ tools:
     const checked = await checkHandler('echo via-original')
     assert.equal(checked, 'ORIGINAL:echo via-original')
 
+    // High-level adapters must preserve Context::default()'s untrusted
+    // boundary. A trusted caller may opt into the per-tool full-access
+    // override, but omitting trust must leave the read-only default in force.
+    const trustDefaultGuard = Guard.fromYaml(`
+version: 1
+default_mode: read_only
+tools:
+  write_file:
+    mode: full_access
+audit:
+  enabled: false
+`)
+    const trustDefaultInput = {
+      path: join(writeRoot, 'omitted-trust-must-not-write.txt'),
+      content: 'must not run',
+    }
+    const trustDefaultPayload = JSON.stringify(trustDefaultInput)
+    assert.equal(
+      trustDefaultGuard.check('write_file', trustDefaultPayload, {
+        trustLevel: 'Untrusted',
+      }).outcome,
+      'deny'
+    )
+    assert.equal(
+      trustDefaultGuard.check('write_file', trustDefaultPayload, {
+        trustLevel: 'Trusted',
+      }).outcome,
+      'allow'
+    )
+
+    let omittedTrustHandlerCalls = 0
+    const omittedTrustHandler = wrapOpenAITool(
+      trustDefaultGuard,
+      async () => {
+        omittedTrustHandlerCalls += 1
+        return 'should-not-run'
+      },
+      {
+        tool: 'write_file',
+        mode: 'check',
+      }
+    )
+
+    await assert.rejects(
+      async () => omittedTrustHandler(trustDefaultInput),
+      (error) =>
+        error instanceof AgentGuardDeniedError &&
+        error.code === 'WriteInReadOnlyMode'
+    )
+    assert.equal(omittedTrustHandlerCalls, 0)
+
     const deniedHandler = wrapOpenAITool(
       guard,
       async () => 'should-not-run',
@@ -265,6 +316,38 @@ tools:
         'ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff'
       )
       assert.equal(invalidSignedGuard.policyVerification().status, 'invalid')
+
+      const invalidCheck = invalidSignedGuard.check(
+        'bash',
+        normalizePayload('bash', 'echo signed-check')
+      )
+      assert.equal(invalidCheck.outcome, 'deny')
+      assert.equal(invalidCheck.code, 'PolicyVerificationFailed')
+
+      const invalidDecide = invalidSignedGuard.decide(
+        'bash',
+        normalizePayload('bash', 'echo signed-decide')
+      )
+      assert.equal(invalidDecide.outcome, 'deny')
+      assert.equal(invalidDecide.code, 'PolicyVerificationFailed')
+
+      const invalidExecute = await invalidSignedGuard.execute(
+        'bash',
+        normalizePayload('bash', 'echo signed-execute'),
+        undefined,
+        'none'
+      )
+      assert.equal(invalidExecute.status || invalidExecute.outcome, 'denied')
+      assert.equal(invalidExecute.decision.code, 'PolicyVerificationFailed')
+
+      const invalidRun = await invalidSignedGuard.run(
+        'bash',
+        normalizePayload('bash', 'echo signed-run'),
+        undefined,
+        'none'
+      )
+      assert.equal(invalidRun.status || invalidRun.outcome, 'denied')
+      assert.equal(invalidRun.decision.code, 'PolicyVerificationFailed')
 
       const autoHandler = wrapOpenAITool(
         invalidSignedGuard,

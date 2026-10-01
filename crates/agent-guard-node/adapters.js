@@ -2,7 +2,7 @@
 
 const DEFAULT_MODE = 'enforce'
 const DEFAULT_SHELL_TOOL = 'bash'
-const DEFAULT_TRUST_LEVEL = 'Trusted'
+const DEFAULT_TRUST_LEVEL = 'Untrusted'
 const SHELL_TOOL_NAMES = new Set(['bash', 'shell', 'terminal', 'sh', 'zsh', 'cmd', 'powershell', 'pwsh'])
 
 class AgentGuardAdapterError extends Error {

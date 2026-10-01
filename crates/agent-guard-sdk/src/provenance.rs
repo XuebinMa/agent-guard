@@ -226,13 +226,11 @@ mod tests {
             "bash",
             "v1.0.0",
             "linux-seccomp",
-            &GuardDecision::AskUser {
-                message: "git push".to_string(),
-                reason: agent_guard_core::DecisionReason::new(
-                    agent_guard_core::DecisionCode::AskRequired,
-                    "ask",
-                ),
-            },
+            &GuardDecision::ask(
+                "git push",
+                agent_guard_core::DecisionCode::AskRequired,
+                "ask",
+            ),
             "hash123",
             signing_key,
         )

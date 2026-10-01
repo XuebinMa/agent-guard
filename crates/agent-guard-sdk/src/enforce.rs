@@ -418,7 +418,9 @@ impl Guard {
                         policy_verification,
                     } => {
                         let (message, reason) = match decision {
-                            GuardDecision::AskUser { message, reason } => (message, reason),
+                            GuardDecision::AskUser {
+                                message, reason, ..
+                            } => (message, reason),
                             // Execute path only returns AskRequired for GuardDecision::AskUser.
                             other => unreachable!(
                                 "ExecuteOutcome::AskRequired should carry GuardDecision::AskUser, got {other:?}"
@@ -445,15 +447,15 @@ impl Guard {
                 policy_version,
                 policy_verification: state.policy_verification.clone(),
             }),
-            RuntimeDecision::AskForApproval { message, reason } => {
-                Ok(RuntimeOutcome::AskForApproval {
-                    request_id,
-                    message,
-                    reason,
-                    policy_version,
-                    policy_verification: state.policy_verification.clone(),
-                })
-            }
+            RuntimeDecision::AskForApproval {
+                message, reason, ..
+            } => Ok(RuntimeOutcome::AskForApproval {
+                request_id,
+                message,
+                reason,
+                policy_version,
+                policy_verification: state.policy_verification.clone(),
+            }),
             // Fail closed: an unrecognized runtime disposition is denied.
             _ => Ok(RuntimeOutcome::Denied {
                 request_id,

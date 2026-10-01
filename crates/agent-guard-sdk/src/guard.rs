@@ -75,6 +75,34 @@ fn stronger_decision(current: GuardDecision, candidate: GuardDecision) -> GuardD
     }
 }
 
+fn policy_verification_failure_decision(
+    verification: &PolicyVerification,
+) -> Option<GuardDecision> {
+    if !verification.should_fail_closed() {
+        return None;
+    }
+
+    let mut details = serde_json::Map::new();
+    details.insert(
+        "policy_verification_status".to_string(),
+        serde_json::Value::String(verification.status_label().to_string()),
+    );
+    if let Some(error) = &verification.error {
+        details.insert(
+            "policy_verification_error".to_string(),
+            serde_json::Value::String(error.clone()),
+        );
+    }
+
+    Some(GuardDecision::Deny {
+        reason: agent_guard_core::DecisionReason::new(
+            DecisionCode::PolicyVerificationFailed,
+            "policy signature verification failed; all decision and execution entry points are blocked until the policy is verified",
+        )
+        .with_details(serde_json::Value::Object(details)),
+    })
+}
+
 struct EvaluatedDecision {
     decision: GuardDecision,
     git_push_intents: Vec<GitPushIntent>,
@@ -248,6 +276,15 @@ impl Guard {
                 tool: input.tool.name().to_string(),
             })
             .inc();
+
+        // Signature verification is part of the policy's authority, not an
+        // execution-only concern. Keep this in the shared decision chokepoint
+        // so `check`, `check_tool`, `decide`, and every language binding cannot
+        // observe Allow/Execute from a policy whose detached signature failed.
+        if let Some(decision) = policy_verification_failure_decision(&state.policy_verification) {
+            let evaluated = EvaluatedDecision::without_git_intents(decision);
+            return self.finalize_check(input, &evaluated, state, &agent_id, "deny", request_id);
+        }
 
         let anomaly_subject = anomaly_subject(&input.context);
         let anomaly_cfg = state.engine.anomaly_config();

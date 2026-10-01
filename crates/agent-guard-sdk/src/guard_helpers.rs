@@ -28,9 +28,9 @@ pub(crate) fn runtime_decision_for_input(
             }
         }
         GuardDecision::Deny { reason } => RuntimeDecision::Deny { reason },
-        GuardDecision::AskUser { message, reason } => {
-            RuntimeDecision::AskForApproval { message, reason }
-        }
+        GuardDecision::AskUser {
+            message, reason, ..
+        } => RuntimeDecision::ask_for_approval_with_reason(message, reason),
         // Fail closed: an unrecognized decision kind maps to a deny, never Execute.
         _ => RuntimeDecision::Deny {
             reason: DecisionReason::new(

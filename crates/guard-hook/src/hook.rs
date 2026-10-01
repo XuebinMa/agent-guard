@@ -233,7 +233,9 @@ pub fn run_check(stdin_buf: &str, policy_path: &Path, agent_id: &str, out: &mut 
             let label = format_reason(&reason.code(), reason.message(), reason.matched_rule());
             emit_block(out, with_hint(label, hint));
         }
-        GuardDecision::AskUser { message, reason } => {
+        GuardDecision::AskUser {
+            message, reason, ..
+        } => {
             let label = format_reason(&reason.code(), &message, reason.matched_rule());
             emit_ask(out, with_hint(label, hint));
         }
