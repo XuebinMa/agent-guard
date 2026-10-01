@@ -32,6 +32,15 @@ The `[Unreleased]` heading is rolled forward manually before each release; do no
   does not rescue that case.
 
 ### Security
+- **A one-use push grant is now claimed before any repository inspection or
+  network-capable Git command.** Grant schema v2 retains the exact approved
+  transaction. Execution atomically burns the grant, validates its policy,
+  expiry and self-digest, then compares the repository's current push URL and
+  local OID using local-only operations. Only the URL stored in the grant may
+  reach `ls-remote` or `push`. Changing `pushurl` after approval is therefore a
+  refusal with a retained grant ID and transaction, and the changed endpoint
+  receives no connection; legacy v1 grants are readable but refused by the
+  broker executor because they do not carry enough evidence for this check.
 - **Policy typos and condition errors now fail closed.** Fixed-schema policy
   objects reject unknown fields, empty selectors and invalid HTTP method
   tokens during loading; valid extension methods remain available to explicit

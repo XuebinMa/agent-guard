@@ -38,6 +38,15 @@ pub struct PushGrant {
     pub grant_id: String,
     /// The digest of the transaction the human approved.
     pub transaction_digest: String,
+    /// The complete transaction shown to the approver.
+    ///
+    /// Version 1 grants did not carry this field. They remain readable and
+    /// can still be checked by the compatibility `spend_grant` API when its
+    /// caller presents a complete transaction, but the broker executor must
+    /// refuse them: without the approved URL and local OID it cannot prove a
+    /// repository has not redirected it before the first remote query.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub transaction: Option<PushTransaction>,
     /// The policy in force when it was issued.
     pub policy_hash: String,
     /// Which push this is about. Carried so the executor knows what to
@@ -75,6 +84,12 @@ pub enum GrantError {
     Io(#[from] std::io::Error),
     #[error("grant {id:?} is not readable as a grant: {detail}")]
     Corrupt { id: String, detail: String },
+    #[error("grant schema version {version} is not supported")]
+    UnsupportedVersion { version: u8 },
+    #[error(
+        "grant schema version {version} does not retain the approved transaction required for safe execution"
+    )]
+    MissingApprovedTransaction { version: u8 },
 }
 
 /// Reject anything that is not one plain filename, so a caller cannot reach
@@ -107,9 +122,10 @@ pub fn issue_grant(
 
     let issued_at = Utc::now();
     let grant = PushGrant {
-        version: 1,
+        version: 2,
         grant_id: uuid::Uuid::new_v4().to_string(),
         transaction_digest: transaction.digest(),
+        transaction: Some(transaction.clone()),
         policy_hash: policy_hash.to_string(),
         remote: transaction.remote.clone(),
         branch: transaction.branch.clone(),
@@ -161,6 +177,31 @@ pub fn spend_grant(
     policy_hash: &str,
     now: DateTime<Utc>,
 ) -> Result<PushGrant, GrantError> {
+    let grant = claim_grant(dir, id, policy_hash, now)?;
+
+    let presented_digest = presented.digest();
+    if grant.transaction_digest != presented_digest {
+        return Err(GrantError::TransactionMismatch {
+            approved: grant.transaction_digest,
+            presented: presented_digest,
+        });
+    }
+
+    Ok(grant)
+}
+
+/// Atomically claim a grant and validate the facts that do not require
+/// inspecting a repository or contacting a remote.
+///
+/// The rename is deliberately the first operation. Once a caller presents a
+/// grant id, policy drift, expiry, corruption, or later repository drift all
+/// burn that approval rather than leaving it reusable as a network oracle.
+pub(crate) fn claim_grant(
+    dir: &Path,
+    id: &str,
+    policy_hash: &str,
+    now: DateTime<Utc>,
+) -> Result<PushGrant, GrantError> {
     let path = grant_path(dir, id)?;
     let spent_dir = dir.join("spent");
     std::fs::create_dir_all(&spent_dir)?;
@@ -183,18 +224,52 @@ pub fn spend_grant(
         detail: e.to_string(),
     })?;
 
+    if grant.grant_id != id {
+        return Err(GrantError::Corrupt {
+            id: id.to_string(),
+            detail: format!(
+                "embedded grant id {:?} does not match its filename",
+                grant.grant_id
+            ),
+        });
+    }
+
+    if !matches!(grant.version, 1 | 2) {
+        return Err(GrantError::UnsupportedVersion {
+            version: grant.version,
+        });
+    }
+
+    if grant.version == 2 {
+        let approved =
+            grant
+                .transaction
+                .as_ref()
+                .ok_or(GrantError::MissingApprovedTransaction {
+                    version: grant.version,
+                })?;
+        let approved_digest = approved.digest();
+        if approved_digest != grant.transaction_digest {
+            return Err(GrantError::Corrupt {
+                id: id.to_string(),
+                detail: format!(
+                    "stored transaction digest {approved_digest} does not match recorded digest {}",
+                    grant.transaction_digest
+                ),
+            });
+        }
+        if grant.remote != approved.remote || grant.branch != approved.branch {
+            return Err(GrantError::Corrupt {
+                id: id.to_string(),
+                detail: "stored transaction target does not match the grant target".to_string(),
+            });
+        }
+    }
+
     if grant.policy_hash != policy_hash {
         return Err(GrantError::PolicyChanged {
             issued_under: grant.policy_hash,
             now: policy_hash.to_string(),
-        });
-    }
-
-    let presented_digest = presented.digest();
-    if grant.transaction_digest != presented_digest {
-        return Err(GrantError::TransactionMismatch {
-            approved: grant.transaction_digest,
-            presented: presented_digest,
         });
     }
 

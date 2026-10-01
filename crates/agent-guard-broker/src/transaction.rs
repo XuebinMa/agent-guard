@@ -86,11 +86,6 @@ pub fn resolve_push_transaction(
     PushBroker::default().resolve_push_transaction(repo, remote, branch)
 }
 
-pub(crate) struct ResolvedPush {
-    pub(crate) transaction: PushTransaction,
-    pub(crate) snapshot: GitSnapshot,
-}
-
 impl PushBroker {
     pub fn resolve_push_transaction(
         &self,
@@ -98,23 +93,8 @@ impl PushBroker {
         remote: &str,
         branch: &str,
     ) -> Result<PushTransaction, GitError> {
-        Ok(self
-            .resolve_with_snapshot(repo, remote, branch)?
-            .transaction)
-    }
-
-    pub(crate) fn resolve_with_snapshot(
-        &self,
-        repo: &Path,
-        remote: &str,
-        branch: &str,
-    ) -> Result<ResolvedPush, GitError> {
         let snapshot = GitSnapshot::capture(repo, remote, branch, &self.options)?;
-        let transaction = resolve_from_snapshot(&snapshot, remote, branch)?;
-        Ok(ResolvedPush {
-            transaction,
-            snapshot,
-        })
+        resolve_from_snapshot(&snapshot, remote, branch)
     }
 }
 
@@ -124,6 +104,22 @@ fn resolve_from_snapshot(
     branch: &str,
 ) -> Result<PushTransaction, GitError> {
     let remote_url = snapshot.remote_url.clone();
+    resolve_from_snapshot_at_url(snapshot, remote, branch, &remote_url)
+}
+
+/// Resolve remote state only against an already-approved URL.
+///
+/// Execution calls this after atomically claiming a grant and proving the
+/// repository-local URL and OID still match that grant. Keeping the URL an
+/// explicit argument prevents an agent-controlled remote name from being
+/// resolved again at the first network-capable command.
+pub(crate) fn resolve_from_snapshot_at_url(
+    snapshot: &GitSnapshot,
+    remote: &str,
+    branch: &str,
+    approved_remote_url: &str,
+) -> Result<PushTransaction, GitError> {
+    let remote_url = approved_remote_url.to_string();
     let local_ref = format!("refs/heads/{branch}");
     let local_oid = snapshot.run(&["rev-parse", "--verify", &local_ref])?;
 

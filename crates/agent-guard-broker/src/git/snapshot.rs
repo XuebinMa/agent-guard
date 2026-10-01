@@ -19,6 +19,7 @@ pub(crate) struct GitSnapshot {
     hooks_dir: PathBuf,
     allow_local_file_remote: bool,
     pub(crate) remote_url: String,
+    pub(crate) local_oid: String,
 }
 
 impl GitSnapshot {
@@ -75,19 +76,21 @@ impl GitSnapshot {
         )?;
         copy_optional_plain_file(&source_git.join("shallow"), &git_dir.join("shallow"))?;
 
-        let snapshot = Self {
+        let mut snapshot = Self {
             _temp: temp,
             git_dir,
             trusted_config,
             hooks_dir,
             allow_local_file_remote: options.allow_local_file_remote,
             remote_url,
+            local_oid: String::new(),
         };
 
         let full_ref = format!("refs/heads/{branch}");
         snapshot.run(&["check-ref-format", &full_ref])?;
         let oid = snapshot.run(&["rev-parse", "--verify", &full_ref])?;
         snapshot.run(&["fsck", "--connectivity-only", &oid])?;
+        snapshot.local_oid = oid;
         Ok(snapshot)
     }
 

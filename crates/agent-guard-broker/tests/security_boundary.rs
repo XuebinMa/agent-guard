@@ -2,8 +2,17 @@
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::sync::{
+    atomic::{AtomicBool, Ordering},
+    mpsc, Arc,
+};
+use std::thread;
+use std::time::Duration as StdDuration;
+use std::{io, net::TcpListener};
 
-use agent_guard_broker::{issue_grant, BrokerGitOptions, ExecuteError, PushAttempt, PushBroker};
+use agent_guard_broker::{
+    issue_grant, BrokerGitOptions, ExecuteError, GrantError, PushAttempt, PushBroker,
+};
 use chrono::{Duration, Utc};
 
 fn git(repo: &Path, args: &[&str]) -> String {
@@ -75,6 +84,46 @@ fn fixture() -> Fixture {
         grants,
         trusted_config,
     }
+}
+
+/// Bind a real loopback endpoint and record whether anything connects to it.
+/// The listener closes the first connection immediately so a vulnerable
+/// `git ls-remote` fails promptly instead of hanging the test in TLS setup.
+fn loopback_https_sentinel() -> (
+    String,
+    Arc<AtomicBool>,
+    mpsc::Sender<()>,
+    thread::JoinHandle<()>,
+) {
+    let listener = TcpListener::bind(("127.0.0.1", 0)).expect("bind loopback sentinel");
+    listener
+        .set_nonblocking(true)
+        .expect("set sentinel nonblocking");
+    let address = listener.local_addr().expect("sentinel address");
+    let contacted = Arc::new(AtomicBool::new(false));
+    let observed = Arc::clone(&contacted);
+    let (stop_tx, stop_rx) = mpsc::channel();
+    let handle = thread::spawn(move || loop {
+        if stop_rx.try_recv().is_ok() {
+            break;
+        }
+        match listener.accept() {
+            Ok((_stream, _peer)) => {
+                observed.store(true, Ordering::SeqCst);
+                break;
+            }
+            Err(error) if error.kind() == io::ErrorKind::WouldBlock => {
+                thread::sleep(StdDuration::from_millis(5));
+            }
+            Err(error) => panic!("loopback sentinel failed: {error}"),
+        }
+    });
+    (
+        format!("https://{address}/changed.git"),
+        contacted,
+        stop_tx,
+        handle,
+    )
 }
 
 #[test]
@@ -172,6 +221,70 @@ fn changing_the_push_url_after_approval_cannot_redirect_execution() {
     assert_eq!(
         git(&other_remote, &["rev-parse", "refs/heads/main"]),
         original_tip
+    );
+}
+
+#[test]
+fn changed_push_url_is_rejected_before_network_and_burns_the_grant() {
+    let f = fixture();
+    commit(&f.work, "second");
+    let broker = f.broker();
+    let approved = broker
+        .resolve_push_transaction(&f.work, "origin", "main")
+        .expect("resolve approved transaction");
+    let grant = issue_grant(
+        &f.grants,
+        &approved,
+        "policy-1",
+        "human",
+        Duration::minutes(5),
+    )
+    .expect("grant");
+
+    let (changed_url, contacted, stop, sentinel) = loopback_https_sentinel();
+    git(
+        &f.work,
+        &["remote", "set-url", "--push", "origin", &changed_url],
+    );
+
+    let receipt =
+        broker.execute_push_with_receipt(&f.work, &f.grants, &grant, "policy-1", Utc::now(), None);
+    let _ = stop.send(());
+    sentinel.join().expect("sentinel joins");
+
+    assert!(
+        !contacted.load(Ordering::SeqCst),
+        "the changed endpoint was contacted before the approved transaction was authenticated"
+    );
+    assert!(matches!(receipt.attempt, PushAttempt::Refused { .. }));
+    assert_eq!(
+        receipt.transaction.as_ref(),
+        Some(&approved),
+        "a post-approval refusal must retain the exact approved transaction"
+    );
+    assert_eq!(
+        receipt.grant_id.as_deref(),
+        Some(grant.as_str()),
+        "the approval must be consumed before any endpoint can be contacted"
+    );
+
+    git(
+        &f.work,
+        &[
+            "remote",
+            "set-url",
+            "--push",
+            "origin",
+            &approved.remote_url,
+        ],
+    );
+    let retry = broker.execute_push(&f.work, &f.grants, &grant, "policy-1", Utc::now());
+    assert!(
+        matches!(
+            retry,
+            Err(ExecuteError::Unauthorized(GrantError::NotFound { .. }))
+        ),
+        "a rejected presentation must not leave the grant reusable: {retry:?}"
     );
 }
 
