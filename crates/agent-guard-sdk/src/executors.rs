@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::io::Write;
+use std::io::{Read, Write};
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, ToSocketAddrs};
 use std::path::Path;
 use std::time::Duration;
@@ -114,6 +114,7 @@ pub(crate) struct HttpRequestExecution {
 
 const HTTP_REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
 const HTTP_CONNECT_TIMEOUT: Duration = Duration::from_secs(5);
+const HTTP_RESPONSE_BODY_LIMIT: usize = 4 * 1024 * 1024;
 
 pub(crate) fn execute_http_request(payload: &str) -> Result<SandboxOutput, SandboxError> {
     let request: HttpRequestExecution =
@@ -126,8 +127,6 @@ pub(crate) fn execute_http_request(payload: &str) -> Result<SandboxOutput, Sandb
         code: DecisionCode::InvalidPayload,
         message: format!("invalid URL: {e}"),
     })?;
-    let (pin_host, pin_addr) = resolve_url_to_safe_addr(&url)?;
-
     let method = request
         .method
         .as_deref()
@@ -141,46 +140,69 @@ pub(crate) fn execute_http_request(payload: &str) -> Result<SandboxOutput, Sandb
         )));
     }
 
-    let headers = request.headers;
-    let body = request.body;
+    // Method support is decided before DNS or any other network-capable
+    // operation. Extension methods take the owned fail-closed path, but an
+    // unsupported verb must not turn the executor into a DNS oracle.
+    let (pin_host, pin_addr) = resolve_url_to_safe_addr(&url)?;
 
-    let handle = std::thread::spawn(move || {
-        let client = reqwest::blocking::Client::builder()
-            .timeout(HTTP_REQUEST_TIMEOUT)
-            .connect_timeout(HTTP_CONNECT_TIMEOUT)
-            .redirect(reqwest::redirect::Policy::none())
-            .resolve(&pin_host, pin_addr)
-            .build()
-            .map_err(|e| {
-                SandboxError::ExecutionFailed(format!("failed to build HTTP client: {e}"))
-            })?;
+    // This API is already synchronous. Running it directly avoids allocating
+    // one unbounded OS thread per concurrent request; reqwest's request and
+    // connect timeouts bound the blocking call itself.
+    let client = build_pinned_http_client(&pin_host, pin_addr)?;
+    let mut builder = client.request(method, url);
+    for (name, value) in request.headers {
+        builder = builder.header(name, value);
+    }
+    if let Some(body) = request.body {
+        builder = builder.body(body);
+    }
 
-        let mut builder = client.request(method, url);
-        for (name, value) in headers {
-            builder = builder.header(name, value);
-        }
-        if let Some(body) = body {
-            builder = builder.body(body);
-        }
+    let mut response = builder
+        .send()
+        .map_err(|e| SandboxError::ExecutionFailed(format!("HTTP request failed: {e}")))?;
+    let status = response.status();
+    let body = read_bounded_http_body(&mut response, HTTP_RESPONSE_BODY_LIMIT)?;
+    let resp_body = String::from_utf8_lossy(&body).into_owned();
 
-        let response = builder
-            .send()
-            .map_err(|e| SandboxError::ExecutionFailed(format!("HTTP request failed: {e}")))?;
-        let status = response.status();
-        let resp_body = response.text().map_err(|e| {
+    Ok(SandboxOutput {
+        exit_code: if status.is_success() { 0 } else { 1 },
+        stdout: resp_body,
+        stderr: String::new(),
+    })
+}
+
+fn build_pinned_http_client(
+    pin_host: &str,
+    pin_addr: SocketAddr,
+) -> Result<reqwest::blocking::Client, SandboxError> {
+    reqwest::blocking::Client::builder()
+        .timeout(HTTP_REQUEST_TIMEOUT)
+        .connect_timeout(HTTP_CONNECT_TIMEOUT)
+        .redirect(reqwest::redirect::Policy::none())
+        // Environment proxies would receive the request instead of the
+        // destination vetted and pinned above. Proxy use needs its own
+        // trusted policy model, so the guarded executor disables it.
+        .no_proxy()
+        .resolve(pin_host, pin_addr)
+        .build()
+        .map_err(|e| SandboxError::ExecutionFailed(format!("failed to build HTTP client: {e}")))
+}
+
+fn read_bounded_http_body(reader: &mut impl Read, limit: usize) -> Result<Vec<u8>, SandboxError> {
+    let read_limit = u64::try_from(limit).unwrap_or(u64::MAX).saturating_add(1);
+    let mut body = Vec::with_capacity(limit.min(16 * 1024));
+    reader
+        .take(read_limit)
+        .read_to_end(&mut body)
+        .map_err(|e| {
             SandboxError::ExecutionFailed(format!("failed to read HTTP response body: {e}"))
         })?;
-
-        Ok(SandboxOutput {
-            exit_code: if status.is_success() { 0 } else { 1 },
-            stdout: resp_body,
-            stderr: String::new(),
-        })
-    });
-
-    handle
-        .join()
-        .map_err(|_| SandboxError::ExecutionFailed("HTTP execution thread panicked".to_string()))?
+    if body.len() > limit {
+        return Err(SandboxError::ExecutionFailed(format!(
+            "HTTP response body exceeded the {limit}-byte limit"
+        )));
+    }
+    Ok(body)
 }
 
 /// Unconditional deny-list for resolved destination IPs. Covers categories
@@ -342,13 +364,14 @@ pub(crate) fn resolve_url_to_safe_addr(
 /// payload (Execute path -- runs through `resolve_url_to_safe_addr` and
 /// the SSRF deny-list) versus handing it off to the host (Handoff path
 /// -- no SDK-side network guard). Returns `true` for mutation methods
-/// (POST/PUT/PATCH/DELETE) and `true` whenever the method cannot be
-/// proven non-mutation: parse failure, missing field, non-string field,
-/// `null` root. The fail-closed branch closes the 2026-05-25-2 HIGH
+/// (POST/PUT/PATCH/DELETE), extension/unsafe methods, and whenever the method
+/// cannot be proven to be one of the explicitly supported handoff methods:
+/// parse failure, missing field, non-string field, or `null` root. The
+/// fail-closed branch closes the 2026-05-25-2 HIGH
 /// silent-failure where a malformed payload routed to Handoff and
 /// silently skipped the SSRF guard. Returns `false` only when parsing
-/// succeeds and the method is one of the documented non-mutation
-/// verbs (GET/HEAD/OPTIONS/...).
+/// succeeds and the method is one of the documented handoff verbs
+/// (GET/HEAD/OPTIONS).
 pub(crate) fn payload_declares_mutation_http(payload: &str) -> bool {
     let method = match serde_json::from_str::<serde_json::Value>(payload) {
         Ok(v) => v
@@ -366,8 +389,8 @@ pub(crate) fn payload_declares_mutation_http(payload: &str) -> bool {
     };
 
     match method.as_deref() {
-        Some("POST") | Some("PUT") | Some("PATCH") | Some("DELETE") => true,
-        Some(_) => false,
+        Some("GET") | Some("HEAD") | Some("OPTIONS") => false,
+        Some(_) => true,
         None => {
             tracing::warn!(
                 target: "agent_guard::executors",
@@ -604,7 +627,11 @@ mod tests {
     // entirely. New posture: fail-closed -- when parsing can't prove the
     // method is non-mutation, treat it as mutation so the SDK owns it.
 
-    use super::payload_declares_mutation_http;
+    use super::{build_pinned_http_client, payload_declares_mutation_http, read_bounded_http_body};
+    use std::io::Cursor;
+    use std::net::{SocketAddr, TcpListener};
+    use std::process::Command;
+    use std::time::{Duration, Instant};
 
     #[test]
     fn mutation_methods_return_true() {
@@ -635,6 +662,17 @@ mod tests {
             assert!(
                 !payload_declares_mutation_http(&payload),
                 "expected false for {method}"
+            );
+        }
+    }
+
+    #[test]
+    fn extension_and_unsafe_methods_fail_closed_to_owned_execution() {
+        for method in ["TRACE", "CONNECT", "PROPFIND", "MKCOL", "PURGE", "CUSTOM"] {
+            let payload = format!(r#"{{"method":"{method}","url":"http://x"}}"#);
+            assert!(
+                payload_declares_mutation_http(&payload),
+                "unrecognized method {method} must not bypass the guarded executor"
             );
         }
     }
@@ -673,6 +711,85 @@ mod tests {
         // `null` parses successfully as serde_json::Value::Null, but has
         // no `method` field. The fail-closed path still applies.
         assert!(payload_declares_mutation_http("null"));
+    }
+
+    #[test]
+    fn response_body_reader_accepts_the_limit_and_rejects_one_byte_more() {
+        let mut exact = Cursor::new(vec![b'x'; 8]);
+        assert_eq!(read_bounded_http_body(&mut exact, 8).unwrap().len(), 8);
+
+        let mut oversized = Cursor::new(vec![b'x'; 9]);
+        let error = read_bounded_http_body(&mut oversized, 8).unwrap_err();
+        assert!(
+            error.to_string().contains("exceeded the 8-byte limit"),
+            "unexpected error: {error}"
+        );
+    }
+
+    #[test]
+    fn environment_proxy_cannot_bypass_the_vetted_pinned_destination() {
+        let listener = TcpListener::bind(("127.0.0.1", 0)).expect("bind proxy sentinel");
+        listener
+            .set_nonblocking(true)
+            .expect("set proxy sentinel nonblocking");
+        let proxy_url = format!("http://{}", listener.local_addr().expect("proxy address"));
+
+        let mut child = Command::new(std::env::current_exe().expect("current test binary"))
+            .args([
+                "--exact",
+                "executors::tests::environment_proxy_probe_child",
+                "--ignored",
+                "--nocapture",
+            ])
+            .env("AGENT_GUARD_PROXY_PROBE_CHILD", "1")
+            .env("HTTP_PROXY", &proxy_url)
+            .env("HTTPS_PROXY", &proxy_url)
+            .env("ALL_PROXY", &proxy_url)
+            .env("http_proxy", &proxy_url)
+            .env("https_proxy", &proxy_url)
+            .env("all_proxy", &proxy_url)
+            .env_remove("NO_PROXY")
+            .env_remove("no_proxy")
+            .spawn()
+            .expect("spawn isolated proxy probe");
+
+        let deadline = Instant::now() + Duration::from_secs(8);
+        let mut contacted = false;
+        let status = loop {
+            match listener.accept() {
+                Ok((_stream, _peer)) => contacted = true,
+                Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {}
+                Err(error) => panic!("proxy sentinel failed: {error}"),
+            }
+            if let Some(status) = child.try_wait().expect("poll proxy probe") {
+                break status;
+            }
+            if Instant::now() >= deadline {
+                let _ = child.kill();
+                let _ = child.wait();
+                panic!("proxy probe did not finish before its deadline");
+            }
+            std::thread::sleep(Duration::from_millis(10));
+        };
+
+        assert!(status.success(), "isolated proxy probe failed: {status}");
+        assert!(
+            !contacted,
+            "an inherited proxy received a guarded request instead of the vetted destination"
+        );
+    }
+
+    #[test]
+    #[ignore = "runs only as the isolated child of the environment proxy regression"]
+    fn environment_proxy_probe_child() {
+        if std::env::var_os("AGENT_GUARD_PROXY_PROBE_CHILD").is_none() {
+            return;
+        }
+        let pinned: SocketAddr = "203.0.113.1:9".parse().expect("TEST-NET address");
+        let client =
+            build_pinned_http_client("proxy-probe.invalid", pinned).expect("build guarded client");
+        let result = client.post("http://proxy-probe.invalid:9/").send();
+        assert!(result.is_err(), "TEST-NET endpoint unexpectedly responded");
     }
 
     // ── pre-1.0 API cleanup: bad-request errors map to `InvalidPayload` ─────

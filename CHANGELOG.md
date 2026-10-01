@@ -32,6 +32,14 @@ The `[Unreleased]` heading is rolled forward manually before each release; do no
   does not rescue that case.
 
 ### Security
+- **Guard-owned HTTP execution now ignores inherited proxies, bounds response
+  bodies, and fails closed on extension methods.** The pinned client disables
+  `HTTP(S)_PROXY`/`ALL_PROXY`, so an environment proxy cannot receive a request
+  in place of the vetted destination. Only `GET`, `HEAD` and `OPTIONS` may take
+  the documented host-handoff path; WebDAV, custom and unsafe verbs enter the
+  owned path and are rejected before DNS unless explicitly implemented. HTTP
+  responses are capped at 4 MiB, and the synchronous executor no longer
+  creates one extra unbounded OS thread per call.
 - **Linux seccomp no longer drops an unresolved required deny rule.** The
   complete network, dangerous-syscall and mode-specific write rule set is
   preflighted before filter installation; any resolution or installation
