@@ -65,12 +65,14 @@ jobs:
         uses: Swatinem/rust-cache@v2
       - name: Run Job Object integration tests
         run: cargo test -p agent-guard-sandbox --features windows-sandbox --test windows_job_integration -- --nocapture
-      # Compile-gate for the AppContainer prototype (issue #80): the feature is
-      # built nowhere else in CI, which is how the windows-0.52 breakage went
-      # undetected. This step keeps it compiling; it deliberately does not run
-      # the AppContainer test (profile creation is restricted on some runners).
-      - name: Compile-gate the AppContainer prototype
-        run: cargo build -p agent-guard-sandbox --features windows-appcontainer
+      # Keep the compatibility feature compiling, but lock the current safety
+      # posture: direct AppContainer execution is unavailable and SDK
+      # selection falls back to the independently probed Low-IL backend (or
+      # truthful `none`) until exact DACL restoration is proven.
+      - name: Verify disabled AppContainer fallback
+        run: |
+          cargo test -p agent-guard-sandbox --features windows-appcontainer windows_appcontainer::tests
+          cargo test -p agent-guard-sdk --features windows-appcontainer,windows-sandbox --test release_gate
 
   lint:
     name: Linting (Clippy & Fmt)

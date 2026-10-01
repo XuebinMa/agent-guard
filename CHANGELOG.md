@@ -32,6 +32,14 @@ The `[Unreleased]` heading is rolled forward manually before each release; do no
   does not rescue that case.
 
 ### Security
+- **The unsafe Windows AppContainer prototype is disabled.** It replaced the
+  workspace DACL without restoring the original descriptor and double-owned
+  inherited pipe handles, so success or failure could mutate host permissions
+  or close a handle twice. The compatibility feature now reports unavailable
+  and refuses direct execution; by-name selection resolves truthfully to
+  `none`, while default selection may use the independently probed Low-IL Job
+  Object backend. Re-enabling AppContainer requires Windows tests proving exact
+  DACL preservation and single handle ownership on every exit path.
 - **Guard-owned HTTP execution now ignores inherited proxies, bounds response
   bodies, and fails closed on extension methods.** The pinned client disables
   `HTTP(S)_PROXY`/`ALL_PROXY`, so an environment proxy cannot receive a request

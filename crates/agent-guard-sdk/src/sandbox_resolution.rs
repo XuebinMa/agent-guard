@@ -181,16 +181,23 @@ pub(crate) fn resolve_sandbox_by_name(
         "windows-appcontainer" => {
             #[cfg(all(target_os = "windows", feature = "windows-appcontainer"))]
             {
-                Ok((
-                    Box::new(agent_guard_sandbox::AppContainerSandbox),
-                    DefaultSandboxDiagnosis {
-                        selected_name: "AppContainer",
-                        selected_sandbox_type: "windows-appcontainer",
-                        fallback_to_noop: false,
-                        reason: "windows-appcontainer was requested and the feature is compiled in"
-                            .to_string(),
-                    },
-                ))
+                let sb = agent_guard_sandbox::AppContainerSandbox;
+                if sb.is_available() {
+                    Ok((
+                        Box::new(sb),
+                        DefaultSandboxDiagnosis {
+                            selected_name: "AppContainer",
+                            selected_sandbox_type: "windows-appcontainer",
+                            fallback_to_noop: false,
+                            reason: "windows-appcontainer was requested and its runtime safety probe passed".to_string(),
+                        },
+                    ))
+                } else {
+                    Ok(by_name_fallback(
+                        &requested,
+                        "the AppContainer prototype is disabled until exact workspace DACL restoration is proven",
+                    ))
+                }
             }
             #[cfg(not(all(target_os = "windows", feature = "windows-appcontainer")))]
             {
@@ -282,13 +289,42 @@ pub(crate) fn resolve_default_sandbox() -> (Box<dyn Sandbox>, DefaultSandboxDiag
     }
     #[cfg(all(target_os = "windows", feature = "windows-appcontainer"))]
     {
+        let appcontainer = agent_guard_sandbox::AppContainerSandbox;
+        if appcontainer.is_available() {
+            return (
+                Box::new(appcontainer),
+                DefaultSandboxDiagnosis {
+                    selected_name: "AppContainer",
+                    selected_sandbox_type: "windows-appcontainer",
+                    fallback_to_noop: false,
+                    reason: "The AppContainer runtime safety probe passed, so Windows uses the stronger backend.".to_string(),
+                },
+            );
+        }
+
+        #[cfg(feature = "windows-sandbox")]
+        {
+            let job = agent_guard_sandbox::JobObjectSandbox;
+            if job.is_available() {
+                return (
+                    Box::new(job),
+                    DefaultSandboxDiagnosis {
+                        selected_name: "JobObject",
+                        selected_sandbox_type: "windows-job-object",
+                        fallback_to_noop: false,
+                        reason: "AppContainer is disabled pending exact DACL-restoration proof; the functional Low-IL Job Object backend is used instead.".to_string(),
+                    },
+                );
+            }
+        }
+
         (
-            Box::new(agent_guard_sandbox::AppContainerSandbox),
+            Box::new(agent_guard_sandbox::NoopSandbox),
             DefaultSandboxDiagnosis {
-                selected_name: "AppContainer",
-                selected_sandbox_type: "windows-appcontainer",
-                fallback_to_noop: false,
-                reason: "The windows-appcontainer feature is enabled, so the SDK prefers AppContainer as the default Windows backend.".to_string(),
+                selected_name: "none",
+                selected_sandbox_type: "none",
+                fallback_to_noop: true,
+                reason: "AppContainer is disabled pending exact DACL-restoration proof and no functional Low-IL Job Object backend is available; selecting the truthful 'none' backend.".to_string(),
             },
         )
     }

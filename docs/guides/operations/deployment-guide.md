@@ -22,7 +22,9 @@ For most production deployments with real side effects, we recommend the followi
 2. **agent-guard SDK**: Integrated into the host application to intercept tool calls.
 3. **OS Sandboxes**:
    - **Linux**: Native Seccomp-BPF filtering when the `seccomp` feature is enabled; Landlock can add stronger path-aware filesystem isolation where supported.
-   - **Windows**: Low-IL (Strengthened Prototype - Default) or **AppContainer** (Experimental - Opt-in).
+   - **Windows**: Low-IL (Strengthened Prototype when its runtime probe
+     succeeds). **AppContainer is currently disabled and fails closed** until
+     exact workspace-DACL restoration is covered by Windows integration tests.
    - **macOS**: Seatbelt (Internal Prototype).
 
 ---

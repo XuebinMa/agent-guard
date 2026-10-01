@@ -55,5 +55,7 @@ Manual audit confirms that `CreateProcessAsUserW` is called with `CREATE_SUSPEND
 
 - **Linux**: Active Prototype (sh -c wrapper).
 - **macOS**: Seatbelt (Canonical path resolution).
-- **Windows**: Low-IL & AppContainer (Handle inheritance restricted).
+- **Windows**: Low-IL Job Object when its runtime probe succeeds. The
+  AppContainer prototype is disabled pending exact workspace-DACL restoration
+  and handle-ownership tests.
 - **All Platforms**: Ed25519 Signed Receipts (Optional).

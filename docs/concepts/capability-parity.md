@@ -26,14 +26,14 @@
 
 | **UCM Capability** | **Linux (Seccomp)** | **macOS (Seatbelt)** | **Windows (Low-IL)** | **Windows (AppContainer)** | **Noop (None)** |
 | :--- | :---: | :---: | :---: | :---: | :---: |
-| **`filesystem_read_workspace`** | ✅ | ✅ | ✅ | ✅ | ✅ |
-| **`filesystem_read_global`** | ✅ | ✅ | ✅ | 🛡️ Blocked | ✅ |
-| **`filesystem_write_workspace`** | ✅ | ✅ | ✅ | ✅ | ✅ |
-| **`filesystem_write_global`** | ❌ Allowed | 🛡️ Blocked | 🛡️ Blocked | 🛡️ Blocked | ❌ Allowed |
-| **`network_outbound_any`** | ❌ Allowed | 🛡️ Blocked | ❌ Allowed | 🛡️ Blocked | ❌ Allowed |
-| **`network_outbound_internet`**| ❌ Allowed | 🛡️ Blocked | ❌ Allowed | ✅ Allowed | ❌ Allowed |
-| **`child_process_spawn`** | ✅ | ✅ | ✅ | ✅ | ✅ |
-| **`registry_write`** | N/A | N/A | 🛡️ Blocked | 🛡️ Blocked | ❌ Allowed |
+| **`filesystem_read_workspace`** | ✅ | ✅ | ✅ | Disabled | ✅ |
+| **`filesystem_read_global`** | ✅ | ✅ | ✅ | Disabled | ✅ |
+| **`filesystem_write_workspace`** | ✅ | ✅ | ✅ | Disabled | ✅ |
+| **`filesystem_write_global`** | ❌ Allowed | 🛡️ Blocked | 🛡️ Blocked | Disabled | ❌ Allowed |
+| **`network_outbound_any`** | ❌ Allowed | 🛡️ Blocked | ❌ Allowed | Disabled | ❌ Allowed |
+| **`network_outbound_internet`**| ❌ Allowed | 🛡️ Blocked | ❌ Allowed | Disabled | ❌ Allowed |
+| **`child_process_spawn`** | ✅ | ✅ | ✅ | Disabled | ✅ |
+| **`registry_write`** | N/A | N/A | 🛡️ Blocked | Disabled | ❌ Allowed |
 
 **Legend**:
 - ✅ **Allowed**: Intentionally permitted by the sandbox.
@@ -49,12 +49,12 @@
 | :--- | :--- | :--- |
 | **Linux** | Native Seccomp-BPF filtering for read-only and workspace-write executions, plus stronger path-aware write isolation on hosts where Landlock is available. | Guaranteed path-aware workspace-only writes from seccomp alone, fine-grained path-level read restriction. Static UCM metadata may still show capabilities that remain available in other modes, such as `full_access`. |
 | **macOS** | Workspace write isolation via Seatbelt profiles. | Global read access (Prototype limit). |
-| **Windows** | Integrity-based write protection (Low-IL) or SID-based isolation (AppContainer). | Network access in default Low-IL mode. |
+| **Windows** | Integrity-based write protection (Low-IL Job Object) when its runtime probe succeeds. | Network access in Low-IL mode. The AppContainer prototype is disabled because it cannot yet prove exact workspace-DACL restoration. |
 
 ---
 
 ## ⚠️ Known Gaps & Roadmap
 
-1. **Windows Network Isolation (Low-IL)**: The default Low-IL backend does not restrict network access. The **AppContainer** backend (opt-in via the `windows-appcontainer` feature) is now shipped and provides network-scope isolation via SID-based capabilities. Default Windows builds still ship Low-IL; opt in to AppContainer when you need network confinement.
+1. **Windows Network Isolation (Low-IL)**: The Low-IL backend does not restrict network access. The `windows-appcontainer` feature currently exposes a disabled, fail-closed placeholder: the earlier prototype replaced the workspace DACL and could not prove restoration on every exit path. Requesting it resolves to `none` (or the default resolver selects a functional Low-IL Job Object when that feature is also present) until Windows CI locks exact DACL preservation.
 2. **macOS Global Read**: The Seatbelt profile still emits `(allow file-read* (subpath "/"))`, so reads outside the workspace are intentionally permitted at the OS layer. Future iterations will tighten this to `(allow file-read* (subpath workspace))`. Until then, treat macOS as a write-confinement backend, not a read-confinement one.
 3. **Linux FS Isolation**: Native seccomp blocks common write and networking syscalls in restricted modes but is path-agnostic. A path-aware **Landlock** backend (`landlock` feature, kernel 5.13+) is shipped and is the recommended choice when you need OS-level workspace-only write isolation. Hosts without Landlock fall back to the seccomp filter plus the in-process validator gate.

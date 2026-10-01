@@ -35,7 +35,15 @@ The current Windows implementation is a **Verifiable Prototype**. In Phase 5, we
 
 ### 2. AppContainer Isolation (P0 - Research)
 - **Goal**: Use the modern Windows AppContainer framework for fine-grained capability and filesystem isolation.
-- **Feasibility**: Requires complex SID management and capability registration. We are currently researching a 'CLI-friendly' AppContainer prototype that doesn't require full UWP registration.
+- **Current status**: **Disabled and fail-closed.** The prototype replaced the
+  workspace DACL instead of adding a temporary ACE and restoring the exact
+  original descriptor. It also had overlapping raw-handle and RAII ownership.
+  The feature remains compile-visible for compatibility, but direct execution
+  returns `NotAvailable`, by-name resolution returns `none`, and default
+  selection uses the functional Low-IL Job Object when available.
+- **Re-enable gate**: Windows integration tests must compare the complete DACL
+  before and after success, setup failure, process failure, and timeout, and
+  must prove single ownership for every process and pipe handle.
 
 ### 3. Fail-Closed behavior for all Win32 API calls (P0)
 - **Goal**: Ensure that if `AssignProcessToJobObject` or any token-restricted call fails, the entire tool execution is aborted.

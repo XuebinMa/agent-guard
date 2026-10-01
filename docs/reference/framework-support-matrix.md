@@ -258,7 +258,7 @@ Legend: ✅ primary control · 🟡 containment / blast-radius / accountability 
 | ASI02 | Tool Misuse | ✅ | The wedge: bash intent / destructive detection, workspace confinement, SSRF deny-list, outbound content scan. |
 | ASI03 | Identity & Privilege Abuse | 🟡 | Least-agency scoping via `TrustLevel` (Untrusted default, escalation-proof) + `PolicyMode` + per-agent trust. Not an IAM / secret broker. |
 | ASI04 | Agentic Supply Chain | ⬜ | Policy signing makes the *rules* tamper-evident, but we do not scan MCP servers / plugins / tools for poisoning. |
-| ASI05 | Unexpected Code Execution | ✅ | Flagship: validator filtering + OS sandbox (seccomp / Seatbelt / Job Object / AppContainer) behind the decision boundary. Default build has no OS isolation — the decision layer is the only boundary unless a sandbox feature is compiled in. |
+| ASI05 | Unexpected Code Execution | ✅ | Flagship: validator filtering + an active OS sandbox (seccomp / Landlock / Seatbelt / Low-IL Job Object) behind the decision boundary. Default build has no OS isolation, and the unsafe AppContainer prototype is disabled — the decision layer is the only boundary unless a functional sandbox feature is active. |
 | ASI06 | Memory & Context Poisoning | ⬜ | We do not touch agent memory / vector stores / RAG. |
 | ASI07 | Insecure Inter-Agent Communication | ⬜ | Single-agent execution control; multi-agent control plane is out of scope. |
 | ASI08 | Cascading Failures | 🟡 | Deny Fuse circuit-breaker (lock after N denials in a window) + rate limiting bound a single runaway agent. |
