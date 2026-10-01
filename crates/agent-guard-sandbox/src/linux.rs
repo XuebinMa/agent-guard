@@ -1,5 +1,10 @@
 //! Linux seccomp-bpf sandbox.
 
+#[cfg(all(target_os = "linux", feature = "seccomp"))]
+use crate::seccomp_rules::{
+    preflight_required_syscalls_with, COMMON_DENY_SYSCALLS, NETWORK_DENY_SYSCALLS,
+    READ_ONLY_DENY_SYSCALLS, READ_ONLY_WRITE_FLAG_DENIES,
+};
 use crate::{
     Sandbox, SandboxCapabilities, SandboxContext, SandboxError, SandboxOutput, SandboxResult,
 };
@@ -16,19 +21,19 @@ use std::process::Command;
 /// Linux seccomp-bpf sandbox.
 ///
 /// With the `seccomp` feature enabled, this loads a native Seccomp-BPF filter
-/// in the child process before `exec`. Without that feature, it falls back to
-/// the compatibility shell wrapper.
-pub struct SeccompSandbox {
-    strict: bool,
-}
+/// in the child process before `exec`. Without native support it fails closed;
+/// an unfiltered compatibility shell must never report this backend as active.
+pub struct SeccompSandbox;
 
 impl SeccompSandbox {
     pub fn new() -> Self {
-        Self { strict: false }
+        Self
     }
 
+    /// Compatibility constructor retained for callers that previously opted
+    /// into strict mode. All seccomp instances are now fail-closed.
     pub fn strict() -> Self {
-        Self { strict: true }
+        Self
     }
 }
 
@@ -68,31 +73,27 @@ impl Sandbox for SeccompSandbox {
     }
 
     fn execute(&self, command: &str, context: &SandboxContext) -> SandboxResult {
-        execute_with_seccomp(command, context, self.strict)
+        execute_with_seccomp(command, context)
     }
 
     fn is_available(&self) -> bool {
-        cfg!(target_os = "linux")
+        cfg!(all(target_os = "linux", feature = "seccomp"))
     }
 }
 
-fn execute_with_seccomp(command: &str, context: &SandboxContext, strict: bool) -> SandboxResult {
+fn execute_with_seccomp(command: &str, context: &SandboxContext) -> SandboxResult {
     #[cfg(target_os = "linux")]
     {
         #[cfg(feature = "seccomp")]
         {
-            execute_with_native_seccomp(command, context, strict)
+            execute_with_native_seccomp(command, context)
         }
 
         #[cfg(not(feature = "seccomp"))]
         {
-            if strict {
-                Err(SandboxError::FilterSetup(
-                    "native Seccomp-BPF support requires the 'seccomp' Cargo feature and libseccomp at build time".to_string(),
-                ))
-            } else {
-                execute_compat_shell(command, context)
-            }
+            Err(SandboxError::FilterSetup(
+                "native Seccomp-BPF support requires the 'seccomp' Cargo feature and libseccomp at build time".to_string(),
+            ))
         }
     }
     #[cfg(not(target_os = "linux"))]
@@ -118,11 +119,7 @@ fn execute_compat_shell(command: &str, context: &SandboxContext) -> SandboxResul
 }
 
 #[cfg(all(target_os = "linux", feature = "seccomp"))]
-fn execute_with_native_seccomp(
-    command: &str,
-    context: &SandboxContext,
-    strict: bool,
-) -> SandboxResult {
+fn execute_with_native_seccomp(command: &str, context: &SandboxContext) -> SandboxResult {
     if matches!(context.mode, PolicyMode::FullAccess) {
         return execute_compat_shell(command, context);
     }
@@ -148,13 +145,10 @@ fn execute_with_native_seccomp(
         Err(e) => {
             let message = e.to_string();
             if message.contains("seccomp") || e.kind() == std::io::ErrorKind::PermissionDenied {
-                if strict {
-                    return Err(SandboxError::FilterSetup(format!(
-                        "Seccomp filter setup failed: {}",
-                        message
-                    )));
-                }
-                return execute_compat_shell(command, context);
+                return Err(SandboxError::FilterSetup(format!(
+                    "Seccomp filter setup failed: {}",
+                    message
+                )));
             }
 
             return Err(SandboxError::ExecutionFailed(format!(
@@ -217,6 +211,11 @@ fn wait_for_child(mut child: std::process::Child, timeout_ms: Option<u64>) -> Sa
 
 #[cfg(all(target_os = "linux", feature = "seccomp"))]
 fn apply_seccomp_rules(mode: &PolicyMode) -> Result<(), String> {
+    // Resolve the complete required rule set before constructing/loading the
+    // filter. A missing name is a setup failure, not permission to run with a
+    // silently smaller deny set (issue #161).
+    preflight_required_syscalls_with(mode, ScmpSyscall::from_name)?;
+
     let mut filter = ScmpFilterContext::new_filter(ScmpAction::Allow)
         .map_err(|e| format!("failed to create seccomp filter: {e}"))?;
     filter
@@ -238,24 +237,7 @@ fn apply_seccomp_rules(mode: &PolicyMode) -> Result<(), String> {
 
 #[cfg(all(target_os = "linux", feature = "seccomp"))]
 fn add_network_denies(filter: &mut ScmpFilterContext) -> Result<(), String> {
-    for name in [
-        "socket",
-        "socketpair",
-        "connect",
-        "bind",
-        "listen",
-        "accept",
-        "accept4",
-        "sendto",
-        "sendmsg",
-        "sendmmsg",
-        "recvfrom",
-        "recvmsg",
-        "recvmmsg",
-        "shutdown",
-        "setsockopt",
-        "getsockopt",
-    ] {
+    for name in NETWORK_DENY_SYSCALLS {
         add_deny_rule(filter, name)?;
     }
     Ok(())
@@ -263,35 +245,7 @@ fn add_network_denies(filter: &mut ScmpFilterContext) -> Result<(), String> {
 
 #[cfg(all(target_os = "linux", feature = "seccomp"))]
 fn add_common_dangerous_syscall_denies(filter: &mut ScmpFilterContext) -> Result<(), String> {
-    for name in [
-        "ptrace",
-        "mount",
-        "umount2",
-        "swapon",
-        "swapoff",
-        "reboot",
-        "kexec_load",
-        "finit_module",
-        "init_module",
-        "delete_module",
-        "bpf",
-        "unshare",
-        "setns",
-        // io_uring submits socket/connect and file-write operations through a
-        // shared ring buffer, so they never issue the classic syscalls the
-        // network/write deny-lists match. Deny the ring itself in every mode —
-        // there is no way to inspect individual ring ops from seccomp, and no
-        // normal shell command needs io_uring. Denying io_uring_setup alone
-        // prevents creating a ring; enter/register are belt-and-suspenders.
-        // (Issue #54.)
-        "io_uring_setup",
-        "io_uring_enter",
-        "io_uring_register",
-        // process_vm_writev writes directly into another process's address
-        // space — a memory-injection primitive in the same class as ptrace
-        // (already denied above), not needed by ordinary commands.
-        "process_vm_writev",
-    ] {
+    for name in COMMON_DENY_SYSCALLS {
         add_deny_rule(filter, name)?;
     }
     Ok(())
@@ -299,56 +253,11 @@ fn add_common_dangerous_syscall_denies(filter: &mut ScmpFilterContext) -> Result
 
 #[cfg(all(target_os = "linux", feature = "seccomp"))]
 fn add_read_only_write_denies(filter: &mut ScmpFilterContext) -> Result<(), String> {
-    for (syscall, arg_index) in [("open", 1u32), ("openat", 2u32)] {
+    for &(syscall, arg_index) in READ_ONLY_WRITE_FLAG_DENIES {
         add_write_flag_denies(filter, syscall, arg_index)?;
     }
 
-    for name in [
-        // openat2 (Linux 5.6+) is a modern open variant whose access mode lives
-        // behind the `struct open_how` pointer, so the flag-masked deny used for
-        // open/openat above cannot inspect it. Deny it outright in ReadOnly:
-        // ordinary reads go through open/openat, not openat2. (Issue #54.)
-        "openat2",
-        // memfd_create stages a new binary in writable anonymous memory, which
-        // execveat(AT_EMPTY_PATH) can then run — a write+exec evasion that never
-        // touches the path-based write denies. Blocking the staging closes it;
-        // executing an already-present binary stays allowed in ReadOnly, so
-        // execveat itself is intentionally not denied. (Issue #54.)
-        "memfd_create",
-        "creat",
-        "truncate",
-        "ftruncate",
-        "mkdir",
-        "mkdirat",
-        "rmdir",
-        "unlink",
-        "unlinkat",
-        "rename",
-        "renameat",
-        "renameat2",
-        "link",
-        "linkat",
-        "symlink",
-        "symlinkat",
-        "mknod",
-        "mknodat",
-        "chmod",
-        "fchmod",
-        "fchmodat",
-        "chown",
-        "fchown",
-        "fchownat",
-        "lchown",
-        "utime",
-        "utimensat",
-        "setxattr",
-        "lsetxattr",
-        "fsetxattr",
-        "removexattr",
-        "lremovexattr",
-        "fremovexattr",
-        "copy_file_range",
-    ] {
+    for name in READ_ONLY_DENY_SYSCALLS {
         add_deny_rule(filter, name)?;
     }
 
@@ -361,9 +270,7 @@ fn add_write_flag_denies(
     syscall_name: &str,
     arg_index: u32,
 ) -> Result<(), String> {
-    let Some(syscall) = resolve_syscall(syscall_name)? else {
-        return Ok(());
-    };
+    let syscall = resolve_syscall(syscall_name)?;
     let deny = ScmpAction::Errno(libc::EPERM);
     let access_mode_mask = libc::O_ACCMODE as u64;
 
@@ -410,9 +317,7 @@ fn add_write_flag_denies(
 
 #[cfg(all(target_os = "linux", feature = "seccomp"))]
 fn add_deny_rule(filter: &mut ScmpFilterContext, syscall_name: &str) -> Result<(), String> {
-    let Some(syscall) = resolve_syscall(syscall_name)? else {
-        return Ok(());
-    };
+    let syscall = resolve_syscall(syscall_name)?;
 
     filter
         .add_rule(ScmpAction::Errno(libc::EPERM), syscall)
@@ -420,13 +325,29 @@ fn add_deny_rule(filter: &mut ScmpFilterContext, syscall_name: &str) -> Result<(
 }
 
 #[cfg(all(target_os = "linux", feature = "seccomp"))]
-fn resolve_syscall(name: &str) -> Result<Option<ScmpSyscall>, String> {
-    match ScmpSyscall::from_name(name) {
-        Ok(syscall) => Ok(Some(syscall)),
-        // Some older libseccomp builds do not recognize every syscall symbol
-        // on every runner architecture. Skip those rules instead of failing the
-        // whole sandbox setup.
-        Err(e) if e.to_string().contains("Could not resolve syscall name") => Ok(None),
-        Err(e) => Err(format!("failed to resolve syscall {name}: {e}")),
+fn resolve_syscall(name: &str) -> Result<ScmpSyscall, String> {
+    crate::seccomp_rules::resolve_required_syscall_with(name, ScmpSyscall::from_name)
+}
+
+#[cfg(all(test, target_os = "linux", not(feature = "seccomp")))]
+mod no_feature_tests {
+    use super::SeccompSandbox;
+    use crate::{Sandbox, SandboxContext, SandboxError};
+    use agent_guard_core::PolicyMode;
+
+    #[test]
+    fn seccomp_without_native_feature_never_runs_an_unfiltered_compat_shell() {
+        let sandbox = SeccompSandbox::new();
+        assert!(!sandbox.is_available());
+        let context = SandboxContext {
+            mode: PolicyMode::ReadOnly,
+            working_directory: std::env::current_dir().expect("current directory"),
+            timeout_ms: Some(1_000),
+        };
+
+        assert!(matches!(
+            sandbox.execute("echo must-not-run", &context),
+            Err(SandboxError::FilterSetup(_))
+        ));
     }
 }

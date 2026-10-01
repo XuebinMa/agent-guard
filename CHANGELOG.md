@@ -32,6 +32,12 @@ The `[Unreleased]` heading is rolled forward manually before each release; do no
   does not rescue that case.
 
 ### Security
+- **Linux seccomp no longer drops an unresolved required deny rule.** The
+  complete network, dangerous-syscall and mode-specific write rule set is
+  preflighted before filter installation; any resolution or installation
+  failure returns `FilterSetup`. `SeccompSandbox::new()` and `strict()` are now
+  both fail-closed, and a build without native seccomp support cannot execute
+  an unfiltered compatibility shell while reporting `linux-seccomp`.
 - **A one-use push grant is now claimed before any repository inspection or
   network-capable Git command.** Grant schema v2 retains the exact approved
   transaction. Execution atomically burns the grant, validates its policy,

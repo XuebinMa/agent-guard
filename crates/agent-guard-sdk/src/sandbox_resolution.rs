@@ -51,9 +51,9 @@ fn by_name_fallback(requested: &str, why: &str) -> (Box<dyn Sandbox>, DefaultSan
 /// `linux-landlock`, `macos-seatbelt`, `windows-job-object`,
 /// `windows-appcontainer`. The gating mirrors [`resolve_default_sandbox`]
 /// exactly — in particular `linux-seccomp` is gated on the `seccomp` Cargo
-/// feature (NOT on `SeccompSandbox::is_available()`, which is `true` on any
-/// Linux host even when the unfiltered compat shell would run) — so a request
-/// can never report isolation the build does not provide (GATE 5).
+/// feature, and `SeccompSandbox` itself fails closed if its complete required
+/// rule set cannot be installed — so a request can never report isolation the
+/// build does not provide (GATE 5).
 pub(crate) fn resolve_sandbox_by_name(
     name: &str,
 ) -> Result<(Box<dyn Sandbox>, DefaultSandboxDiagnosis), UnknownBackendError> {
@@ -227,14 +227,9 @@ pub(crate) fn resolve_default_sandbox() -> (Box<dyn Sandbox>, DefaultSandboxDiag
                 );
             }
         }
-        // The native Seccomp-BPF filter only loads when the `seccomp` Cargo
-        // feature is compiled in. Without it, `SeccompSandbox` silently runs an
-        // unfiltered `sh -c` compatibility shell (see `linux.rs`
-        // `execute_compat_shell`). Reporting that path as `selected="seccomp",
-        // fallback_to_noop=false` would tell operators (and execution receipts,
-        // which read `sandbox_type()`) that syscall isolation is active when it
-        // is not — so split the diagnosis on the feature and fall back to a
-        // truthful Noop backend when filtering is not actually present.
+        // The native Seccomp-BPF filter only exists when the `seccomp` Cargo
+        // feature is compiled in. Split the diagnosis on the feature and fall
+        // back to a truthful Noop backend when filtering is not present.
         #[cfg(feature = "seccomp")]
         {
             (
@@ -255,7 +250,7 @@ pub(crate) fn resolve_default_sandbox() -> (Box<dyn Sandbox>, DefaultSandboxDiag
                     selected_name: "none",
                     selected_sandbox_type: "none",
                     fallback_to_noop: true,
-                    reason: "Neither Landlock nor the 'seccomp' Cargo feature is compiled in, so the SDK has no OS-level syscall isolation and runs an unfiltered compatibility shell. Rebuild with --features seccomp (with libseccomp present) or --features landlock to enable enforcement.".to_string(),
+                    reason: "Neither Landlock nor the 'seccomp' Cargo feature is compiled in, so the SDK has no OS-level syscall isolation and selects the explicit 'none' backend. Rebuild with --features seccomp (with libseccomp present) or --features landlock to enable enforcement.".to_string(),
                 },
             )
         }

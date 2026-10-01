@@ -1,5 +1,8 @@
 pub mod noop;
 
+#[cfg(any(test, all(target_os = "linux", feature = "seccomp")))]
+mod seccomp_rules;
+
 #[cfg(target_os = "linux")]
 pub mod linux;
 

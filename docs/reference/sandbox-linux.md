@@ -4,10 +4,10 @@
 
 ## Overview
 
-The `SeccompSandbox` in `crates/agent-guard-sandbox/src/linux.rs` provides two operating styles:
+The `SeccompSandbox` in `crates/agent-guard-sandbox/src/linux.rs` is fail-closed:
 
-- `SeccompSandbox::new()`: prefers native Seccomp-BPF when available, but can fall back to the compatibility `sh -c` wrapper if setup fails.
-- `SeccompSandbox::strict()`: requires native Seccomp-BPF and returns `FilterSetup` instead of falling back.
+- `SeccompSandbox::new()`: requires native Seccomp-BPF and returns `FilterSetup` if any required syscall cannot be resolved or the complete filter cannot be loaded.
+- `SeccompSandbox::strict()`: compatibility alias with the same fail-closed behavior.
 
 With the `seccomp` feature enabled, read-only executions now install a syscall filter in the child process before `exec`, blocking network-oriented syscalls and common write/metadata mutation syscalls.
 
@@ -28,10 +28,10 @@ agent-guard-sandbox = { version = "0.2.0", features = ["seccomp"] }
 
 ## Current Behavior
 
-| Constructor | Current behavior in v0.2.0 |
+| Constructor | Current behavior |
 |---|---|
-| `SeccompSandbox::new()` | Uses native seccomp on Linux when filter setup succeeds; otherwise falls back to the compatibility shell wrapper. |
-| `SeccompSandbox::strict()` | Uses native seccomp and fails closed with `SandboxError::FilterSetup(...)` if the filter cannot be installed. |
+| `SeccompSandbox::new()` | Uses native seccomp and fails closed with `SandboxError::FilterSetup(...)` if every required deny rule cannot be installed. |
+| `SeccompSandbox::strict()` | Compatibility alias for the same fail-closed behavior. |
 
 ## Capability Reporting vs Runtime Enforcement
 
@@ -57,7 +57,7 @@ truth for per-execution behavior.
 
 ## Error Semantics
 
-- `FilterSetup`: Returned when native seccomp could not be initialized and `strict()` is used.
+- `FilterSetup`: Returned when native seccomp is unavailable, a required syscall cannot be resolved, or the complete filter cannot be installed.
 - `KilledByFilter`: Returned if the kernel terminates the process with `SIGSYS`.
 - `Timeout`: Execution exceeded `SandboxContext.timeout_ms`.
 - `ExecutionFailed`: Process spawn or shell execution failed.
@@ -67,7 +67,7 @@ truth for per-execution behavior.
 For Linux hosts today:
 
 - Prefer `LandlockSandbox` when the host supports it.
-- Use `SeccompSandbox::strict()` when you need fail-closed native seccomp instead of compatibility fallback.
+- Both constructors are fail-closed; use `strict()` when its name makes that requirement clearer at a call site.
 - Treat seccomp as syscall-level defense in depth, not as a replacement for path-aware policy validation.
 
 ```rust

@@ -19,8 +19,8 @@ hanging off it:
 - `sandbox_resolution.rs` — default backend selection + diagnosis (feeds
   `GATE 2`; must report `"none"` when no real backend is compiled in), plus
   `resolve_sandbox_by_name` (feeds `GATE 5`; mirrors the default gating
-  exactly — notably `linux-seccomp` gates on the Cargo feature, NOT on
-  `is_available()`, which is `true` on any Linux host).
+  exactly — notably `linux-seccomp` gates on the Cargo feature and fails
+  closed if its complete required syscall rule set cannot be installed).
 - `anomaly.rs` — rate limiting + the deny fuse (agent lock-out).
 - `audit_writer.rs`, `siem.rs` — append-only JSONL audit records and webhook
   export (async; uses the tokio runtime).
