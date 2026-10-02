@@ -1,4 +1,5 @@
-use agent_guard_sdk::{Context, Guard, GuardDecision, Tool, TrustLevel};
+use agent_guard_sandbox::NoopSandbox;
+use agent_guard_sdk::{Context, Guard, GuardDecision, GuardInput, Tool, TrustLevel};
 
 #[cfg(unix)]
 fn symlink_path(target: &std::path::Path, link: &std::path::Path) {
@@ -891,6 +892,16 @@ audit:
     let guard = Guard::from_yaml(&yaml).unwrap();
     let denied = guard.check_tool(Tool::Bash, r#"{"command":"rm blocked"}"#, trusted());
     assert!(matches!(denied, GuardDecision::Deny { .. }));
+    guard
+        .run(
+            &GuardInput {
+                tool: Tool::Bash,
+                payload: r#"{"command":"printf quiet"}"#.to_string(),
+                context: trusted(),
+            },
+            &NoopSandbox,
+        )
+        .expect("disabled audit must not prevent execution");
 
     let contents = std::fs::read_to_string(&audit_path).unwrap_or_default();
     assert!(

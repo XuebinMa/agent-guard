@@ -51,13 +51,14 @@ impl Guard {
             return;
         }
 
+        let line = serde_json::to_string(&record)
+            .unwrap_or_else(|e| format!("{{\"error\":\"audit serialization failed: {e}\"}}"));
         if state.audit_cfg.output == "file" {
             if let Some(ref writer) = state.audit_file_writer {
-                let line = serde_json::to_string(&record).unwrap_or_else(|e| {
-                    format!("{{\"error\":\"audit serialization failed: {e}\"}}")
-                });
                 writer.send(line);
             }
+        } else {
+            write_to_audit_sink(&state.audit_sink, &line);
         }
 
         state.siem_exporter.export(record);
@@ -94,31 +95,13 @@ impl Guard {
             let values = git_push_intent_values(git_push_intents, &input.context);
             insert_git_push_intents(&mut event.details, &values);
         }
-        let line = event.to_jsonl();
-
-        state
-            .siem_exporter
-            .export(agent_guard_core::AuditRecord::ToolCall(event));
-
-        if state.audit_cfg.output == "file" {
-            if let Some(ref writer) = state.audit_file_writer {
-                writer.send(line);
-            }
-        } else {
-            write_to_audit_sink(&state.audit_sink, &line);
-        }
+        self.emit_record(state, agent_guard_core::AuditRecord::ToolCall(event));
     }
 
     pub(crate) fn write_reload_audit(&self, event: &ReloadEvent, state: &GuardState) {
-        let line = event.to_jsonl();
-        state
-            .siem_exporter
-            .export(agent_guard_core::AuditRecord::PolicyReload(event.clone()));
-
-        if state.audit_cfg.enabled && state.audit_cfg.output == "file" {
-            if let Some(ref writer) = state.audit_file_writer {
-                writer.send(line);
-            }
-        }
+        self.emit_record(
+            state,
+            agent_guard_core::AuditRecord::PolicyReload(event.clone()),
+        );
     }
 }

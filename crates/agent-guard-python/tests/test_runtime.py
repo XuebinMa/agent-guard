@@ -214,7 +214,7 @@ def test_report_handoff_result_emits_audit_record(tmp_path):
     2. The host (this test) executes the action.
     3. The host calls ``Guard.report_handoff_result(request_id, result)``.
     4. A matching ``ExecutionReported`` audit record lands in the JSONL log
-       with ``tool == "handoff"`` and the same ``request_id``.
+       with the original ``tool == "read_file"`` and the same ``request_id``.
 
     This locks in the audit closure contract that S3-2 exposes to Python.
     """
@@ -246,7 +246,7 @@ def test_report_handoff_result_emits_audit_record(tmp_path):
             deadline_records = [json.loads(line) for line in lines]
             if any(
                 rec.get("type") == "execution_reported"
-                and rec.get("tool") == "handoff"
+                and rec.get("tool") == "read_file"
                 and rec.get("request_id") == outcome.request_id
                 for rec in deadline_records
             ):
@@ -259,11 +259,11 @@ def test_report_handoff_result_emits_audit_record(tmp_path):
         rec
         for rec in deadline_records
         if rec.get("type") == "execution_reported"
-        and rec.get("tool") == "handoff"
+        and rec.get("tool") == "read_file"
         and rec.get("request_id") == outcome.request_id
     ]
     assert reported, (
-        "expected an ExecutionReported audit record with tool=handoff and "
+        "expected an ExecutionReported audit record with tool=read_file and "
         f"matching request_id={outcome.request_id!r}; got: {deadline_records!r}"
     )
     record = reported[0]

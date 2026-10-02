@@ -32,6 +32,21 @@ The `[Unreleased]` heading is rolled forward manually before each release; do no
   does not rescue that case.
 
 ### Security
+- **Runtime decisions and audit outcomes now share one immutable policy
+  snapshot and request ID.** `Guard::run` no longer calls the decision path and
+  then re-evaluates through `execute`; one evaluation supplies the decision,
+  policy verification metadata, execution, and complete audit lifecycle.
+  `DecisionEvaluation` exposes that race-free decision surface to language
+  adapters. Tool decisions, execution starts, finishes or sandbox failures,
+  content findings, policy reloads, anomaly records, and reported handoff
+  outcomes now pass through one local-file/stdout plus SIEM fan-out; anomaly
+  records carry the request ID of their matching tool decision. Handoffs
+  emit an `execution_started` record before leaving the Guard boundary, so a
+  later `execution_reported` record can be correlated to the original
+  decision without inventing a witnessed finish. Pending handoff IDs are now
+  bounded, expiring, and one-shot; their terminal record retains the original
+  snapshot, audit destinations, tool, and agent across policy reloads instead
+  of accepting arbitrary/duplicate IDs or relabeling every tool as `handoff`.
 - **Guard-owned shell execution now has a finite resource lifecycle.** Bash
   execution defaults to a five-minute timeout (tightenable through
   `Guard::set_execution_timeout_ms`), and every built-in process runner retains

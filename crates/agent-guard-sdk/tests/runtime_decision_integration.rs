@@ -441,5 +441,5 @@ anomaly:
     assert_eq!(record["exit_code"].as_i64(), Some(0));
     assert_eq!(record["duration_ms"].as_i64(), Some(42));
     assert_eq!(record["sandbox_type"].as_str(), Some("host-handoff"));
-    assert_eq!(record["tool"].as_str(), Some("handoff"));
+    assert_eq!(record["tool"].as_str(), Some("read_file"));
 }

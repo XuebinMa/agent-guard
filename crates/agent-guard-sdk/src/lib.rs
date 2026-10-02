@@ -12,6 +12,7 @@ mod guard_audit;
 mod guard_git_preview;
 mod guard_helpers;
 mod guard_lifecycle;
+mod handoff;
 pub mod metrics;
 pub mod policy_signing;
 pub mod provenance;
@@ -33,7 +34,9 @@ pub use policy_signing::{
 };
 pub use prometheus_client;
 pub use provenance::{ApprovalProof, ExecutionReceipt, RECEIPT_VERSION};
-pub use runtime::{HandoffResult, RuntimeOutcome, RuntimeResult};
+pub use runtime::{
+    DecisionEvaluation, HandoffReportError, HandoffResult, RuntimeOutcome, RuntimeResult,
+};
 pub use siem::SiemExporter;
 
 // Re-export core types so SDK users don't need to depend on agent-guard-core

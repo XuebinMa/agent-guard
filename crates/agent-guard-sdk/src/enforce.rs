@@ -11,7 +11,6 @@ use agent_guard_core::{
 };
 use agent_guard_sandbox::{Sandbox, SandboxContext, SandboxError, SandboxOutput};
 use serde::Serialize;
-use uuid::Uuid;
 
 use crate::approval::{ApprovalConfig, ApprovalError, ApprovalRecord, ApprovalStatus};
 use crate::executors::{
@@ -21,7 +20,7 @@ use crate::guard::Guard;
 use crate::guard_helpers::sha256_hash;
 use crate::policy_signing::PolicyVerification;
 use crate::provenance::ApprovalProof;
-use crate::runtime::{HandoffResult, RuntimeOutcome, RuntimeResult};
+use crate::runtime::{RuntimeOutcome, RuntimeResult};
 
 // ── ExecuteResult ─────────────────────────────────────────────────────────────
 
@@ -50,67 +49,39 @@ pub enum ExecuteOutcome {
 
 impl Guard {
     pub fn execute(&self, input: &GuardInput, sandbox: &dyn Sandbox) -> ExecuteResult {
-        let request_id = Uuid::new_v4().to_string();
-        self.execute_with_request_id(input, sandbox, &request_id)
+        let evaluated = self.evaluate_request(input);
+        self.execute_evaluated(input, sandbox, evaluated)
     }
 
-    pub(crate) fn execute_with_request_id(
+    fn execute_evaluated(
         &self,
         input: &GuardInput,
         sandbox: &dyn Sandbox,
-        request_id: &str,
+        evaluated: crate::guard::EvaluatedRequest,
     ) -> ExecuteResult {
-        // Industrial Standard: Single-snapshot isolation.
-        let state = self.state.load();
-        let policy_version = state.engine.version().to_string();
-
-        if state.policy_verification.should_fail_closed() {
-            let reason = DecisionReason::new(
-                DecisionCode::PolicyVerificationFailed,
-                "policy signature verification failed; enforce mode is blocked until the policy is verified",
-            );
-            let mut details = serde_json::Map::new();
-            details.insert(
-                "policy_verification_status".to_string(),
-                serde_json::Value::String(state.policy_verification.status_label().to_string()),
-            );
-            if let Some(error) = &state.policy_verification.error {
-                details.insert(
-                    "policy_verification_error".to_string(),
-                    serde_json::Value::String(error.clone()),
-                );
-            }
-            let reason = reason.with_details(serde_json::Value::Object(details));
-            return Ok(ExecuteOutcome::Denied {
-                decision: GuardDecision::Deny { reason },
-                policy_version,
-                policy_verification: state.policy_verification.clone(),
-            });
-        }
-
-        let decision = self.check_internal(input, &state, request_id);
+        let decision = evaluated.evaluated.decision.clone();
         match &decision {
             GuardDecision::Allow => {}
             GuardDecision::Deny { .. } => {
                 return Ok(ExecuteOutcome::Denied {
                     decision,
-                    policy_version,
-                    policy_verification: state.policy_verification.clone(),
+                    policy_version: evaluated.policy_version,
+                    policy_verification: evaluated.policy_verification,
                 });
             }
             GuardDecision::AskUser { .. } => {
                 return Ok(ExecuteOutcome::AskRequired {
                     decision,
-                    policy_version,
-                    policy_verification: state.policy_verification.clone(),
+                    policy_version: evaluated.policy_version,
+                    policy_verification: evaluated.policy_verification,
                 });
             }
             // Fail closed: an unrecognized decision kind must never execute.
             _ => {
                 return Ok(ExecuteOutcome::Denied {
                     decision,
-                    policy_version,
-                    policy_verification: state.policy_verification.clone(),
+                    policy_version: evaluated.policy_version,
+                    policy_verification: evaluated.policy_verification,
                 });
             }
         }
@@ -118,9 +89,9 @@ impl Guard {
         self.execute_allowed(
             input,
             sandbox,
-            request_id,
-            &state,
-            policy_version,
+            &evaluated.request_id,
+            &evaluated.state,
+            evaluated.policy_version,
             &decision,
             None,
         )
@@ -178,21 +149,20 @@ impl Guard {
             }
         };
 
-        state
-            .siem_exporter
-            .export(agent_guard_core::AuditRecord::ExecutionStarted(
-                agent_guard_core::ExecutionEvent {
-                    timestamp: chrono::Utc::now(),
-                    request_id: request_id.to_string(),
-                    agent_id: input.context.agent_id.clone(),
-                    tool: input.tool.name().to_string(),
-                    sandbox_type: execution_backend.clone(),
-                    duration_ms: None,
-                    exit_code: None,
-                    // Witnessed by the Guard; there is no host claim to back.
-                    host_attestation: None,
-                },
-            ));
+        self.emit_record(
+            state,
+            agent_guard_core::AuditRecord::ExecutionStarted(agent_guard_core::ExecutionEvent {
+                timestamp: chrono::Utc::now(),
+                request_id: request_id.to_string(),
+                agent_id: input.context.agent_id.clone(),
+                tool: input.tool.name().to_string(),
+                sandbox_type: execution_backend.clone(),
+                duration_ms: None,
+                exit_code: None,
+                // Witnessed by the Guard; there is no host claim to back.
+                host_attestation: None,
+            }),
+        );
 
         let start = std::time::Instant::now();
         let execution_res = match input.tool {
@@ -230,9 +200,9 @@ impl Guard {
         let output = match execution_res {
             Ok(out) => out,
             Err(e) => {
-                state
-                    .siem_exporter
-                    .export(agent_guard_core::AuditRecord::SandboxFailure(
+                self.emit_record(
+                    state,
+                    agent_guard_core::AuditRecord::SandboxFailure(
                         agent_guard_core::SandboxFailureEvent {
                             timestamp: chrono::Utc::now(),
                             request_id: request_id.to_string(),
@@ -241,26 +211,26 @@ impl Guard {
                             sandbox_type: execution_backend.clone(),
                             error: e.to_string(),
                         },
-                    ));
+                    ),
+                );
                 return Err(e);
             }
         };
 
-        state
-            .siem_exporter
-            .export(agent_guard_core::AuditRecord::ExecutionFinished(
-                agent_guard_core::ExecutionEvent {
-                    timestamp: chrono::Utc::now(),
-                    request_id: request_id.to_string(),
-                    agent_id: input.context.agent_id.clone(),
-                    tool: input.tool.name().to_string(),
-                    sandbox_type: execution_backend.clone(),
-                    duration_ms: Some(duration.as_millis() as u64),
-                    exit_code: Some(output.exit_code),
-                    // Witnessed by the Guard; there is no host claim to back.
-                    host_attestation: None,
-                },
-            ));
+        self.emit_record(
+            state,
+            agent_guard_core::AuditRecord::ExecutionFinished(agent_guard_core::ExecutionEvent {
+                timestamp: chrono::Utc::now(),
+                request_id: request_id.to_string(),
+                agent_id: input.context.agent_id.clone(),
+                tool: input.tool.name().to_string(),
+                sandbox_type: execution_backend.clone(),
+                duration_ms: Some(duration.as_millis() as u64),
+                exit_code: Some(output.exit_code),
+                // Witnessed by the Guard; there is no host claim to back.
+                host_attestation: None,
+            }),
+        );
 
         let agent_id = input
             .context
@@ -325,19 +295,18 @@ impl Guard {
             agent_guard_core::ContentMode::Block => "block",
         };
 
-        state
-            .siem_exporter
-            .export(agent_guard_core::AuditRecord::ContentFinding(
-                agent_guard_core::ContentFindingEvent {
-                    timestamp: chrono::Utc::now(),
-                    request_id: request_id.to_string(),
-                    agent_id: input.context.agent_id.clone(),
-                    tool: input.tool.name().to_string(),
-                    mode: mode_label.to_string(),
-                    count: app.labels.len(),
-                    labels: app.labels,
-                },
-            ));
+        self.emit_record(
+            state,
+            agent_guard_core::AuditRecord::ContentFinding(agent_guard_core::ContentFindingEvent {
+                timestamp: chrono::Utc::now(),
+                request_id: request_id.to_string(),
+                agent_id: input.context.agent_id.clone(),
+                tool: input.tool.name().to_string(),
+                mode: mode_label.to_string(),
+                count: app.labels.len(),
+                labels: app.labels,
+            }),
+        );
 
         app.masked_payload
     }
@@ -348,39 +317,21 @@ impl Guard {
     }
 
     pub fn run(&self, input: &GuardInput, sandbox: &dyn Sandbox) -> RuntimeResult {
-        let request_id = Uuid::new_v4().to_string();
-        let state = self.state.load();
-        let policy_version = state.engine.version().to_string();
-
-        if state.policy_verification.should_fail_closed() {
-            let reason = DecisionReason::new(
-                DecisionCode::PolicyVerificationFailed,
-                "policy signature verification failed; runtime execution is blocked until the policy is verified",
-            );
-            let mut details = serde_json::Map::new();
-            details.insert(
-                "policy_verification_status".to_string(),
-                serde_json::Value::String(state.policy_verification.status_label().to_string()),
-            );
-            if let Some(error) = &state.policy_verification.error {
-                details.insert(
-                    "policy_verification_error".to_string(),
-                    serde_json::Value::String(error.clone()),
-                );
-            }
-            let reason = reason.with_details(serde_json::Value::Object(details));
-            return Ok(RuntimeOutcome::Denied {
-                request_id,
-                reason,
-                policy_version,
-                policy_verification: state.policy_verification.clone(),
-            });
-        }
-
-        let decision = self.decide(input);
-        match decision {
+        let evaluated = self.evaluate_request(input);
+        let request_id = evaluated.request_id.clone();
+        let policy_version = evaluated.policy_version.clone();
+        let policy_verification = evaluated.policy_verification.clone();
+        match evaluated.runtime_decision.clone() {
             RuntimeDecision::Execute => {
-                match self.execute_with_request_id(input, sandbox, &request_id)? {
+                match self.execute_allowed(
+                    input,
+                    sandbox,
+                    &request_id,
+                    &evaluated.state,
+                    policy_version,
+                    &evaluated.evaluated.decision,
+                    None,
+                )? {
                     ExecuteOutcome::Executed {
                         output,
                         policy_version,
@@ -436,16 +387,40 @@ impl Guard {
                     }
                 }
             }
-            RuntimeDecision::Handoff => Ok(RuntimeOutcome::Handoff {
-                request_id,
-                policy_version,
-                policy_verification: state.policy_verification.clone(),
-            }),
+            RuntimeDecision::Handoff => {
+                if evaluated.state.audit_cfg.enabled {
+                    self.register_handoff(
+                        &request_id,
+                        std::sync::Arc::clone(&evaluated.state),
+                        input,
+                    )?;
+                    self.emit_record(
+                        &evaluated.state,
+                        agent_guard_core::AuditRecord::ExecutionStarted(
+                            agent_guard_core::ExecutionEvent {
+                                timestamp: chrono::Utc::now(),
+                                request_id: request_id.clone(),
+                                agent_id: input.context.agent_id.clone(),
+                                tool: input.tool.name().to_string(),
+                                sandbox_type: "host-handoff".to_string(),
+                                duration_ms: None,
+                                exit_code: None,
+                                host_attestation: None,
+                            },
+                        ),
+                    );
+                }
+                Ok(RuntimeOutcome::Handoff {
+                    request_id,
+                    policy_version,
+                    policy_verification,
+                })
+            }
             RuntimeDecision::Deny { reason } => Ok(RuntimeOutcome::Denied {
                 request_id,
                 reason,
                 policy_version,
-                policy_verification: state.policy_verification.clone(),
+                policy_verification,
             }),
             RuntimeDecision::AskForApproval {
                 message, reason, ..
@@ -454,7 +429,7 @@ impl Guard {
                 message,
                 reason,
                 policy_version,
-                policy_verification: state.policy_verification.clone(),
+                policy_verification,
             }),
             // Fail closed: an unrecognized runtime disposition is denied.
             _ => Ok(RuntimeOutcome::Denied {
@@ -464,7 +439,7 @@ impl Guard {
                     "unrecognized runtime decision; failing closed",
                 ),
                 policy_version,
-                policy_verification: state.policy_verification.clone(),
+                policy_verification,
             }),
         }
     }
@@ -646,7 +621,7 @@ impl Guard {
             });
         }
 
-        let current_decision = self.evaluate(input, &state);
+        let current_decision = self.evaluate_policy_only(input, &state);
         if let GuardDecision::Deny { reason } = current_decision {
             return Ok(RuntimeOutcome::Denied {
                 request_id,
@@ -731,84 +706,6 @@ impl Guard {
     pub fn run_default(&self, input: &GuardInput) -> RuntimeResult {
         let sandbox = Self::default_sandbox();
         self.run(input, sandbox.as_ref())
-    }
-
-    /// Report the outcome of a host-executed handoff action back into the
-    /// audit stream.
-    ///
-    /// When `Guard::run` returns `RuntimeOutcome::Handoff`, the host executes
-    /// the action itself; the SDK therefore does not emit an
-    /// `ExecutionFinished` audit record for that path. Hosts call this method
-    /// after the handoff executes to record the host's claim as
-    /// `ExecutionReported`. This keeps transcribed outcomes distinct from
-    /// finishes the Guard witnessed. `request_id` must be the one returned by
-    /// the prior `run` call
-    /// so that the `ExecutionStarted` intent (if any) and this finish event
-    /// can be correlated downstream.
-    ///
-    /// The emitted `ExecutionEvent` reuses the existing `SiemExporter` and
-    /// (when configured) JSONL audit file pipelines, with `tool = "handoff"`
-    /// and `sandbox_type = "host-handoff"` so consumers can tell these apart
-    /// from in-SDK executions.
-    pub fn report_handoff_result(&self, request_id: &str, result: HandoffResult) {
-        let state = self.state.load();
-        let stderr_present = result.stderr.is_some();
-        // An attestation is only evidence for the claim it actually signs.
-        // A host that signs one outcome and reports another has attested to
-        // nothing about this record, so the signature is dropped rather than
-        // recorded next to a result it does not cover. This check needs no
-        // key, so it holds even for a verifier the Guard has never heard of.
-        let attestation = result.attestation.filter(|attestation| {
-            let describes_report =
-                attestation.describes(request_id, result.exit_code, result.duration_ms);
-            if !describes_report {
-                tracing::warn!(
-                    request_id = request_id,
-                    key_id = %attestation.key_id,
-                    "host attestation describes a different outcome than the one reported; \
-                     recording the outcome as unattested"
-                );
-            }
-            describes_report
-        });
-
-        let event = agent_guard_core::ExecutionEvent {
-            timestamp: chrono::Utc::now(),
-            request_id: request_id.to_string(),
-            agent_id: None,
-            tool: "handoff".to_string(),
-            sandbox_type: "host-handoff".to_string(),
-            duration_ms: Some(result.duration_ms),
-            exit_code: Some(result.exit_code),
-            host_attestation: attestation,
-        };
-
-        state
-            .siem_exporter
-            .export(agent_guard_core::AuditRecord::ExecutionReported(
-                event.clone(),
-            ));
-
-        if state.audit_cfg.enabled && state.audit_cfg.output == "file" {
-            if let Some(ref writer) = state.audit_file_writer {
-                let record = agent_guard_core::AuditRecord::ExecutionReported(event);
-                let line = serde_json::to_string(&record).unwrap_or_else(|e| {
-                    format!("{{\"error\":\"audit serialization failed: {e}\"}}")
-                });
-                writer.send(line);
-            }
-        }
-
-        // `stderr` is captured in the HandoffResult type for future surface
-        // expansion (e.g. SIEM details), but is intentionally not part of the
-        // core ExecutionEvent schema today. Emit a debug signal when it is
-        // present so the omission is observable rather than silently dropped.
-        if stderr_present {
-            tracing::debug!(
-                request_id = request_id,
-                "handoff result carried stderr; not included in core ExecutionEvent schema"
-            );
-        }
     }
 }
 

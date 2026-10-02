@@ -27,6 +27,7 @@ impl Guard {
         let state = GuardState::new(Arc::new(engine), PolicyVerification::unsigned())?;
         Ok(Self {
             state: ArcSwap::from_pointee(state),
+            pending_handoffs: crate::handoff::PendingHandoffs::default(),
         })
     }
 
@@ -72,6 +73,7 @@ impl Guard {
         let state = GuardState::new(Arc::new(engine), policy_verification)?;
         Ok(Self {
             state: ArcSwap::from_pointee(state),
+            pending_handoffs: crate::handoff::PendingHandoffs::default(),
         })
     }
 
@@ -155,7 +157,20 @@ impl Guard {
         policy_verification: PolicyVerification,
     ) -> Result<(), GuardInitError> {
         let new_version = engine.version().to_string();
-        let base_state = GuardState::new(Arc::new(engine), policy_verification)?;
+        let base_state = match GuardState::new(Arc::new(engine), policy_verification) {
+            Ok(state) => state,
+            Err(error) => {
+                // Parsing is not the only reload failure: constructing the
+                // new state can fail while opening its audit destination.
+                // Report that failure through the still-active snapshot so a
+                // bad replacement cannot make its own rejection invisible.
+                let current = self.state.load_full();
+                let event =
+                    ReloadEvent::failure(current.engine.version().to_string(), error.to_string());
+                self.write_reload_audit(&event, &current);
+                return Err(error);
+            }
+        };
 
         // The carry-over fields must be copied from the state observed at
         // swap time, not from a snapshot taken earlier: a `with_signing_key`

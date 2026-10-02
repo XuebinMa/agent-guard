@@ -1,10 +1,38 @@
-use agent_guard_core::DecisionReason;
+use agent_guard_core::{DecisionReason, GuardDecision, RuntimeDecision};
 use agent_guard_sandbox::{SandboxError, SandboxOutput};
 use serde::{Deserialize, Serialize};
+use thiserror::Error;
 
 use crate::{policy_signing::PolicyVerification, provenance::ExecutionReceipt};
 
 pub type RuntimeResult = Result<RuntimeOutcome, SandboxError>;
+
+/// Failure to close a host-handoff audit lifecycle.
+#[derive(Debug, Clone, PartialEq, Eq, Error)]
+pub enum HandoffReportError {
+    #[error(
+        "no pending handoff for request ID '{request_id}' (it is unknown, expired, or already reported)"
+    )]
+    UnknownRequest { request_id: String },
+    #[error("the pending handoff registry is unavailable")]
+    RegistryUnavailable,
+}
+
+/// One policy evaluation and the metadata from the exact policy snapshot that
+/// produced it.
+///
+/// This is the race-free decision surface for adapters: callers must not fetch
+/// `policy_version()` or `policy_verification()` separately after a decision,
+/// because a concurrent reload can move those accessors to a newer snapshot.
+#[derive(Debug, Clone, Serialize)]
+#[non_exhaustive]
+pub struct DecisionEvaluation {
+    pub request_id: String,
+    pub decision: GuardDecision,
+    pub runtime_decision: RuntimeDecision,
+    pub policy_version: String,
+    pub policy_verification: PolicyVerification,
+}
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(tag = "outcome", rename_all = "snake_case")]
