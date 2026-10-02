@@ -118,7 +118,7 @@ The `Guard` struct in agent-guard-sdk orchestrates: **Check → Filter → Audit
 
 Platform-specific sandbox features (off by default):
 - `seccomp` — Linux seccomp-bpf (requires libseccomp)
-- `landlock` — Linux Landlock filesystem isolation (kernel 5.13+)
+- `landlock` — Linux Landlock filesystem isolation (ABI v3; upstream kernel 6.2+)
 - `macos-sandbox` — macOS Seatbelt/sandbox-exec
 - `windows-sandbox` — Windows Job Objects
 - `windows-appcontainer` — Windows AppContainer (compile-gated in the Windows CI job)

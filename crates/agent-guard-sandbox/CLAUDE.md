@@ -13,7 +13,7 @@ A single `Sandbox` trait (`name`, `sandbox_type`, `capabilities`, `execute`,
 | File | Backend | Feature flag | Default? |
 | :--- | :--- | :--- | :---: |
 | `linux.rs` | seccomp-bpf wrapper (prototype/fallback) | `seccomp` (needs libseccomp) | off |
-| `landlock.rs` | Landlock FS isolation (kernel 5.13+) | `landlock` | off |
+| `landlock.rs` | Landlock FS isolation (ABI v3; upstream kernel 6.2+) | `landlock` | off |
 | `macos.rs` | Seatbelt via `sandbox-exec` (experimental) | `macos-sandbox` | off |
 | `windows.rs` | Job Object (experimental) | `windows-sandbox` | off |
 | `windows_appcontainer.rs` | AppContainer (experimental) | `windows-appcontainer` | off |

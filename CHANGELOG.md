@@ -32,6 +32,15 @@ The `[Unreleased]` heading is rolled forward manually before each release; do no
   does not rescue that case.
 
 ### Security
+- **Linux Landlock now proves and enforces the write boundary it advertises.**
+  The backend requires Landlock ABI v3 as a hard minimum, so `truncate(2)`,
+  inherited-FD `ftruncate(2)`, and `open(2)` with `O_TRUNC` cannot bypass
+  read-only or workspace-only modes. Filesystem write rights now follow the
+  effective `PolicyMode` instead of being granted beneath the workspace in
+  every mode. Availability runs the complete restriction path in a disposable
+  child, catching hosts that can create a ruleset but block
+  `landlock_restrict_self(2)`; partial or older enforcement fails closed. A
+  Linux CI lane exercises the exact mutation syscalls against the OS boundary.
 - **Approval expiry and anomaly state now preserve their stated boundaries.**
   The ledger rejects human decisions at or after the recorded expiry, and the
   resume path independently rejects a forged or legacy late approval before

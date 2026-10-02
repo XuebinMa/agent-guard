@@ -42,6 +42,18 @@ jobs:
       - name: Run seccomp integration tests
         run: cargo test -p agent-guard-sandbox --features seccomp --test seccomp_integration -- --nocapture
 
+  linux-landlock-integration:
+    name: Linux Landlock Integration
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+      - name: Cache Rust
+        uses: Swatinem/rust-cache@v2
+      - name: Run Landlock integration tests
+        run: cargo test -p agent-guard-sandbox --features landlock --test landlock_integration -- --nocapture
+
   macos-seatbelt-integration:
     name: macOS Seatbelt Integration
     runs-on: macos-latest
