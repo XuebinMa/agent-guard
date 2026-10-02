@@ -32,6 +32,21 @@ The `[Unreleased]` heading is rolled forward manually before each release; do no
   does not rescue that case.
 
 ### Security
+- **`guard-verify` no longer reports success on Attenu ledger content it only
+  partly understood.** The verifier now enforces the published 39-field ledger
+  vocabulary, rejects the twelve schema-v2 fields on v1 chains, validates v2
+  root/allow/deny/kill/outcome records, and checks duplicate IDs across both
+  allow and deny records before execution binding. Missing versions and chain
+  identifiers fail closed; malformed authority scopes, constraints, TTLs, or
+  unknown nested authority members are reported as unreadable rather than
+  projected into a weaker grant. Re-sealed mutation tests cover every record
+  family, so integrity-valid hostile shapes cannot pass as understood.
+- **Compliance reports no longer call a merely present host signature
+  “attested.”** Without a trusted public key, a structurally valid matching
+  envelope is now counted as `signature_present_unverified`; malformed or
+  outcome-mismatched envelopes are counted separately as invalid, and records
+  without one are unsigned. The old `executions_reported_attested` JSON field
+  is removed because it asserted verification the command never performed.
 - **Runtime decisions and audit outcomes now share one immutable policy
   snapshot and request ID.** `Guard::run` no longer calls the decision path and
   then re-evaluates through `execute`; one evaluation supplies the decision,
@@ -196,15 +211,11 @@ The `[Unreleased]` heading is rolled forward manually before each release; do no
     `execution_binding`, which is `"not applicable"` on a v1 chain rather than
     leaving an empty failure list to imply the pairs were found sound.
 
-  **Not implemented: `v2_field_on_v1`.** The README names the reason but not
-  which entry fields are v2-only. Guessing the list would reject canonical v1
-  rows this verifier cannot see, so the reason is left out and the question
-  is raised upstream instead. `unsupported_canonicalization` is likewise
-  outside the contract: the README has no token for a non-JCS `c14n`.
-
-  The v1 cases are derived by re-declaring a published v2 case as v1 and
-  re-sealing it, so they test this verifier's reading of the format, not the
-  upcoming row.
+  The upstream README now publishes the exact v2-only field set, so derived v1
+  cases remove those twelve fields before re-sealing. A separate negative
+  mutation adds one back and pins `v2_field_on_v1`.
+  `unsupported_canonicalization` remains outside the contract: the README has
+  no token for a non-JCS `c14n`.
 
 ### Fixed
 - **The 20 of 20 `guard-verify` reported for `bundle_vectors_v1.4` never read
@@ -233,12 +244,11 @@ The `[Unreleased]` heading is rolled forward manually before each release; do no
     or the anchor naming another chain) were never emitted.
 
   `attenu-vectors` also prints the corpus revision it scored, which the README
-  says is what a report should name. Still not implemented, and now listed
-  where the verifier documents itself: the v2 record schema behind
-  `invalid_root`, `invalid_kill`, `invalid_deny` and `invalid_outcome`
-  (`invalid_allow` too, beyond the `policy` value), and
-  `expected_head_mismatch` / `expected_anchor_mismatch`, which need an
-  independently retained head that this verifier is not given.
+  says is what a report should name. `expected_head_mismatch` and
+  `expected_anchor_mismatch` remain outside this command because they need an
+  independently retained head that the verifier is not given. The v2 record
+  schema gaps named in this original review are closed by the security entry
+  above.
 
 ## [0.2.5] - 2026-09-14
 

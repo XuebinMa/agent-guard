@@ -14,6 +14,10 @@ const GENESIS_PREV: &str = "0000000000000000000000000000000000000000000000000000
 /// bytes of the entry with its own `hash` field removed.
 pub fn check_entries(entries: &[Value], failures: &mut Vec<Failure>) {
     for (index, entry) in entries.iter().enumerate() {
+        if entry.get("seq").and_then(Value::as_u64) != Some(index as u64) {
+            failures.push(Failure::at(entry, "integrity"));
+            continue;
+        }
         let expected_prev = if index == 0 {
             GENESIS_PREV.to_string()
         } else {

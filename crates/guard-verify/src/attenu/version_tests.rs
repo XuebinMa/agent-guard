@@ -5,11 +5,9 @@
 //! rules tested here come from the corpus README's reason table and its
 //! "version-independent" paragraph, never from an implementation.
 //!
-//! The v1 bundles are derived here by changing `v` and re-sealing a published
-//! v2 case. They are this verifier's reading of the format, not the upcoming
-//! `reject_unknown_policy_value_v1_chain` row: the README does not yet say
-//! which entry fields are v2-only, so "the canonical v1 form" is not defined
-//! anywhere a third party can read, and these cases keep every field.
+//! The v1 bundles are derived here by changing `v`, removing the twelve fields
+//! the published format now identifies as v2-only, and re-sealing a published
+//! v2 case.
 
 use super::test_support::{at, chain_level, published, reasons, reseal};
 use super::*;
@@ -21,6 +19,25 @@ fn declared_as(name: &str, version: i64) -> (Value, Signer) {
     bundle["anchor"]["v"] = Value::from(version);
     for entry in bundle["entries"].as_array_mut().expect("entries") {
         entry["v"] = Value::from(version);
+        if version == 1 {
+            let object = entry.as_object_mut().expect("entry object");
+            for field in [
+                "adapter",
+                "authorized_params_hash",
+                "body_state",
+                "call_id",
+                "capture",
+                "duration_ms",
+                "error_code",
+                "invoked_params_hash",
+                "params_hash_reason",
+                "params_salt",
+                "pending_at_kill",
+                "receipt",
+            ] {
+                object.remove(field);
+            }
+        }
     }
     reseal(&mut bundle, &signer);
     (bundle, signer)
@@ -61,9 +78,8 @@ fn a_v1_chain_reports_an_undefined_policy_as_invalid_policy_and_keeps_containmen
 /// "Execution binding is checked on `schema_version=2` chains only; on a v1
 /// bundle these cannot occur and the report says `not applicable`."
 ///
-/// This asserts only that no binding reason is reported. Whether a v1 entry
-/// may carry `call_id` at all is the unpublished v2-only field list, so the
-/// verdict on these ledgers is deliberately left open here.
+/// This asserts that v1 takes no execution-binding path after all v2-only
+/// fields have been removed.
 #[test]
 fn a_v1_chain_does_not_run_execution_binding() {
     for name in ["reject_duplicate_call_id", "reject_params_mismatch"] {

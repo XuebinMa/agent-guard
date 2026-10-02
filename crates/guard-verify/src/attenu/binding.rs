@@ -17,7 +17,7 @@ struct AllowRecord {
 pub fn check_call_id_uniqueness(entries: &[Value], failures: &mut Vec<Failure>) {
     let mut seen: HashSet<String> = HashSet::new();
     for entry in entries {
-        if entry_str(entry, "event").as_deref() != Some("allow") {
+        if !matches!(entry_str(entry, "event").as_deref(), Some("allow" | "deny")) {
             continue;
         }
         let Some(call_id) = entry_str(entry, "call_id") else {
@@ -69,7 +69,10 @@ pub fn check_execution_binding(entries: &[Value], failures: &mut Vec<Failure>) -
         }
 
         let invoked = entry_str(entry, "invoked_params_hash");
-        if invoked != allow.authorized_params_hash {
+        if matches!(
+            (&invoked, &allow.authorized_params_hash),
+            (Some(invoked), Some(authorized)) if invoked != authorized
+        ) {
             failures.push(Failure::at(entry, "params_mismatch"));
         }
     }

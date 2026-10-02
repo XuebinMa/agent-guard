@@ -129,17 +129,19 @@ mod tests {
 ///
 /// ## What it establishes, and what it cannot
 ///
-/// The signature binds a named key to an exact claim — this request, this
-/// exit code, this duration. A third party cannot forge it, and an edit to
-/// the recorded outcome stops matching it, so tampering is detectable.
+/// Once a verifier selects a trusted public key and verifies the signature,
+/// it binds that key to an exact claim — this request, this exit code, this
+/// duration. Merely carrying this structure proves nothing: `key_id` is an
+/// untrusted label and the signature may be malformed or made by an unknown
+/// key.
 ///
 /// It does not make the exit code true. The execution happened outside the
 /// boundary and nothing signed inside the boundary can reach it: a host that
 /// lies about its own result will produce a perfectly valid attestation of
 /// that lie. What changes is that the lie becomes attributable to a named key
-/// and cannot be quietly revised afterwards, and that a reader can tell an
-/// attested claim from an unattested one instead of having to treat both the
-/// same way.
+/// and cannot be quietly revised afterwards. Readers without a trust set can
+/// distinguish only signature-present/unverified from unsigned or malformed;
+/// they must not call the former attested.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct HostAttestation {
     pub version: u8,

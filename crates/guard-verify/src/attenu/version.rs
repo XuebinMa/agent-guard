@@ -32,20 +32,18 @@ pub fn check_versions(
     }
     let version = declared?;
 
-    let anchor_version = bundle
-        .get("anchor")
+    let anchor = bundle.get("anchor");
+    let anchor_version = anchor
         .and_then(|anchor| anchor.get("v"))
         .and_then(Value::as_i64);
-    if anchor_version.is_some_and(|anchor_version| anchor_version != version) {
+    if anchor.is_some() && anchor_version != Some(version) {
         failures.push(Failure::chain_level("anchor_version_mismatch"));
     }
 
     let mut mixed_reported = false;
     for entry in entries {
-        let Some(entry_version) = entry.get("v").and_then(Value::as_i64) else {
-            continue;
-        };
-        if entry_version == version {
+        let entry_version = entry.get("v").and_then(Value::as_i64);
+        if entry_version == Some(version) {
             continue;
         }
         if entry_str(entry, "event").as_deref() == Some("root") {

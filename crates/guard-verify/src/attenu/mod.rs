@@ -19,27 +19,24 @@
 //! 4. every delegation is a subset of its parent and every allowed scope was
 //!    inside the acting node's authority;
 //! 5. the bundle, its anchor and its entries declare one version;
-//! 6. the ledger has exactly one root and names one chain throughout.
+//! 6. the ledger has exactly one root and names one chain throughout;
+//! 7. every entry stays inside the published whole-record field set, v1
+//!    carries no v2-only fields, and root/allow/deny/kill/outcome records
+//!    satisfy the schema-v2 shape before their claims are interpreted.
 //!
 //! The report also carries the counters a case may pin in `expect_report`,
 //! under the corpus's own names: `actions_checked` and `ungated`.
 //!
-//! Not implemented, and not claimed:
-//!
-//! - `v2_field_on_v1`. The README names the reason but not which entry fields
-//!   are v2-only, and guessing the list would fail the canonical v1 rows it
-//!   cannot see.
-//! - The v2 record schema behind `invalid_root`, `invalid_kill`,
-//!   `invalid_deny` and `invalid_outcome`, and `invalid_allow` beyond the
-//!   `policy` value.
-//! - `expected_head_mismatch` and `expected_anchor_mismatch`, which need an
-//!   independently retained head or anchor that this verifier is not given.
+//! `expected_head_mismatch` and `expected_anchor_mismatch` remain outside this
+//! command: those checks need an independently retained head or anchor, and
+//! the current CLI is given only the bundle itself.
 
 mod authority;
 mod binding;
 mod chain;
 pub mod corpus;
 mod envelope;
+mod schema;
 mod structure;
 mod version;
 
@@ -176,6 +173,11 @@ fn verify(
         chain::check_anchor(bundle.get("anchor"), &entries, signer, &mut failures);
     }
 
+    // A valid signature only proves that these bytes were committed. Refuse
+    // to make semantic claims until every ledger entry is one this verifier
+    // fully understands under the declared version.
+    schema::check_entry_schemas(&entries, schema_version, &mut failures);
+
     // "Execution binding is checked on `schema_version=2` chains only; on a
     // v1 bundle these cannot occur and the report says `not applicable`."
     // A version this verifier does not read is checked as v2: it is already
@@ -212,6 +214,8 @@ fn entry_str(entry: &Value, key: &str) -> Option<String> {
 
 #[cfg(test)]
 mod contract_tests;
+#[cfg(test)]
+mod schema_tests;
 #[cfg(test)]
 mod test_support;
 #[cfg(test)]
