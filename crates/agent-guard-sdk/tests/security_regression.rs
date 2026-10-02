@@ -1045,3 +1045,21 @@ anomaly:
         "handoff report must still be auditable as execution_reported:\n{contents}"
     );
 }
+
+// ─── 34. Restricted shell modes cannot treat unresolved writes as safe ────
+
+#[test]
+fn sec34_dynamic_and_unmodeled_write_targets_fail_closed() {
+    let g = guard();
+    for command in [
+        "touch $HOME/.ssh/authorized_keys",
+        "touch ~/.ssh/authorized_keys",
+        "truncate -s 0 /etc/passwd",
+        "tar -xf archive.tar -C /etc",
+        "xargs -J % rm",
+    ] {
+        assert_bash_denied(&g, command);
+    }
+
+    assert_bash_denied(&readonly_guard(), "project-helper inspect");
+}

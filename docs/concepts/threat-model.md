@@ -130,6 +130,18 @@ and the workspace path checks.
 - **Recommended**: do not treat the destructive warning as enforcement; rely on
   `ReadOnly` / `WorkspaceWrite` + path confinement for guarantees.
 
+### 6. Shell classification is an intent gate, not arbitrary-code containment
+Restricted modes reject shell syntax, launchers, destinations, and executables
+they cannot classify; `ReadOnly` uses an explicit executable allowlist and
+unknown programs fail closed. Even a recognized binary can gain new flags,
+plugins, helpers, or implementation behavior that a command-line classifier
+does not model. Workspace path checks also cannot eliminate races created by a
+hostile concurrent process.
+- **Recommended**: treat validator decisions as defense in depth and activate a
+  platform sandbox when arbitrary code can run. Assert the selected backend and
+  its capabilities at startup; do not describe `WorkspaceWrite` shell parsing
+  alone as filesystem containment.
+
 ---
 
 ## 🛠️ Security Hardening Checklist

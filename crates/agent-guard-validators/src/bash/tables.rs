@@ -2,9 +2,19 @@
 
 pub(crate) const WRITE_COMMANDS: &[&str] = &[
     "rm", "mv", "cp", "install", "touch", "mkdir", "rmdir", "chmod", "chown", "chgrp", "ln",
-    "link", "unlink", "dd", "mkfs", "mount", "umount", "tar", "zip", "unzip", "gzip", "gunzip",
-    "bzip2", "bunzip2", "7z", "xz", "unxz", "tee", "apt", "apt-get", "yum", "dnf", "npm", "pip",
-    "pip3", "cargo",
+    "link", "unlink", "dd", "truncate", "mkfs", "mount", "umount", "tar", "zip", "unzip", "gzip",
+    "gunzip", "bzip2", "bunzip2", "7z", "xz", "unxz", "tee", "apt", "apt-get", "yum", "dnf", "npm",
+    "pip", "pip3", "cargo",
+];
+
+/// Executables whose ordinary operation is sufficiently narrow to classify as
+/// read-only without inspecting an embedded language or an open-ended plugin
+/// surface. This is intentionally an allowlist: an unknown executable is code,
+/// not evidence that no write can occur.
+pub(crate) const READ_ONLY_COMMANDS: &[&str] = &[
+    ":", "[", "basename", "cat", "cmp", "comm", "cut", "diff", "dirname", "echo", "egrep", "env",
+    "false", "fgrep", "file", "grep", "head", "id", "ls", "printf", "pwd", "readlink", "realpath",
+    "rg", "stat", "tail", "test", "true", "uname", "wc", "which", "whoami",
 ];
 
 pub(crate) const STATE_MODIFYING_COMMANDS: &[&str] = &[

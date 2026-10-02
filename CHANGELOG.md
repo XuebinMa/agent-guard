@@ -32,6 +32,15 @@ The `[Unreleased]` heading is rolled forward manually before each release; do no
   does not rescue that case.
 
 ### Security
+- **Restricted shell validation now fails closed on unresolved destinations and
+  unknown read-only executables.** Dynamic or home-relative targets (`$VAR`,
+  `${VAR}`, and `~`), existing symlink components that resolve outside the
+  workspace, `truncate` destinations, archive extraction directories, and BSD
+  `xargs -J` command operands can no longer fall through as safe. Read-only
+  mode now uses a finite executable/Git-subcommand allowlist instead of
+  treating an unrecognized program as proof of read-only behavior. These are
+  intent-gate improvements; hostile arbitrary programs still require an active
+  OS sandbox for containment.
 - **The unsafe Windows AppContainer prototype is disabled.** It replaced the
   workspace DACL without restoring the original descriptor and double-owned
   inherited pipe handles, so success or failure could mutate host permissions

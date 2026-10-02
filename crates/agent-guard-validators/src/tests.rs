@@ -85,6 +85,18 @@ mod bash_read_only_tests {
         assert_eq!(r, ValidationResult::Allow);
     }
 
+    #[test]
+    fn blocks_unknown_executable_in_read_only() {
+        let r = validate_read_only("project-helper inspect", ro());
+        assert!(matches!(r, ValidationResult::Block { .. }));
+    }
+
+    #[test]
+    fn blocks_truncate_in_read_only() {
+        let r = validate_read_only("truncate -s 0 output.log", ro());
+        assert!(matches!(r, ValidationResult::Block { .. }));
+    }
+
     // ── git in read-only ─────────────────────────────────────────────────────
 
     #[test]
@@ -97,6 +109,39 @@ mod bash_read_only_tests {
     fn allows_git_log_in_read_only() {
         let r = validate_read_only("git log --oneline -10", ro());
         assert_eq!(r, ValidationResult::Allow);
+    }
+
+    #[test]
+    fn git_global_options_do_not_hide_mutating_subcommands() {
+        for command in [
+            "git -C repo push origin main",
+            "git --git-dir .git clean -fdx",
+            "git -c core.pager=cat status",
+        ] {
+            let r = validate_read_only(command, ro());
+            assert!(
+                matches!(r, ValidationResult::Block { .. }),
+                "Git invocation must not be inferred read-only: {command}"
+            );
+        }
+        assert_eq!(
+            validate_read_only("git -C repo --no-pager status", ro()),
+            ValidationResult::Allow
+        );
+    }
+
+    #[test]
+    fn find_write_actions_are_not_read_only() {
+        for command in [
+            "find . -delete",
+            "find . -fprint /tmp/results",
+            "find . -ok rm {} ;",
+        ] {
+            assert!(matches!(
+                validate_read_only(command, ro()),
+                ValidationResult::Block { .. }
+            ));
+        }
     }
 
     #[test]
@@ -448,13 +493,13 @@ mod redirect_validation_tests {
                 ws,
                 Expected::Block,
             ),
-            // 10. `$VAR`-prefixed target — skipped (we don't expand vars).
+            // 10. `$VAR`-prefixed target — unverifiable, so fail closed.
             (
                 "dollar_prefix_skipped",
                 "cat < $VAR/file",
                 PermissionMode::WorkspaceWrite,
                 ws,
-                Expected::Allow,
+                Expected::Block,
             ),
             // 11. `/dev/null` — special-case skip.
             (
