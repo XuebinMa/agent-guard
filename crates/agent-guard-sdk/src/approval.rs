@@ -129,6 +129,11 @@ pub enum ApprovalError {
         request_id: String,
         status: ApprovalStatus,
     },
+    #[error("approval request '{request_id}' expired at {expires_at}")]
+    Expired {
+        request_id: String,
+        expires_at: DateTime<Utc>,
+    },
 }
 
 // ── On-disk event log ─────────────────────────────────────────────────────────
@@ -314,6 +319,16 @@ impl ApprovalLedger {
         }
 
         let decided_at = Utc::now();
+        if status != ApprovalStatus::Expired {
+            if let Some(expires_at) = current.expires_at {
+                if decided_at >= expires_at {
+                    return Err(ApprovalError::Expired {
+                        request_id: request_id.to_string(),
+                        expires_at,
+                    });
+                }
+            }
+        }
         self.append(&LedgerEvent::Decided(DecidedEvent {
             request_id: request_id.to_string(),
             status,
@@ -506,6 +521,39 @@ mod tests {
             ledger.get("r").unwrap().unwrap().status,
             ApprovalStatus::Approved
         );
+    }
+
+    #[test]
+    fn terminal_transition_after_recorded_expiry_is_rejected() {
+        for (request_id, status) in [
+            ("late-approve", ApprovalStatus::Approved),
+            ("late-deny", ApprovalStatus::Denied),
+        ] {
+            let (_dir, ledger) = ledger();
+            let created_at = Utc::now() - chrono::Duration::seconds(2);
+            let expires_at = created_at + chrono::Duration::seconds(1);
+            ledger
+                .append(&LedgerEvent::Created(CreatedEvent {
+                    request_id: request_id.to_string(),
+                    tool: "bash".to_string(),
+                    payload_hash: "hash".to_string(),
+                    message: "review".to_string(),
+                    agent_id: None,
+                    created_at,
+                    expires_at: Some(expires_at),
+                }))
+                .expect("write expired pending record");
+
+            let error = ledger
+                .decide(request_id, status, Some("late-reviewer".to_string()))
+                .expect_err("a request cannot be decided after its recorded expiry");
+            assert!(matches!(error, ApprovalError::Expired { .. }));
+            assert_eq!(
+                ledger.get(request_id).unwrap().unwrap().status,
+                ApprovalStatus::Pending,
+                "rejected late decision must not enter the ledger"
+            );
+        }
     }
 
     #[test]

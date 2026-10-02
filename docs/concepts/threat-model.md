@@ -46,7 +46,10 @@ Categorized analysis of threats and implemented defenses:
 
 ### **S**poofing (Identity)
 - **Threat**: An unauthorized agent or actor impersonates a trusted one in the `Context`.
-- **Mitigation**: The trusted host orchestrator is responsible for providing the immutable `actor` and `agent_id`.
+- **Mitigation**: The trusted host orchestrator is responsible for providing
+  immutable, authenticated, and bounded `actor`, `agent_id`, and `session_id`
+  values. The SDK cannot distinguish a host-authenticated identity from a string
+  copied out of an agent-controlled payload.
 
 ### **T**ampering (Integrity)
 - **Threat**: An agent modifies the security policy or deletes its own audit logs.
@@ -141,6 +144,17 @@ hostile concurrent process.
   platform sandbox when arbitrary code can run. Assert the selected backend and
   its capabilities at startup; do not describe `WorkspaceWrite` shell parsing
   alone as filesystem containment.
+
+### 7. Anomaly lockout is only as strong as the subject identity
+The deny fuse chooses a subject from `actor`, then `agent_id`, then `session_id`.
+Missing identities share one fail-closed `unknown` subject. If an agent can
+choose or rotate those strings, it can evade a per-subject threshold; if it can
+make them arbitrarily large, it can also amplify state and telemetry costs.
+Locked subjects are deliberately not evicted by ordinary capacity compaction.
+- **Recommended**: derive one stable, size-bounded subject in the trusted host
+  adapter and never accept it from model output. If the host cannot authenticate
+  that value, describe anomaly detection as advisory rate limiting, not
+  per-agent lockout protection.
 
 ---
 

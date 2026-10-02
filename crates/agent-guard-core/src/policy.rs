@@ -147,6 +147,14 @@ pub struct AnomalyConfig {
     pub deny_fuse: DenyFuseConfig,
 }
 
+/// Maximum number of observations retained per anomaly subject.
+///
+/// A rate limit needs one more witness than `max_calls` to prove it fired,
+/// while a deny fuse needs exactly `threshold` witnesses. Policy loading keeps
+/// both values within this shared bound so neither decision can be disabled by
+/// history truncation in the SDK.
+pub const MAX_RETAINED_ANOMALY_OBSERVATIONS: usize = 1001;
+
 impl Default for AnomalyConfig {
     fn default() -> Self {
         Self {
@@ -638,6 +646,16 @@ fn validate_policy_configuration(policy: &PolicyFile) -> Result<(), PolicyError>
                 "{field} must be greater than zero"
             )));
         }
+    }
+    if anomaly.rate_limit.max_calls >= MAX_RETAINED_ANOMALY_OBSERVATIONS {
+        return Err(PolicyError::ParseError(format!(
+            "anomaly.rate_limit.max_calls must be less than the retained observation capacity ({MAX_RETAINED_ANOMALY_OBSERVATIONS})"
+        )));
+    }
+    if anomaly.deny_fuse.threshold > MAX_RETAINED_ANOMALY_OBSERVATIONS {
+        return Err(PolicyError::ParseError(format!(
+            "anomaly.deny_fuse.threshold must not exceed the retained observation capacity ({MAX_RETAINED_ANOMALY_OBSERVATIONS})"
+        )));
     }
 
     match policy.audit.output.as_str() {

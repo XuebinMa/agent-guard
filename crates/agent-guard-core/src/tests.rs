@@ -853,6 +853,25 @@ tools:
     }
 
     #[test]
+    fn anomaly_thresholds_that_cannot_be_fully_witnessed_are_rejected() {
+        for yaml in [
+            "version: 1\nanomaly:\n  rate_limit:\n    max_calls: 1001\n",
+            "version: 1\nanomaly:\n  deny_fuse:\n    threshold: 1002\n",
+        ] {
+            let error = parse_error(yaml);
+            assert!(error.contains("retained observation capacity"), "{error}");
+        }
+    }
+
+    #[test]
+    fn maximum_witnessable_anomaly_thresholds_are_accepted() {
+        PolicyEngine::from_yaml_str(
+            "version: 1\nanomaly:\n  rate_limit:\n    max_calls: 1000\n  deny_fuse:\n    threshold: 1001\n",
+        )
+        .expect("the retained history can witness call 1001 and denial 1001");
+    }
+
+    #[test]
     fn unsupported_audit_output_is_rejected() {
         for yaml in [
             "version: 1\naudit:\n  output: syslog\n",

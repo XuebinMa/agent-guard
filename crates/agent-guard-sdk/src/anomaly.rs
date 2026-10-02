@@ -25,7 +25,9 @@
 //! reach the stated threshold. Without that, an `AgentLocked` record asserts
 //! a lock and offers nothing to check it against.
 
-use agent_guard_core::{AnomalyConfig, AnomalyEvidence, AnomalyRule};
+use agent_guard_core::{
+    AnomalyConfig, AnomalyEvidence, AnomalyRule, MAX_RETAINED_ANOMALY_OBSERVATIONS,
+};
 use chrono::{DateTime, Utc};
 use std::collections::{HashMap, VecDeque};
 use std::sync::Mutex;
@@ -86,7 +88,7 @@ pub struct AnomalyDetector {
 const MAX_TRACKED_SUBJECTS: usize = 4096;
 const STALE_SUBJECT_TTL: Duration = Duration::from_secs(60 * 60);
 /// CWE-770: bound the per-actor history so a flood cannot exhaust memory.
-const HISTORY_CAP: usize = 1000;
+const HISTORY_CAP: usize = MAX_RETAINED_ANOMALY_OBSERVATIONS;
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum AnomalyStatus {
@@ -187,6 +189,14 @@ impl AnomalyDetector {
             }
         };
         compact_states(&mut states, config, now);
+        if !reserve_subject_slot(&mut states, actor) {
+            tracing::error!(
+                actor = actor,
+                max_subjects = MAX_TRACKED_SUBJECTS,
+                "AnomalyDetector subject capacity is occupied by durable locks; failing closed"
+            );
+            return AnomalyVerdict::decided(AnomalyStatus::Locked, None);
+        }
         let state = states.entry(actor.to_string()).or_default();
         state.last_seen = now;
 
@@ -271,6 +281,14 @@ impl AnomalyDetector {
             }
         };
         compact_states(&mut states, config, now);
+        if !reserve_subject_slot(&mut states, actor) {
+            tracing::error!(
+                actor = actor,
+                max_subjects = MAX_TRACKED_SUBJECTS,
+                "AnomalyDetector subject capacity is occupied by durable locks; denial cannot be stored"
+            );
+            return;
+        }
         let state = states.entry(actor.to_string()).or_default();
         state.last_seen = now;
 
@@ -327,15 +345,38 @@ fn compact_states(states: &mut HashMap<String, ActorState>, config: &AnomalyConf
     });
 
     while states.len() > MAX_TRACKED_SUBJECTS {
-        let Some(oldest_key) = states
-            .iter()
-            .min_by_key(|(_, state)| state.last_seen)
-            .map(|(key, _)| key.clone())
-        else {
+        if !evict_oldest_unlocked(states) {
             break;
-        };
-        states.remove(&oldest_key);
+        }
     }
+}
+
+/// Ensure a new subject can be admitted without evicting a durable lock.
+/// When every slot is locked, callers fail closed instead of growing the map
+/// without bound or silently forgetting a lock.
+fn reserve_subject_slot(states: &mut HashMap<String, ActorState>, subject: &str) -> bool {
+    if states.contains_key(subject) {
+        return true;
+    }
+    while states.len() >= MAX_TRACKED_SUBJECTS {
+        if !evict_oldest_unlocked(states) {
+            return false;
+        }
+    }
+    true
+}
+
+fn evict_oldest_unlocked(states: &mut HashMap<String, ActorState>) -> bool {
+    let Some(oldest_key) = states
+        .iter()
+        .filter(|(_, state)| !state.is_locked)
+        .min_by_key(|(_, state)| state.last_seen)
+        .map(|(key, _)| key.clone())
+    else {
+        return false;
+    };
+    states.remove(&oldest_key);
+    true
 }
 
 #[cfg(test)]
@@ -486,5 +527,116 @@ mod tests {
         let verdict = detector.check("actor-1", &config);
         assert_eq!(verdict.status, AnomalyStatus::Normal);
         assert!(verdict.evidence.is_none());
+    }
+
+    #[test]
+    fn max_calls_one_thousand_still_rate_limits_the_next_call() {
+        let detector = AnomalyDetector::new();
+        let config = AnomalyConfig {
+            enabled: true,
+            rate_limit: RateLimitConfig {
+                window_seconds: 60,
+                max_calls: 1000,
+            },
+            deny_fuse: DenyFuseConfig::default(),
+        };
+
+        for call in 1..=1000 {
+            assert_eq!(
+                detector.check("high-rate-actor", &config).status,
+                AnomalyStatus::Normal,
+                "call {call} must remain within the configured limit"
+            );
+        }
+        let verdict = detector.check("high-rate-actor", &config);
+        assert_eq!(verdict.status, AnomalyStatus::RateLimited);
+        let evidence = verdict.evidence.expect("rate limit evidence");
+        assert_eq!(evidence.observed, 1001);
+        assert_eq!(evidence.witnesses.len(), 1001);
+        assert!(!evidence.truncated);
+    }
+
+    #[test]
+    fn high_deny_threshold_locks_before_witness_history_is_truncated() {
+        let detector = AnomalyDetector::new();
+        let config = AnomalyConfig {
+            enabled: true,
+            rate_limit: RateLimitConfig {
+                window_seconds: 60,
+                max_calls: 1000,
+            },
+            deny_fuse: DenyFuseConfig {
+                enabled: true,
+                threshold: 1001,
+                window_seconds: 60,
+            },
+        };
+
+        for _ in 0..1001 {
+            detector.report_denial("high-denial-actor", &config);
+        }
+        let verdict = detector.check("high-denial-actor", &config);
+        assert_eq!(verdict.status, AnomalyStatus::Locked);
+        let evidence = verdict.evidence.expect("deny fuse evidence");
+        assert_eq!(evidence.observed, 1001);
+        assert_eq!(evidence.witnesses.len(), 1001);
+        assert!(!evidence.truncated);
+    }
+
+    #[test]
+    fn locked_subject_survives_a_4097_subject_capacity_flood() {
+        let detector = AnomalyDetector::new();
+        let config = AnomalyConfig {
+            enabled: true,
+            rate_limit: RateLimitConfig {
+                window_seconds: 60,
+                max_calls: 1000,
+            },
+            deny_fuse: DenyFuseConfig {
+                enabled: true,
+                threshold: 1,
+                window_seconds: 60,
+            },
+        };
+
+        detector.report_denial("locked-subject", &config);
+        assert_eq!(
+            detector.check("locked-subject", &config).status,
+            AnomalyStatus::Locked
+        );
+
+        for index in 0..4097 {
+            assert_eq!(
+                detector.check(&format!("flood-{index}"), &config).status,
+                AnomalyStatus::Normal
+            );
+        }
+
+        assert_eq!(
+            detector.check("locked-subject", &config).status,
+            AnomalyStatus::Locked,
+            "ordinary subject churn must never evict an existing lock"
+        );
+        let states = detector.states.lock().unwrap();
+        assert!(states.contains_key("locked-subject"));
+        assert!(states.len() <= MAX_TRACKED_SUBJECTS);
+    }
+
+    #[test]
+    fn all_locked_capacity_fails_closed_without_unbounded_growth() {
+        let mut states = HashMap::new();
+        for index in 0..MAX_TRACKED_SUBJECTS {
+            states.insert(
+                format!("locked-{index}"),
+                ActorState {
+                    is_locked: true,
+                    ..ActorState::default()
+                },
+            );
+        }
+
+        assert!(!reserve_subject_slot(&mut states, "new-subject"));
+        assert_eq!(states.len(), MAX_TRACKED_SUBJECTS);
+        assert!(states.values().all(|state| state.is_locked));
     }
 }

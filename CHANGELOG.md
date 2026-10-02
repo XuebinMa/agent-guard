@@ -32,6 +32,14 @@ The `[Unreleased]` heading is rolled forward manually before each release; do no
   does not rescue that case.
 
 ### Security
+- **Approval expiry and anomaly state now preserve their stated boundaries.**
+  The ledger rejects human decisions at or after the recorded expiry, and the
+  resume path independently rejects a forged or legacy late approval before
+  execution. Anomaly thresholds are validated against retained evidence,
+  `max_calls: 1000` can now observe and reject call 1001, and capacity churn
+  evicts only unlocked subjects; a durable lock cannot be erased by flooding
+  4,097 fresh identities. Deployments must still supply a stable,
+  host-authenticated subject identity for per-agent lockout claims.
 - **Guard-owned `WriteFile` now opens workspace targets relative to a directory
   capability.** Workspace-scoped execution no longer validates an ambient path
   and then reopens that path by name. Absolute/parent escapes and symlink or

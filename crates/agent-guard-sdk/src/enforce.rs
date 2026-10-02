@@ -820,6 +820,12 @@ fn approval_record_matches(
     let decided_at = record
         .decided_at
         .ok_or_else(|| "approved record has no decision timestamp".to_string())?;
+    if record
+        .expires_at
+        .is_some_and(|expires_at| decided_at >= expires_at)
+    {
+        return Err("approval was recorded after its expiry; refusing late approval".to_string());
+    }
     if record.request_id != request_id
         || record.tool != input.tool.name()
         || record.payload_hash != sha256_hash(&input.payload)
