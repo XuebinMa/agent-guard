@@ -32,6 +32,14 @@ The `[Unreleased]` heading is rolled forward manually before each release; do no
   does not rescue that case.
 
 ### Security
+- **Guard-owned `WriteFile` now opens workspace targets relative to a directory
+  capability.** Workspace-scoped execution no longer validates an ambient path
+  and then reopens that path by name. Absolute/parent escapes and symlink or
+  ancestor swaps are refused during the capability-relative open itself;
+  deterministic race regressions prove that neither an existing link nor a
+  link installed between validation and open can redirect bytes outside the
+  workspace. Explicit `FullAccess` retains its documented ambient write
+  authority.
 - **Restricted shell validation now fails closed on unresolved destinations and
   unknown read-only executables.** Dynamic or home-relative targets (`$VAR`,
   `${VAR}`, and `~`), existing symlink components that resolve outside the

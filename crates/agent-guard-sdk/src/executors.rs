@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::io::{Read, Write};
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, ToSocketAddrs};
-use std::path::Path;
+use std::path::{Component, Path, PathBuf};
 use std::time::Duration;
 
 use agent_guard_core::{
@@ -70,18 +70,78 @@ pub(crate) fn execute_write_file(
     payload: &str,
     scope: WriteFileScope<'_>,
 ) -> Result<SandboxOutput, SandboxError> {
+    execute_write_file_with_pre_open(payload, scope, || {})
+}
+
+fn execute_write_file_with_pre_open(
+    payload: &str,
+    scope: WriteFileScope<'_>,
+    pre_open: impl FnOnce(),
+) -> Result<SandboxOutput, SandboxError> {
     let request: WriteFileRequest =
         serde_json::from_str(payload).map_err(|_| SandboxError::InvalidPayload {
             code: DecisionCode::InvalidPayload,
             message: "invalid payload JSON".to_string(),
         })?;
-    let workspace_bound = match scope {
-        WriteFileScope::Workspace(path) => Some(path),
-        WriteFileScope::Unrestricted => None,
-    };
-    let resolved_path =
-        resolve_tool_path(&request.path, workspace_bound).map_err(invalid_payload_from_decision)?;
 
+    match scope {
+        WriteFileScope::Workspace(workspace) => {
+            execute_workspace_write(&request, workspace, pre_open)?
+        }
+        WriteFileScope::Unrestricted => execute_unrestricted_write(&request, pre_open)?,
+    }
+
+    Ok(SandboxOutput {
+        exit_code: 0,
+        stdout: String::new(),
+        stderr: String::new(),
+    })
+}
+
+fn execute_workspace_write(
+    request: &WriteFileRequest,
+    workspace: &Path,
+    pre_open: impl FnOnce(),
+) -> Result<(), SandboxError> {
+    let workspace_dir = cap_std::fs::Dir::open_ambient_dir(workspace, cap_std::ambient_authority())
+        .map_err(|error| {
+            SandboxError::ExecutionFailed(format!(
+                "failed to open workspace root for WriteFile: {error}"
+            ))
+        })?;
+    let relative_path = workspace_relative_path(&request.path, workspace)?;
+
+    let mut options = cap_std::fs::OpenOptions::new();
+    options.create(true).write(true);
+    if request.append {
+        options.append(true);
+    } else {
+        options.truncate(true);
+    }
+
+    // Tests use this seam to deterministically replace a validated ancestor.
+    // Production passes a no-op. The actual open remains relative to the
+    // already-open workspace descriptor, so the hook cannot expand authority.
+    pre_open();
+    let file = workspace_dir
+        .open_with(&relative_path, &options)
+        .map_err(|error| {
+            SandboxError::ExecutionFailed(format!(
+                "failed to open workspace file for write: {error}"
+            ))
+        })?;
+    write_file_content(file, &request.content)
+}
+
+fn execute_unrestricted_write(
+    request: &WriteFileRequest,
+    pre_open: impl FnOnce(),
+) -> Result<(), SandboxError> {
+    // FullAccess intentionally retains ambient filesystem authority. Keep its
+    // existing resolution and std::fs open behaviour distinct from the
+    // capability-relative WorkspaceWrite path.
+    let resolved_path =
+        resolve_tool_path(&request.path, None).map_err(invalid_payload_from_decision)?;
     let mut options = std::fs::OpenOptions::new();
     options.create(true).write(true);
     if request.append {
@@ -90,17 +150,95 @@ pub(crate) fn execute_write_file(
         options.truncate(true);
     }
 
-    let mut file = options.open(&resolved_path).map_err(|e| {
-        SandboxError::ExecutionFailed(format!("failed to open file for write: {e}"))
+    pre_open();
+    let file = options.open(&resolved_path).map_err(|error| {
+        SandboxError::ExecutionFailed(format!("failed to open file for write: {error}"))
     })?;
-    file.write_all(request.content.as_bytes())
-        .map_err(|e| SandboxError::ExecutionFailed(format!("failed to write file content: {e}")))?;
+    write_file_content(file, &request.content)
+}
 
-    Ok(SandboxOutput {
-        exit_code: 0,
-        stdout: String::new(),
-        stderr: String::new(),
+fn write_file_content(mut file: impl Write, content: &str) -> Result<(), SandboxError> {
+    file.write_all(content.as_bytes()).map_err(|error| {
+        SandboxError::ExecutionFailed(format!("failed to write file content: {error}"))
     })
+}
+
+fn workspace_relative_path(raw_path: &str, workspace: &Path) -> Result<PathBuf, SandboxError> {
+    if raw_path.trim().is_empty() {
+        return Err(SandboxError::InvalidPayload {
+            code: DecisionCode::InvalidPayload,
+            message: "path must not be empty".to_string(),
+        });
+    }
+
+    let path = Path::new(raw_path);
+    if path.is_absolute() {
+        let workspace = absolute_lexical_path(workspace)?;
+        let requested = normalize_lexical_path(path);
+        return requested
+            .strip_prefix(&workspace)
+            .map(Path::to_path_buf)
+            .map_err(|_| workspace_path_escape(raw_path, &workspace));
+    }
+
+    normalize_relative_workspace_path(path)
+        .ok_or_else(|| workspace_path_escape(raw_path, workspace))
+}
+
+fn absolute_lexical_path(path: &Path) -> Result<PathBuf, SandboxError> {
+    if path.is_absolute() {
+        return Ok(normalize_lexical_path(path));
+    }
+
+    let current_dir = std::env::current_dir().map_err(|error| {
+        SandboxError::ExecutionFailed(format!(
+            "failed to resolve relative workspace root: {error}"
+        ))
+    })?;
+    Ok(normalize_lexical_path(&current_dir.join(path)))
+}
+
+fn normalize_lexical_path(path: &Path) -> PathBuf {
+    let mut normalized = PathBuf::new();
+    for component in path.components() {
+        match component {
+            Component::CurDir => {}
+            Component::ParentDir => {
+                normalized.pop();
+            }
+            Component::RootDir | Component::Prefix(_) | Component::Normal(_) => {
+                normalized.push(component.as_os_str());
+            }
+        }
+    }
+    normalized
+}
+
+fn normalize_relative_workspace_path(path: &Path) -> Option<PathBuf> {
+    let mut normalized = PathBuf::new();
+    for component in path.components() {
+        match component {
+            Component::CurDir => {}
+            Component::ParentDir => {
+                if !normalized.pop() {
+                    return None;
+                }
+            }
+            Component::Normal(part) => normalized.push(part),
+            Component::RootDir | Component::Prefix(_) => return None,
+        }
+    }
+    Some(normalized)
+}
+
+fn workspace_path_escape(raw_path: &str, workspace: &Path) -> SandboxError {
+    SandboxError::InvalidPayload {
+        code: DecisionCode::PathTraversal,
+        message: format!(
+            "path '{raw_path}' resolves outside the workspace ('{}')",
+            workspace.display()
+        ),
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -803,8 +941,8 @@ mod tests {
     // requests back into `ExecutionFailed` or drop the code.
 
     use super::{
-        execute_http_request, execute_write_file, extract_bash_command_for_execution,
-        WriteFileScope,
+        execute_http_request, execute_write_file, execute_write_file_with_pre_open,
+        extract_bash_command_for_execution, WriteFileScope,
     };
     use agent_guard_core::DecisionCode;
     use agent_guard_sandbox::SandboxError;
@@ -848,6 +986,155 @@ mod tests {
             matches!(err, SandboxError::InvalidPayload { .. }),
             "got {err:?}"
         );
+    }
+
+    #[test]
+    fn workspace_write_rejects_absolute_escape() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let workspace = temp.path().join("workspace");
+        let outside = temp.path().join("outside.txt");
+        std::fs::create_dir(&workspace).expect("workspace");
+        let payload = serde_json::json!({ "path": outside, "content": "escaped" }).to_string();
+
+        execute_write_file(&payload, WriteFileScope::Workspace(&workspace))
+            .expect_err("an absolute path outside the workspace must fail closed");
+        assert!(!outside.exists(), "absolute escape created an outside file");
+    }
+
+    #[test]
+    fn workspace_write_rejects_parent_escape() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let workspace = temp.path().join("workspace");
+        let outside = temp.path().join("outside.txt");
+        std::fs::create_dir(&workspace).expect("workspace");
+        let payload = serde_json::json!({
+            "path": "../outside.txt",
+            "content": "escaped"
+        })
+        .to_string();
+
+        execute_write_file(&payload, WriteFileScope::Workspace(&workspace))
+            .expect_err("a parent traversal outside the workspace must fail closed");
+        assert!(
+            !outside.exists(),
+            "parent traversal created an outside file"
+        );
+    }
+
+    #[cfg(any(unix, windows))]
+    #[test]
+    fn workspace_write_rejects_existing_symlink_escape() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let workspace = temp.path().join("workspace");
+        let outside = temp.path().join("outside.txt");
+        let link = workspace.join("escape.txt");
+        std::fs::create_dir(&workspace).expect("workspace");
+        std::fs::write(&outside, "before").expect("seed outside file");
+        symlink_for_write_test(&outside, &link);
+        let payload = serde_json::json!({ "path": "escape.txt", "content": "after" }).to_string();
+
+        execute_write_file(&payload, WriteFileScope::Workspace(&workspace))
+            .expect_err("a symlink/reparse-point escape must fail closed");
+        assert_eq!(
+            std::fs::read_to_string(&outside).expect("read outside file"),
+            "before"
+        );
+    }
+
+    #[cfg(any(unix, windows))]
+    #[test]
+    fn workspace_write_rejects_symlink_installed_during_open() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let workspace = temp.path().join("workspace");
+        let outside = temp.path().join("outside.txt");
+        let target = workspace.join("target.txt");
+        std::fs::create_dir(&workspace).expect("workspace");
+        std::fs::write(&outside, "before").expect("seed outside file");
+        let payload = serde_json::json!({ "path": "target.txt", "content": "after" }).to_string();
+
+        let result = execute_write_file_with_pre_open(
+            &payload,
+            WriteFileScope::Workspace(&workspace),
+            || symlink_for_write_test(&outside, &target),
+        );
+
+        result.expect_err("a symlink/reparse point installed during open must fail closed");
+        assert_eq!(
+            std::fs::read_to_string(&outside).expect("read outside file"),
+            "before"
+        );
+    }
+
+    #[cfg(any(unix, windows))]
+    #[test]
+    fn workspace_write_rejects_ancestor_replaced_after_validation() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let workspace = temp.path().join("workspace");
+        let ancestor = workspace.join("ancestor");
+        let displaced_ancestor = workspace.join("ancestor-before-swap");
+        let outside = temp.path().join("outside");
+        let outside_file = outside.join("escaped.txt");
+        std::fs::create_dir_all(&ancestor).expect("workspace ancestor");
+        std::fs::create_dir(&outside).expect("outside dir");
+        let payload = serde_json::json!({
+            "path": "ancestor/escaped.txt",
+            "content": "escaped"
+        })
+        .to_string();
+
+        let result = execute_write_file_with_pre_open(
+            &payload,
+            WriteFileScope::Workspace(&workspace),
+            || {
+                // A separate thread performs the attacker-controlled swap in the
+                // exact interval where the old executor had finished validating
+                // the pathname but had not opened it yet.
+                std::thread::scope(|scope| {
+                    scope
+                        .spawn(|| {
+                            std::fs::rename(&ancestor, &displaced_ancestor)
+                                .expect("displace ancestor");
+                            symlink_for_write_test(&outside, &ancestor);
+                        })
+                        .join()
+                        .expect("join ancestor-swap thread");
+                });
+            },
+        );
+
+        result.expect_err("an ancestor swap must not redirect a workspace write");
+        assert!(
+            !outside_file.exists(),
+            "ancestor replacement redirected the write outside the workspace"
+        );
+    }
+
+    #[test]
+    fn full_access_write_remains_unrestricted() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let target = temp.path().join("full-access.txt");
+        let payload = serde_json::json!({ "path": target, "content": "allowed" }).to_string();
+
+        execute_write_file(&payload, WriteFileScope::Unrestricted)
+            .expect("FullAccess write should retain ambient filesystem authority");
+        assert_eq!(
+            std::fs::read_to_string(&target).expect("read FullAccess target"),
+            "allowed"
+        );
+    }
+
+    #[cfg(unix)]
+    fn symlink_for_write_test(target: &std::path::Path, link: &std::path::Path) {
+        std::os::unix::fs::symlink(target, link).expect("create symlink");
+    }
+
+    #[cfg(windows)]
+    fn symlink_for_write_test(target: &std::path::Path, link: &std::path::Path) {
+        if target.is_dir() {
+            std::os::windows::fs::symlink_dir(target, link).expect("create directory symlink");
+        } else {
+            std::os::windows::fs::symlink_file(target, link).expect("create file symlink");
+        }
     }
 
     #[test]

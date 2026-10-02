@@ -51,6 +51,11 @@ hanging off it:
    types defined here. A change to the decision shape, `DecisionCode`, or
    `check`/`decide`/`run`/`execute` semantics ripples to both bindings and the
    parity scenarios — see [Cross-Language Parity](../../docs/concepts/cross-language-parity.md).
+5. **Workspace `WriteFile` opens are capability-relative.** Do not reintroduce
+   a validate-then-ambient-open sequence in `executors.rs`. The opened workspace
+   directory is the authority root, and path resolution plus the final create /
+   truncate must remain one descriptor-relative operation. `FullAccess` is the
+   only branch that intentionally retains ambient filesystem authority.
 
 ## Tests: the suite in `tests/` is the spec
 
