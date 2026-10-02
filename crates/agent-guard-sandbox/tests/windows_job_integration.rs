@@ -6,6 +6,7 @@
 #[cfg(all(target_os = "windows", feature = "windows-sandbox"))]
 mod windows_job_tests {
     use std::path::PathBuf;
+    use std::time::Duration;
 
     use agent_guard_core::PolicyMode;
     use agent_guard_sandbox::{
@@ -122,5 +123,46 @@ mod windows_job_tests {
             }
             Err(err) => panic!("expected command execution result, got {err}"),
         }
+    }
+
+    #[test]
+    fn w4_output_capture_limit_is_enforced() {
+        let sandbox = JobObjectSandbox;
+        if !job_object_available(&sandbox) {
+            return;
+        }
+
+        let command = "powershell -NoProfile -Command [Console]::Out.Write^('x'^*5000000^)";
+        let error = sandbox
+            .execute(command, &ctx())
+            .expect_err("oversized stdout must fail with a typed limit error");
+        assert!(matches!(error, SandboxError::OutputLimitExceeded { .. }));
+    }
+
+    #[test]
+    fn w5_timeout_kills_background_descendants_in_the_job() {
+        let sandbox = JobObjectSandbox;
+        if !job_object_available(&sandbox) {
+            return;
+        }
+
+        let sentinel = workspace_dir().join("job-descendant-survived.txt");
+        let _ = std::fs::remove_file(&sentinel);
+        let command = format!(
+            "start /B cmd.exe /C ping -n 3 127.0.0.1 ^>NUL ^& echo survived ^> {} & ping -n 20 127.0.0.1 >NUL",
+            sentinel.display()
+        );
+        let mut context = ctx();
+        context.timeout_ms = Some(100);
+
+        let error = sandbox
+            .execute(&command, &context)
+            .expect_err("command tree must time out");
+        assert!(matches!(error, SandboxError::Timeout { ms: 100 }));
+        std::thread::sleep(Duration::from_secs(3));
+        assert!(
+            !sentinel.exists(),
+            "background descendant survived Job Object termination"
+        );
     }
 }

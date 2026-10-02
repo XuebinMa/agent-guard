@@ -31,8 +31,13 @@ serde_json.workspace = true
 [target.'cfg(target_os = "linux")'.dependencies]
 libseccomp = { version = "0.3", optional = true }
 landlock = { version = "0.4", optional = true }
+
+[target.'cfg(unix)'.dependencies]
 libc = "0.2"
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { workspace = true, optional = true }
 windows = { workspace = true, optional = true }
+
+[dev-dependencies]
+tempfile = "3"

@@ -65,7 +65,12 @@ Categorized analysis of threats and implemented defenses:
 
 ### **D**enial of Service (Availability)
 - **Threat**: An agent exhausts CPU/RAM or initiates a rapid-fire loop of tool calls.
-- **Mitigation**: **Anomaly Detection** (frequency-based) + Windows Job Object resource limits (256MB default).
+- **Mitigation**: **Anomaly Detection** (frequency-based), a five-minute
+  default for Guard-owned Bash, a 4 MiB per-stream output cap, Unix
+  process-group cleanup, and Windows Job Object process/memory limits (256MB
+  default). Process groups are not cgroups/PID namespaces; a hostile executable
+  that can deliberately leave its group still requires a stronger host
+  containment boundary.
 
 ### **E**levation of Privilege (Isolation)
 - **Threat**: An agent escapes the sandbox to gain root/Administrator privileges.

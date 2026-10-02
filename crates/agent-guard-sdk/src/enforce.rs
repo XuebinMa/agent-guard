@@ -163,7 +163,7 @@ impl Guard {
         let ctx = SandboxContext {
             mode: mode.clone(),
             working_directory,
-            timeout_ms: None,
+            timeout_ms: Some(state.execution_timeout_ms.get()),
         };
 
         let execution_backend = match input.tool {

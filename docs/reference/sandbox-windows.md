@@ -14,6 +14,11 @@ While the Linux implementation uses `seccomp-bpf` for fine-grained syscall filte
 4.  **Global Read Access**: Low-IL does not prevent the sandboxed process from reading files the user can already read.
 5.  **Runtime Availability Risk**: Low-IL process launch depends on host privileges and Win32 environment details. On hosts where `CreateProcessAsUserW` with the prepared token is denied, `JobObjectSandbox::is_available()` returns `false`, capabilities are reported as unavailable, and execution fails closed instead of silently degrading.
 6.  **No Syscall Filtering**: Windows does not have a native equivalent to Linux Seccomp that is easily accessible to CLI tools. Restricting syscalls would require kernel-mode drivers or complex user-mode hooking.
+7.  **Bounded execution**: Guard-owned Bash defaults to a five-minute timeout,
+    and the runner retains at most 4 MiB for each output stream. Timeout or
+    output overflow terminates the complete Job Object before output readers
+    are joined, so an ordinary background descendant cannot keep the call
+    alive or survive it.
 
 ## Comparison: Linux vs. Windows (Prototype)
 
@@ -52,7 +57,7 @@ The current Windows implementation is a **Verifiable Prototype**. In Phase 5, we
 
 ### 4. Windows-Specific Integration Tests (P0)
 - **Status**: **Implemented & Active**.
-- **Implementation**: Dedicated Windows CI now runs `windows_job_integration` to verify runtime-availability reporting and, when low-integrity launch is functional on the host, Job Object execution, working-directory application, and protected-directory write blocking.
+- **Implementation**: Dedicated Windows CI now runs `windows_job_integration` to verify runtime-availability reporting and, when low-integrity launch is functional on the host, Job Object execution, working-directory application, protected-directory write blocking, bounded output, and timeout cleanup of background descendants.
 
 ## Use Cases
 

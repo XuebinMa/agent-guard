@@ -13,6 +13,11 @@ While the Linux implementation uses `seccomp-bpf` for fine-grained syscall filte
 3.  **Global Read Access**: To ensure developer tools (compilers, interpreters) function correctly, the profile currently uses `(allow file-read*)`. This means a sandboxed process can **read any file** on the system that the current user has permission to read (including SSH keys, browser cookies, etc.), even if the policy is set to `ReadOnly`.
 4.  **Coarse-Grained Filesystem Policy**: The current profile allows workspace writes and denies all network access, but it does so with broad Seatbelt path rules rather than syscall-level mediation. It should be treated as a best-effort containment layer, not a hardened isolation boundary.
 5.  **No Syscall Filtering**: Seatbelt profiles in this implementation do not restrict specific syscalls. It relies entirely on path-based filesystem rules.
+6.  **Process-group cleanup, not a PID namespace**: commands run in a fresh
+    Unix session and the group is killed on timeout, output overflow, or shell
+    completion. This prevents ordinary background descendants from surviving,
+    but an allowed program that deliberately creates another session is not
+    contained by a process group alone.
 
 ## Use Cases
 
@@ -44,6 +49,9 @@ The macOS sandbox is **disabled by default** to avoid dependency on legacy syste
 - **Availability Detection**: Even with the feature enabled, `SeatbeltSandbox` is only considered available when `sandbox-exec` is functional on the current host.
 - **Default Fallback**: If the feature is not enabled, or if running on a non-Linux/macOS platform, the `Guard::execute_default()` API will fall back to `NoopSandbox` (no OS-level isolation).
 - **Manual Execution**: You can always manually instantiate `SeatbeltSandbox` if the feature is enabled.
+- **Resource lifecycle**: Guard-owned Bash defaults to a five-minute timeout.
+  Built-in runners retain at most 4 MiB each for stdout and stderr and return
+  `OutputLimitExceeded` after terminating the command group.
 
 ## Security Recommendation
 

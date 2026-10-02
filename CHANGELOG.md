@@ -32,6 +32,15 @@ The `[Unreleased]` heading is rolled forward manually before each release; do no
   does not rescue that case.
 
 ### Security
+- **Guard-owned shell execution now has a finite resource lifecycle.** Bash
+  execution defaults to a five-minute timeout (tightenable through
+  `Guard::set_execution_timeout_ms`), and every built-in process runner retains
+  at most 4 MiB independently for stdout and stderr before returning the typed
+  `OutputLimitExceeded` error. Unix backends launch a fresh session and kill
+  the process group on timeout, overflow, or root-shell exit; Windows uses the
+  existing Job Object to terminate the full job before joining output readers.
+  Regressions prove simultaneous pipe draining and that a background
+  grandchild cannot write its delayed sentinel after timeout.
 - **Linux Landlock now proves and enforces the write boundary it advertises.**
   The backend requires Landlock ABI v3 as a hard minimum, so `truncate(2)`,
   inherited-FD `ftruncate(2)`, and `open(2)` with `O_TRUNC` cannot bypass

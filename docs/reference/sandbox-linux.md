@@ -87,7 +87,23 @@ cargo test -p agent-guard-sandbox --features landlock --test landlock_integratio
 - `FilterSetup`: Returned when native seccomp is unavailable, a required syscall cannot be resolved, or the complete filter cannot be installed.
 - `KilledByFilter`: Returned if the kernel terminates the process with `SIGSYS`.
 - `Timeout`: Execution exceeded `SandboxContext.timeout_ms`.
+- `OutputLimitExceeded`: stdout or stderr exceeded the 4 MiB per-stream
+  retention limit. The process group is terminated; excess bytes are never
+  accumulated in memory.
 - `ExecutionFailed`: Process spawn or shell execution failed.
+
+## Process lifecycle
+
+Guard-owned Bash supplies a five-minute timeout by default; Rust hosts may
+tighten it with `Guard::set_execution_timeout_ms`. Linux commands start in a
+new Unix session. Timeout, output overflow, and root-shell completion terminate
+remaining members of that process group before the result is returned, while
+stdout and stderr are drained concurrently to avoid pipe-capacity deadlocks.
+
+This is process-group lifecycle management, not a PID namespace or cgroup. A
+program that is already allowed to create a new session can deliberately leave
+the group; hostile multi-tenant containment still requires a stronger host
+boundary.
 
 ## Production Recommendation
 

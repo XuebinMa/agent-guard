@@ -2,7 +2,14 @@
 use crate::SandboxOutput;
 use crate::{RuntimeCheck, Sandbox, SandboxContext, SandboxError, SandboxResult};
 #[cfg(windows)]
-use std::sync::OnceLock;
+use std::sync::atomic::{AtomicU8, Ordering};
+#[cfg(windows)]
+use std::sync::{Arc, OnceLock};
+
+#[cfg(windows)]
+const STDOUT_LIMIT_BIT: u8 = 1;
+#[cfg(windows)]
+const STDERR_LIMIT_BIT: u8 = 2;
 
 /// Windows sandbox implementation using Job Objects and Restricted Tokens.
 ///
@@ -344,7 +351,11 @@ fn create_pipe() -> Result<
 }
 
 #[cfg(windows)]
-fn read_handle_to_string(handle: windows_sys::Win32::Foundation::HANDLE) -> String {
+fn read_handle_bounded(
+    handle: windows_sys::Win32::Foundation::HANDLE,
+    stream_bit: u8,
+    limit_flags: Arc<AtomicU8>,
+) -> String {
     use windows_sys::Win32::Storage::FileSystem::ReadFile;
     use windows_sys::Win32::System::IO::OVERLAPPED;
     let mut out = Vec::new();
@@ -366,10 +377,28 @@ fn read_handle_to_string(handle: windows_sys::Win32::Foundation::HANDLE) -> Stri
             if bytes_read == 0 {
                 break;
             }
-            out.extend_from_slice(&buffer[..bytes_read as usize]);
+            let bytes_read = bytes_read as usize;
+            let remaining = crate::OUTPUT_CAPTURE_LIMIT_BYTES.saturating_sub(out.len());
+            out.extend_from_slice(&buffer[..bytes_read.min(remaining)]);
+            if bytes_read > remaining {
+                limit_flags.fetch_or(stream_bit, Ordering::Release);
+            }
         }
     }
     String::from_utf8_lossy(&out).into_owned()
+}
+
+#[cfg(windows)]
+fn output_limit_error(flags: u8) -> SandboxError {
+    let stream = match flags & (STDOUT_LIMIT_BIT | STDERR_LIMIT_BIT) {
+        STDOUT_LIMIT_BIT => "stdout",
+        STDERR_LIMIT_BIT => "stderr",
+        _ => "stdout and stderr",
+    };
+    SandboxError::OutputLimitExceeded {
+        stream: stream.to_string(),
+        limit_bytes: crate::OUTPUT_CAPTURE_LIMIT_BYTES,
+    }
 }
 
 #[cfg(windows)]
@@ -470,9 +499,22 @@ fn spawn_low_integrity_process(
     token: windows_sys::Win32::Foundation::HANDLE,
     job: windows_sys::Win32::Foundation::HANDLE,
 ) -> Result<WaitOutput, SandboxError> {
+    let deadline: Option<std::time::Instant> = match timeout_ms {
+        Some(timeout_ms) => Some(
+            std::time::Instant::now()
+                .checked_add(std::time::Duration::from_millis(timeout_ms))
+                .ok_or_else(|| {
+                    SandboxError::ExecutionFailed(
+                        "Windows Sandbox: timeout exceeds the platform clock range".to_string(),
+                    )
+                })?,
+        ),
+        None => None,
+    };
+
     use std::os::windows::ffi::OsStrExt;
     use windows_sys::Win32::Foundation::{
-        ERROR_ACCESS_DENIED, ERROR_PRIVILEGE_NOT_HELD, WAIT_TIMEOUT,
+        ERROR_ACCESS_DENIED, ERROR_PRIVILEGE_NOT_HELD, WAIT_FAILED, WAIT_OBJECT_0, WAIT_TIMEOUT,
     };
     use windows_sys::Win32::System::JobObjects::*;
     use windows_sys::Win32::System::Threading::*;
@@ -577,27 +619,86 @@ fn spawn_low_integrity_process(
         drop(_stderr_write_guard);
 
         // 5. Start reader threads BEFORE resuming to avoid deadlocks on small pipe buffers
-        let stdout_read_handle = stdout_read;
-        let stderr_read_handle = stderr_read;
-
-        let stdout_thread = std::thread::spawn(move || read_handle_to_string(stdout_read_handle));
-        let stderr_thread = std::thread::spawn(move || read_handle_to_string(stderr_read_handle));
+        let limit_flags = Arc::new(AtomicU8::new(0));
+        let stdout_flags = Arc::clone(&limit_flags);
+        let stderr_flags = Arc::clone(&limit_flags);
+        let stdout_thread = std::thread::spawn(move || {
+            read_handle_bounded(stdout_read, STDOUT_LIMIT_BIT, stdout_flags)
+        });
+        let stderr_thread = std::thread::spawn(move || {
+            read_handle_bounded(stderr_read, STDERR_LIMIT_BIT, stderr_flags)
+        });
 
         // 6. Resume process
         if ResumeThread(pi.hThread) == u32::MAX {
-            let _ = TerminateProcess(pi.hProcess, 1);
+            let _ = TerminateJobObject(job, 1);
+            let _ = WaitForSingleObject(pi.hProcess, 5_000);
+            let _ = stdout_thread.join();
+            let _ = stderr_thread.join();
             return Err(SandboxError::ExecutionFailed(
                 "Windows Sandbox: Failed to resume low-IL process".to_string(),
             ));
         }
 
-        // 7. Wait for completion with optional timeout
-        let timeout_ms = timeout_ms.unwrap_or(u32::MAX as u64); // INFINITE if None
-        let wait_res = WaitForSingleObject(pi.hProcess, timeout_ms as u32);
+        // 7. Poll completion so output growth and the wall-clock deadline are
+        // enforced while both pipes are drained concurrently.
+        let mut terminal_error = None;
+        loop {
+            let exceeded = limit_flags.load(Ordering::Acquire);
+            if exceeded != 0 {
+                terminal_error = Some(output_limit_error(exceeded));
+                break;
+            }
+            if deadline.is_some_and(|end| std::time::Instant::now() >= end) {
+                terminal_error = Some(SandboxError::Timeout {
+                    ms: timeout_ms.expect("deadline implies timeout"),
+                });
+                break;
+            }
 
-        if wait_res == WAIT_TIMEOUT {
-            let _ = TerminateProcess(pi.hProcess, 1);
-            return Err(SandboxError::Timeout { ms: timeout_ms });
+            match WaitForSingleObject(pi.hProcess, 10) {
+                WAIT_OBJECT_0 => break,
+                WAIT_TIMEOUT => continue,
+                WAIT_FAILED => {
+                    terminal_error = Some(SandboxError::ExecutionFailed(format!(
+                        "Windows Sandbox: WaitForSingleObject failed: {}",
+                        std::io::Error::last_os_error()
+                    )));
+                    break;
+                }
+                other => {
+                    terminal_error = Some(SandboxError::ExecutionFailed(format!(
+                        "Windows Sandbox: unexpected wait result {other}"
+                    )));
+                    break;
+                }
+            }
+        }
+
+        // Kill every remaining job member before joining the readers. This is
+        // required even after the root exits because a background descendant
+        // may still hold an inherited pipe handle.
+        if TerminateJobObject(job, 1) == 0 {
+            return Err(SandboxError::ExecutionFailed(format!(
+                "Windows Sandbox: failed to terminate Job Object: {}",
+                std::io::Error::last_os_error()
+            )));
+        }
+        let _ = WaitForSingleObject(pi.hProcess, 5_000);
+
+        let stdout = stdout_thread
+            .join()
+            .unwrap_or_else(|_| "[Error reading stdout]".to_string());
+        let stderr = stderr_thread
+            .join()
+            .unwrap_or_else(|_| "[Error reading stderr]".to_string());
+
+        let exceeded = limit_flags.load(Ordering::Acquire);
+        if let Some(error) = terminal_error {
+            return Err(error);
+        }
+        if exceeded != 0 {
+            return Err(output_limit_error(exceeded));
         }
 
         let mut exit_code: u32 = 0;
@@ -609,13 +710,6 @@ fn spawn_low_integrity_process(
                 "Windows Sandbox: GetExitCodeProcess failed".to_string(),
             ));
         }
-
-        let stdout = stdout_thread
-            .join()
-            .unwrap_or_else(|_| "[Error reading stdout]".to_string());
-        let stderr = stderr_thread
-            .join()
-            .unwrap_or_else(|_| "[Error reading stderr]".to_string());
 
         Ok(WaitOutput {
             stdout,

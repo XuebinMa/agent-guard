@@ -5,6 +5,8 @@
 //! yet implemented.
 
 #[cfg(target_os = "linux")]
+use crate::process::{configure_process_group, wait_for_child};
+#[cfg(target_os = "linux")]
 use crate::SandboxOutput;
 use crate::{Sandbox, SandboxCapabilities, SandboxContext, SandboxError, SandboxResult};
 #[cfg(any(target_os = "linux", test))]
@@ -116,9 +118,6 @@ fn is_landlock_supported() -> bool {
 #[cfg(target_os = "linux")]
 fn execute_with_landlock(command: &str, context: &SandboxContext) -> SandboxResult {
     use std::os::unix::process::CommandExt;
-    use std::sync::mpsc;
-    use std::thread;
-    use std::time::Duration;
 
     let resolved_dir = context.working_directory.canonicalize().map_err(|e| {
         SandboxError::ExecutionFailed(format!("Failed to resolve workspace: {}", e))
@@ -133,6 +132,7 @@ fn execute_with_landlock(command: &str, context: &SandboxContext) -> SandboxResu
         .current_dir(&resolved_dir)
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped());
+    configure_process_group(&mut cmd);
 
     // Apply Landlock restrictions in the child process before exec
     unsafe {
@@ -142,7 +142,7 @@ fn execute_with_landlock(command: &str, context: &SandboxContext) -> SandboxResu
         });
     }
 
-    let mut child = cmd.spawn().map_err(|e| {
+    let child = cmd.spawn().map_err(|e| {
         let msg = e.to_string();
         if e.kind() == std::io::ErrorKind::PermissionDenied
             || msg.contains("PermissionDenied")
@@ -154,46 +154,11 @@ fn execute_with_landlock(command: &str, context: &SandboxContext) -> SandboxResu
         }
     })?;
 
-    // Timeout handling (same pattern as macos.rs)
-    if let Some(timeout_ms) = context.timeout_ms {
-        let (tx, rx) = mpsc::channel();
-        thread::spawn(move || {
-            thread::sleep(Duration::from_millis(timeout_ms));
-            let _ = tx.send(());
-        });
-
-        loop {
-            match child.try_wait() {
-                Ok(Some(status)) => {
-                    let output = child
-                        .wait_with_output()
-                        .map_err(|e| SandboxError::ExecutionFailed(e.to_string()))?;
-                    return Ok(SandboxOutput {
-                        stdout: String::from_utf8_lossy(&output.stdout).to_string(),
-                        stderr: String::from_utf8_lossy(&output.stderr).to_string(),
-                        exit_code: status.code().unwrap_or(-1),
-                    });
-                }
-                Ok(None) => {
-                    if rx.try_recv().is_ok() {
-                        let _ = child.kill();
-                        let _ = child.wait(); // Prevent zombie
-                        return Err(SandboxError::Timeout { ms: timeout_ms });
-                    }
-                    thread::sleep(Duration::from_millis(10));
-                }
-                Err(e) => return Err(SandboxError::ExecutionFailed(e.to_string())),
-            }
-        }
-    }
-
-    let output = child
-        .wait_with_output()
-        .map_err(|e| SandboxError::ExecutionFailed(e.to_string()))?;
+    let output = wait_for_child(child, context.timeout_ms)?;
 
     Ok(SandboxOutput {
-        stdout: String::from_utf8_lossy(&output.stdout).to_string(),
-        stderr: String::from_utf8_lossy(&output.stderr).to_string(),
+        stdout: output.stdout,
+        stderr: output.stderr,
         exit_code: output.status.code().unwrap_or(-1),
     })
 }

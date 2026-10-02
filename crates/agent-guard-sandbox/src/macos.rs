@@ -1,4 +1,6 @@
 #[cfg(target_os = "macos")]
+use crate::process::{configure_process_group, wait_for_child};
+#[cfg(target_os = "macos")]
 use crate::SandboxOutput;
 use crate::{
     RuntimeCheck, Sandbox, SandboxCapabilities, SandboxContext, SandboxError, SandboxResult,
@@ -175,7 +177,9 @@ impl Sandbox for SeatbeltSandbox {
                 escaped_workspace
             );
 
-            let mut child = Command::new("sandbox-exec")
+            let mut command_process = Command::new("sandbox-exec");
+            configure_process_group(&mut command_process);
+            let child = command_process
                 .arg("-p")
                 .arg(profile)
                 .arg("sh")
@@ -188,54 +192,11 @@ impl Sandbox for SeatbeltSandbox {
                 .map_err(|e| {
                     SandboxError::ExecutionFailed(format!("Failed to spawn sandbox-exec: {}", e))
                 })?;
-
-            // Handle timeout if specified
-            if let Some(timeout_ms) = context.timeout_ms {
-                use std::sync::mpsc;
-                use std::thread;
-                use std::time::Duration;
-
-                let (tx, rx) = mpsc::channel();
-                thread::spawn(move || {
-                    thread::sleep(Duration::from_millis(timeout_ms));
-                    let _ = tx.send(());
-                });
-
-                loop {
-                    match child.try_wait() {
-                        Ok(Some(status)) => {
-                            let output = child
-                                .wait_with_output()
-                                .map_err(|e| SandboxError::ExecutionFailed(e.to_string()))?;
-                            return Ok(SandboxOutput {
-                                stdout: String::from_utf8_lossy(&output.stdout).to_string(),
-                                stderr: String::from_utf8_lossy(&output.stderr).to_string(),
-                                exit_code: status.code().unwrap_or(-1),
-                            });
-                        }
-                        Ok(None) => {
-                            if rx.try_recv().is_ok() {
-                                let _ = child.kill();
-                                let _ = child.wait(); // Prevent zombie
-                                return Err(SandboxError::Timeout { ms: timeout_ms });
-                            }
-                            thread::sleep(Duration::from_millis(10));
-                        }
-                        Err(e) => return Err(SandboxError::ExecutionFailed(e.to_string())),
-                    }
-                }
-            }
-
-            let output = child.wait_with_output().map_err(|e| {
-                SandboxError::ExecutionFailed(format!(
-                    "Failed to wait for sandboxed process: {}",
-                    e
-                ))
-            })?;
+            let output = wait_for_child(child, context.timeout_ms)?;
 
             Ok(SandboxOutput {
-                stdout: String::from_utf8_lossy(&output.stdout).to_string(),
-                stderr: String::from_utf8_lossy(&output.stderr).to_string(),
+                stdout: output.stdout,
+                stderr: output.stderr,
                 exit_code: output.status.code().unwrap_or(-1),
             })
         }

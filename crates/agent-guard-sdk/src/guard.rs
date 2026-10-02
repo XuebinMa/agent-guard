@@ -147,6 +147,9 @@ pub(crate) struct GuardState {
     /// can be given separate registries (#60).
     pub(crate) metrics: Arc<crate::metrics::Metrics>,
     pub(crate) audit_sink: AuditSink,
+    /// Guard-owned Bash executions are always bounded. Hosts may tighten the
+    /// default through `Guard::set_execution_timeout_ms`.
+    pub(crate) execution_timeout_ms: std::num::NonZeroU64,
 }
 
 impl std::fmt::Debug for Guard {
@@ -599,6 +602,10 @@ impl GuardState {
             policy_verification,
             metrics: crate::metrics::get_metrics(),
             audit_sink: stdout_audit_sink(),
+            execution_timeout_ms: std::num::NonZeroU64::new(
+                crate::guard_lifecycle::DEFAULT_EXECUTION_TIMEOUT_MS,
+            )
+            .expect("the default execution timeout is non-zero"),
         })
     }
 }

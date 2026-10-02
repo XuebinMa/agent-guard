@@ -88,6 +88,7 @@ dependencies = [
  "libseccomp",
  "serde",
  "serde_json",
+ "tempfile",
  "thiserror 1.0.69",
  "windows",
  "windows-sys 0.52.0",

@@ -1,5 +1,7 @@
 //! Linux seccomp-bpf sandbox.
 
+#[cfg(target_os = "linux")]
+use crate::process::{configure_process_group, wait_for_child};
 #[cfg(all(target_os = "linux", feature = "seccomp"))]
 use crate::seccomp_rules::{
     preflight_required_syscalls_with, COMMON_DENY_SYSCALLS, NETWORK_DENY_SYSCALLS,
@@ -106,7 +108,9 @@ fn execute_with_seccomp(command: &str, context: &SandboxContext) -> SandboxResul
 
 #[cfg(target_os = "linux")]
 fn execute_compat_shell(command: &str, context: &SandboxContext) -> SandboxResult {
-    let child = Command::new("sh")
+    let mut shell = Command::new("sh");
+    configure_process_group(&mut shell);
+    let child = shell
         .arg("-c")
         .arg(command)
         .current_dir(&context.working_directory)
@@ -115,7 +119,7 @@ fn execute_compat_shell(command: &str, context: &SandboxContext) -> SandboxResul
         .spawn()
         .map_err(|e| SandboxError::ExecutionFailed(format!("Failed to spawn process: {}", e)))?;
 
-    wait_for_child(child, context.timeout_ms)
+    finish_child(child, context.timeout_ms)
 }
 
 #[cfg(all(target_os = "linux", feature = "seccomp"))]
@@ -132,6 +136,7 @@ fn execute_with_native_seccomp(command: &str, context: &SandboxContext) -> Sandb
         .current_dir(&context.working_directory)
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped());
+    configure_process_group(&mut child);
 
     unsafe {
         child.pre_exec(move || {
@@ -158,42 +163,12 @@ fn execute_with_native_seccomp(command: &str, context: &SandboxContext) -> Sandb
         }
     };
 
-    wait_for_child(child, context.timeout_ms)
+    finish_child(child, context.timeout_ms)
 }
 
 #[cfg(target_os = "linux")]
-fn wait_for_child(mut child: std::process::Child, timeout_ms: Option<u64>) -> SandboxResult {
-    use std::sync::mpsc;
-    use std::thread;
-    use std::time::Duration;
-
-    if let Some(timeout_ms) = timeout_ms {
-        let (tx, rx) = mpsc::channel();
-
-        thread::spawn(move || {
-            thread::sleep(Duration::from_millis(timeout_ms));
-            let _ = tx.send(());
-        });
-
-        loop {
-            match child.try_wait() {
-                Ok(Some(_status)) => break,
-                Ok(None) => {
-                    if rx.try_recv().is_ok() {
-                        let _ = child.kill();
-                        let _ = child.wait();
-                        return Err(SandboxError::Timeout { ms: timeout_ms });
-                    }
-                    thread::sleep(Duration::from_millis(10));
-                }
-                Err(e) => return Err(SandboxError::ExecutionFailed(e.to_string())),
-            }
-        }
-    }
-
-    let output = child
-        .wait_with_output()
-        .map_err(|e| SandboxError::ExecutionFailed(e.to_string()))?;
+fn finish_child(child: std::process::Child, timeout_ms: Option<u64>) -> SandboxResult {
+    let output = wait_for_child(child, timeout_ms)?;
     let exit_status = output.status;
 
     if exit_status.signal() == Some(libc::SIGSYS) {
@@ -203,8 +178,8 @@ fn wait_for_child(mut child: std::process::Child, timeout_ms: Option<u64>) -> Sa
     }
 
     Ok(SandboxOutput {
-        stdout: String::from_utf8_lossy(&output.stdout).to_string(),
-        stderr: String::from_utf8_lossy(&output.stderr).to_string(),
+        stdout: output.stdout,
+        stderr: output.stderr,
         exit_code: exit_status.code().unwrap_or(-1),
     })
 }
