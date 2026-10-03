@@ -1,3 +1,4 @@
+import json
 import os
 import re
 import sys
@@ -41,6 +42,7 @@ STALE_PATTERNS = [
 ]
 
 FENCED_BLOCK_PATTERN = re.compile(r"```(?P<lang>[A-Za-z0-9_+-]*)\n(?P<body>.*?)```", re.DOTALL)
+PLUGIN_RECEIPT_CLAIM = re.compile(r"(?:ed25519[- ]signed|signed)\s+(?:audit\s+)?receipts?", re.IGNORECASE)
 
 
 def extract_fenced_blocks(content):
@@ -73,6 +75,40 @@ def check_rust_block(block, rel_path):
     return errors
 
 
+def check_plugin_metadata(root_dir):
+    errors = 0
+    paths = [
+        os.path.join(root_dir, ".claude-plugin", "plugin.json"),
+        os.path.join(root_dir, ".claude-plugin", "marketplace.json"),
+    ]
+
+    def descriptions(value):
+        if isinstance(value, dict):
+            for key, child in value.items():
+                if key == "description" and isinstance(child, str):
+                    yield child
+                yield from descriptions(child)
+        elif isinstance(value, list):
+            for child in value:
+                yield from descriptions(child)
+
+    for path in paths:
+        rel_path = os.path.relpath(path, root_dir)
+        try:
+            with open(path, "r", encoding="utf-8") as handle:
+                document = json.load(handle)
+        except (OSError, json.JSONDecodeError) as error:
+            print(f"❌ Invalid plugin metadata in {rel_path}: {error}")
+            errors += 1
+            continue
+        for description in descriptions(document):
+            if PLUGIN_RECEIPT_CLAIM.search(description):
+                print(f"❌ Misleading signed-receipt claim in {rel_path}")
+                print("   👉 Suggestion: This decision-only plugin does not create signed receipts")
+                errors += 1
+    return errors
+
+
 def check_md_files():
     root_dir = os.getcwd()
     md_files = []
@@ -83,7 +119,7 @@ def check_md_files():
             if file.endswith('.md'):
                 md_files.append(os.path.join(root, file))
 
-    errors = 0
+    errors = check_plugin_metadata(root_dir)
     link_pattern = re.compile(r'\[.*?\]\((?P<path>.*?)\)')
 
     print(f"🔍 Scanning {len(md_files)} markdown files for quality gate violations...")

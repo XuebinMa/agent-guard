@@ -16,7 +16,7 @@ description = "High-level SDK for agent-guard policy enforcement"
 content = ["agent-guard-validators/content"]
 # Enable Linux seccomp-bpf sandbox.
 seccomp = ["agent-guard-sandbox/seccomp"]
-# Enable Linux Landlock filesystem isolation (kernel 5.13+).
+# Enable Linux Landlock filesystem isolation (ABI v3; upstream kernel 6.2+).
 landlock = ["agent-guard-sandbox/landlock"]
 # Enable experimental macOS sandbox using sandbox-exec (Seatbelt).
 macos-sandbox = ["agent-guard-sandbox/macos-sandbox"]
@@ -41,6 +41,7 @@ sha2.workspace = true
 tokio = { version = "1", features = ["rt", "rt-multi-thread", "macros", "time"] }
 arc-swap.workspace = true
 chrono.workspace = true
+cap-std.workspace = true
 ed25519-dalek.workspace = true
 hex.workspace = true
 reqwest = { workspace = true, features = ["json", "rustls", "blocking"] }

@@ -638,6 +638,264 @@ tools:
     }
 }
 
+// Security schema regressions (hardening plan batch 1.1). Policy files are an
+// authorization boundary: a typo must fail to load instead of silently
+// removing a protection. Keep these tests together so every fixed-schema
+// layer and the intentionally dynamic `tools.custom` escape hatch are visible
+// in one place.
+#[cfg(test)]
+mod strict_policy_schema_tests {
+    use super::ctx;
+    use crate::decision::GuardDecision;
+    use crate::policy::PolicyEngine;
+    use crate::types::{CustomToolId, Tool, TrustLevel};
+
+    fn parse_error(yaml: &str) -> String {
+        PolicyEngine::from_yaml_str(yaml)
+            .expect_err("policy must fail closed during loading")
+            .to_string()
+    }
+
+    #[test]
+    fn unknown_top_level_field_is_rejected() {
+        let error = parse_error("version: 1\ndenny: true\n");
+        assert!(error.contains("unknown field `denny`"), "{error}");
+    }
+
+    #[test]
+    fn unknown_builtin_tool_field_is_rejected() {
+        let error = parse_error(
+            r#"
+version: 1
+tools:
+  baash:
+    deny: ["rm -rf"]
+"#,
+        );
+        assert!(error.contains("unknown field `baash`"), "{error}");
+    }
+
+    #[test]
+    fn unknown_rule_field_is_rejected() {
+        let error = parse_error(
+            r#"
+version: 1
+tools:
+  bash:
+    deny:
+      - prefx: "rm -rf"
+"#,
+        );
+        assert!(error.contains("unknown field `prefx`"), "{error}");
+    }
+
+    #[test]
+    fn tools_custom_remains_an_intentionally_dynamic_map() {
+        let engine = PolicyEngine::from_yaml_str(
+            r#"
+version: 1
+tools:
+  custom:
+    acme.sql.query:
+      deny:
+        - prefix: "DROP"
+"#,
+        )
+        .expect("valid custom tool map must remain supported");
+        let tool = Tool::Custom(CustomToolId::new("acme.sql.query").unwrap());
+        let decision = engine.check(&tool, "DROP TABLE users", &ctx(TrustLevel::Trusted));
+        assert!(matches!(decision, GuardDecision::Deny { .. }));
+    }
+
+    #[test]
+    fn empty_rule_map_is_rejected() {
+        let error = parse_error(
+            r#"
+version: 1
+tools:
+  bash:
+    deny:
+      - {}
+"#,
+        );
+        assert!(error.contains("rule map"), "{error}");
+        assert!(error.contains("selector"), "{error}");
+    }
+
+    #[test]
+    fn empty_plain_rule_string_is_rejected() {
+        let error = parse_error(
+            r#"
+version: 1
+tools:
+  bash:
+    deny:
+      - ""
+"#,
+        );
+        assert!(error.contains("selector"), "{error}");
+        assert!(error.contains("empty"), "{error}");
+    }
+
+    #[test]
+    fn empty_map_selector_strings_are_rejected() {
+        for (tool, selector) in [
+            ("bash", "prefix"),
+            ("bash", "regex"),
+            ("bash", "plain"),
+            ("http_request", "method"),
+        ] {
+            let yaml =
+                format!("version: 1\ntools:\n  {tool}:\n    deny:\n      - {selector}: '   '\n");
+            let error = parse_error(&yaml);
+            assert!(error.contains(selector), "{error}");
+            assert!(error.contains("empty"), "{error}");
+        }
+    }
+
+    #[test]
+    fn invalid_http_method_token_in_rule_is_rejected() {
+        let error = parse_error(
+            r#"
+version: 1
+tools:
+  http_request:
+    deny:
+      - method: "NOT A METHOD"
+        prefix: "https://"
+"#,
+        );
+        assert!(error.contains("invalid HTTP method"), "{error}");
+        assert!(error.contains("NOT A METHOD"), "{error}");
+    }
+
+    #[test]
+    fn extension_http_method_is_normalized_and_matches() {
+        let engine = PolicyEngine::from_yaml_str(
+            r#"
+version: 1
+default_mode: full_access
+tools:
+  http_request:
+    deny:
+      - method: propfind
+"#,
+        )
+        .expect("valid extension methods must remain supported");
+        let decision = engine.check(
+            &Tool::HttpRequest,
+            r#"{"method":"PROPFIND","url":"https://api.example.test/items"}"#,
+            &ctx(TrustLevel::Trusted),
+        );
+        assert!(matches!(decision, GuardDecision::Deny { .. }));
+    }
+
+    #[test]
+    fn method_selector_is_rejected_for_non_http_tools() {
+        let error = parse_error(
+            r#"
+version: 1
+tools:
+  bash:
+    deny:
+      - method: GET
+"#,
+        );
+        assert!(
+            error.contains("only supported for tools.http_request"),
+            "{error}"
+        );
+    }
+
+    #[test]
+    fn invalid_condition_operand_types_fail_at_load_time() {
+        let error = parse_error(
+            r#"
+version: 1
+tools:
+  bash:
+    deny:
+      - prefix: "danger"
+        if: "trust_level > 3"
+"#,
+        );
+        assert!(error.contains("condition"), "{error}");
+        assert!(error.contains("type"), "{error}");
+    }
+
+    #[test]
+    fn non_boolean_condition_fails_at_load_time() {
+        let error = parse_error(
+            r#"
+version: 1
+tools:
+  bash:
+    ask:
+      - prefix: "deploy"
+        if: "actor"
+"#,
+        );
+        assert!(error.contains("condition"), "{error}");
+        assert!(error.contains("boolean"), "{error}");
+    }
+
+    #[test]
+    fn zero_anomaly_thresholds_are_rejected() {
+        for yaml in [
+            "version: 1\nanomaly:\n  rate_limit:\n    max_calls: 0\n",
+            "version: 1\nanomaly:\n  rate_limit:\n    window_seconds: 0\n",
+            "version: 1\nanomaly:\n  deny_fuse:\n    threshold: 0\n",
+            "version: 1\nanomaly:\n  deny_fuse:\n    window_seconds: 0\n",
+        ] {
+            let error = parse_error(yaml);
+            assert!(error.contains("must be greater than zero"), "{error}");
+        }
+    }
+
+    #[test]
+    fn anomaly_thresholds_that_cannot_be_fully_witnessed_are_rejected() {
+        for yaml in [
+            "version: 1\nanomaly:\n  rate_limit:\n    max_calls: 1001\n",
+            "version: 1\nanomaly:\n  deny_fuse:\n    threshold: 1002\n",
+        ] {
+            let error = parse_error(yaml);
+            assert!(error.contains("retained observation capacity"), "{error}");
+        }
+    }
+
+    #[test]
+    fn maximum_witnessable_anomaly_thresholds_are_accepted() {
+        PolicyEngine::from_yaml_str(
+            "version: 1\nanomaly:\n  rate_limit:\n    max_calls: 1000\n  deny_fuse:\n    threshold: 1001\n",
+        )
+        .expect("the retained history can witness call 1001 and denial 1001");
+    }
+
+    #[test]
+    fn unsupported_audit_output_is_rejected() {
+        for yaml in [
+            "version: 1\naudit:\n  output: syslog\n",
+            "version: 1\naudit:\n  output: ''\n",
+        ] {
+            let error = parse_error(yaml);
+            assert!(error.contains("audit.output"), "{error}");
+            assert!(error.contains("stdout"), "{error}");
+            assert!(error.contains("file"), "{error}");
+        }
+    }
+
+    #[test]
+    fn file_audit_output_requires_a_non_empty_path() {
+        for yaml in [
+            "version: 1\naudit:\n  output: file\n",
+            "version: 1\naudit:\n  output: file\n  file_path: '   '\n",
+        ] {
+            let error = parse_error(yaml);
+            assert!(error.contains("audit.file_path"), "{error}");
+        }
+    }
+}
+
 #[cfg(test)]
 mod audit_tests {
     use crate::audit::AuditEvent;
@@ -1210,16 +1468,14 @@ audit:
     #[test]
     fn audit_config_uses_struct_default_when_block_absent() {
         // When the `audit:` block is omitted entirely, the `#[serde(default)]`
-        // attribute on `PolicyFile.audit` invokes `AuditConfig::default()`
-        // (auto-derived). This bypasses the per-field default fns, so
-        // `enabled` is the bool default (false) and `output` is "". This
-        // documents the current behavior; consumers should set an explicit
-        // `audit: {}` block if they want the documented defaults.
+        // attribute on `PolicyFile.audit` invokes `AuditConfig::default()`.
+        // Audit remains disabled for compatibility, but `output` still holds
+        // a valid value so no public AuditConfig carries an invalid empty
+        // output merely because the block was absent.
         let engine = PolicyEngine::from_yaml_str("version: 1\ndefault_mode: read_only\n").unwrap();
         let cfg = engine.audit_config();
-        // Auto-derived Default for the bool/String fields.
         assert!(!cfg.enabled);
-        assert_eq!(cfg.output, "");
+        assert_eq!(cfg.output, "stdout");
         assert!(!cfg.include_payload_hash);
     }
 

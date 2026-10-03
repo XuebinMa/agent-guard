@@ -6,46 +6,73 @@
 
 use super::{entry_str, Failure};
 use serde_json::Value;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 #[derive(Clone, Default)]
 pub struct Authority {
     scopes: Vec<String>,
-    constraints: HashMap<String, i64>,
+    constraints: HashMap<String, Constraint>,
     ttl: Option<i64>,
 }
 
+#[derive(Clone)]
+enum Constraint {
+    Max(f64),
+    Rank(String),
+    Allow(Vec<Value>),
+    Deny(Vec<Value>),
+    Prefix(String),
+    /// An extension this verifier cannot interpret is never discarded. It
+    /// can only be carried unchanged into a child; any difference fails the
+    /// attenuation check closed.
+    Opaque(Value),
+}
+
 impl Authority {
-    fn parse(value: &Value) -> Self {
-        let scopes = value
-            .get("scopes")
-            .and_then(Value::as_array)
-            .map(|items| {
-                items
-                    .iter()
-                    .filter_map(Value::as_str)
-                    .map(str::to_string)
-                    .collect()
-            })
-            .unwrap_or_default();
+    fn parse(value: &Value) -> Result<Self, ()> {
+        let object = value.as_object().ok_or(())?;
+        if object
+            .keys()
+            .any(|key| !["scopes", "constraints", "ttl"].contains(&key.as_str()))
+        {
+            return Err(());
+        }
+
+        let scopes = match object.get("scopes") {
+            None => Vec::new(),
+            Some(Value::Array(items)) => items
+                .iter()
+                .map(|item| item.as_str().filter(|scope| valid_scope(scope)).ok_or(()))
+                .collect::<Result<Vec<_>, _>>()?
+                .into_iter()
+                .map(str::to_string)
+                .collect(),
+            Some(_) => return Err(()),
+        };
 
         let mut constraints = HashMap::new();
-        if let Some(items) = value.get("constraints").and_then(Value::as_array) {
+        if let Some(value) = object.get("constraints") {
+            let items = value.as_array().ok_or(())?;
+            let mut seen = HashSet::new();
             for item in items {
-                if let (Some(key), Some(max)) = (
-                    item.get("key").and_then(Value::as_str),
-                    item.get("max").and_then(Value::as_i64),
-                ) {
-                    constraints.insert(key.to_string(), max);
+                let (key, constraint) = parse_constraint(item)?;
+                if !seen.insert(key.clone()) {
+                    return Err(());
                 }
+                constraints.insert(key, constraint);
             }
         }
 
-        Authority {
+        let ttl = match object.get("ttl") {
+            None | Some(Value::Null) => None,
+            Some(value) => Some(value.as_i64().filter(|ttl| *ttl >= 0).ok_or(())?),
+        };
+
+        Ok(Authority {
             scopes,
             constraints,
-            ttl: value.get("ttl").and_then(Value::as_i64),
-        }
+            ttl,
+        })
     }
 
     fn covers_scope(&self, scope: &str) -> bool {
@@ -60,9 +87,9 @@ impl Authority {
         if !child.scopes.iter().all(|scope| self.covers_scope(scope)) {
             return false;
         }
-        for (key, parent_max) in &self.constraints {
+        for (key, parent_constraint) in &self.constraints {
             match child.constraints.get(key) {
-                Some(child_max) if child_max <= parent_max => {}
+                Some(child_constraint) if parent_constraint.contains(child_constraint) => {}
                 _ => return false,
             }
         }
@@ -72,6 +99,164 @@ impl Authority {
             _ => true,
         }
     }
+}
+
+impl Constraint {
+    fn contains(&self, child: &Constraint) -> bool {
+        match (self, child) {
+            (Constraint::Max(parent), Constraint::Max(child)) => child <= parent,
+            (Constraint::Rank(parent), Constraint::Rank(child)) => rank_value(child)
+                .is_some_and(|child| rank_value(parent).is_some_and(|parent| child <= parent)),
+            (Constraint::Allow(parent), Constraint::Allow(child)) => {
+                child.iter().all(|value| parent.contains(value))
+            }
+            (Constraint::Deny(parent), Constraint::Deny(child)) => {
+                parent.iter().all(|value| child.contains(value))
+            }
+            (Constraint::Prefix(parent), Constraint::Prefix(child)) => child.starts_with(parent),
+            (Constraint::Opaque(parent), Constraint::Opaque(child)) => parent == child,
+            _ => false,
+        }
+    }
+}
+
+fn parse_constraint(value: &Value) -> Result<(String, Constraint), ()> {
+    let object = value.as_object().ok_or(())?;
+    let key = object
+        .get("key")
+        .and_then(Value::as_str)
+        .filter(|key| !key.is_empty())
+        .ok_or(())?
+        .to_string();
+
+    let kind = object.get("type").and_then(Value::as_str);
+    let parsed = match kind {
+        Some("allow") => {
+            exact_members(
+                object.keys().map(String::as_str),
+                &["key", "type", "one_of", "field"],
+            )?;
+            validate_optional_field(object.get("field"))?;
+            Constraint::Allow(
+                object
+                    .get("one_of")
+                    .and_then(Value::as_array)
+                    .cloned()
+                    .ok_or(())?,
+            )
+        }
+        Some("deny") => {
+            exact_members(
+                object.keys().map(String::as_str),
+                &["key", "type", "not_one_of", "field"],
+            )?;
+            validate_optional_field(object.get("field"))?;
+            Constraint::Deny(
+                object
+                    .get("not_one_of")
+                    .and_then(Value::as_array)
+                    .cloned()
+                    .ok_or(())?,
+            )
+        }
+        Some("prefix") => {
+            exact_members(
+                object.keys().map(String::as_str),
+                &["key", "type", "prefix", "field"],
+            )?;
+            validate_optional_field(object.get("field"))?;
+            Constraint::Prefix(
+                object
+                    .get("prefix")
+                    .and_then(Value::as_str)
+                    .ok_or(())?
+                    .to_string(),
+            )
+        }
+        Some("max_calls") => {
+            exact_members(
+                object.keys().map(String::as_str),
+                &["key", "type", "max", "applies_to"],
+            )?;
+            if !object
+                .get("applies_to")
+                .and_then(Value::as_str)
+                .is_some_and(valid_scope)
+            {
+                return Err(());
+            }
+            Constraint::Max(valid_number(object.get("max").ok_or(())?)?)
+        }
+        Some(_) => Constraint::Opaque(value.clone()),
+        None if object.contains_key("max") => {
+            exact_members(object.keys().map(String::as_str), &["key", "max"])?;
+            Constraint::Max(valid_number(object.get("max").ok_or(())?)?)
+        }
+        None if object.contains_key("rank") => {
+            exact_members(object.keys().map(String::as_str), &["key", "rank"])?;
+            Constraint::Rank(
+                object
+                    .get("rank")
+                    .and_then(Value::as_str)
+                    .filter(|rank| rank_value(rank).is_some())
+                    .ok_or(())?
+                    .to_string(),
+            )
+        }
+        None => Constraint::Opaque(value.clone()),
+    };
+    Ok((key, parsed))
+}
+
+fn exact_members<'a>(actual: impl Iterator<Item = &'a str>, allowed: &[&str]) -> Result<(), ()> {
+    if actual.into_iter().all(|member| allowed.contains(&member)) {
+        Ok(())
+    } else {
+        Err(())
+    }
+}
+
+fn validate_optional_field(value: Option<&Value>) -> Result<(), ()> {
+    match value {
+        None => Ok(()),
+        Some(value) if value.as_str().is_some_and(|field| !field.is_empty()) => Ok(()),
+        Some(_) => Err(()),
+    }
+}
+
+fn valid_number(value: &Value) -> Result<f64, ()> {
+    value
+        .as_f64()
+        .filter(|number| number.is_finite() && number.abs() <= 9_007_199_254_740_991.0)
+        .ok_or(())
+}
+
+fn rank_value(value: &str) -> Option<u8> {
+    match value {
+        "none" => Some(0),
+        "internal" => Some(1),
+        "any" => Some(2),
+        _ => None,
+    }
+}
+
+fn valid_scope(scope: &str) -> bool {
+    let mut segments = scope.split('.').peekable();
+    let mut count = 0usize;
+    while let Some(segment) = segments.next() {
+        count += 1;
+        if segment == "*" {
+            return count >= 2 && segments.peek().is_none();
+        }
+        let mut chars = segment.chars();
+        if !chars.next().is_some_and(|ch| ch.is_ascii_lowercase())
+            || !chars
+                .all(|ch| ch.is_ascii_lowercase() || ch.is_ascii_digit() || ch == '_' || ch == '-')
+        {
+            return false;
+        }
+    }
+    count >= 2
 }
 
 fn scope_matches(pattern: &str, scope: &str) -> bool {
@@ -118,7 +303,16 @@ pub fn check_policy_field(
             continue;
         };
         if entry_str(entry, "event").as_deref() != Some("allow") {
+            if schema_version == Some(super::version::V2)
+                && entry_str(entry, "event").as_deref() == Some("deny")
+            {
+                // The v2 record schema reports this as `invalid_deny`.
+                continue;
+            }
             failures.push(Failure::at(entry, "policy_on_non_allow"));
+        } else if schema_version == Some(super::version::V2) {
+            // The v2 record schema reports this as `invalid_allow`.
+            continue;
         } else if policy.as_str() != Some(DEFINED_POLICY) {
             failures.push(Failure::at(entry, undefined_value));
         }
@@ -156,7 +350,12 @@ pub fn check_authority(entries: &[Value], failures: &mut Vec<Failure>) -> Measur
         match entry_str(entry, "event").as_deref() {
             Some("root") => {
                 if let Some(authority) = entry.get("authority") {
-                    authorities.insert(node, Authority::parse(authority));
+                    match Authority::parse(authority) {
+                        Ok(authority) => {
+                            authorities.insert(node, authority);
+                        }
+                        Err(()) => failures.push(Failure::at(entry, "unreadable_authority")),
+                    }
                 } else {
                     failures.push(Failure::at(entry, "unreadable_authority"));
                 }
@@ -168,7 +367,10 @@ pub fn check_authority(entries: &[Value], failures: &mut Vec<Failure>) -> Measur
                 };
                 let parent = entry_str(entry, "parent").unwrap_or_default();
                 let parent_authority = authorities.get(&parent).unwrap_or(&no_authority);
-                let granted = Authority::parse(granted);
+                let Ok(granted) = Authority::parse(granted) else {
+                    failures.push(Failure::at(entry, "unreadable_granted"));
+                    continue;
+                };
                 if !parent_authority.contains(&granted) {
                     failures.push(Failure::at(entry, "monotonicity"));
                 }

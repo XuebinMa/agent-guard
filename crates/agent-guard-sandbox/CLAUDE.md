@@ -13,7 +13,7 @@ A single `Sandbox` trait (`name`, `sandbox_type`, `capabilities`, `execute`,
 | File | Backend | Feature flag | Default? |
 | :--- | :--- | :--- | :---: |
 | `linux.rs` | seccomp-bpf wrapper (prototype/fallback) | `seccomp` (needs libseccomp) | off |
-| `landlock.rs` | Landlock FS isolation (kernel 5.13+) | `landlock` | off |
+| `landlock.rs` | Landlock FS isolation (ABI v3; upstream kernel 6.2+) | `landlock` | off |
 | `macos.rs` | Seatbelt via `sandbox-exec` (experimental) | `macos-sandbox` | off |
 | `windows.rs` | Job Object (experimental) | `windows-sandbox` | off |
 | `windows_appcontainer.rs` | AppContainer (experimental) | `windows-appcontainer` | off |
@@ -35,9 +35,10 @@ paths.
 1. **Truthful backend selection.** Priority is: Linux → `landlock` if its
    feature is on *and* available, else `seccomp` if compiled, else `"none"`;
    macOS → `macos-seatbelt` if available, else `"none"`; Windows →
-   `windows-appcontainer`, else `windows-job-object` if available, else
-   `"none"`. When nothing real is compiled in, the answer is `"none"` — do not
-   make a backend claim isolation it does not enforce.
+   `windows-appcontainer` only after its safety probe passes (the current
+   prototype is deliberately disabled), else `windows-job-object` if
+   available, else `"none"`. When nothing real is active, the answer is
+   `"none"` — do not make a backend claim isolation it does not enforce.
 2. **`capabilities()` must match reality.** The `SandboxCapabilities` a backend
    returns is a promise about what it blocks. If `execute()` does not actually
    block global writes, the matching capability must be `true` (allowed/not

@@ -57,9 +57,8 @@ version: 1
 tools:
   bash:
     mode: full_access
-    rules:
-      - deny: "rm -rf"
-        reason: "forbidden pattern"
+    deny:
+      - "rm -rf"
 "#;
 
 // ── Helper ─────────────────────────────────────────────────────────────────
@@ -444,4 +443,32 @@ tools:
 
     let contents = std::fs::read_to_string(&outside_file).expect("read outside file");
     assert_eq!(contents, "before", "outside file should remain unchanged");
+}
+
+#[test]
+fn e14_guard_owned_bash_timeout_is_bounded_and_survives_reload() {
+    let guard = Guard::from_yaml(POLICY_FULL_ACCESS).expect("guard init");
+    assert_eq!(guard.execution_timeout_ms(), 5 * 60 * 1_000);
+
+    let short_timeout = std::num::NonZeroU64::new(100).expect("non-zero timeout");
+    guard.set_execution_timeout_ms(short_timeout);
+    guard
+        .reload_from_yaml(POLICY_FULL_ACCESS)
+        .expect("policy reload");
+    assert_eq!(guard.execution_timeout_ms(), 100);
+
+    #[cfg(unix)]
+    {
+        let started = std::time::Instant::now();
+        let error = execute_noop(&guard, &input(r#"{"command":"sleep 5"}"#))
+            .expect_err("Guard-owned Bash must time out");
+        assert!(matches!(
+            error,
+            agent_guard_sdk::SandboxError::Timeout { ms: 100 }
+        ));
+        assert!(
+            started.elapsed() < std::time::Duration::from_secs(2),
+            "bounded execution should not wait for the command's full duration"
+        );
+    }
 }

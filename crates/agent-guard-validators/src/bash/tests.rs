@@ -630,6 +630,93 @@ fn allows_tar_extract_reading_outside_workspace() {
 }
 
 #[test]
+fn blocks_tar_extract_destination_outside_workspace() {
+    assert!(matches!(
+        ws_paths("tar -xf archive.tar -C /etc"),
+        ValidationResult::Block { .. }
+    ));
+    assert!(matches!(
+        ws_paths("tar --extract --file archive.tar --directory=/root"),
+        ValidationResult::Block { .. }
+    ));
+    assert!(matches!(
+        ws_paths("tar -x -C/etc -f archive.tar"),
+        ValidationResult::Block { .. }
+    ));
+}
+
+#[test]
+fn allows_tar_extract_destination_inside_workspace() {
+    assert_eq!(
+        ws_paths("tar -xf archive.tar -C extracted"),
+        ValidationResult::Allow
+    );
+}
+
+#[test]
+fn blocks_truncate_target_outside_workspace() {
+    assert!(matches!(
+        ws_paths("truncate -s 0 /etc/passwd"),
+        ValidationResult::Block { .. }
+    ));
+}
+
+#[test]
+fn allows_truncate_target_inside_workspace() {
+    assert_eq!(
+        ws_paths("truncate -s 0 build/output.log"),
+        ValidationResult::Allow
+    );
+}
+
+#[test]
+fn dynamic_and_home_relative_targets_fail_closed() {
+    for command in [
+        "touch $HOME/.ssh/authorized_keys",
+        "touch ${HOME}/.ssh/authorized_keys",
+        "touch output-$TARGET",
+        "touch ~/.ssh/authorized_keys",
+        "touch ~root/.ssh/authorized_keys",
+    ] {
+        assert!(
+            matches!(ws_paths(command), ValidationResult::Block { .. }),
+            "unresolved target must not be allowed: {command}"
+        );
+    }
+}
+
+#[cfg(unix)]
+#[test]
+fn existing_symlink_target_cannot_escape_workspace() {
+    use std::os::unix::fs::symlink;
+
+    let workspace = std::env::temp_dir().join(format!(
+        "agent-guard-validator-symlink-{}-{}",
+        std::process::id(),
+        std::thread::current().name().unwrap_or("test")
+    ));
+    let outside = std::env::temp_dir().join(format!(
+        "agent-guard-validator-outside-{}-{}",
+        std::process::id(),
+        std::thread::current().name().unwrap_or("test")
+    ));
+    std::fs::create_dir_all(&workspace).expect("workspace");
+    std::fs::create_dir_all(&outside).expect("outside");
+    symlink(&outside, workspace.join("escape")).expect("symlink");
+
+    let result = validate_paths(
+        "touch escape/probe",
+        PermissionMode::WorkspaceWrite,
+        &workspace,
+        &[],
+    );
+
+    std::fs::remove_dir_all(&workspace).expect("remove workspace");
+    std::fs::remove_dir_all(&outside).expect("remove outside");
+    assert!(matches!(result, ValidationResult::Block { .. }));
+}
+
+#[test]
 fn blocks_cp_target_directory_flag_outside_workspace() {
     // `cp -t DEST src` writes into DEST, which the old "last non-flag arg"
     // heuristic never checked (the trailing `payload` looked benign).

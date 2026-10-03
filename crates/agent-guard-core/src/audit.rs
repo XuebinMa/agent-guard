@@ -98,6 +98,10 @@ pub struct ContentFindingEvent {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AnomalyEvent {
     pub timestamp: DateTime<Utc>,
+    /// Request whose evaluation produced this anomaly verdict. Older audit
+    /// records did not carry it, so readers must tolerate its absence.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub request_id: Option<String>,
     pub agent_id: Option<String>,
     pub actor: Option<String>,
     pub reason: String,

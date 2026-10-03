@@ -1,5 +1,12 @@
 //! Linux seccomp-bpf sandbox.
 
+#[cfg(all(target_os = "linux", feature = "seccomp"))]
+use crate::process::{configure_process_group, wait_for_child};
+#[cfg(all(target_os = "linux", feature = "seccomp"))]
+use crate::seccomp_rules::{
+    preflight_required_syscalls_with, COMMON_DENY_SYSCALLS, NETWORK_DENY_SYSCALLS,
+    READ_ONLY_DENY_SYSCALLS, READ_ONLY_WRITE_FLAG_DENIES,
+};
 use crate::{
     Sandbox, SandboxCapabilities, SandboxContext, SandboxError, SandboxOutput, SandboxResult,
 };
@@ -7,28 +14,29 @@ use crate::{
 use agent_guard_core::PolicyMode;
 #[cfg(all(target_os = "linux", feature = "seccomp"))]
 use libseccomp::{ScmpAction, ScmpArgCompare, ScmpCompareOp, ScmpFilterContext, ScmpSyscall};
-#[cfg(target_os = "linux")]
+#[cfg(all(target_os = "linux", feature = "seccomp"))]
 use std::os::unix::process::CommandExt;
-#[cfg(target_os = "linux")]
+#[cfg(all(target_os = "linux", feature = "seccomp"))]
 use std::os::unix::process::ExitStatusExt;
+#[cfg(all(target_os = "linux", feature = "seccomp"))]
 use std::process::Command;
 
 /// Linux seccomp-bpf sandbox.
 ///
 /// With the `seccomp` feature enabled, this loads a native Seccomp-BPF filter
-/// in the child process before `exec`. Without that feature, it falls back to
-/// the compatibility shell wrapper.
-pub struct SeccompSandbox {
-    strict: bool,
-}
+/// in the child process before `exec`. Without native support it fails closed;
+/// an unfiltered compatibility shell must never report this backend as active.
+pub struct SeccompSandbox;
 
 impl SeccompSandbox {
     pub fn new() -> Self {
-        Self { strict: false }
+        Self
     }
 
+    /// Compatibility constructor retained for callers that previously opted
+    /// into strict mode. All seccomp instances are now fail-closed.
     pub fn strict() -> Self {
-        Self { strict: true }
+        Self
     }
 }
 
@@ -68,31 +76,138 @@ impl Sandbox for SeccompSandbox {
     }
 
     fn execute(&self, command: &str, context: &SandboxContext) -> SandboxResult {
-        execute_with_seccomp(command, context, self.strict)
+        execute_with_seccomp(command, context)
+    }
+
+    fn health_check(&self, context: &SandboxContext) -> SandboxResult {
+        #[cfg(all(target_os = "linux", feature = "seccomp"))]
+        {
+            let touch = ["/usr/bin/touch", "/bin/touch"]
+                .into_iter()
+                .find(|candidate| std::path::Path::new(candidate).is_file())
+                .ok_or_else(|| {
+                    SandboxError::ExecutionFailed(
+                        "seccomp negative health probe requires /usr/bin/touch or /bin/touch"
+                            .to_string(),
+                    )
+                })?;
+            let probe = SeccompHealthProbeDir::create()?;
+            let control_marker = probe.root.join("control");
+            let control = Command::new(touch)
+                .arg(&control_marker)
+                .status()
+                .map_err(|error| {
+                    SandboxError::ExecutionFailed(format!(
+                        "seccomp health probe control command failed: {error}"
+                    ))
+                })?;
+            if !control.success() || !control_marker.is_file() {
+                return Err(SandboxError::ExecutionFailed(
+                    "seccomp health probe could not create its unsandboxed control file"
+                        .to_string(),
+                ));
+            }
+            std::fs::remove_file(&control_marker).map_err(|error| {
+                SandboxError::ExecutionFailed(format!(
+                    "seccomp health probe could not remove its control file: {error}"
+                ))
+            })?;
+
+            let marker_path = probe.root.join("blocked");
+            let mut probe_context = context.clone();
+            probe_context.mode = PolicyMode::ReadOnly;
+            probe_context.working_directory = probe.root.clone();
+            let result = self.execute(&format!("{touch} blocked"), &probe_context);
+            let blocked = match result {
+                Err(SandboxError::KilledByFilter { .. }) => true,
+                Err(error) => return Err(error),
+                Ok(output) => output.exit_code != 0,
+            };
+            let marker_exists = marker_path.exists();
+
+            if !blocked || marker_exists {
+                return Err(SandboxError::ExecutionFailed(
+                    "seccomp health probe unexpectedly allowed a read-only file creation"
+                        .to_string(),
+                ));
+            }
+
+            Ok(SandboxOutput {
+                stdout: "seccomp negative write probe was blocked\n".to_string(),
+                stderr: String::new(),
+                exit_code: 0,
+            })
+        }
+
+        #[cfg(not(all(target_os = "linux", feature = "seccomp")))]
+        {
+            self.execute("echo 1", context)
+        }
     }
 
     fn is_available(&self) -> bool {
-        cfg!(target_os = "linux")
+        cfg!(all(target_os = "linux", feature = "seccomp"))
     }
 }
 
-fn execute_with_seccomp(command: &str, context: &SandboxContext, strict: bool) -> SandboxResult {
+#[cfg(all(target_os = "linux", feature = "seccomp"))]
+struct SeccompHealthProbeDir {
+    root: std::path::PathBuf,
+}
+
+#[cfg(all(target_os = "linux", feature = "seccomp"))]
+impl SeccompHealthProbeDir {
+    fn create() -> Result<Self, SandboxError> {
+        use std::io::ErrorKind;
+        use std::sync::atomic::{AtomicU64, Ordering};
+
+        static PROBE_ID: AtomicU64 = AtomicU64::new(0);
+        for _ in 0..32 {
+            let id = PROBE_ID.fetch_add(1, Ordering::Relaxed);
+            let root = std::env::temp_dir().join(format!(
+                "agent-guard-seccomp-health-{}-{id}",
+                std::process::id()
+            ));
+            match std::fs::create_dir(&root) {
+                Ok(()) => return Ok(Self { root }),
+                Err(error) if error.kind() == ErrorKind::AlreadyExists => continue,
+                Err(error) => {
+                    return Err(SandboxError::ExecutionFailed(format!(
+                        "seccomp health probe could not create a private directory: {error}"
+                    )))
+                }
+            }
+        }
+
+        Err(SandboxError::ExecutionFailed(
+            "seccomp health probe could not reserve a unique private directory".to_string(),
+        ))
+    }
+}
+
+#[cfg(all(target_os = "linux", feature = "seccomp"))]
+impl Drop for SeccompHealthProbeDir {
+    fn drop(&mut self) {
+        for name in ["control", "blocked"] {
+            let _ = std::fs::remove_file(self.root.join(name));
+        }
+        let _ = std::fs::remove_dir(&self.root);
+    }
+}
+
+fn execute_with_seccomp(_command: &str, _context: &SandboxContext) -> SandboxResult {
     #[cfg(target_os = "linux")]
     {
         #[cfg(feature = "seccomp")]
         {
-            execute_with_native_seccomp(command, context, strict)
+            execute_with_native_seccomp(_command, _context)
         }
 
         #[cfg(not(feature = "seccomp"))]
         {
-            if strict {
-                Err(SandboxError::FilterSetup(
-                    "native Seccomp-BPF support requires the 'seccomp' Cargo feature and libseccomp at build time".to_string(),
-                ))
-            } else {
-                execute_compat_shell(command, context)
-            }
+            Err(SandboxError::FilterSetup(
+                "native Seccomp-BPF support requires the 'seccomp' Cargo feature and libseccomp at build time".to_string(),
+            ))
         }
     }
     #[cfg(not(target_os = "linux"))]
@@ -103,9 +218,11 @@ fn execute_with_seccomp(command: &str, context: &SandboxContext, strict: bool) -
     }
 }
 
-#[cfg(target_os = "linux")]
+#[cfg(all(target_os = "linux", feature = "seccomp"))]
 fn execute_compat_shell(command: &str, context: &SandboxContext) -> SandboxResult {
-    let child = Command::new("sh")
+    let mut shell = Command::new("sh");
+    configure_process_group(&mut shell);
+    let child = shell
         .arg("-c")
         .arg(command)
         .current_dir(&context.working_directory)
@@ -114,15 +231,11 @@ fn execute_compat_shell(command: &str, context: &SandboxContext) -> SandboxResul
         .spawn()
         .map_err(|e| SandboxError::ExecutionFailed(format!("Failed to spawn process: {}", e)))?;
 
-    wait_for_child(child, context.timeout_ms)
+    finish_child(child, context.timeout_ms)
 }
 
 #[cfg(all(target_os = "linux", feature = "seccomp"))]
-fn execute_with_native_seccomp(
-    command: &str,
-    context: &SandboxContext,
-    strict: bool,
-) -> SandboxResult {
+fn execute_with_native_seccomp(command: &str, context: &SandboxContext) -> SandboxResult {
     if matches!(context.mode, PolicyMode::FullAccess) {
         return execute_compat_shell(command, context);
     }
@@ -135,6 +248,7 @@ fn execute_with_native_seccomp(
         .current_dir(&context.working_directory)
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped());
+    configure_process_group(&mut child);
 
     unsafe {
         child.pre_exec(move || {
@@ -148,13 +262,10 @@ fn execute_with_native_seccomp(
         Err(e) => {
             let message = e.to_string();
             if message.contains("seccomp") || e.kind() == std::io::ErrorKind::PermissionDenied {
-                if strict {
-                    return Err(SandboxError::FilterSetup(format!(
-                        "Seccomp filter setup failed: {}",
-                        message
-                    )));
-                }
-                return execute_compat_shell(command, context);
+                return Err(SandboxError::FilterSetup(format!(
+                    "Seccomp filter setup failed: {}",
+                    message
+                )));
             }
 
             return Err(SandboxError::ExecutionFailed(format!(
@@ -164,42 +275,12 @@ fn execute_with_native_seccomp(
         }
     };
 
-    wait_for_child(child, context.timeout_ms)
+    finish_child(child, context.timeout_ms)
 }
 
-#[cfg(target_os = "linux")]
-fn wait_for_child(mut child: std::process::Child, timeout_ms: Option<u64>) -> SandboxResult {
-    use std::sync::mpsc;
-    use std::thread;
-    use std::time::Duration;
-
-    if let Some(timeout_ms) = timeout_ms {
-        let (tx, rx) = mpsc::channel();
-
-        thread::spawn(move || {
-            thread::sleep(Duration::from_millis(timeout_ms));
-            let _ = tx.send(());
-        });
-
-        loop {
-            match child.try_wait() {
-                Ok(Some(_status)) => break,
-                Ok(None) => {
-                    if rx.try_recv().is_ok() {
-                        let _ = child.kill();
-                        let _ = child.wait();
-                        return Err(SandboxError::Timeout { ms: timeout_ms });
-                    }
-                    thread::sleep(Duration::from_millis(10));
-                }
-                Err(e) => return Err(SandboxError::ExecutionFailed(e.to_string())),
-            }
-        }
-    }
-
-    let output = child
-        .wait_with_output()
-        .map_err(|e| SandboxError::ExecutionFailed(e.to_string()))?;
+#[cfg(all(target_os = "linux", feature = "seccomp"))]
+fn finish_child(child: std::process::Child, timeout_ms: Option<u64>) -> SandboxResult {
+    let output = wait_for_child(child, timeout_ms)?;
     let exit_status = output.status;
 
     if exit_status.signal() == Some(libc::SIGSYS) {
@@ -209,14 +290,19 @@ fn wait_for_child(mut child: std::process::Child, timeout_ms: Option<u64>) -> Sa
     }
 
     Ok(SandboxOutput {
-        stdout: String::from_utf8_lossy(&output.stdout).to_string(),
-        stderr: String::from_utf8_lossy(&output.stderr).to_string(),
+        stdout: output.stdout,
+        stderr: output.stderr,
         exit_code: exit_status.code().unwrap_or(-1),
     })
 }
 
 #[cfg(all(target_os = "linux", feature = "seccomp"))]
 fn apply_seccomp_rules(mode: &PolicyMode) -> Result<(), String> {
+    // Resolve the complete required rule set before constructing/loading the
+    // filter. A missing name is a setup failure, not permission to run with a
+    // silently smaller deny set (issue #161).
+    preflight_required_syscalls_with(mode, ScmpSyscall::from_name)?;
+
     let mut filter = ScmpFilterContext::new_filter(ScmpAction::Allow)
         .map_err(|e| format!("failed to create seccomp filter: {e}"))?;
     filter
@@ -238,24 +324,7 @@ fn apply_seccomp_rules(mode: &PolicyMode) -> Result<(), String> {
 
 #[cfg(all(target_os = "linux", feature = "seccomp"))]
 fn add_network_denies(filter: &mut ScmpFilterContext) -> Result<(), String> {
-    for name in [
-        "socket",
-        "socketpair",
-        "connect",
-        "bind",
-        "listen",
-        "accept",
-        "accept4",
-        "sendto",
-        "sendmsg",
-        "sendmmsg",
-        "recvfrom",
-        "recvmsg",
-        "recvmmsg",
-        "shutdown",
-        "setsockopt",
-        "getsockopt",
-    ] {
+    for name in NETWORK_DENY_SYSCALLS {
         add_deny_rule(filter, name)?;
     }
     Ok(())
@@ -263,35 +332,7 @@ fn add_network_denies(filter: &mut ScmpFilterContext) -> Result<(), String> {
 
 #[cfg(all(target_os = "linux", feature = "seccomp"))]
 fn add_common_dangerous_syscall_denies(filter: &mut ScmpFilterContext) -> Result<(), String> {
-    for name in [
-        "ptrace",
-        "mount",
-        "umount2",
-        "swapon",
-        "swapoff",
-        "reboot",
-        "kexec_load",
-        "finit_module",
-        "init_module",
-        "delete_module",
-        "bpf",
-        "unshare",
-        "setns",
-        // io_uring submits socket/connect and file-write operations through a
-        // shared ring buffer, so they never issue the classic syscalls the
-        // network/write deny-lists match. Deny the ring itself in every mode —
-        // there is no way to inspect individual ring ops from seccomp, and no
-        // normal shell command needs io_uring. Denying io_uring_setup alone
-        // prevents creating a ring; enter/register are belt-and-suspenders.
-        // (Issue #54.)
-        "io_uring_setup",
-        "io_uring_enter",
-        "io_uring_register",
-        // process_vm_writev writes directly into another process's address
-        // space — a memory-injection primitive in the same class as ptrace
-        // (already denied above), not needed by ordinary commands.
-        "process_vm_writev",
-    ] {
+    for name in COMMON_DENY_SYSCALLS {
         add_deny_rule(filter, name)?;
     }
     Ok(())
@@ -299,56 +340,11 @@ fn add_common_dangerous_syscall_denies(filter: &mut ScmpFilterContext) -> Result
 
 #[cfg(all(target_os = "linux", feature = "seccomp"))]
 fn add_read_only_write_denies(filter: &mut ScmpFilterContext) -> Result<(), String> {
-    for (syscall, arg_index) in [("open", 1u32), ("openat", 2u32)] {
+    for &(syscall, arg_index) in READ_ONLY_WRITE_FLAG_DENIES {
         add_write_flag_denies(filter, syscall, arg_index)?;
     }
 
-    for name in [
-        // openat2 (Linux 5.6+) is a modern open variant whose access mode lives
-        // behind the `struct open_how` pointer, so the flag-masked deny used for
-        // open/openat above cannot inspect it. Deny it outright in ReadOnly:
-        // ordinary reads go through open/openat, not openat2. (Issue #54.)
-        "openat2",
-        // memfd_create stages a new binary in writable anonymous memory, which
-        // execveat(AT_EMPTY_PATH) can then run — a write+exec evasion that never
-        // touches the path-based write denies. Blocking the staging closes it;
-        // executing an already-present binary stays allowed in ReadOnly, so
-        // execveat itself is intentionally not denied. (Issue #54.)
-        "memfd_create",
-        "creat",
-        "truncate",
-        "ftruncate",
-        "mkdir",
-        "mkdirat",
-        "rmdir",
-        "unlink",
-        "unlinkat",
-        "rename",
-        "renameat",
-        "renameat2",
-        "link",
-        "linkat",
-        "symlink",
-        "symlinkat",
-        "mknod",
-        "mknodat",
-        "chmod",
-        "fchmod",
-        "fchmodat",
-        "chown",
-        "fchown",
-        "fchownat",
-        "lchown",
-        "utime",
-        "utimensat",
-        "setxattr",
-        "lsetxattr",
-        "fsetxattr",
-        "removexattr",
-        "lremovexattr",
-        "fremovexattr",
-        "copy_file_range",
-    ] {
+    for name in READ_ONLY_DENY_SYSCALLS {
         add_deny_rule(filter, name)?;
     }
 
@@ -361,9 +357,7 @@ fn add_write_flag_denies(
     syscall_name: &str,
     arg_index: u32,
 ) -> Result<(), String> {
-    let Some(syscall) = resolve_syscall(syscall_name)? else {
-        return Ok(());
-    };
+    let syscall = resolve_syscall(syscall_name)?;
     let deny = ScmpAction::Errno(libc::EPERM);
     let access_mode_mask = libc::O_ACCMODE as u64;
 
@@ -410,9 +404,7 @@ fn add_write_flag_denies(
 
 #[cfg(all(target_os = "linux", feature = "seccomp"))]
 fn add_deny_rule(filter: &mut ScmpFilterContext, syscall_name: &str) -> Result<(), String> {
-    let Some(syscall) = resolve_syscall(syscall_name)? else {
-        return Ok(());
-    };
+    let syscall = resolve_syscall(syscall_name)?;
 
     filter
         .add_rule(ScmpAction::Errno(libc::EPERM), syscall)
@@ -420,13 +412,29 @@ fn add_deny_rule(filter: &mut ScmpFilterContext, syscall_name: &str) -> Result<(
 }
 
 #[cfg(all(target_os = "linux", feature = "seccomp"))]
-fn resolve_syscall(name: &str) -> Result<Option<ScmpSyscall>, String> {
-    match ScmpSyscall::from_name(name) {
-        Ok(syscall) => Ok(Some(syscall)),
-        // Some older libseccomp builds do not recognize every syscall symbol
-        // on every runner architecture. Skip those rules instead of failing the
-        // whole sandbox setup.
-        Err(e) if e.to_string().contains("Could not resolve syscall name") => Ok(None),
-        Err(e) => Err(format!("failed to resolve syscall {name}: {e}")),
+fn resolve_syscall(name: &str) -> Result<ScmpSyscall, String> {
+    crate::seccomp_rules::resolve_required_syscall_with(name, ScmpSyscall::from_name)
+}
+
+#[cfg(all(test, target_os = "linux", not(feature = "seccomp")))]
+mod no_feature_tests {
+    use super::SeccompSandbox;
+    use crate::{Sandbox, SandboxContext, SandboxError};
+    use agent_guard_core::PolicyMode;
+
+    #[test]
+    fn seccomp_without_native_feature_never_runs_an_unfiltered_compat_shell() {
+        let sandbox = SeccompSandbox::new();
+        assert!(!sandbox.is_available());
+        let context = SandboxContext {
+            mode: PolicyMode::ReadOnly,
+            working_directory: std::env::current_dir().expect("current directory"),
+            timeout_ms: Some(1_000),
+        };
+
+        assert!(matches!(
+            sandbox.execute("echo must-not-run", &context),
+            Err(SandboxError::FilterSetup(_))
+        ));
     }
 }

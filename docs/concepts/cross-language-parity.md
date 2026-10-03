@@ -4,7 +4,7 @@
 | :--- | :--- |
 | **Status** | 🟢 Baseline Established (v0.2.0-rc1) |
 | **Audience** | SDK consumers picking a language binding |
-| **Last Reviewed** | 2026-04-30 |
+| **Last Reviewed** | 2026-10-02 |
 | **Enforced by** | `tests/cross-language-parity/` + `parity-e2e` CI job |
 
 ---
@@ -17,7 +17,7 @@
 - **Python binding** (`agent_guard`, PyO3 / abi3-py310).
 - **Node binding** (`@agent-guard/node`, napi-rs).
 
-Each surface evaluates the same policy and must produce the **same decision** for the **same inputs**. Drift between bindings is a security regression — a payload denied in one language must not be allowed in another. The `parity-e2e` CI job blocks merges whenever any of the 12 cross-language scenarios diverge.
+Each surface evaluates the same policy and must produce the **same decision** for the **same inputs**. Drift between bindings is a security regression — a payload denied in one language must not be allowed in another. The `parity-e2e` CI job blocks merges whenever any of the 16 cross-language scenarios diverge.
 
 This document is the human-readable map of what's covered. The machine truth lives in the `tests/cross-language-parity/` fixtures.
 
@@ -35,7 +35,7 @@ This document is the human-readable map of what's covered. The machine truth liv
 | Full sandbox execution | `guard.execute(&input, sandbox) → ExecuteOutcome` | `guard.execute(tool, payload, **ctx) → ExecuteResult` | `guard.execute(tool, payload, ctx) → ExecuteOutcome` |
 | Runtime orchestration (Check → Filter → Audit → Sandbox/Handoff) | `guard.run(&input, sandbox) → RuntimeOutcome` | `guard.run(tool, payload, **ctx) → RuntimeOutcome` | `guard.run(tool, payload, ctx) → RuntimeOutcome` |
 | Default sandbox factory | `Guard::default_sandbox()` | (built into `Guard.run` / `Guard.execute`) | (built into `guard.run` / `guard.execute`) |
-| Host-handoff outcome claim (`execution_reported`, not witnessed `execution_finished`) | `guard.report_handoff_result(rid, HandoffResult{...})` | `guard.report_handoff_result(rid, HandoffResult(...))` | `guard.reportHandoffResult(rid, {...})` |
+| Host-handoff outcome claim (`execution_reported`, not witnessed `execution_finished`) | `guard.try_report_handoff_result(...) -> Result` | `guard.report_handoff_result(...)` raises `GuardError` on an invalid ID | `guard.reportHandoffResult(...)` throws on an invalid ID |
 | Atomic policy reload | `guard.reload_engine(engine)` / `guard.reload_from_yaml(s)` | `guard.reload_from_yaml(s)` | `guard.reloadFromYaml(s)` |
 | Policy version | `guard.policy_version() → String` | `guard.policy_version()` | `guard.policyVersion()` |
 | Policy hash (SHA-256) | `guard.policy_hash() → String` | `guard.policy_hash()` | `guard.policyHash()` |
@@ -50,19 +50,27 @@ This document is the human-readable map of what's covered. The machine truth liv
 
 Adapter mode semantics are identical across both languages:
 
-| Mode | Shell tool (`bash`/`shell`/`terminal`) | Non-shell tool |
+| Mode | Owned shell tool (exact tool ID `bash`) | Other tool IDs |
 | :--- | :--- | :--- |
 | `enforce` | `Guard.execute()` (sandbox) | `Guard.execute()` |
 | `check` | `Guard.check()` then host handler | `Guard.check()` then host handler |
-| `auto` | `Guard.execute()` | `Guard.run()` (Handoff path closes audit via `report_handoff_result`) |
+| `auto` | `Guard.execute()` | `Guard.run()` for non-shell tools (Handoff closes audit via `report_handoff_result`) |
 
-`check` and `auto` both **fail closed** on invalid policy signatures — see PR #20.
+Names such as `shell`, `terminal`, `sh`, `zsh`, `cmd`, or `powershell` are
+custom tools, not aliases for the Rust `bash` executor. Because handing one of
+those names back to a host command runner would weaken the boundary, `auto`
+rejects them with `UnsupportedShellAlias` unless the host maps a real
+Bash-backed tool to exact `bash` or deliberately chooses an explicit mode.
+
+`check` and `auto` both **fail closed** on invalid policy signatures. A handoff
+request ID is one-shot even when audit output is disabled: unknown, expired,
+or duplicate reports are errors rather than silently accepted lifecycle gaps.
 
 ---
 
 ## Decision shapes
 
-The three values that the `parity-e2e` job pins to byte-identity per scenario:
+The four values that the `parity-e2e` job pins to byte-identity per scenario:
 
 | Field | Type | Meaning |
 | :--- | :--- | :--- |
@@ -90,7 +98,9 @@ Decision codes use the Rust `Debug` representation of `DecisionCode`. Python and
 | `PolicyMode::WorkspaceWrite` | YAML: `workspace_write` | (set in policy YAML) | (set in policy YAML) |
 | `PolicyMode::FullAccess` | YAML: `full_access` | (set in policy YAML) | (set in policy YAML) |
 
-Python accepts trust-level strings case-insensitively; Node accepts the `TrustLevel` enum values from `index.d.ts`. The Node parity runner normalizes `"trusted"` → `"Trusted"` for callers.
+Python accepts the exact lowercase trust strings shown above; Node accepts the
+`TrustLevel` enum values from `index.d.ts`. The Node parity runner normalizes
+fixture input `"trusted"` → `"Trusted"` before calling the binding.
 
 ---
 
@@ -102,7 +112,8 @@ Python accepts trust-level strings case-insensitively; Node accepts the `TrustLe
 | Ask required | `GuardDecision::AskUser { message, reason }` | `AgentGuardAskRequiredError` | `AgentGuardAskRequiredError` |
 | Sandbox/execution failure | `SandboxError` | `AgentGuardExecutionError` (with `cause=`) | `AgentGuardExecutionError` (with `cause`) |
 | Invalid policy signature in `auto`/`check` | `RuntimeOutcome::Denied { reason: PolicyVerificationFailed }` | `AgentGuardDeniedError(code="PolicyVerificationFailed")` | `AgentGuardDeniedError(code="PolicyVerificationFailed")` |
-| Handoff with host handler raise | (host responsibility) | propagate host exception **after** `report_handoff_result(exit_code=1)` | propagate host exception **after** `reportHandoffResult({exitCode: 1})` |
+| Handoff with host handler raise | (host responsibility) | propagate the host exception after reporting; if reporting also fails, attach `agent_guard_report_error` and log it | propagate the host exception after reporting; if reporting also fails, attach `agentGuardReportError` |
+| Handoff succeeds but terminal report fails | `HandoffReportError` from the fallible API | `AgentGuardExecutionError` with `host_action_completed=True`, host result, request ID/report, snapshot metadata, and a do-not-retry warning | `AgentGuardExecutionError` with `hostActionCompleted=true`, host result, request ID/report, snapshot metadata, and a do-not-retry warning |
 
 All exception classes carry the canonical attribute set: `policy_version`, `policy_verification_status`, `policy_verification_error`, `code`, `matched_rule`, `ask_prompt`. Python uses `_decision_to_error_attrs()` to populate them; Node uses `buildDecisionError()`.
 
@@ -110,7 +121,7 @@ All exception classes carry the canonical attribute set: `policy_version`, `poli
 
 ## What the e2e suite covers
 
-12 scenarios (see `tests/cross-language-parity/fixtures/scenarios.json`):
+16 scenarios (see `tests/cross-language-parity/fixtures/scenarios.json`):
 
 1. `bash_allow_echo` — bash allow path → Execute
 2. `bash_destructive_rm` — `rm -rf /tmp/x` → deny / `PathOutsideWorkspace`
@@ -124,6 +135,10 @@ All exception classes carry the canonical attribute set: `policy_version`, `poli
 10. `http_get_handoff` — GET → allow / Handoff
 11. `http_post_execute` — POST → allow / Execute
 12. `http_metadata_deny` — IMDS regex deny → `DeniedByRule`
+13. `http_delete_internal_method_deny` — method-aware DELETE rule → `DeniedByRule`
+14. `http_get_internal_method_allow` — the same URL with GET → Handoff
+15. `write_omitted_trust_defaults_untrusted` — absent trust cannot inherit a trusted tool-mode elevation
+16. `invalid_signature_denies_check_and_runtime` — invalid signed policy → `PolicyVerificationFailed` from both decision APIs
 
 If you add an SDK feature that affects decisions, add a scenario that exercises it.
 

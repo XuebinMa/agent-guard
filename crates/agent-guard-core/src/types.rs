@@ -144,9 +144,13 @@ impl TrustLevel {
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct Context {
+    /// Host-asserted agent identity. Do not copy this from an untrusted model
+    /// payload; policy conditions, approval binding, metrics, and anomaly
+    /// state treat it as security context.
     pub agent_id: Option<String>,
+    /// Host-asserted bounded session identity.
     pub session_id: Option<String>,
-    /// The human or service account initiating the action.
+    /// The host-authenticated human or service account initiating the action.
     pub actor: Option<String>,
     /// Defaults to Untrusted — see TrustLevel invariant above.
     pub trust_level: TrustLevel,

@@ -51,9 +51,9 @@ fn by_name_fallback(requested: &str, why: &str) -> (Box<dyn Sandbox>, DefaultSan
 /// `linux-landlock`, `macos-seatbelt`, `windows-job-object`,
 /// `windows-appcontainer`. The gating mirrors [`resolve_default_sandbox`]
 /// exactly — in particular `linux-seccomp` is gated on the `seccomp` Cargo
-/// feature (NOT on `SeccompSandbox::is_available()`, which is `true` on any
-/// Linux host even when the unfiltered compat shell would run) — so a request
-/// can never report isolation the build does not provide (GATE 5).
+/// feature, and `SeccompSandbox` itself fails closed if its complete required
+/// rule set cannot be installed — so a request can never report isolation the
+/// build does not provide (GATE 5).
 pub(crate) fn resolve_sandbox_by_name(
     name: &str,
 ) -> Result<(Box<dyn Sandbox>, DefaultSandboxDiagnosis), UnknownBackendError> {
@@ -181,16 +181,23 @@ pub(crate) fn resolve_sandbox_by_name(
         "windows-appcontainer" => {
             #[cfg(all(target_os = "windows", feature = "windows-appcontainer"))]
             {
-                Ok((
-                    Box::new(agent_guard_sandbox::AppContainerSandbox),
-                    DefaultSandboxDiagnosis {
-                        selected_name: "AppContainer",
-                        selected_sandbox_type: "windows-appcontainer",
-                        fallback_to_noop: false,
-                        reason: "windows-appcontainer was requested and the feature is compiled in"
-                            .to_string(),
-                    },
-                ))
+                let sb = agent_guard_sandbox::AppContainerSandbox;
+                if sb.is_available() {
+                    Ok((
+                        Box::new(sb),
+                        DefaultSandboxDiagnosis {
+                            selected_name: "AppContainer",
+                            selected_sandbox_type: "windows-appcontainer",
+                            fallback_to_noop: false,
+                            reason: "windows-appcontainer was requested and its runtime safety probe passed".to_string(),
+                        },
+                    ))
+                } else {
+                    Ok(by_name_fallback(
+                        &requested,
+                        "the AppContainer prototype is disabled until exact workspace DACL restoration is proven",
+                    ))
+                }
             }
             #[cfg(not(all(target_os = "windows", feature = "windows-appcontainer")))]
             {
@@ -227,14 +234,9 @@ pub(crate) fn resolve_default_sandbox() -> (Box<dyn Sandbox>, DefaultSandboxDiag
                 );
             }
         }
-        // The native Seccomp-BPF filter only loads when the `seccomp` Cargo
-        // feature is compiled in. Without it, `SeccompSandbox` silently runs an
-        // unfiltered `sh -c` compatibility shell (see `linux.rs`
-        // `execute_compat_shell`). Reporting that path as `selected="seccomp",
-        // fallback_to_noop=false` would tell operators (and execution receipts,
-        // which read `sandbox_type()`) that syscall isolation is active when it
-        // is not — so split the diagnosis on the feature and fall back to a
-        // truthful Noop backend when filtering is not actually present.
+        // The native Seccomp-BPF filter only exists when the `seccomp` Cargo
+        // feature is compiled in. Split the diagnosis on the feature and fall
+        // back to a truthful Noop backend when filtering is not present.
         #[cfg(feature = "seccomp")]
         {
             (
@@ -255,7 +257,7 @@ pub(crate) fn resolve_default_sandbox() -> (Box<dyn Sandbox>, DefaultSandboxDiag
                     selected_name: "none",
                     selected_sandbox_type: "none",
                     fallback_to_noop: true,
-                    reason: "Neither Landlock nor the 'seccomp' Cargo feature is compiled in, so the SDK has no OS-level syscall isolation and runs an unfiltered compatibility shell. Rebuild with --features seccomp (with libseccomp present) or --features landlock to enable enforcement.".to_string(),
+                    reason: "Neither Landlock nor the 'seccomp' Cargo feature is compiled in, so the SDK has no OS-level syscall isolation and selects the explicit 'none' backend. Rebuild with --features seccomp (with libseccomp present) or --features landlock to enable enforcement.".to_string(),
                 },
             )
         }
@@ -287,13 +289,42 @@ pub(crate) fn resolve_default_sandbox() -> (Box<dyn Sandbox>, DefaultSandboxDiag
     }
     #[cfg(all(target_os = "windows", feature = "windows-appcontainer"))]
     {
+        let appcontainer = agent_guard_sandbox::AppContainerSandbox;
+        if appcontainer.is_available() {
+            return (
+                Box::new(appcontainer),
+                DefaultSandboxDiagnosis {
+                    selected_name: "AppContainer",
+                    selected_sandbox_type: "windows-appcontainer",
+                    fallback_to_noop: false,
+                    reason: "The AppContainer runtime safety probe passed, so Windows uses the stronger backend.".to_string(),
+                },
+            );
+        }
+
+        #[cfg(feature = "windows-sandbox")]
+        {
+            let job = agent_guard_sandbox::JobObjectSandbox;
+            if job.is_available() {
+                return (
+                    Box::new(job),
+                    DefaultSandboxDiagnosis {
+                        selected_name: "JobObject",
+                        selected_sandbox_type: "windows-job-object",
+                        fallback_to_noop: false,
+                        reason: "AppContainer is disabled pending exact DACL-restoration proof; the functional Low-IL Job Object backend is used instead.".to_string(),
+                    },
+                );
+            }
+        }
+
         (
-            Box::new(agent_guard_sandbox::AppContainerSandbox),
+            Box::new(agent_guard_sandbox::NoopSandbox),
             DefaultSandboxDiagnosis {
-                selected_name: "AppContainer",
-                selected_sandbox_type: "windows-appcontainer",
-                fallback_to_noop: false,
-                reason: "The windows-appcontainer feature is enabled, so the SDK prefers AppContainer as the default Windows backend.".to_string(),
+                selected_name: "none",
+                selected_sandbox_type: "none",
+                fallback_to_noop: true,
+                reason: "AppContainer is disabled pending exact DACL-restoration proof and no functional Low-IL Job Object backend is available; selecting the truthful 'none' backend.".to_string(),
             },
         )
     }

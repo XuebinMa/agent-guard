@@ -196,7 +196,7 @@ const COMMAND_WRAPPERS: &[CommandWrapper] = &[
         name: "xargs",
         // GNU -i/-e/-l take OPTIONAL attached values. They must not consume
         // the following command token when used bare.
-        arg_short_flags: &['I', 'E', 'd', 'n', 'P', 's', 'a', 'L'],
+        arg_short_flags: &['I', 'J', 'E', 'd', 'n', 'P', 's', 'a', 'L'],
         arg_long_flags: &[
             "delimiter",
             "max-args",
@@ -943,5 +943,12 @@ mod tests {
                 LauncherDisposition::Opaque(_)
             ));
         }
+    }
+
+    #[test]
+    fn bsd_xargs_replacement_flag_does_not_hide_child_command() {
+        let argv = ["xargs", "-J", "%", "rm"];
+        assert_eq!(unwrap_command_wrappers(&argv), &["rm"]);
+        assert!(leads_with_target_hiding_spawner(&argv));
     }
 }

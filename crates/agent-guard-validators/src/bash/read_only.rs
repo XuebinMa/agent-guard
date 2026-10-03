@@ -2,7 +2,8 @@
 
 use super::ast::{parse_shell, ShellParse};
 use super::tables::{
-    DANGEROUS_ENV_VAR_PREFIXES, STATE_MODIFYING_COMMANDS, WRITE_COMMANDS, WRITE_REDIRECTIONS,
+    DANGEROUS_ENV_VAR_PREFIXES, READ_ONLY_COMMANDS, STATE_MODIFYING_COMMANDS, WRITE_COMMANDS,
+    WRITE_REDIRECTIONS,
 };
 use super::tokenize::shell_split;
 use super::types::{PermissionMode, ValidationResult};
@@ -88,27 +89,43 @@ fn check_command_segment(parts: &[String]) -> Option<ValidationResult> {
     let first_command = command_name(parts.first()?);
 
     if first_command == "git" {
-        if parts.len() > 1 {
-            let sub = &parts[1];
-            let write_subs = [
-                "commit",
-                "push",
-                "send-pack",
-                "pull",
-                "merge",
-                "checkout",
-                "add",
-                "rebase",
-                "reset",
-                "init",
-            ];
-            if write_subs.contains(&sub.as_str()) {
-                return Some(ValidationResult::Block {
-                    reason: format!("Git command '{sub}' modifies the repository and is not allowed in read-only mode"),
-                });
-            }
+        let Some(subcommand) = git_subcommand(parts) else {
+            return Some(ValidationResult::Block {
+                reason: "Git invocation cannot be proven read-only".to_string(),
+            });
+        };
+        const READ_ONLY_GIT_SUBCOMMANDS: &[&str] = &[
+            "annotate",
+            "blame",
+            "cat-file",
+            "diff",
+            "diff-files",
+            "diff-index",
+            "diff-tree",
+            "for-each-ref",
+            "grep",
+            "log",
+            "ls-files",
+            "ls-remote",
+            "ls-tree",
+            "merge-base",
+            "name-rev",
+            "rev-list",
+            "rev-parse",
+            "show",
+            "show-ref",
+            "status",
+            "verify-commit",
+            "verify-tag",
+        ];
+        if READ_ONLY_GIT_SUBCOMMANDS.contains(&subcommand) {
+            return None;
         }
-        return None;
+        return Some(ValidationResult::Block {
+            reason: format!(
+                "Git command '{subcommand}' is not proven read-only and is not allowed in read-only mode"
+            ),
+        });
     }
 
     if first_command == "git-send-pack" {
@@ -127,6 +144,25 @@ fn check_command_segment(parts: &[String]) -> Option<ValidationResult> {
                 reason: "Sed in-place editing is not allowed in read-only mode".to_string(),
             });
         }
+        return None;
+    }
+
+    if first_command == "find" {
+        const WRITE_ACTIONS: &[&str] = &[
+            "-delete", "-fls", "-fprint", "-fprint0", "-fprintf", "-ok", "-okdir",
+        ];
+        if parts
+            .iter()
+            .any(|argument| WRITE_ACTIONS.contains(&argument.as_str()))
+        {
+            return Some(ValidationResult::Block {
+                reason: "Find invocation contains an action that is not read-only".to_string(),
+            });
+        }
+        return None;
+    }
+
+    if is_interpreter_metadata_query(first_command, &parts[1..]) {
         return None;
     }
 
@@ -150,6 +186,14 @@ fn check_command_segment(parts: &[String]) -> Option<ValidationResult> {
         }
     }
 
+    if !READ_ONLY_COMMANDS.contains(&first_command) {
+        return Some(ValidationResult::Block {
+            reason: format!(
+                "Command '{first_command}' is not in the read-only executable allowlist"
+            ),
+        });
+    }
+
     // Wrapper layers (`sudo`/`env`/…) are stripped up front by
     // `unwrap_command_wrappers`, so `first_command` is already the real command.
 
@@ -158,5 +202,60 @@ fn check_command_segment(parts: &[String]) -> Option<ValidationResult> {
     // covers both ReadOnly and WorkspaceWrite modes, so no per-segment
     // check is needed here.
 
+    None
+}
+
+fn is_interpreter_metadata_query(command: &str, arguments: &[String]) -> bool {
+    const INTERPRETERS: &[&str] = &[
+        "python", "python2", "python3", "perl", "ruby", "node", "nodejs", "php", "sh", "bash",
+        "zsh", "ksh", "dash", "fish",
+    ];
+    INTERPRETERS.contains(&command)
+        && !arguments.is_empty()
+        && arguments
+            .iter()
+            .all(|argument| matches!(argument.as_str(), "--version" | "-V" | "--help" | "-h"))
+}
+
+/// Resolve a Git subcommand without mistaking a global option operand for the
+/// command. Unknown global option grammar fails closed by returning `None`.
+fn git_subcommand(parts: &[String]) -> Option<&str> {
+    let mut index = 1;
+    while index < parts.len() {
+        let argument = parts[index].as_str();
+        if argument == "--" {
+            return parts.get(index + 1).map(String::as_str);
+        }
+        if matches!(argument, "-C" | "--git-dir" | "--work-tree" | "--namespace") {
+            index += 2;
+            continue;
+        }
+        if argument.starts_with("--git-dir=")
+            || argument.starts_with("--work-tree=")
+            || argument.starts_with("--namespace=")
+            || (argument.starts_with("-C") && argument.len() > 2)
+        {
+            index += 1;
+            continue;
+        }
+        if matches!(
+            argument,
+            "--no-pager"
+                | "--paginate"
+                | "-p"
+                | "--no-optional-locks"
+                | "--literal-pathspecs"
+                | "--glob-pathspecs"
+                | "--noglob-pathspecs"
+                | "--icase-pathspecs"
+        ) {
+            index += 1;
+            continue;
+        }
+        if argument.starts_with('-') {
+            return None;
+        }
+        return Some(argument);
+    }
     None
 }

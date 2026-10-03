@@ -32,6 +32,202 @@ The `[Unreleased]` heading is rolled forward manually before each release; do no
   does not rescue that case.
 
 ### Security
+- **Release publication is now tied to the tested protected-main commit.** All
+  third-party workflow actions are pinned to reviewed full commit SHAs,
+  workflow permissions default to `contents: read`, and Dependabot tracks
+  action updates. A tag-triggered release fetches `origin/main`, requires its
+  checked-out commit and `GITHUB_SHA` to be identical, and queries the exact
+  successful `ci.yml` push run for that SHA before any registry job can start.
+  The release preflight reruns `cargo deny`, `cargo audit`, and the production
+  npm dependency audit; the Rust registry job now names a dedicated
+  `crates-io` environment alongside the existing PyPI/npm environments.
+- **The marketplace hook now refuses silent plugin/binary version drift.** The
+  wrapper parses `.claude-plugin/plugin.json`, requires the discovered
+  `guard-hook --version` output to match exactly, and otherwise emits the
+  documented fail-open `allow` plus a warning without running `check`. Missing
+  or malformed metadata and a failed version probe follow the same path.
+  Plugin metadata no longer claims that this decision-only hook produces
+  signed audit receipts; its JSONL records are unsigned, while signed receipts
+  require separately configured Guard-owned execution and a signing key.
+- **Release version checks now distinguish source state from published
+  state.** The gate covers both Python project files, both Node lockfile version
+  fields, Cargo.lock workspace packages, every exact local dependency pin,
+  plugin/package metadata, install examples, and current source markers. The
+  atomic bump tool advances only source markers and leaves release links and
+  published-package install commands unchanged until a release actually
+  exists; mutation tests lock both groups independently.
+- **A failed weekly deep-audit reviewer can no longer be reported as a
+  successful run.** Reviewer subprocess status is preserved after report
+  capture, the table marks that reviewer `fail`, remaining reviewers still
+  run, and the workflow exits non-zero. A fake reviewer regression covers both
+  the failure and success paths.
+- **Python and Node adapters now preserve one decision snapshot and one
+  complete host-handoff lifecycle.** Binding `check` and `decide` responses
+  take the decision, policy version, and verification status from the same
+  immutable SDK evaluation, so a concurrent reload cannot splice metadata from
+  a newer policy onto an older verdict. Node `auto` now matches Python: the
+  exact `bash` tool uses owned execution, while non-shell custom tool IDs use
+  `run`, execute the host handler only on `Handoff`, and submit one terminal
+  report. Shell-like custom IDs such as `shell`, `sh`, `terminal`, `cmd`, and
+  `powershell` fail closed in `auto` until the host maps a real Bash-backed tool
+  to exact `bash` or selects an explicit mode; they cannot silently widen into
+  unsandboxed host execution. LangChain nested entry points use bounded,
+  single-use transition tickets, so framework delegation is counted once but
+  reentrant or delayed tool calls start a fresh lifecycle. Direct binding
+  reports reject unknown and duplicate IDs, including when audit output is
+  disabled. A successful host action whose report fails now raises
+  `AgentGuardExecutionError` carrying the completed result and an explicit
+  do-not-retry marker; when both action and report fail, the original
+  host error remains primary with the reporting error attached. Shared parity
+  fixtures lock omitted trust to `Untrusted` and invalid signatures to
+  `PolicyVerificationFailed` across Rust, Python, and Node.
+- **`guard-verify` no longer reports success on Attenu ledger content it only
+  partly understood.** The verifier now enforces the published 39-field ledger
+  vocabulary, rejects the twelve schema-v2 fields on v1 chains, validates v2
+  root/allow/deny/kill/outcome records, and checks duplicate IDs across both
+  allow and deny records before execution binding. Missing versions and chain
+  identifiers fail closed; malformed authority scopes, constraints, TTLs, or
+  unknown nested authority members are reported as unreadable rather than
+  projected into a weaker grant. Re-sealed mutation tests cover every record
+  family, so integrity-valid hostile shapes cannot pass as understood.
+- **Compliance reports no longer call a merely present host signature
+  “attested.”** Without a trusted public key, a structurally valid matching
+  envelope is now counted as `signature_present_unverified`; malformed or
+  outcome-mismatched envelopes are counted separately as invalid, and records
+  without one are unsigned. The old `executions_reported_attested` JSON field
+  is removed because it asserted verification the command never performed.
+- **Runtime decisions and audit outcomes now share one immutable policy
+  snapshot and request ID.** `Guard::run` no longer calls the decision path and
+  then re-evaluates through `execute`; one evaluation supplies the decision,
+  policy verification metadata, execution, and complete audit lifecycle.
+  `DecisionEvaluation` exposes that race-free decision surface to language
+  adapters. Tool decisions, execution starts, finishes or sandbox failures,
+  content findings, policy reloads, anomaly records, and reported handoff
+  outcomes now pass through one local-file/stdout plus SIEM fan-out; anomaly
+  records carry the request ID of their matching tool decision. Handoffs
+  emit an `execution_started` record before leaving the Guard boundary, so a
+  later `execution_reported` record can be correlated to the original
+  decision without inventing a witnessed finish. Pending handoff IDs are now
+  bounded, expiring, and one-shot; their terminal record retains the original
+  snapshot, audit destinations, tool, and agent across policy reloads instead
+  of accepting arbitrary/duplicate IDs or relabeling every tool as `handoff`.
+- **Guard-owned shell execution now has a finite resource lifecycle.** Bash
+  execution defaults to a five-minute timeout (tightenable through
+  `Guard::set_execution_timeout_ms`), and every built-in process runner retains
+  at most 4 MiB independently for stdout and stderr before returning the typed
+  `OutputLimitExceeded` error. Unix backends launch a fresh session and kill
+  the process group on timeout, overflow, or root-shell exit. They also mark
+  every inherited descriptor above stderr close-on-exec, preventing a
+  pre-opened writable file from bypassing path-oriented sandbox rules. Windows
+  uses the existing Job Object to terminate the full job before joining output
+  readers. Regressions prove simultaneous pipe draining, descriptor hygiene,
+  and that a background grandchild cannot write its delayed sentinel after
+  timeout.
+- **Linux Landlock now proves and enforces the write boundary it advertises.**
+  The backend requires Landlock ABI v3 as a hard minimum, so `truncate(2)`,
+  `open(2)` with `O_TRUNC`, and `ftruncate(2)` on descriptors opened after
+  restriction cannot bypass read-only or workspace-only modes. Because
+  Landlock cannot retroactively narrow a descriptor opened before restriction,
+  the shared Unix runner closes inherited non-stdio descriptors at exec.
+  Filesystem write rights now follow the effective `PolicyMode` instead of
+  being granted beneath the workspace in every mode. Availability runs the
+  complete restriction path in a disposable child, catching hosts that can
+  create a ruleset but block
+  `landlock_restrict_self(2)`; partial or older enforcement fails closed. A
+  Linux CI lane exercises the exact mutation syscalls against the combined
+  runner and OS boundary.
+- **Approval expiry and anomaly state now preserve their stated boundaries.**
+  The ledger rejects human decisions at or after the recorded expiry, and the
+  resume path independently rejects a forged or legacy late approval before
+  execution. Anomaly thresholds are validated against retained evidence,
+  `max_calls: 1000` can now observe and reject call 1001, and capacity churn
+  evicts only unlocked subjects; a durable lock cannot be erased by flooding
+  4,097 fresh identities. Deployments must still supply a stable,
+  host-authenticated subject identity for per-agent lockout claims.
+- **Guard-owned `WriteFile` now opens workspace targets relative to a directory
+  capability.** Workspace-scoped execution no longer validates an ambient path
+  and then reopens that path by name. Absolute/parent escapes and symlink or
+  ancestor swaps are refused during the capability-relative open itself;
+  deterministic race regressions prove that neither an existing link nor a
+  link installed between validation and open can redirect bytes outside the
+  workspace. Explicit `FullAccess` retains its documented ambient write
+  authority.
+- **Restricted shell validation now fails closed on unresolved destinations and
+  unknown read-only executables.** Dynamic or home-relative targets (`$VAR`,
+  `${VAR}`, and `~`), existing symlink components that resolve outside the
+  workspace, `truncate` destinations, archive extraction directories, and BSD
+  `xargs -J` command operands can no longer fall through as safe. Read-only
+  mode now uses a finite executable/Git-subcommand allowlist instead of
+  treating an unrecognized program as proof of read-only behavior. These are
+  intent-gate improvements; hostile arbitrary programs still require an active
+  OS sandbox for containment.
+- **The unsafe Windows AppContainer prototype is disabled.** It replaced the
+  workspace DACL without restoring the original descriptor and double-owned
+  inherited pipe handles, so success or failure could mutate host permissions
+  or close a handle twice. The compatibility feature now reports unavailable
+  and refuses direct execution; by-name selection resolves truthfully to
+  `none`, while default selection may use the independently probed Low-IL Job
+  Object backend. Re-enabling AppContainer requires Windows tests proving exact
+  DACL preservation and single handle ownership on every exit path.
+- **Guard-owned HTTP execution now ignores inherited proxies, bounds response
+  bodies, and fails closed on extension methods.** The pinned client disables
+  `HTTP(S)_PROXY`/`ALL_PROXY`, so an environment proxy cannot receive a request
+  in place of the vetted destination. Only `GET`, `HEAD` and `OPTIONS` may take
+  the documented host-handoff path; WebDAV, custom and unsafe verbs enter the
+  owned path and are rejected before DNS unless explicitly implemented. HTTP
+  responses are capped at 4 MiB, and the synchronous executor no longer
+  creates one extra unbounded OS thread per call. A global 64-request
+  in-flight budget now fails fast before DNS or socket work when the guarded
+  executor is saturated.
+- **Linux seccomp no longer drops an unresolved required deny rule.** The
+  complete network, dangerous-syscall and mode-specific write rule set is
+  preflighted before filter installation; any resolution or installation
+  failure returns `FilterSetup`. `SeccompSandbox::new()` and `strict()` are now
+  both fail-closed, and a build without native seccomp support cannot execute
+  an unfiltered compatibility shell while reporting `linux-seccomp`. The
+  capability doctor now runs an unsandboxed control write in a private probe
+  directory and requires the equivalent read-only sandbox write to fail, so a
+  green health result proves a representative deny instead of only proving
+  that `echo` can run.
+- **A one-use push grant is now claimed before any repository inspection or
+  network-capable Git command.** Grant schema v2 retains the exact approved
+  transaction. Execution atomically burns the grant, validates its policy,
+  expiry and self-digest, then compares the repository's current push URL and
+  local OID using local-only operations. Only the URL stored in the grant may
+  reach `ls-remote` or `push`. Changing `pushurl` after approval is therefore a
+  refusal with a retained grant ID and transaction, and the changed endpoint
+  receives no connection; legacy v1 grants are readable but refused by the
+  broker executor because they do not carry enough evidence for this check.
+- **Policy typos and condition errors now fail closed.** Fixed-schema policy
+  objects reject unknown fields, empty selectors and invalid HTTP method
+  tokens during loading; valid extension methods remain available to explicit
+  rules. Invalid condition operand types are rejected when possible at load
+  time, and any residual runtime evaluation error produces an
+  `INTERNAL_ERROR` deny instead of silently making a deny/ask rule not match.
+  Invalid anomaly thresholds and audit destinations are rejected as well.
+- **An invalid signed policy now blocks every public decision entry point.**
+  `check`, `check_tool`, `decide`, `decide_tool`, `execute` and `run` all share
+  the same `POLICY_VERIFICATION_FAILED` chokepoint; callers can no longer use a
+  decision-only API to obtain `allow`/`execute` from a policy whose detached
+  signature failed verification.
+- **The Node framework adapter now defaults omitted trust to `Untrusted`.**
+  This matches the Rust and Python contract. Hosts that deliberately want the
+  broader trusted policy path must pass `Trusted` explicitly.
+- **`DecisionReason` no longer derives `Deserialize`, closing a
+  blank-approval-prompt path.** Its fields are `pub(crate)` and construction
+  funnels through `new`, which substitutes a placeholder for an empty message —
+  but a derived `Deserialize` populated those fields regardless of visibility,
+  so any downstream crate could synthesize a reason with an empty `message` from
+  JSON and wrap it in `AskUser`. `GuardDecision` and `RuntimeDecision` already
+  omit `Deserialize` for the same reason. Their approval variants are now
+  individually `non_exhaustive`, so downstream crates must use the validated
+  constructors and cannot supply a blank prompt with a struct literal; all
+  constructors also replace whitespace-only prompts/reasons. This is a source
+  compatibility change for downstream code that deserialized `DecisionReason`,
+  directly constructed approval variants, or destructured every variant field;
+  audit readers should deserialize the stable audit/receipt wire types instead.
+  A `compile_fail` doctest locks the deserialization boundary. Type-design audit
+  finding.
 - **A path waived past the workspace bound by `workspace_escape_paths` stayed
   waived wherever it led.** The globs are matched against the path as written,
   and a match dropped the bound for that call entirely, so a symlink inside an
@@ -77,15 +273,11 @@ The `[Unreleased]` heading is rolled forward manually before each release; do no
     `execution_binding`, which is `"not applicable"` on a v1 chain rather than
     leaving an empty failure list to imply the pairs were found sound.
 
-  **Not implemented: `v2_field_on_v1`.** The README names the reason but not
-  which entry fields are v2-only. Guessing the list would reject canonical v1
-  rows this verifier cannot see, so the reason is left out and the question
-  is raised upstream instead. `unsupported_canonicalization` is likewise
-  outside the contract: the README has no token for a non-JCS `c14n`.
-
-  The v1 cases are derived by re-declaring a published v2 case as v1 and
-  re-sealing it, so they test this verifier's reading of the format, not the
-  upcoming row.
+  The upstream README now publishes the exact v2-only field set, so derived v1
+  cases remove those twelve fields before re-sealing. A separate negative
+  mutation adds one back and pins `v2_field_on_v1`.
+  `unsupported_canonicalization` remains outside the contract: the README has
+  no token for a non-JCS `c14n`.
 
 ### Fixed
 - **The 20 of 20 `guard-verify` reported for `bundle_vectors_v1.4` never read
@@ -114,12 +306,11 @@ The `[Unreleased]` heading is rolled forward manually before each release; do no
     or the anchor naming another chain) were never emitted.
 
   `attenu-vectors` also prints the corpus revision it scored, which the README
-  says is what a report should name. Still not implemented, and now listed
-  where the verifier documents itself: the v2 record schema behind
-  `invalid_root`, `invalid_kill`, `invalid_deny` and `invalid_outcome`
-  (`invalid_allow` too, beyond the `policy` value), and
-  `expected_head_mismatch` / `expected_anchor_mismatch`, which need an
-  independently retained head that this verifier is not given.
+  says is what a report should name. `expected_head_mismatch` and
+  `expected_anchor_mismatch` remain outside this command because they need an
+  independently retained head that the verifier is not given. The v2 record
+  schema gaps named in this original review are closed by the security entry
+  above.
 
 ## [0.2.5] - 2026-09-14
 

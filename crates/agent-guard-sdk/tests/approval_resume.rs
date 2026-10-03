@@ -6,6 +6,7 @@
 
 use std::thread;
 use std::time::Duration;
+use std::{fs::OpenOptions, io::Write};
 
 use agent_guard_sandbox::NoopSandbox;
 use agent_guard_sdk::{
@@ -347,5 +348,59 @@ fn expiry_verdict_does_not_depend_on_the_readers_timeout() {
             expiry_is_justified(&record),
             "expiry under timeout {timeout:?} was not checkable from the ledger"
         );
+    }
+}
+
+/// A decision can land after the recorded wall-clock deadline but before the
+/// waiting loop's next monotonic poll. The resume path must validate the
+/// record's own timestamps instead of treating `Approved` as sufficient.
+#[test]
+fn approval_recorded_after_expiry_before_next_poll_cannot_resume_execution() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let ledger_path = dir.path().join("approvals.jsonl");
+    let ledger = ApprovalLedger::open(&ledger_path);
+
+    let runner = {
+        let ledger = ledger.clone();
+        thread::spawn(move || {
+            let config = ApprovalConfig::new(ledger)
+                .with_timeout(Duration::from_millis(100))
+                .with_poll_interval(Duration::from_millis(500));
+            guard().run_until_approved(&bash("git push origin main"), &NoopSandbox, &config)
+        })
+    };
+
+    let request_id = wait_for_pending(&ledger);
+    let pending = ledger.get(&request_id).unwrap().unwrap();
+    let expires_at = pending.expires_at.expect("bounded request");
+    while chrono::Utc::now() <= expires_at {
+        thread::sleep(Duration::from_millis(5));
+    }
+
+    // Simulate a racing/legacy writer that appends an approval without the
+    // ledger's transition guard. Resume still has to reject this record.
+    let decided_at = chrono::Utc::now();
+    let event = serde_json::json!({
+        "event": "decided",
+        "request_id": request_id,
+        "status": "approved",
+        "decided_at": decided_at,
+        "decided_by": "late-reviewer",
+    });
+    let mut file = OpenOptions::new()
+        .append(true)
+        .open(&ledger_path)
+        .expect("open ledger");
+    writeln!(file, "{}", event).expect("append late approval");
+
+    let outcome = runner
+        .join()
+        .expect("runner thread")
+        .expect("runtime result");
+    match outcome {
+        RuntimeOutcome::Denied { reason, .. } => {
+            assert_eq!(reason.code(), DecisionCode::ApprovalDenied);
+        }
+        other => panic!("late approval must not resume execution, got {other:?}"),
     }
 }

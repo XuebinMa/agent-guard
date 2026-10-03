@@ -2,10 +2,10 @@
 
 | Field | Details |
 | :--- | :--- |
-| **Status** | 🟢 Operational (v0.2.0) |
+| **Status** | 🟢 Operational (current source) |
 | **Audience** | DevOps, SREs, System Admins |
-| **Version** | 1.1 |
-| **Last Reviewed** | 2026-04-15 |
+| **Version** | 1.2 |
+| **Last Reviewed** | 2026-10-02 |
 | **Related Docs** | [Observability](observability.md), [Capability Parity](../../concepts/capability-parity.md) |
 
 ---
@@ -22,7 +22,9 @@ For most production deployments with real side effects, we recommend the followi
 2. **agent-guard SDK**: Integrated into the host application to intercept tool calls.
 3. **OS Sandboxes**:
    - **Linux**: Native Seccomp-BPF filtering when the `seccomp` feature is enabled; Landlock can add stronger path-aware filesystem isolation where supported.
-   - **Windows**: Low-IL (Strengthened Prototype - Default) or **AppContainer** (Experimental - Opt-in).
+   - **Windows**: Low-IL (Strengthened Prototype when its runtime probe
+     succeeds). **AppContainer is currently disabled and fails closed** until
+     exact workspace-DACL restoration is covered by Windows integration tests.
    - **macOS**: Seatbelt (Internal Prototype).
 
 ---
@@ -32,7 +34,7 @@ For most production deployments with real side effects, we recommend the followi
 | Platform | What this protects | What this does not protect |
 | :--- | :--- | :--- |
 | **Containers** | Deployment-level isolation you configure separately (e.g. Docker/K8s profiles). | `agent-guard` seccomp is syscall-oriented; container profiles are still responsible for broader host isolation. |
-| **Permissions** | Prevents agents from writing to host `/etc` or `C:\Windows`. | Global read access on macOS/Windows (Prototype limit). |
+| **Permissions** | An active, probed backend can deny the writes documented for that backend and mode. | Noop provides none; seccomp is path-agnostic; macOS/Windows retain global read access; Landlock does not restrict networking. |
 | **Reliability** | Fail-closed: The system stops if the security environment is unstable. | Downtime caused by missing system dependencies (e.g., `libseccomp`). |
 
 ---
@@ -80,6 +82,12 @@ Check for these signals before rollout:
 - `Fallback: Yes` means the SDK is explicitly using `NoopSandbox`; treat that as a deployment blocker if you expected OS-level isolation.
 - Shell / Bash is the strongest current `enforce` path. For non-shell tools, do not treat a green doctor report as proof that every tool type now has equivalent runtime isolation.
 - On Windows, inspect the runtime checks individually to distinguish token creation support, Job Object support, and low-integrity process launch support.
+- On Linux, choose the property you need: seccomp for restricted-mode syscall
+  filtering or Landlock ABI v3+ for path-aware write isolation. The SDK does not
+  silently compose the two backends.
+- For brokered Git pushes, run the credential-isolation checks separately. A
+  green sandbox doctor report does not prove the agent is unable to reach the
+  broker's config, SSH agent, helper programs or signing key.
 
 ---
 

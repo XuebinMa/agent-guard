@@ -1,5 +1,10 @@
 pub mod noop;
 
+mod process;
+
+#[cfg(any(test, all(target_os = "linux", feature = "seccomp")))]
+mod seccomp_rules;
+
 #[cfg(target_os = "linux")]
 pub mod linux;
 
@@ -43,7 +48,8 @@ pub struct SandboxContext {
     pub mode: PolicyMode,
     /// Workspace root — writes must stay within this directory.
     pub working_directory: PathBuf,
-    /// Optional execution timeout in milliseconds. `None` means no limit.
+    /// Optional execution timeout in milliseconds. `None` means no limit for
+    /// direct sandbox callers; Guard-owned Bash supplies a finite default.
     pub timeout_ms: Option<u64>,
 }
 
@@ -55,6 +61,10 @@ pub struct SandboxOutput {
     pub stderr: String,
     pub exit_code: i32,
 }
+
+/// Maximum bytes retained independently for stdout and stderr by built-in
+/// sandbox process runners.
+pub const OUTPUT_CAPTURE_LIMIT_BYTES: usize = 4 * 1024 * 1024;
 
 // ── SandboxCapabilities ────────────────────────────────────────────────────────
 
@@ -100,7 +110,19 @@ pub trait Sandbox: Send + Sync {
     fn capabilities(&self) -> SandboxCapabilities;
 
     /// Execute `command` under this sandbox with the given context.
+    ///
+    /// Built-in process runners retain at most
+    /// [`OUTPUT_CAPTURE_LIMIT_BYTES`] for each output stream.
     fn execute(&self, command: &str, context: &SandboxContext) -> SandboxResult;
+
+    /// Exercise the backend for the capability doctor.
+    ///
+    /// The default proves only that an ordinary command can execute. Backends
+    /// with a load-bearing negative property should override this and prove a
+    /// representative denied operation as well.
+    fn health_check(&self, context: &SandboxContext) -> SandboxResult {
+        self.execute("echo 1", context)
+    }
 
     /// Returns `true` if this sandbox implementation is usable on the current platform.
     fn is_available(&self) -> bool;
@@ -136,6 +158,8 @@ pub enum SandboxError {
     InvalidPayload { code: DecisionCode, message: String },
     #[error("timeout after {ms}ms")]
     Timeout { ms: u64 },
+    #[error("{stream} exceeded the {limit_bytes}-byte capture limit")]
+    OutputLimitExceeded { stream: String, limit_bytes: usize },
     #[error("seccomp filter setup failed: {0}")]
     FilterSetup(String),
     #[error("process killed by seccomp filter (exit code: {exit_code})")]
@@ -231,7 +255,7 @@ impl CapabilityDoctor {
                     working_directory: std::env::current_dir().unwrap_or_else(|_| ".".into()),
                     timeout_ms: Some(2000),
                 };
-                match sb.execute("echo 1", &ctx) {
+                match sb.health_check(&ctx) {
                     Ok(_) => HealthStatus::Pass,
                     Err(e) => HealthStatus::Fail {
                         error: e.to_string(),

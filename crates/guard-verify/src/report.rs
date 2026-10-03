@@ -50,14 +50,15 @@ pub struct ComplianceReport {
     pub executions_finished: usize,
     /// Host-reported outcomes that were not witnessed by the Guard.
     pub executions_reported: usize,
-    /// Of those, the ones whose host supplied a signature over the outcome.
+    /// Structurally valid, self-consistent signature envelopes for which this
+    /// command was not given a trusted public key.
     ///
-    /// Counted separately because the difference changes what the total
-    /// proves: an attested outcome names a key that can be checked and
-    /// cannot be edited afterwards without detection, an unattested one
-    /// rests on nothing but the host having said it. Folding them together
-    /// would let the stronger class lend its credibility to the weaker.
-    pub executions_reported_attested: usize,
+    /// Presence is not verification. These claims must never be described as
+    /// attested until a trust set selects a key and the signature verifies.
+    pub executions_reported_signature_present_unverified: usize,
+    /// Signature envelopes that are malformed or do not describe the
+    /// surrounding reported outcome.
+    pub executions_reported_attestation_invalid: usize,
     pub sandbox_failures: usize,
     pub anomalies_triggered: usize,
     pub agents_locked: usize,
@@ -159,7 +160,11 @@ pub fn build_report(
             AuditRecord::ExecutionReported(event) => {
                 report.executions_reported += 1;
                 if event.host_attestation.is_some() {
-                    report.executions_reported_attested += 1;
+                    if signature_envelope_is_well_formed(event) {
+                        report.executions_reported_signature_present_unverified += 1;
+                    } else {
+                        report.executions_reported_attestation_invalid += 1;
+                    }
                 }
             }
             AuditRecord::SandboxFailure(_) => report.sandbox_failures += 1,
@@ -201,6 +206,21 @@ fn code_label(code: &agent_guard_core::DecisionCode) -> String {
         .to_string()
 }
 
+fn signature_envelope_is_well_formed(event: &agent_guard_core::ExecutionEvent) -> bool {
+    let Some(attestation) = &event.host_attestation else {
+        return false;
+    };
+    let (Some(exit_code), Some(duration_ms)) = (event.exit_code, event.duration_ms) else {
+        return false;
+    };
+    let signature_is_ed25519_sized =
+        hex::decode(&attestation.signature).is_ok_and(|signature| signature.len() == 64);
+    attestation.version == 1
+        && !attestation.key_id.is_empty()
+        && signature_is_ed25519_sized
+        && attestation.describes(&event.request_id, exit_code, duration_ms)
+}
+
 /// Print a human-readable evidence summary to stdout.
 pub fn print_text(report: &ComplianceReport) {
     println!("=== agent-guard compliance report ===");
@@ -235,16 +255,18 @@ pub fn print_text(report: &ComplianceReport) {
     print_counts("  by label", &report.content_by_label);
 
     println!();
-    let unattested = report
+    let unsigned = report
         .executions_reported
-        .saturating_sub(report.executions_reported_attested);
+        .saturating_sub(report.executions_reported_signature_present_unverified)
+        .saturating_sub(report.executions_reported_attestation_invalid);
     println!(
-        "executions:  {} started · {} finished · {} host-reported ({} attested, {} unattested) · {} sandbox failure(s)",
+        "executions:  {} started · {} finished · {} host-reported ({} signature-present/unverified, {} invalid envelope, {} unsigned) · {} sandbox failure(s)",
         report.executions_started,
         report.executions_finished,
         report.executions_reported,
-        report.executions_reported_attested,
-        unattested,
+        report.executions_reported_signature_present_unverified,
+        report.executions_reported_attestation_invalid,
+        unsigned,
         report.sandbox_failures
     );
     println!(
@@ -299,6 +321,21 @@ mod tests {
         )
     }
 
+    fn reported_line(attestation: serde_json::Value) -> String {
+        serde_json::json!({
+            "type": "execution_reported",
+            "timestamp": "2026-05-29T12:00:00Z",
+            "request_id": "request-1",
+            "agent_id": "a",
+            "tool": "bash",
+            "sandbox_type": "host-handoff",
+            "duration_ms": 7,
+            "exit_code": 0,
+            "host_attestation": attestation,
+        })
+        .to_string()
+    }
+
     #[test]
     fn counts_decisions_and_groups_denials() {
         let log = [
@@ -336,6 +373,52 @@ mod tests {
         assert_eq!(report.content_by_mode["warn"], 1);
         assert_eq!(report.content_by_label["AWS Access Key"], 1);
         assert_eq!(report.content_by_label["Email"], 1);
+    }
+
+    #[test]
+    fn a_present_signature_is_reported_as_unverified_not_attested() {
+        let line = reported_line(serde_json::json!({
+            "version": 1,
+            "key_id": "host-key",
+            "request_id": "request-1",
+            "exit_code": 0,
+            "duration_ms": 7,
+            "signature": "00".repeat(64),
+        }));
+
+        let report = build_report(&line, None, None, None);
+        assert_eq!(report.executions_reported, 1);
+        assert_eq!(report.executions_reported_signature_present_unverified, 1);
+        assert_eq!(report.executions_reported_attestation_invalid, 0);
+
+        let json = serde_json::to_value(&report).expect("report serializes");
+        assert!(json.get("executions_reported_attested").is_none());
+    }
+
+    #[test]
+    fn malformed_or_mismatched_signature_envelopes_are_invalid() {
+        for attestation in [
+            serde_json::json!({
+                "version": 1,
+                "key_id": "host-key",
+                "request_id": "another-request",
+                "exit_code": 0,
+                "duration_ms": 7,
+                "signature": "00".repeat(64),
+            }),
+            serde_json::json!({
+                "version": 1,
+                "key_id": "host-key",
+                "request_id": "request-1",
+                "exit_code": 0,
+                "duration_ms": 7,
+                "signature": "not-hex",
+            }),
+        ] {
+            let report = build_report(&reported_line(attestation), None, None, None);
+            assert_eq!(report.executions_reported_attestation_invalid, 1);
+            assert_eq!(report.executions_reported_signature_present_unverified, 0);
+        }
     }
 
     #[test]

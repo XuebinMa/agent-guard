@@ -1,5 +1,6 @@
 import asyncio
 import json
+import logging
 import time
 from typing import Any, Callable, Optional
 
@@ -7,7 +8,27 @@ from typing import Any, Callable, Optional
 DEFAULT_MODE = "enforce"
 DEFAULT_TRUST_LEVEL = "untrusted"
 MAX_PAYLOAD_BYTES = 1024 * 1024
-SHELL_TOOL_NAMES = {"bash", "shell", "terminal", "sh", "zsh", "cmd", "powershell", "pwsh"}
+SHELL_PAYLOAD_TOOL_NAMES = {"bash", "shell", "terminal"}
+OWNED_SHELL_TOOL_NAMES = {"bash"}
+SHELL_LIKE_TOOL_NAMES = {
+    "bash",
+    "bash.exe",
+    "shell",
+    "terminal",
+    "sh",
+    "sh.exe",
+    "zsh",
+    "dash",
+    "ksh",
+    "fish",
+    "cmd",
+    "cmd.exe",
+    "powershell",
+    "powershell.exe",
+    "pwsh",
+    "pwsh.exe",
+}
+LOGGER = logging.getLogger(__name__)
 
 
 class AgentGuardAdapterError(Exception):
@@ -18,6 +39,10 @@ class AgentGuardAdapterError(Exception):
                  sandbox_type: Optional[str] = None, receipt: Optional[str] = None,
                  code: Optional[str] = None, matched_rule: Optional[str] = None,
                  ask_prompt: Optional[str] = None,
+                 host_action_completed: bool = False,
+                 host_result: Any = None,
+                 request_id: Optional[str] = None,
+                 handoff_result: Any = None,
                  cause: Optional[BaseException] = None):
         super().__init__(message)
         self.decision = decision
@@ -30,6 +55,10 @@ class AgentGuardAdapterError(Exception):
         self.code = code
         self.matched_rule = matched_rule
         self.ask_prompt = ask_prompt
+        self.host_action_completed = host_action_completed
+        self.host_result = host_result
+        self.request_id = request_id
+        self.handoff_result = handoff_result
         self.cause = cause
 
 
@@ -57,7 +86,7 @@ def validate_mode(mode: str) -> str:
 
 
 def is_shell_tool_name(name: str) -> bool:
-    return str(name or "").lower() in SHELL_TOOL_NAMES
+    return str(name or "") in OWNED_SHELL_TOOL_NAMES
 
 
 def resolve_mode(tool_name: str, mode: str) -> str:
@@ -66,31 +95,42 @@ def resolve_mode(tool_name: str, mode: str) -> str:
 
     - "enforce"  → always go through ``Guard.execute`` (sandboxed run).
     - "check"    → always go through ``Guard.check`` (policy-only, host runs original).
-    - "auto"     → for shell tools, behave like "enforce"; for non-shell tools,
-                   prefer ``Guard.run`` (the unified runtime API) when the binding
-                   exposes it, falling back to "check" for older bindings.
+    - "auto"     → for the exact built-in tool ID ``bash``, behave like
+                   "enforce"; for every other tool ID, prefer ``Guard.run`` (the
+                   unified runtime API) when the binding exposes it, falling
+                   back to "check" for older bindings.
 
     The returned token "run" is a private contract between this helper and the
-    adapter dispatch path; it is only produced when the host's ``Guard`` actually
-    advertises a ``run`` method, so adapters can safely call ``guard.run`` after
-    seeing it.
+    adapter dispatch path. The wrapper must still call :func:`has_runtime_api`
+    and fall back to ``check`` for an older binding.
     """
     resolved = validate_mode(mode)
     if resolved != "auto":
         return resolved
     if is_shell_tool_name(tool_name):
         return "enforce"
+    normalized_tool = str(tool_name or "").lower()
+    if normalized_tool in SHELL_LIKE_TOOL_NAMES:
+        raise AgentGuardExecutionError(
+            f"Auto mode refuses shell-like custom tool ID {tool_name!r}; "
+            "map a real Bash-backed tool to the exact ID 'bash' or choose "
+            "an explicit mode",
+            status="configuration_error",
+            code="UnsupportedShellAlias",
+        )
     # Non-shell auto: use the runtime API when available, else fall back to check.
     return "run"
 
 
 def has_runtime_api(guard: Any) -> bool:
     """True iff this Guard binding exposes the unified runtime API used by mode=auto."""
-    return callable(getattr(guard, "run", None))
+    return callable(getattr(guard, "run", None)) and callable(
+        getattr(guard, "report_handoff_result", None)
+    )
 
 
 def prepare_payload(tool_name: str, raw_input: Any) -> str:
-    shell_tool = is_shell_tool_name(tool_name)
+    shell_tool = str(tool_name or "") in SHELL_PAYLOAD_TOOL_NAMES
     if shell_tool:
         if isinstance(raw_input, str):
             payload = {"command": raw_input}
@@ -143,12 +183,16 @@ def _decision_to_error_attrs(decision: Any) -> dict:
 
 
 def build_security_error(decision: Any, *, fallback_message: Optional[str] = None) -> AgentGuardSecurityError:
-    outcome = getattr(decision, "outcome", "deny")
+    inner = getattr(decision, "decision", None)
+    message_source = inner if inner is not None else decision
+    outcome = getattr(message_source, "outcome", None) or getattr(
+        decision, "outcome", "deny"
+    )
     is_ask = outcome in ("ask_user", "ask_for_approval")
     status = "ask_required" if is_ask else "denied"
     message = (
-        getattr(decision, "ask_prompt", None)
-        or getattr(decision, "message", None)
+        getattr(message_source, "ask_prompt", None)
+        or getattr(message_source, "message", None)
         or fallback_message
         or ("agent-guard requires user approval before tool execution" if is_ask
             else "agent-guard denied tool execution")
@@ -242,6 +286,50 @@ def _build_handoff_result(guard: Any, *, exit_code: int, duration_ms: int,
         })()
 
 
+def _surface_report_failure_on_host_error(
+    host_error: BaseException, report_error: Exception
+) -> None:
+    """Preserve the host exception while making the audit failure observable."""
+    message = f"agent-guard could not record the handoff result: {report_error}"
+    try:
+        setattr(host_error, "agent_guard_report_error", report_error)
+    except Exception:  # pragma: no cover - unusual immutable exception types
+        pass
+    add_note = getattr(host_error, "add_note", None)
+    if callable(add_note):
+        add_note(message)
+    LOGGER.error(message, exc_info=report_error)
+
+
+def _raise_success_report_failure(
+    report_error: Exception,
+    host_result: Any,
+    outcome: Any,
+    request_id: str,
+    handoff_result: Any,
+) -> None:
+    """A completed host action is not a successful guarded lifecycle if its
+    terminal report was rejected."""
+    raise AgentGuardExecutionError(
+        "host action already completed but agent-guard could not record its "
+        f"handoff result; do not retry automatically: {report_error}",
+        status="report_failed_after_execution",
+        code="HandoffReportFailedAfterExecution",
+        host_action_completed=True,
+        host_result=host_result,
+        request_id=request_id,
+        handoff_result=handoff_result,
+        policy_version=getattr(outcome, "policy_version", None),
+        policy_verification_status=getattr(
+            outcome, "policy_verification_status", None
+        ),
+        policy_verification_error=getattr(
+            outcome, "policy_verification_error", None
+        ),
+        cause=report_error,
+    ) from report_error
+
+
 def dispatch_via_run(
     guard: Any,
     *,
@@ -258,9 +346,8 @@ def dispatch_via_run(
 
     Behaviour by ``RuntimeOutcome`` variant:
 
-    - ``Executed`` — return the sandbox output mapped through the standard
-      execute-result path. (Currently this only happens for shell-shaped
-      tools, but the branch is here for robustness.)
+    - ``Executed`` — return the Guard-owned runtime outcome without invoking
+      the host handler (for example, WriteFile or a mutating HTTP request).
     - ``Handoff``  — invoke ``handler`` to actually perform the action, time
       it, and report the outcome back via ``Guard.report_handoff_result``
       (exit_code 0 on clean return, 1 if the handler raised). The host
@@ -279,6 +366,8 @@ def dispatch_via_run(
             cause=exc,
         ) from exc
 
+    ensure_verified_policy(outcome)
+
     if _is_handoff_outcome(outcome):
         request_id = getattr(outcome, "request_id", "")
         start = time.monotonic()
@@ -294,10 +383,10 @@ def dispatch_via_run(
             )
             try:
                 guard.report_handoff_result(request_id, handoff_result)
-            except Exception:
-                # Reporting must never mask the host failure; swallow audit
-                # errors and let the original exception propagate.
-                pass
+            except Exception as report_error:
+                # The host failure remains primary, but the audit failure must
+                # remain visible on that exception and in host logs.
+                _surface_report_failure_on_host_error(host_exc, report_error)
             raise
         duration_ms = int((time.monotonic() - start) * 1000)
         handoff_result = _build_handoff_result(
@@ -308,10 +397,10 @@ def dispatch_via_run(
         )
         try:
             guard.report_handoff_result(request_id, handoff_result)
-        except Exception:
-            # Same rationale as the failure branch: audit reporting must not
-            # silently corrupt a successful host execution.
-            pass
+        except Exception as report_error:
+            _raise_success_report_failure(
+                report_error, result, outcome, request_id, handoff_result
+            )
         return result
 
     if _is_executed_outcome(outcome):
@@ -364,6 +453,8 @@ async def dispatch_via_run_async(
             cause=exc,
         ) from exc
 
+    ensure_verified_policy(outcome)
+
     if _is_handoff_outcome(outcome):
         request_id = getattr(outcome, "request_id", "")
         start = time.monotonic()
@@ -381,9 +472,11 @@ async def dispatch_via_run_async(
                 stderr=str(host_exc),
             )
             try:
-                guard.report_handoff_result(request_id, handoff_result)
-            except Exception:
-                pass
+                await asyncio.to_thread(
+                    guard.report_handoff_result, request_id, handoff_result
+                )
+            except Exception as report_error:
+                _surface_report_failure_on_host_error(host_exc, report_error)
             raise
         duration_ms = int((time.monotonic() - start) * 1000)
         handoff_result = _build_handoff_result(
@@ -393,9 +486,13 @@ async def dispatch_via_run_async(
             stderr=None,
         )
         try:
-            guard.report_handoff_result(request_id, handoff_result)
-        except Exception:
-            pass
+            await asyncio.to_thread(
+                guard.report_handoff_result, request_id, handoff_result
+            )
+        except Exception as report_error:
+            _raise_success_report_failure(
+                report_error, result, outcome, request_id, handoff_result
+            )
         return result
 
     if _is_executed_outcome(outcome):

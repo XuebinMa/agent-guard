@@ -1,5 +1,7 @@
 version: 1
-default_mode: workspace_write
+# Trusted scenarios below use explicit tool modes. Omitting trust leaves the
+# caller Untrusted, which ignores tool-level elevation and remains read-only.
+default_mode: read_only
 
 tools:
   bash:

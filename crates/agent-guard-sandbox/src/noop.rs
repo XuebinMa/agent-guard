@@ -29,59 +29,21 @@ impl Sandbox for NoopSandbox {
     }
 
     fn execute(&self, command: &str, context: &SandboxContext) -> SandboxResult {
-        use std::process::Command;
-        use std::sync::mpsc;
-        use std::thread;
-        use std::time::Duration;
+        use crate::process::{configure_process_group, shell_command, wait_for_child};
 
-        let mut child = Command::new("sh")
-            .arg("-c")
-            .arg(command)
+        let mut command = shell_command(command);
+        configure_process_group(&mut command);
+        let child = command
             .current_dir(&context.working_directory)
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped())
             .spawn()
             .map_err(|e| SandboxError::ExecutionFailed(e.to_string()))?;
-
-        if let Some(timeout_ms) = context.timeout_ms {
-            let (tx, rx) = mpsc::channel();
-            thread::spawn(move || {
-                thread::sleep(Duration::from_millis(timeout_ms));
-                let _ = tx.send(());
-            });
-
-            loop {
-                match child.try_wait() {
-                    Ok(Some(status)) => {
-                        let output = child
-                            .wait_with_output()
-                            .map_err(|e| SandboxError::ExecutionFailed(e.to_string()))?;
-                        return Ok(SandboxOutput {
-                            stdout: String::from_utf8_lossy(&output.stdout).to_string(),
-                            stderr: String::from_utf8_lossy(&output.stderr).to_string(),
-                            exit_code: status.code().unwrap_or(-1),
-                        });
-                    }
-                    Ok(None) => {
-                        if rx.try_recv().is_ok() {
-                            let _ = child.kill();
-                            let _ = child.wait(); // CWE-117: Prevent zombie process
-                            return Err(SandboxError::Timeout { ms: timeout_ms });
-                        }
-                        thread::sleep(Duration::from_millis(10));
-                    }
-                    Err(e) => return Err(SandboxError::ExecutionFailed(e.to_string())),
-                }
-            }
-        }
-
-        let output = child
-            .wait_with_output()
-            .map_err(|e| SandboxError::ExecutionFailed(e.to_string()))?;
+        let output = wait_for_child(child, context.timeout_ms)?;
 
         Ok(SandboxOutput {
-            stdout: String::from_utf8_lossy(&output.stdout).to_string(),
-            stderr: String::from_utf8_lossy(&output.stderr).to_string(),
+            stdout: output.stdout,
+            stderr: output.stderr,
             exit_code: output.status.code().unwrap_or(-1),
         })
     }

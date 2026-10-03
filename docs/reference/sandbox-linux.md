@@ -1,13 +1,21 @@
-# Linux Seccomp Sandbox — agent-guard
+# Linux Sandboxes — agent-guard
 
-> **Status:** Linux Seccomp now supports native Seccomp-BPF filtering when built with the `seccomp` feature. Path-aware workspace isolation still requires higher-level validators or Landlock.
+> **Status:** Linux Seccomp supports native Seccomp-BPF filtering when built with the `seccomp` feature. Feature-built Landlock provides path-aware, mode-specific write isolation on hosts with Landlock ABI v3 or newer.
 
 ## Overview
 
-The `SeccompSandbox` in `crates/agent-guard-sandbox/src/linux.rs` provides two operating styles:
+The `SeccompSandbox` in `crates/agent-guard-sandbox/src/linux.rs` is fail-closed:
 
-- `SeccompSandbox::new()`: prefers native Seccomp-BPF when available, but can fall back to the compatibility `sh -c` wrapper if setup fails.
-- `SeccompSandbox::strict()`: requires native Seccomp-BPF and returns `FilterSetup` instead of falling back.
+- `SeccompSandbox::new()`: requires native Seccomp-BPF and returns `FilterSetup` if any required syscall cannot be resolved or the complete filter cannot be loaded.
+- `SeccompSandbox::strict()`: compatibility alias with the same fail-closed behavior.
+
+The separate `LandlockSandbox` in
+`crates/agent-guard-sandbox/src/landlock.rs` is the path-aware filesystem
+boundary. It requires Landlock ABI v3 (upstream Linux 6.2+) as a hard minimum:
+ABI v3 added the `TRUNCATE` right needed to govern `truncate(2)`,
+`ftruncate(2)`, and `open(2)` with `O_TRUNC`. An older or partially enforced
+ruleset is reported unavailable or fails setup instead of being described as
+workspace isolation.
 
 With the `seccomp` feature enabled, read-only executions now install a syscall filter in the child process before `exec`, blocking network-oriented syscalls and common write/metadata mutation syscalls.
 
@@ -23,15 +31,22 @@ With the `seccomp` feature enabled, read-only executions now install a syscall f
 
 ```toml
 [dependencies]
-agent-guard-sandbox = { version = "0.2.0", features = ["seccomp"] }
+agent-guard-sandbox = { version = "0.2", features = ["seccomp"] }
 ```
 
 ## Current Behavior
 
-| Constructor | Current behavior in v0.2.0 |
+| Constructor | Current behavior |
 |---|---|
-| `SeccompSandbox::new()` | Uses native seccomp on Linux when filter setup succeeds; otherwise falls back to the compatibility shell wrapper. |
-| `SeccompSandbox::strict()` | Uses native seccomp and fails closed with `SandboxError::FilterSetup(...)` if the filter cannot be installed. |
+| `SeccompSandbox::new()` | Uses native seccomp and fails closed with `SandboxError::FilterSetup(...)` if every required deny rule cannot be installed. |
+| `SeccompSandbox::strict()` | Compatibility alias for the same fail-closed behavior. |
+
+The capability doctor performs both halves of a runtime check in a private
+temporary directory: an unsandboxed control invocation must be able to create
+a marker, and the equivalent `ReadOnly` seccomp invocation must fail without
+creating it. A green doctor result therefore proves one representative denied
+write as well as successful filter installation. It does not prove every
+syscall rule or provide path-aware isolation.
 
 ## Capability Reporting vs Runtime Enforcement
 
@@ -55,19 +70,58 @@ truth for per-execution behavior.
 | `WorkspaceWrite` | Allows write syscalls, but still blocks networking and other dangerous kernel interfaces. Path-level workspace enforcement still comes from validators / policy. |
 | `FullAccess` | No seccomp filter is loaded. |
 
+### Landlock mode semantics
+
+| Policy Mode | Landlock filesystem behavior |
+|---|---|
+| `Blocked` / `ReadOnly` | Global reads and executable loading remain available; no filesystem write rights are granted, including inside the workspace. |
+| `WorkspaceWrite` | Global reads remain available; the complete ABI-v3 write set is granted only beneath the canonical workspace. |
+| `FullAccess` | The complete ABI-v3 access set is granted globally. |
+
+Landlock does not restrict networking in this backend. Static capability
+metadata therefore reflects that `FullAccess` can write globally; the table
+above is the source of truth for the stricter per-execution modes.
+
+Landlock associates truncate permission with a file descriptor when the file
+is opened; it cannot retroactively remove authority from a descriptor opened
+before the domain was entered. The shared Unix runner therefore marks every
+inherited descriptor above stderr close-on-exec before the sandboxed shell can
+run. The Linux-only regression suite exercises write-open, `truncate`,
+inherited-descriptor hygiene, `ftruncate`, and read-only `O_TRUNC` behavior:
+
+```bash
+cargo test -p agent-guard-sandbox --features landlock --test landlock_integration -- --nocapture
+```
+
 ## Error Semantics
 
-- `FilterSetup`: Returned when native seccomp could not be initialized and `strict()` is used.
+- `FilterSetup`: Returned when native seccomp is unavailable, a required syscall cannot be resolved, or the complete filter cannot be installed.
 - `KilledByFilter`: Returned if the kernel terminates the process with `SIGSYS`.
 - `Timeout`: Execution exceeded `SandboxContext.timeout_ms`.
+- `OutputLimitExceeded`: stdout or stderr exceeded the 4 MiB per-stream
+  retention limit. The process group is terminated; excess bytes are never
+  accumulated in memory.
 - `ExecutionFailed`: Process spawn or shell execution failed.
+
+## Process lifecycle
+
+Guard-owned Bash supplies a five-minute timeout by default; Rust hosts may
+tighten it with `Guard::set_execution_timeout_ms`. Linux commands start in a
+new Unix session. Timeout, output overflow, and root-shell completion terminate
+remaining members of that process group before the result is returned, while
+stdout and stderr are drained concurrently to avoid pipe-capacity deadlocks.
+
+This is process-group lifecycle management, not a PID namespace or cgroup. A
+program that is already allowed to create a new session can deliberately leave
+the group; hostile multi-tenant containment still requires a stronger host
+boundary.
 
 ## Production Recommendation
 
 For Linux hosts today:
 
 - Prefer `LandlockSandbox` when the host supports it.
-- Use `SeccompSandbox::strict()` when you need fail-closed native seccomp instead of compatibility fallback.
+- Both constructors are fail-closed; use `strict()` when its name makes that requirement clearer at a call site.
 - Treat seccomp as syscall-level defense in depth, not as a replacement for path-aware policy validation.
 
 ```rust

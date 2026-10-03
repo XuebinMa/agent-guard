@@ -118,7 +118,20 @@ fn test_gate_platform_selection_consistency() {
     #[cfg(target_os = "windows")]
     {
         #[cfg(feature = "windows-appcontainer")]
-        assert_eq!(s_type, "windows-appcontainer");
+        {
+            #[cfg(feature = "windows-sandbox")]
+            {
+                let job = agent_guard_sandbox::JobObjectSandbox;
+                let expected = if job.is_available() {
+                    "windows-job-object"
+                } else {
+                    "none"
+                };
+                assert_eq!(s_type, expected);
+            }
+            #[cfg(not(feature = "windows-sandbox"))]
+            assert_eq!(s_type, "none");
+        }
 
         #[cfg(all(not(feature = "windows-appcontainer"), feature = "windows-sandbox"))]
         {
@@ -186,6 +199,16 @@ fn test_gate_by_name_selection_truthfulness() {
     #[cfg(all(target_os = "linux", not(feature = "seccomp")))]
     assert_eq!(
         Guard::sandbox_by_name("linux-seccomp")
+            .unwrap()
+            .sandbox_type(),
+        "none"
+    );
+
+    // The prototype is intentionally disabled until Windows integration tests
+    // prove exact workspace-DACL restoration across every exit path.
+    #[cfg(all(target_os = "windows", feature = "windows-appcontainer"))]
+    assert_eq!(
+        Guard::sandbox_by_name("windows-appcontainer")
             .unwrap()
             .sandbox_type(),
         "none"

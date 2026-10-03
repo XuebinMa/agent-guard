@@ -1,16 +1,20 @@
-#[cfg(windows)]
-use crate::SandboxOutput;
 use crate::{Sandbox, SandboxCapabilities, SandboxContext, SandboxError, SandboxResult};
 
-/// Windows AppContainer sandbox.
+/// Disabled Windows AppContainer prototype.
 ///
-/// **Experimental Prototype (Phase 7)**: Provides fine-grained isolation
-/// using AppContainer SIDs. This is an opt-in alternative to Low-IL.
+/// The former implementation replaced the workspace DACL with one containing
+/// only the AppContainer ACE and did not restore the original descriptor. It
+/// also closed inherited pipe handles both manually and through RAII guards.
+/// Until Windows integration tests prove byte-for-byte DACL restoration on
+/// every success and failure path, advertising that code as an active sandbox
+/// would be less safe than refusing it explicitly.
 pub struct AppContainerSandbox;
+
+const DISABLED_REASON: &str = "AppContainer is disabled: the prototype cannot yet prove exact workspace DACL restoration on every exit path";
 
 impl Sandbox for AppContainerSandbox {
     fn name(&self) -> &'static str {
-        "AppContainer"
+        "AppContainer (disabled)"
     }
 
     fn sandbox_type(&self) -> &'static str {
@@ -18,384 +22,53 @@ impl Sandbox for AppContainerSandbox {
     }
 
     fn capabilities(&self) -> SandboxCapabilities {
+        // This backend never executes. Report no containment promises so a
+        // diagnostic consumer cannot mistake the prototype's intended design
+        // for an active host boundary.
         SandboxCapabilities {
             filesystem_read_workspace: true,
-            filesystem_read_global: false, // AppContainer is more restrictive
+            filesystem_read_global: true,
             filesystem_write_workspace: true,
-            filesystem_write_global: false,
-            network_outbound_any: false,
-            network_outbound_internet: true, // internetClient capability
-            network_outbound_local: false,
+            filesystem_write_global: true,
+            network_outbound_any: true,
+            network_outbound_internet: true,
+            network_outbound_local: true,
             child_process_spawn: true,
-            registry_write: false,
+            registry_write: true,
         }
     }
 
-    #[cfg(not(windows))]
     fn execute(&self, _command: &str, _context: &SandboxContext) -> SandboxResult {
-        Err(SandboxError::NotAvailable(
-            "AppContainer requires Windows.".to_string(),
-        ))
-    }
-
-    #[cfg(windows)]
-    fn execute(&self, command: &str, context: &SandboxContext) -> SandboxResult {
-        let profile_name = "AgentGuard_Sandbox_Profile";
-
-        unsafe { self.execute_impl(command, context, profile_name) }
+        Err(SandboxError::NotAvailable(DISABLED_REASON.to_string()))
     }
 
     fn is_available(&self) -> bool {
-        cfg!(windows)
+        false
+    }
+
+    fn availability_note(&self) -> Option<String> {
+        Some(DISABLED_REASON.to_string())
     }
 }
 
-#[cfg(windows)]
-impl AppContainerSandbox {
-    unsafe fn execute_impl(
-        &self,
-        command: &str,
-        context: &SandboxContext,
-        profile_name: &str,
-    ) -> SandboxResult {
-        use std::os::windows::ffi::OsStrExt;
-        use windows::core::{PCWSTR, PWSTR};
-        use windows::Win32::Foundation::*;
-        use windows::Win32::Security::Authorization::*;
-        use windows::Win32::Security::Isolation::*;
-        use windows::Win32::Security::*;
-        use windows::Win32::System::SystemServices::SE_GROUP_ENABLED;
-        use windows::Win32::System::Threading::*;
-
-        // 1. Ensure Profile Exists & Derive SID
-        let name_u16: Vec<u16> = std::ffi::OsStr::new(profile_name)
-            .encode_wide()
-            .chain(std::iter::once(0))
-            .collect();
-        let pcw_name = PCWSTR(name_u16.as_ptr());
-
-        // Create the profile. "Already exists" is the expected benign case on a
-        // re-run; any other HRESULT is a real failure and must surface here
-        // rather than masquerading later as a misleading SID-derivation error.
-        match CreateAppContainerProfile(pcw_name, pcw_name, pcw_name, None) {
-            Ok(_) => {}
-            Err(e) if e.code() == ERROR_ALREADY_EXISTS.to_hresult() => {}
-            Err(e) => {
-                return Err(SandboxError::ExecutionFailed(format!(
-                    "AppContainer: CreateAppContainerProfile failed: {}",
-                    e
-                )));
-            }
-        }
-
-        let sid = DeriveAppContainerSidFromAppContainerName(pcw_name).map_err(|e| {
-            SandboxError::ExecutionFailed(format!("AppContainer: Failed to derive SID: {}", e))
-        })?;
-
-        struct SidGuard(PSID);
-        impl Drop for SidGuard {
-            fn drop(&mut self) {
-                unsafe {
-                    FreeSid(self.0);
-                }
-            }
-        }
-        let _sid_guard = SidGuard(sid);
-
-        // 2. Grant ACLs to Workspace (CRITICAL for Execution)
-        let ws_path = context.working_directory.canonicalize().map_err(|e| {
-            SandboxError::ExecutionFailed(format!("AppContainer: Invalid workspace path: {}", e))
-        })?;
-        let ws_u16: Vec<u16> = ws_path
-            .as_os_str()
-            .encode_wide()
-            .chain(std::iter::once(0))
-            .collect();
-
-        let mut explicit_access = EXPLICIT_ACCESS_W::default();
-        explicit_access.grfAccessPermissions = 0x1F01FF; // GENERIC_ALL
-        explicit_access.grfAccessMode = GRANT_ACCESS;
-        explicit_access.grfInheritance = SUB_CONTAINERS_AND_OBJECTS_INHERIT;
-        explicit_access.Trustee.TrusteeForm = TRUSTEE_IS_SID;
-        explicit_access.Trustee.ptstrName = PWSTR(sid.0 as *mut _);
-
-        let mut acl: *mut ACL = std::ptr::null_mut();
-        if let Err(e) = SetEntriesInAclW(Some(&[explicit_access]), None, &mut acl) {
-            return Err(SandboxError::ExecutionFailed(format!(
-                "AppContainer: Failed to create ACL: {}",
-                e
-            )));
-        }
-
-        if let Err(e) = SetNamedSecurityInfoW(
-            PCWSTR(ws_u16.as_ptr()),
-            SE_FILE_OBJECT,
-            DACL_SECURITY_INFORMATION,
-            None,
-            None,
-            Some(acl),
-            None,
-        ) {
-            let _ = LocalFree(HLOCAL(acl as *mut _));
-            return Err(SandboxError::ExecutionFailed(format!(
-                "AppContainer: Failed to set ACL on workspace: {}",
-                e
-            )));
-        }
-        let _ = LocalFree(HLOCAL(acl as *mut _));
-
-        // 3. Setup Pipes for Output Capture
-        let (stdout_read, stdout_write) = create_pipe_win()?;
-        let (stderr_read, stderr_write) = create_pipe_win()?;
-        let _r1 = HandleGuard(stdout_read);
-        let _w1 = HandleGuard(stdout_write);
-        let _r2 = HandleGuard(stderr_read);
-        let _w2 = HandleGuard(stderr_write);
-
-        // 4. Setup Security Capabilities (internetClient)
-        let mut internet_client_sid: PSID = PSID::default();
-        let ic_sid_str: Vec<u16> = std::ffi::OsStr::new("S-1-15-3-1")
-            .encode_wide()
-            .chain(std::iter::once(0))
-            .collect();
-        if let Err(e) =
-            ConvertStringSidToSidW(PCWSTR(ic_sid_str.as_ptr()), &mut internet_client_sid)
-        {
-            return Err(SandboxError::ExecutionFailed(format!(
-                "AppContainer: Failed to build capability SID: {}",
-                e
-            )));
-        }
-        let _ic_sid_guard = SidGuard(internet_client_sid);
-
-        let mut caps = vec![SID_AND_ATTRIBUTES {
-            Sid: internet_client_sid,
-            Attributes: SE_GROUP_ENABLED as u32,
-        }];
-
-        let security_caps = SECURITY_CAPABILITIES {
-            AppContainerSid: sid,
-            Capabilities: caps.as_mut_ptr(),
-            CapabilityCount: caps.len() as u32,
-            Reserved: 0,
-        };
-
-        // 5. Spawn Process
-        let mut size: usize = 0;
-        let _ = InitializeProcThreadAttributeList(
-            LPPROC_THREAD_ATTRIBUTE_LIST::default(),
-            1,
-            0,
-            &mut size,
-        );
-        let mut buffer = vec![0u8; size];
-        let attribute_list = LPPROC_THREAD_ATTRIBUTE_LIST(buffer.as_mut_ptr() as *mut _);
-        InitializeProcThreadAttributeList(attribute_list, 1, 0, &mut size).map_err(|e| {
-            SandboxError::ExecutionFailed(format!(
-                "AppContainer: Failed to second-init attribute list: {}",
-                e
-            ))
-        })?;
-
-        UpdateProcThreadAttribute(
-            attribute_list,
-            0,
-            0x00020009, // PROC_THREAD_ATTRIBUTE_SECURITY_CAPABILITIES
-            Some(&security_caps as *const _ as *const _),
-            std::mem::size_of::<SECURITY_CAPABILITIES>(),
-            None,
-            None,
-        )
-        .map_err(|e| {
-            SandboxError::ExecutionFailed(format!(
-                "AppContainer: Failed to update attribute: {}",
-                e
-            ))
-        })?;
-
-        let mut si = STARTUPINFOEXW::default();
-        si.StartupInfo.cb = std::mem::size_of::<STARTUPINFOEXW>() as u32;
-        si.lpAttributeList = attribute_list;
-        si.StartupInfo.dwFlags = STARTF_USESTDHANDLES | STARTF_USESHOWWINDOW;
-        si.StartupInfo.wShowWindow = 0; // SW_HIDE
-        si.StartupInfo.hStdOutput = stdout_write;
-        si.StartupInfo.hStdError = stderr_write;
-
-        // Prepare command line
-        let escaped_command = command.replace("\"", "\"\"");
-        let cmd_string = format!("cmd.exe /C \"{}\"", escaped_command);
-        let mut cmd_vec: Vec<u16> = std::ffi::OsStr::new(&cmd_string)
-            .encode_wide()
-            .chain(std::iter::once(0))
-            .collect();
-        let mut pi = PROCESS_INFORMATION::default();
-
-        if let Err(e) = CreateProcessW(
-            None,
-            PWSTR(cmd_vec.as_mut_ptr()),
-            None,
-            None,
-            true, // Inherit handles for pipes
-            EXTENDED_STARTUPINFO_PRESENT | CREATE_NO_WINDOW,
-            None,
-            PCWSTR(ws_u16.as_ptr()),
-            &si.StartupInfo,
-            &mut pi,
-        ) {
-            return Err(SandboxError::ExecutionFailed(format!(
-                "AppContainer: CreateProcessW failed: {}",
-                e
-            )));
-        }
-
-        let _hp = HandleGuard(pi.hProcess);
-        let _ht = HandleGuard(pi.hThread);
-
-        // Close parent's write handles
-        let _ = CloseHandle(stdout_write);
-        let _ = CloseHandle(stderr_write);
-
-        // Concurrent read - Start BEFORE wait/resume logic
-        let out_h = stdout_read;
-        let err_h = stderr_read;
-        let t1 = std::thread::spawn(move || read_handle_to_string_win(out_h));
-        let t2 = std::thread::spawn(move || read_handle_to_string_win(err_h));
-
-        // Note: AppContainer prototype uses CreateProcessW directly (not suspended here)
-        // but for safety we should still have the threads running before we block on wait.
-
-        let timeout_ms = context.timeout_ms.unwrap_or(u32::MAX as u64);
-        let wait_res = WaitForSingleObject(pi.hProcess, timeout_ms as u32);
-
-        if wait_res == WAIT_TIMEOUT {
-            let _ = TerminateProcess(pi.hProcess, 1);
-            return Err(SandboxError::Timeout { ms: timeout_ms });
-        }
-
-        let mut exit_code: u32 = 0;
-        // A failed read leaves `exit_code` at 0, which would report success for a
-        // process whose status was never read. Surface the failure instead.
-        if let Err(e) = GetExitCodeProcess(pi.hProcess, &mut exit_code) {
-            return Err(SandboxError::ExecutionFailed(format!(
-                "AppContainer: GetExitCodeProcess failed: {}",
-                e
-            )));
-        }
-
-        // A panicked reader thread must not be silently substituted with an empty
-        // string, which would make a failed read indistinguishable from no output
-        // and hide the I/O error from the audit record.
-        let stdout = t1.join().map_err(|_| {
-            SandboxError::ExecutionFailed("AppContainer: stdout reader thread panicked".to_string())
-        })?;
-        let stderr = t2.join().map_err(|_| {
-            SandboxError::ExecutionFailed("AppContainer: stderr reader thread panicked".to_string())
-        })?;
-
-        Ok(SandboxOutput {
-            stdout,
-            stderr,
-            exit_code: exit_code as i32,
-        })
-    }
-}
-
-#[cfg(windows)]
-struct HandleGuard(windows::Win32::Foundation::HANDLE);
-#[cfg(windows)]
-impl Drop for HandleGuard {
-    fn drop(&mut self) {
-        if !self.0.is_invalid() {
-            unsafe {
-                let _ = windows::Win32::Foundation::CloseHandle(self.0);
-            }
-        }
-    }
-}
-
-#[cfg(windows)]
-unsafe fn create_pipe_win() -> Result<
-    (
-        windows::Win32::Foundation::HANDLE,
-        windows::Win32::Foundation::HANDLE,
-    ),
-    SandboxError,
-> {
-    use windows::Win32::Foundation::*;
-    use windows::Win32::Security::SECURITY_ATTRIBUTES;
-    use windows::Win32::System::Pipes::CreatePipe;
-
-    let mut read_pipe = HANDLE::default();
-    let mut write_pipe = HANDLE::default();
-    let sa = SECURITY_ATTRIBUTES {
-        nLength: std::mem::size_of::<SECURITY_ATTRIBUTES>() as u32,
-        lpSecurityDescriptor: std::ptr::null_mut(),
-        bInheritHandle: true.into(),
-    };
-
-    if let Err(e) = CreatePipe(&mut read_pipe, &mut write_pipe, Some(&sa), 0) {
-        return Err(SandboxError::ExecutionFailed(format!(
-            "AppContainer: Failed to create pipe: {}",
-            e
-        )));
-    }
-
-    // HANDLE_FLAG_INHERIT (mask 1), cleared: the read end stays parent-only.
-    let _ = SetHandleInformation(read_pipe, 1, HANDLE_FLAGS(0));
-    Ok((read_pipe, write_pipe))
-}
-
-#[cfg(windows)]
-unsafe fn read_handle_to_string_win(handle: windows::Win32::Foundation::HANDLE) -> String {
-    use windows::Win32::Storage::FileSystem::ReadFile;
-    let mut out = Vec::new();
-    let mut buffer = [0u8; 4096];
-    let mut bytes_read = 0;
-    loop {
-        if ReadFile(handle, Some(&mut buffer), Some(&mut bytes_read), None).is_err() {
-            break;
-        }
-        if bytes_read == 0 {
-            break;
-        }
-        out.extend_from_slice(&buffer[..bytes_read as usize]);
-    }
-    String::from_utf8_lossy(&out).into_owned()
-}
-
-#[cfg(all(test, windows))]
+#[cfg(test)]
 mod tests {
     use super::*;
-    use crate::SandboxContext;
     use agent_guard_core::PolicyMode;
-    use std::path::PathBuf;
 
     #[test]
-    fn test_appcontainer_executable_prototype() {
+    fn disabled_backend_never_executes_or_claims_availability() {
         let sandbox = AppContainerSandbox;
-        let temp_dir = std::env::temp_dir().join("agent_guard_appcontainer_test");
-        let _ = std::fs::create_dir_all(&temp_dir);
-
-        let ctx = SandboxContext {
-            mode: PolicyMode::ReadOnly,
-            working_directory: temp_dir.clone(),
-            timeout_ms: None,
+        let context = SandboxContext {
+            mode: PolicyMode::WorkspaceWrite,
+            working_directory: std::env::temp_dir(),
+            timeout_ms: Some(1_000),
         };
 
-        // This verifies that:
-        // 1. Profile is created/opened.
-        // 2. ACLs are set on temp_dir (otherwise cmd.exe won't start).
-        // 3. Process is spawned under AppContainer.
-        // 4. Output is captured.
-        let res = sandbox.execute("echo appcontainer_success", &ctx);
-
-        // Note: This might fail in some CI environments if permissions for CreateAppContainerProfile are restricted,
-        // but it satisfies the requirement for a "minimal executable prototype".
-        if let Ok(output) = res {
-            assert!(output.stdout.contains("appcontainer_success"));
-            assert_eq!(output.exit_code, 0);
-        }
-
-        let _ = std::fs::remove_dir_all(temp_dir);
+        assert!(!sandbox.is_available());
+        let error = sandbox
+            .execute("echo must-not-run", &context)
+            .expect_err("disabled AppContainer must fail closed");
+        assert!(error.to_string().contains("DACL restoration"));
     }
 }

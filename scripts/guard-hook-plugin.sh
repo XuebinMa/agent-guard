@@ -5,9 +5,9 @@
 # the binary and the policy file, then streams the event through unchanged.
 #
 # Design contract (mirrors guard-hook's own, do not relax):
-#   - FAIL OPEN. On any resolution failure (kill switch, missing binary,
-#     missing policy) emit an `allow` decision so a broken or partial install
-#     never blocks the user's agent.
+#   - FAIL OPEN. On any resolution failure (kill switch, missing metadata,
+#     missing/mismatched binary, missing policy) emit an `allow` decision so a
+#     broken or partial install never blocks the user's agent.
 #   - Exit code is always 0. The decision lives in the JSON body on stdout.
 #   - Honour AGENT_GUARD_HOOK=off as a hard kill switch, checked first.
 # ---------------------------------------------------------------------------
@@ -32,6 +32,38 @@ if [ ! -f "$POLICY" ]; then
   emit_approve
 fi
 
+# The plugin manifest is the source of truth for the binary version paired
+# with this hook. Parse it as JSON rather than grepping a version-looking line:
+# malformed or unavailable metadata must not silently authorize a stale binary.
+MANIFEST="$PLUGIN_ROOT/.claude-plugin/plugin.json"
+read_expected_version() {
+  if [ ! -f "$MANIFEST" ]; then
+    return 1
+  fi
+  if command -v python3 >/dev/null 2>&1; then
+    python3 -c 'import json, sys
+with open(sys.argv[1], encoding="utf-8") as handle:
+    value = json.load(handle).get("version")
+if not isinstance(value, str) or not value:
+    raise SystemExit(1)
+print(value)' "$MANIFEST" 2>/dev/null
+    return $?
+  fi
+  if command -v node >/dev/null 2>&1; then
+    node -e 'const fs = require("node:fs");
+const value = JSON.parse(fs.readFileSync(process.argv[1], "utf8")).version;
+if (typeof value !== "string" || value.length === 0) process.exit(1);
+process.stdout.write(value + "\n");' "$MANIFEST" 2>/dev/null
+    return $?
+  fi
+  return 1
+}
+
+if ! EXPECTED_VERSION="$(read_expected_version)"; then
+  echo "guard-hook-plugin: plugin version metadata missing or invalid at $MANIFEST; approving" >&2
+  emit_approve
+fi
+
 # Resolve the binary: PATH first, then the common cargo install dir, then a
 # binary the plugin install step (S8-2) may have dropped under bin/.
 resolve_bin() {
@@ -50,6 +82,17 @@ resolve_bin() {
 
 if ! BIN="$(resolve_bin)"; then
   echo "guard-hook-plugin: guard-hook binary not found (install with 'cargo install --path crates/guard-hook' or 'npx agent-guard-plugin init'); approving" >&2
+  emit_approve
+fi
+
+VERSION_OUTPUT="$("$BIN" --version 2>/dev/null)"
+VERSION_STATUS=$?
+if [ "$VERSION_STATUS" -ne 0 ]; then
+  echo "guard-hook-plugin: guard-hook --version exited $VERSION_STATUS; approving" >&2
+  emit_approve
+fi
+if [ "$VERSION_OUTPUT" != "guard-hook $EXPECTED_VERSION" ]; then
+  echo "guard-hook-plugin: guard-hook version mismatch (expected $EXPECTED_VERSION); approving" >&2
   emit_approve
 fi
 

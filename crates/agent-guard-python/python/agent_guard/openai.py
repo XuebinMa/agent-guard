@@ -34,8 +34,9 @@ def wrap_openai_tool(
     - ``"check"``   — always go through ``Guard.check`` (policy-only). The
       original handler runs in-process when allowed. Fail-closed on invalid
       policy signatures.
-    - ``"auto"`` — for shell-like tools, behave like ``enforce``. For non-shell
-      tools, dispatch through the unified ``Guard.run`` runtime API when the
+    - ``"auto"`` — for the exact built-in tool ID ``bash``, behave like
+      ``enforce``. For other tool IDs, dispatch through the unified
+      ``Guard.run`` runtime API when the
       binding exposes it. The ``RuntimeOutcome::Handoff`` variant means the
       handler runs in-process and the adapter then calls
       ``Guard.report_handoff_result`` to close the audit loop. When the binding

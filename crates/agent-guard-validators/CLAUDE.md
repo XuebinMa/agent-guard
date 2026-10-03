@@ -56,9 +56,12 @@ Module layout:
    `install … DEST` (added in #93). A missed sink is a silent workspace escape.
    When you add a command that writes, teach `paths.rs` its destination grammar
    in the same change.
-4. **Tables are additive.** `tables.rs` is a set of command classifications; a
-   gap (a destructive tool not listed) reads as "unknown/allowed". Adding a
-   command means updating the table **and** adding a test.
+4. **Unknown is not read-only.** `tables.rs` contains both write/state
+   classifications and the deliberately finite `READ_ONLY_COMMANDS` allowlist.
+   In `ReadOnly`, an executable absent from that allowlist is refused rather
+   than inferred safe; adding a command therefore requires a classification
+   decision and a regression test. `WorkspaceWrite` path extraction remains
+   defense in depth, not proof that arbitrary executable code is contained.
 
 ## The `content` feature is opt-in, spike-grade
 

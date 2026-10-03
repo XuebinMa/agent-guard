@@ -89,8 +89,16 @@ fn check_target(
 ) -> Option<ValidationResult> {
     let kind_name = kind.describe();
     let candidate = target.trim_matches(|c| c == '"' || c == '\'');
-    if candidate.is_empty() || candidate.starts_with('$') || candidate == "/dev/null" {
+    if candidate.is_empty() || candidate == "/dev/null" {
         return None;
+    }
+
+    if candidate.contains('$') || candidate.contains('`') || candidate.starts_with('~') {
+        return Some(ValidationResult::Block {
+            reason: format!(
+                "{kind_name} '{candidate}' cannot be resolved without ambient shell expansion"
+            ),
+        });
     }
 
     let path = Path::new(candidate);
@@ -115,7 +123,9 @@ fn check_target(
             });
         }
 
-        if !path_stays_within_workspace(path, workspace) {
+        if !path_stays_within_workspace(path, workspace)
+            || existing_path_resolves_outside(path, workspace)
+        {
             let mut reason =
                 format!("{kind_name} '{candidate}' is outside the configured workspace");
             if kind == TargetKind::LinkSource {
@@ -138,6 +148,14 @@ fn check_target(
     if has_parent_dir_escape(path) {
         return Some(ValidationResult::Block {
             reason: format!("{kind_name} '{candidate}' escapes the configured workspace"),
+        });
+    }
+
+    if existing_path_resolves_outside(&workspace.join(path), workspace) {
+        return Some(ValidationResult::Block {
+            reason: format!(
+                "{kind_name} '{candidate}' resolves through a link outside the configured workspace"
+            ),
         });
     }
 
@@ -185,6 +203,32 @@ fn has_parent_dir_escape(path: &Path) -> bool {
 fn path_stays_within_workspace(path: &Path, workspace: &Path) -> bool {
     let normalized_path = normalize_path(path);
     normalized_path == workspace || normalized_path.starts_with(workspace)
+}
+
+/// Resolve the nearest existing ancestor when both it and the workspace can be
+/// canonicalized. This catches an existing symlink component even when the
+/// final file does not exist yet. A nonexistent synthetic workspace (used by
+/// callers that only need lexical checks) cannot support this extra signal.
+fn existing_path_resolves_outside(path: &Path, workspace: &Path) -> bool {
+    let Ok(real_workspace) = workspace.canonicalize() else {
+        return false;
+    };
+    let mut ancestor = path;
+    loop {
+        match std::fs::symlink_metadata(ancestor) {
+            Ok(_) => break,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                let Some(parent) = ancestor.parent() else {
+                    return true;
+                };
+                ancestor = parent;
+            }
+            Err(_) => return true,
+        }
+    }
+    ancestor
+        .canonicalize()
+        .map_or(true, |resolved| !resolved.starts_with(real_workspace))
 }
 
 fn collect_write_targets(command: &str) -> Vec<(String, TargetKind)> {
@@ -303,6 +347,7 @@ fn write_targets_for_segment(segment: &[String]) -> Vec<(String, TargetKind)> {
                     .map(|token| token.to_string()),
             );
         }
+        "truncate" => targets.extend(truncate_write_targets(args)),
         "mv" | "cp" | "install" => {
             // GNU coreutils `-t DEST` / `--target-directory=DEST` write into DEST,
             // not the trailing positional — closes the `cp -t /etc/cron.d payload`
@@ -360,9 +405,7 @@ fn write_targets_for_segment(segment: &[String]) -> Vec<(String, TargetKind)> {
                 }
             }
         }
-        "tar" => {
-            targets.extend(tar_archive_write_target(args));
-        }
+        "tar" => targets.extend(tar_write_targets(args)),
         _ => {}
     }
 
@@ -414,23 +457,28 @@ fn target_directory_flag(args: &[&String]) -> Option<String> {
     None
 }
 
-/// Extract the archive path that `tar` *writes* to, or an empty vec when the
-/// invocation is not an archive-creating/appending one (extract/list read the
-/// archive instead, and their output goes to the cwd, which the normal path
-/// scan already governs).
+/// Extract paths that `tar` writes: the archive for create/append/update modes,
+/// and every explicit `-C` / `--directory` destination for extract mode.
 ///
 /// Handles the common forms: short bundles (`-cf`, `-czf`), the old dashless
 /// first-arg bundle (`tar czf out.tar .`), and the long options
-/// (`--create`, `--file=out.tar`, `--file out.tar`). Exotic invocations
-/// (e.g. extraction redirected elsewhere via `-C`) remain best-effort; this
-/// closes the `tar -cf /etc/evil.tar .` write-escape from the HIGH-1 finding.
-fn tar_archive_write_target(args: &[&String]) -> Vec<String> {
+/// (`--create`, `--file=out.tar`, `--file out.tar`) plus the common short and
+/// long extraction-directory spellings.
+fn tar_write_targets(args: &[&String]) -> Vec<String> {
     let mut is_write_mode = false;
+    let mut is_extract_mode = false;
     let mut archive: Option<String> = None;
     let mut expect_file = false;
+    let mut expect_directory = false;
+    let mut extraction_directories = Vec::new();
 
     for (index, token) in args.iter().enumerate() {
         let t = token.as_str();
+        if expect_directory {
+            extraction_directories.push(t.to_string());
+            expect_directory = false;
+            continue;
+        }
         if expect_file {
             archive = Some(t.to_string());
             expect_file = false;
@@ -440,8 +488,22 @@ fn tar_archive_write_target(args: &[&String]) -> Vec<String> {
             archive = Some(rest.to_string());
             continue;
         }
+        if let Some(rest) = t.strip_prefix("--directory=") {
+            if !rest.is_empty() {
+                extraction_directories.push(rest.to_string());
+            }
+            continue;
+        }
+        if let Some(rest) = t.strip_prefix("-C") {
+            if !rest.is_empty() {
+                extraction_directories.push(rest.to_string());
+                continue;
+            }
+        }
         match t {
             "--file" => expect_file = true,
+            "--directory" => expect_directory = true,
+            "--extract" | "--get" => is_extract_mode = true,
             "--create" | "--append" | "--update" | "--catenate" | "--concatenate" => {
                 is_write_mode = true;
             }
@@ -465,15 +527,61 @@ fn tar_archive_write_target(args: &[&String]) -> Vec<String> {
                     if flags.ends_with('f') {
                         expect_file = true;
                     }
+                    if flags.chars().any(|c| c == 'x') {
+                        is_extract_mode = true;
+                    }
+                    if flags.ends_with('C') {
+                        expect_directory = true;
+                    }
                 }
             }
         }
     }
 
-    match archive {
-        Some(path) if is_write_mode && !path.is_empty() && path != "-" => vec![path],
-        _ => Vec::new(),
+    let mut targets = Vec::new();
+    if let Some(path) = archive {
+        if is_write_mode && !path.is_empty() && path != "-" {
+            targets.push(path);
+        }
     }
+    if is_extract_mode {
+        targets.extend(extraction_directories);
+    }
+    targets
+}
+
+fn truncate_write_targets(args: &[&String]) -> Vec<String> {
+    let mut targets = Vec::new();
+    let mut skip_option_value = false;
+    let mut options_done = false;
+    for argument in args {
+        let value = argument.as_str();
+        if skip_option_value {
+            skip_option_value = false;
+            continue;
+        }
+        if !options_done && value == "--" {
+            options_done = true;
+            continue;
+        }
+        if !options_done && matches!(value, "-s" | "--size" | "-r" | "--reference") {
+            skip_option_value = true;
+            continue;
+        }
+        if !options_done
+            && (value.starts_with("--size=")
+                || value.starts_with("--reference=")
+                || (value.starts_with("-s") && value.len() > 2)
+                || (value.starts_with("-r") && value.len() > 2))
+        {
+            continue;
+        }
+        if !options_done && value.starts_with('-') {
+            continue;
+        }
+        targets.push(value.to_string());
+    }
+    targets
 }
 
 fn collect_read_targets(command: &str) -> Vec<String> {

@@ -14,6 +14,11 @@ While the Linux implementation uses `seccomp-bpf` for fine-grained syscall filte
 4.  **Global Read Access**: Low-IL does not prevent the sandboxed process from reading files the user can already read.
 5.  **Runtime Availability Risk**: Low-IL process launch depends on host privileges and Win32 environment details. On hosts where `CreateProcessAsUserW` with the prepared token is denied, `JobObjectSandbox::is_available()` returns `false`, capabilities are reported as unavailable, and execution fails closed instead of silently degrading.
 6.  **No Syscall Filtering**: Windows does not have a native equivalent to Linux Seccomp that is easily accessible to CLI tools. Restricting syscalls would require kernel-mode drivers or complex user-mode hooking.
+7.  **Bounded execution**: Guard-owned Bash defaults to a five-minute timeout,
+    and the runner retains at most 4 MiB for each output stream. Timeout or
+    output overflow terminates the complete Job Object before output readers
+    are joined, so an ordinary background descendant cannot keep the call
+    alive or survive it.
 
 ## Comparison: Linux vs. Windows (Prototype)
 
@@ -35,7 +40,15 @@ The current Windows implementation is a **Verifiable Prototype**. In Phase 5, we
 
 ### 2. AppContainer Isolation (P0 - Research)
 - **Goal**: Use the modern Windows AppContainer framework for fine-grained capability and filesystem isolation.
-- **Feasibility**: Requires complex SID management and capability registration. We are currently researching a 'CLI-friendly' AppContainer prototype that doesn't require full UWP registration.
+- **Current status**: **Disabled and fail-closed.** The prototype replaced the
+  workspace DACL instead of adding a temporary ACE and restoring the exact
+  original descriptor. It also had overlapping raw-handle and RAII ownership.
+  The feature remains compile-visible for compatibility, but direct execution
+  returns `NotAvailable`, by-name resolution returns `none`, and default
+  selection uses the functional Low-IL Job Object when available.
+- **Re-enable gate**: Windows integration tests must compare the complete DACL
+  before and after success, setup failure, process failure, and timeout, and
+  must prove single ownership for every process and pipe handle.
 
 ### 3. Fail-Closed behavior for all Win32 API calls (P0)
 - **Goal**: Ensure that if `AssignProcessToJobObject` or any token-restricted call fails, the entire tool execution is aborted.
@@ -44,7 +57,7 @@ The current Windows implementation is a **Verifiable Prototype**. In Phase 5, we
 
 ### 4. Windows-Specific Integration Tests (P0)
 - **Status**: **Implemented & Active**.
-- **Implementation**: Dedicated Windows CI now runs `windows_job_integration` to verify runtime-availability reporting and, when low-integrity launch is functional on the host, Job Object execution, working-directory application, and protected-directory write blocking.
+- **Implementation**: Dedicated Windows CI now runs `windows_job_integration` to verify runtime-availability reporting and, when low-integrity launch is functional on the host, Job Object execution, working-directory application, protected-directory write blocking, bounded output, and timeout cleanup of background descendants.
 
 ## Use Cases
 
@@ -74,7 +87,7 @@ To use the Windows sandbox in your project:
 1.  **Enable the feature** in your `Cargo.toml`:
     ```toml
     [dependencies]
-    agent-guard-sdk = { version = "0.1", features = ["windows-sandbox"] }
+    agent-guard-sdk = { version = "0.2", features = ["windows-sandbox"] }
     ```
 2.  **Initialize the Guard**:
     ```rust

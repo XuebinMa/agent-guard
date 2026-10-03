@@ -34,13 +34,14 @@ function buildContext(ctx) {
   return out
 }
 
-function emit(scenario, guard) {
+function emit(scenario, guard, invalidSignedGuard) {
+  const scenarioGuard = scenario.invalid_signature ? invalidSignedGuard : guard
   const tool = scenario.tool
   const payload = JSON.stringify(scenario.payload)
   const ctx = buildContext(scenario.context)
 
-  const decision = guard.check(tool, payload, ctx)
-  const runtime = guard.decide(tool, payload, ctx)
+  const decision = scenarioGuard.check(tool, payload, ctx)
+  const runtime = scenarioGuard.decide(tool, payload, ctx)
 
   return {
     name: scenario.name,
@@ -61,10 +62,17 @@ function main() {
 
   const yaml = fs.readFileSync(policyPath, 'utf-8')
   const guard = Guard.fromYaml(yaml)
+  const invalidSignedGuard = Guard.fromSignedYaml(
+    yaml,
+    '0000000000000000000000000000000000000000000000000000000000000001',
+    'ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff'
+  )
   const scenarios = JSON.parse(fs.readFileSync(scenariosPath, 'utf-8'))
 
   for (const scenario of scenarios) {
-    process.stdout.write(JSON.stringify(emit(scenario, guard)) + '\n')
+    process.stdout.write(
+      JSON.stringify(emit(scenario, guard, invalidSignedGuard)) + '\n'
+    )
   }
 }
 

@@ -7,6 +7,9 @@ on:
   push:
     tags: [ 'v*' ]
 
+permissions:
+  contents: read
+
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
 
@@ -14,8 +17,19 @@ jobs:
   guard:
     name: Verify Tag Matches Workspace Version
     runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+      - name: Require the tag commit to be tested current main
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          git fetch --no-tags origin main:refs/remotes/origin/main
+          python3 scripts/release/verify_release_source.py
       - name: Tag must equal the version every marker agrees on
         run: |
           ./scripts/check-version-consistency.sh
@@ -32,37 +46,45 @@ jobs:
     needs: guard
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - name: Install Linux sandbox deps
         run: sudo apt-get update && sudo apt-get install -y libseccomp-dev
       - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@89b12181fb390509a0842a86cc55eeb8eb928c1d # stable
         with:
           components: clippy, rustfmt
-      - uses: Swatinem/rust-cache@v2
-      - uses: actions/setup-python@v5
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
           python-version: '3.12'
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: '20'
           cache: npm
           cache-dependency-path: crates/agent-guard-node/package-lock.json
       - name: Run the canonical verification gate
         run: ./scripts/verify.sh full
+      - name: Install pinned release security tools
+        run: bash ./scripts/install-security-tools.sh cargo-deny cargo-audit
+      - name: Run release supply-chain gates
+        run: |
+          cargo deny check
+          cargo audit
+          npm audit --prefix crates/agent-guard-node --omit=dev --audit-level=moderate
 
   crates-io:
     name: Publish Rust Crates
     needs: preflight
     runs-on: ubuntu-latest
+    environment: crates-io
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - name: Install Linux sandbox deps
         run: sudo apt-get update && sudo apt-get install -y libseccomp-dev
       - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@89b12181fb390509a0842a86cc55eeb8eb928c1d # stable
       - name: Cache Rust
-        uses: Swatinem/rust-cache@v2
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
       # Publish individually in dependency order. crates.io rate-limits new
       # crate creation; the API check also makes a retry skip versions that
       # already landed.
@@ -183,21 +205,21 @@ jobs:
             target: x64
     runs-on: ${{ matrix.runner }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
           python-version: '3.12'
       # abi3-py310 means one wheel per platform covers every CPython >= 3.10.
       # Built from crates/agent-guard-python: that is the pyproject verify.sh
       # and CI exercise, and the one whose python-source ships the adapters.
       - name: Build wheel
-        uses: PyO3/maturin-action@v1
+        uses: PyO3/maturin-action@e83996d129638aa358a18fbd1dfb82f0b0fb5d3b # v1
         with:
           target: ${{ matrix.target }}
           args: --release --out dist --features extension-module
           manylinux: auto
           working-directory: crates/agent-guard-python
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: wheels-${{ matrix.runner }}-${{ matrix.target }}
           path: crates/agent-guard-python/dist
@@ -209,14 +231,15 @@ jobs:
     # Trusted publishing: no long-lived token in repository secrets.
     environment: pypi
     permissions:
+      actions: read
       id-token: write
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           pattern: wheels-*
           merge-multiple: true
           path: dist
-      - uses: pypa/gh-action-pypi-publish@release/v1
+      - uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # release/v1
 
   npm:
     name: Publish Claude Code Plugin
@@ -227,13 +250,14 @@ jobs:
     # ends bypass-2FA direct publishing in January 2027.
     environment: npm
     permissions:
+      contents: read
       id-token: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       # Node 24 ships npm 11.x. Trusted publishing needs npm >= 11.5.1; an
       # older CLI does not fail loudly, it falls back to token auth, so the
       # version is asserted below rather than assumed from the runner image.
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: '24'
           registry-url: 'https://registry.npmjs.org'

@@ -32,7 +32,9 @@ use crate::siem::SiemExporter;
 // modules; re-export them here so `agent_guard_sdk::guard::*` exposes the full
 // decision surface from one path.
 pub use crate::enforce::{ExecuteOutcome, ExecuteResult};
-pub use crate::runtime::{HandoffResult, RuntimeOutcome, RuntimeResult};
+pub use crate::runtime::{
+    DecisionEvaluation, HandoffReportError, HandoffResult, RuntimeOutcome, RuntimeResult,
+};
 
 // ── GuardInitError ────────────────────────────────────────────────────────────
 
@@ -55,6 +57,7 @@ pub enum GuardInitError {
 /// Manages policy state with atomic reloading and snapshot isolation.
 pub struct Guard {
     pub(crate) state: ArcSwap<GuardState>,
+    pub(crate) pending_handoffs: crate::handoff::PendingHandoffs,
 }
 
 fn stronger_decision(current: GuardDecision, candidate: GuardDecision) -> GuardDecision {
@@ -75,13 +78,42 @@ fn stronger_decision(current: GuardDecision, candidate: GuardDecision) -> GuardD
     }
 }
 
-struct EvaluatedDecision {
-    decision: GuardDecision,
-    git_push_intents: Vec<GitPushIntent>,
+fn policy_verification_failure_decision(
+    verification: &PolicyVerification,
+) -> Option<GuardDecision> {
+    if !verification.should_fail_closed() {
+        return None;
+    }
+
+    let mut details = serde_json::Map::new();
+    details.insert(
+        "policy_verification_status".to_string(),
+        serde_json::Value::String(verification.status_label().to_string()),
+    );
+    if let Some(error) = &verification.error {
+        details.insert(
+            "policy_verification_error".to_string(),
+            serde_json::Value::String(error.clone()),
+        );
+    }
+
+    Some(GuardDecision::Deny {
+        reason: agent_guard_core::DecisionReason::new(
+            DecisionCode::PolicyVerificationFailed,
+            "policy signature verification failed; all decision and execution entry points are blocked until the policy is verified",
+        )
+        .with_details(serde_json::Value::Object(details)),
+    })
+}
+
+#[derive(Clone)]
+pub(crate) struct EvaluatedDecision {
+    pub(crate) decision: GuardDecision,
+    pub(crate) git_push_intents: Vec<GitPushIntent>,
     /// Set when the anomaly detector produced this decision, so the audit
     /// record can state what the verdict was derived from instead of only
     /// asserting it.
-    anomaly_evidence: Option<agent_guard_core::AnomalyEvidence>,
+    pub(crate) anomaly_evidence: Option<agent_guard_core::AnomalyEvidence>,
 }
 
 impl EvaluatedDecision {
@@ -105,6 +137,30 @@ impl EvaluatedDecision {
     }
 }
 
+/// Internal evaluated request. It retains the exact ArcSwap snapshot and the
+/// extracted intent/evidence bundle so execution cannot silently re-decide
+/// against a newer policy.
+pub(crate) struct EvaluatedRequest {
+    pub(crate) request_id: String,
+    pub(crate) state: Arc<GuardState>,
+    pub(crate) policy_version: String,
+    pub(crate) policy_verification: PolicyVerification,
+    pub(crate) evaluated: EvaluatedDecision,
+    pub(crate) runtime_decision: RuntimeDecision,
+}
+
+impl EvaluatedRequest {
+    fn public_snapshot(&self) -> DecisionEvaluation {
+        DecisionEvaluation {
+            request_id: self.request_id.clone(),
+            decision: self.evaluated.decision.clone(),
+            runtime_decision: self.runtime_decision.clone(),
+            policy_version: self.policy_version.clone(),
+            policy_verification: self.policy_verification.clone(),
+        }
+    }
+}
+
 #[derive(Clone)]
 pub(crate) struct GuardState {
     pub(crate) engine: Arc<PolicyEngine>,
@@ -119,6 +175,9 @@ pub(crate) struct GuardState {
     /// can be given separate registries (#60).
     pub(crate) metrics: Arc<crate::metrics::Metrics>,
     pub(crate) audit_sink: AuditSink,
+    /// Guard-owned Bash executions are always bounded. Hosts may tighten the
+    /// default through `Guard::set_execution_timeout_ms`.
+    pub(crate) execution_timeout_ms: std::num::NonZeroU64,
 }
 
 impl std::fmt::Debug for Guard {
@@ -134,9 +193,7 @@ impl std::fmt::Debug for Guard {
 
 impl Guard {
     pub fn check(&self, input: &GuardInput) -> GuardDecision {
-        let state = self.state.load();
-        let request_id = Uuid::new_v4().to_string();
-        self.check_internal(input, &state, &request_id)
+        self.evaluate_request(input).evaluated.decision
     }
 
     pub fn check_tool(
@@ -145,21 +202,16 @@ impl Guard {
         payload: impl Into<String>,
         context: Context,
     ) -> GuardDecision {
-        let state = self.state.load();
-        let request_id = Uuid::new_v4().to_string();
         let input = GuardInput {
             tool,
             payload: payload.into(),
             context,
         };
-        self.check_internal(&input, &state, &request_id)
+        self.check(&input)
     }
 
     pub fn decide(&self, input: &GuardInput) -> RuntimeDecision {
-        let state = self.state.load();
-        let request_id = Uuid::new_v4().to_string();
-        let decision = self.check_internal(input, &state, &request_id);
-        runtime_decision_for_input(input, decision)
+        self.evaluate_request(input).runtime_decision
     }
 
     pub fn decide_tool(
@@ -174,6 +226,45 @@ impl Guard {
             context,
         };
         self.decide(&input)
+    }
+
+    /// Evaluate one request once and return the decision plus policy metadata
+    /// from that exact snapshot. The matching ToolCall audit uses the returned
+    /// `request_id`.
+    pub fn evaluate_decision(&self, input: &GuardInput) -> DecisionEvaluation {
+        self.evaluate_request(input).public_snapshot()
+    }
+
+    /// Tool-oriented convenience wrapper around [`Guard::evaluate_decision`].
+    pub fn evaluate_tool(
+        &self,
+        tool: Tool,
+        payload: impl Into<String>,
+        context: Context,
+    ) -> DecisionEvaluation {
+        self.evaluate_decision(&GuardInput {
+            tool,
+            payload: payload.into(),
+            context,
+        })
+    }
+
+    pub(crate) fn evaluate_request(&self, input: &GuardInput) -> EvaluatedRequest {
+        let request_id = Uuid::new_v4().to_string();
+        let state = self.state.load_full();
+        let policy_version = state.engine.version().to_string();
+        let policy_verification = state.policy_verification.clone();
+        let evaluated = self.check_internal(input, &state, &request_id);
+        let runtime_decision = runtime_decision_for_input(input, evaluated.decision.clone());
+
+        EvaluatedRequest {
+            request_id,
+            state,
+            policy_version,
+            policy_verification,
+            evaluated,
+            runtime_decision,
+        }
     }
 
     /// Scan host-supplied input text (e.g. a prompt before it reaches the LLM
@@ -207,19 +298,18 @@ impl Guard {
             agent_guard_core::ContentMode::Mask => "mask",
             agent_guard_core::ContentMode::Warn => "warn",
         };
-        state
-            .siem_exporter
-            .export(agent_guard_core::AuditRecord::ContentFinding(
-                agent_guard_core::ContentFindingEvent {
-                    timestamp: chrono::Utc::now(),
-                    request_id: Uuid::new_v4().to_string(),
-                    agent_id: context.agent_id.clone(),
-                    tool: "input".to_string(),
-                    mode: mode_label.to_string(),
-                    count: app.labels.len(),
-                    labels: app.labels.clone(),
-                },
-            ));
+        self.emit_record(
+            &state,
+            agent_guard_core::AuditRecord::ContentFinding(agent_guard_core::ContentFindingEvent {
+                timestamp: chrono::Utc::now(),
+                request_id: Uuid::new_v4().to_string(),
+                agent_id: context.agent_id.clone(),
+                tool: "input".to_string(),
+                mode: mode_label.to_string(),
+                count: app.labels.len(),
+                labels: app.labels.clone(),
+            }),
+        );
 
         ContentCheckOutcome {
             blocked: app.mode == agent_guard_core::ContentMode::Block,
@@ -233,7 +323,7 @@ impl Guard {
         input: &GuardInput,
         state: &GuardState,
         request_id: &str,
-    ) -> GuardDecision {
+    ) -> EvaluatedDecision {
         let metrics = &state.metrics;
         let agent_id = input
             .context
@@ -248,6 +338,15 @@ impl Guard {
                 tool: input.tool.name().to_string(),
             })
             .inc();
+
+        // Signature verification is part of the policy's authority, not an
+        // execution-only concern. Keep this in the shared decision chokepoint
+        // so `check`, `check_tool`, `decide`, and every language binding cannot
+        // observe Allow/Execute from a policy whose detached signature failed.
+        if let Some(decision) = policy_verification_failure_decision(&state.policy_verification) {
+            let evaluated = EvaluatedDecision::without_git_intents(decision);
+            return self.finalize_check(input, &evaluated, state, &agent_id, "deny", request_id);
+        }
 
         let anomaly_subject = anomaly_subject(&input.context);
         let anomaly_cfg = state.engine.anomaly_config();
@@ -308,7 +407,7 @@ impl Guard {
         agent_id: &str,
         outcome: &str,
         request_id: &str,
-    ) -> GuardDecision {
+    ) -> EvaluatedDecision {
         let decision = &evaluated.decision;
         let metrics = &state.metrics;
 
@@ -334,6 +433,7 @@ impl Guard {
 
             let event = agent_guard_core::AnomalyEvent {
                 timestamp: chrono::Utc::now(),
+                request_id: Some(request_id.to_string()),
                 agent_id: Some(agent_id.to_string()),
                 actor: input.context.actor.clone(),
                 reason: match decision {
@@ -364,7 +464,7 @@ impl Guard {
             state,
             request_id,
         );
-        decision.clone()
+        evaluated.clone()
     }
 
     pub fn default_sandbox() -> Box<dyn Sandbox> {
@@ -388,7 +488,11 @@ impl Guard {
         resolve_sandbox_by_name(name).map(|(sandbox, _)| sandbox)
     }
 
-    pub(crate) fn evaluate(&self, input: &GuardInput, state: &GuardState) -> GuardDecision {
+    pub(crate) fn evaluate_policy_only(
+        &self,
+        input: &GuardInput,
+        state: &GuardState,
+    ) -> GuardDecision {
         self.evaluate_with_metadata(input, state).decision
     }
 
@@ -562,6 +666,10 @@ impl GuardState {
             policy_verification,
             metrics: crate::metrics::get_metrics(),
             audit_sink: stdout_audit_sink(),
+            execution_timeout_ms: std::num::NonZeroU64::new(
+                crate::guard_lifecycle::DEFAULT_EXECUTION_TIMEOUT_MS,
+            )
+            .expect("the default execution timeout is non-zero"),
         })
     }
 }
@@ -720,13 +828,109 @@ mod tests {
         let lines: Vec<&str> = captured.lines().collect();
         assert_eq!(
             lines.len(),
-            2,
-            "one audit line per check, before and after reload; captured: {captured:?}"
+            3,
+            "checks and the intervening reload must share the configured sink; captured: {captured:?}"
         );
-        for line in lines {
+        let record_types: Vec<String> = lines
+            .iter()
+            .map(|line| {
+                serde_json::from_str::<serde_json::Value>(line)
+                    .expect("audit line is valid JSON")
+                    .get("type")
+                    .and_then(serde_json::Value::as_str)
+                    .expect("audit record has a type")
+                    .to_string()
+            })
+            .collect();
+        assert_eq!(
+            record_types,
+            ["tool_call", "policy_reload", "tool_call"],
+            "reload records must not disappear from non-file audit output"
+        );
+        for line in [lines[0], lines[2]] {
             assert!(line.starts_with('{'), "audit line is JSONL: {line}");
             assert!(line.contains("bash"), "audit line names the tool: {line}");
         }
+        Ok(())
+    }
+
+    #[test]
+    fn failed_reload_is_audited_and_keeps_the_previous_snapshot() -> Result<(), GuardInitError> {
+        let guard = Guard::from_yaml(POLICY_AUDIT_A)?;
+        let original_version = guard.policy_version();
+        let buffer = Arc::new(std::sync::Mutex::new(Vec::new()));
+        guard.set_audit_sink(Box::new(SharedBuf(buffer.clone())));
+
+        let error = guard
+            .reload_from_yaml("version: 1\ndenny: true\n")
+            .expect_err("unknown policy fields must fail loading");
+        assert!(error.to_string().contains("denny"));
+        assert_eq!(guard.policy_version(), original_version);
+
+        let captured = buffer.lock().expect("buffer lock").clone();
+        let records: Vec<agent_guard_core::AuditRecord> = String::from_utf8(captured)
+            .expect("audit output is utf-8")
+            .lines()
+            .map(|line| serde_json::from_str(line).expect("valid audit record"))
+            .collect();
+        assert_eq!(records.len(), 1, "unexpected audit records: {records:#?}");
+        match &records[0] {
+            agent_guard_core::AuditRecord::PolicyReload(event) => {
+                assert!(matches!(
+                    event.status,
+                    agent_guard_core::ReloadStatus::Failure
+                ));
+                assert_eq!(event.old_version, original_version);
+                assert!(event.new_version.is_none());
+                assert!(event
+                    .error
+                    .as_deref()
+                    .is_some_and(|value| value.contains("denny")));
+            }
+            other => panic!("expected failed policy reload audit, got {other:?}"),
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn reload_state_construction_failure_uses_the_active_audit_sink() -> Result<(), GuardInitError>
+    {
+        let guard = Guard::from_yaml(POLICY_AUDIT_A)?;
+        let original_version = guard.policy_version();
+        let buffer = Arc::new(std::sync::Mutex::new(Vec::new()));
+        guard.set_audit_sink(Box::new(SharedBuf(buffer.clone())));
+        let directory = tempfile::tempdir().expect("tempdir");
+        let replacement = format!(
+            "version: 1\ndefault_mode: workspace_write\naudit:\n  enabled: true\n  output: file\n  file_path: '{}'\n",
+            directory.path().display()
+        );
+
+        let error = guard
+            .reload_from_yaml(&replacement)
+            .expect_err("a directory cannot be opened as an audit file");
+        assert!(matches!(error, GuardInitError::AuditFileOpen { .. }));
+        assert_eq!(guard.policy_version(), original_version);
+
+        let input = GuardInput::new(Tool::Bash, r#"{"command":"ls"}"#);
+        let _ = guard.check(&input);
+        let captured = buffer.lock().expect("buffer lock").clone();
+        let records: Vec<agent_guard_core::AuditRecord> = String::from_utf8(captured)
+            .expect("audit output is utf-8")
+            .lines()
+            .map(|line| serde_json::from_str(line).expect("valid audit record"))
+            .collect();
+        assert_eq!(records.len(), 2, "unexpected audit records: {records:#?}");
+        assert!(matches!(
+            records[0],
+            agent_guard_core::AuditRecord::PolicyReload(agent_guard_core::ReloadEvent {
+                status: agent_guard_core::ReloadStatus::Failure,
+                ..
+            })
+        ));
+        assert!(matches!(
+            records[1],
+            agent_guard_core::AuditRecord::ToolCall(_)
+        ));
         Ok(())
     }
 

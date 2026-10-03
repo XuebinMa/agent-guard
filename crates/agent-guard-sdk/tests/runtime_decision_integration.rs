@@ -99,6 +99,42 @@ fn decide_returns_handoff_for_non_mutation_http_request() {
 }
 
 #[test]
+fn decide_routes_extension_http_methods_to_fail_closed_owned_execution() {
+    for method in ["TRACE", "PROPFIND", "CUSTOM"] {
+        let decision = guard().decide_tool(
+            Tool::HttpRequest,
+            format!(r#"{{"method":"{method}","url":"https://unresolvable.invalid/resource"}}"#),
+            trusted(),
+        );
+        assert_eq!(
+            decision,
+            RuntimeDecision::Execute,
+            "{method} must not become an unguarded host handoff"
+        );
+    }
+}
+
+#[test]
+fn run_rejects_extension_http_method_before_dns_or_network() {
+    let sandbox = agent_guard_sandbox::NoopSandbox;
+    let input = agent_guard_sdk::GuardInput {
+        tool: Tool::HttpRequest,
+        payload: r#"{"method":"PROPFIND","url":"https://unresolvable.invalid/resource"}"#
+            .to_string(),
+        context: trusted(),
+    };
+
+    let error = guard()
+        .run(&input, &sandbox)
+        .expect_err("an unsupported extension method must fail closed");
+    let message = error.to_string();
+    assert!(
+        message.contains("PROPFIND") && message.contains("not supported"),
+        "method should be rejected before DNS resolution: {message}"
+    );
+}
+
+#[test]
 fn decide_maps_deny_and_ask_to_runtime_terms() {
     let denied = guard().decide_tool(Tool::ReadFile, r#"{"path":"/etc/passwd"}"#, trusted());
     assert!(matches!(denied, RuntimeDecision::Deny { .. }));
@@ -405,5 +441,5 @@ anomaly:
     assert_eq!(record["exit_code"].as_i64(), Some(0));
     assert_eq!(record["duration_ms"].as_i64(), Some(42));
     assert_eq!(record["sandbox_type"].as_str(), Some("host-handoff"));
-    assert_eq!(record["tool"].as_str(), Some("handoff"));
+    assert_eq!(record["tool"].as_str(), Some("read_file"));
 }

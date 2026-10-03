@@ -17,6 +17,6 @@ pub use audit::{
 pub use decision::{DecisionCode, DecisionReason, GuardDecision, RuntimeDecision};
 pub use policy::{
     AnomalyConfig, AuditConfig, ContentDetector, ContentMode, ContentPolicy, DenyFuseConfig,
-    PolicyEngine, PolicyError, PolicyMode, RateLimitConfig,
+    PolicyEngine, PolicyError, PolicyMode, RateLimitConfig, MAX_RETAINED_ANOMALY_OBSERVATIONS,
 };
 pub use types::{Context, CustomToolId, CustomToolIdError, GuardInput, Tool, TrustLevel};

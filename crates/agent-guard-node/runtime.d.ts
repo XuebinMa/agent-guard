@@ -11,12 +11,19 @@ export type {
   HandoffResult,
   RuntimeDecision,
   RuntimeOutcome,
-  ExecutionReceipt,
   PolicyVerification,
   SandboxOutput,
 } from './index'
 
-import type { Decision, ExecuteOutcome, Guard, TrustLevel } from './index'
+import type {
+  Decision,
+  ExecuteOutcome,
+  Guard,
+  HandoffResult,
+  RuntimeDecision,
+  RuntimeOutcome,
+  TrustLevel,
+} from './index'
 
 export type AdapterMode = 'check' | 'enforce' | 'auto'
 
@@ -50,7 +57,14 @@ export interface AgentGuardErrorShape {
   code?: string
   matchedRule?: string
   askPrompt?: string
-  decisionDetail?: Decision
+  decisionDetail?: Decision | RuntimeDecision
+  policyVerificationStatus?: string
+  policyVerificationError?: string
+  hostActionCompleted?: boolean
+  hostResult?: unknown
+  requestId?: string
+  handoffReport?: HandoffResult
+  cause?: unknown
 }
 
 export declare class AgentGuardAdapterError extends Error implements AgentGuardErrorShape {
@@ -62,28 +76,44 @@ export declare class AgentGuardAdapterError extends Error implements AgentGuardE
   code?: string
   matchedRule?: string
   askPrompt?: string
-  decisionDetail?: Decision
+  decisionDetail?: Decision | RuntimeDecision
+  policyVerificationStatus?: string
+  policyVerificationError?: string
+  hostActionCompleted?: boolean
+  hostResult?: unknown
+  requestId?: string
+  handoffReport?: HandoffResult
+  cause?: unknown
 }
+
+export type AdapterGuard = Pick<Guard, 'check' | 'execute'> &
+  Partial<Pick<Guard, 'run' | 'reportHandoffResult'>>
 
 export declare class AgentGuardDeniedError extends AgentGuardAdapterError {}
 export declare class AgentGuardAskRequiredError extends AgentGuardAdapterError {}
 export declare class AgentGuardExecutionError extends AgentGuardAdapterError {}
 
 export declare function createGuardedExecutor<Input = unknown, Output = unknown, Result = unknown>(
-  guard: Pick<Guard, 'check' | 'execute'>,
+  guard: AdapterGuard,
   options?: AdapterOptions<Input, Result>
 ): (
   handler: (input: Input, ...args: any[]) => Output | Promise<Output>
-) => (input: Input, ...args: any[]) => Promise<Output | ExecuteOutcome | Result> | Output
+) => (
+  input: Input,
+  ...args: any[]
+) => Promise<Output | ExecuteOutcome | RuntimeOutcome | Result> | Output
 
 export declare function wrapLangChainTool<Input = unknown, Output = unknown, Result = unknown>(
-  guard: Pick<Guard, 'check' | 'execute'>,
+  guard: AdapterGuard,
   tool: LangChainToolLike<Input, Output>,
   options?: AdapterOptions<Input, Result>
-): LangChainToolLike<Input, Output>
+): LangChainToolLike<Input, Output | ExecuteOutcome | RuntimeOutcome | Result>
 
 export declare function wrapOpenAITool<Input = unknown, Output = unknown, Result = unknown>(
-  guard: Pick<Guard, 'check' | 'execute'>,
+  guard: AdapterGuard,
   handler: (input: Input, ...args: any[]) => Output | Promise<Output>,
   options: AdapterOptions<Input, Result>
-): (input: Input, ...args: any[]) => Promise<Output | ExecuteOutcome | Result> | Output
+): (
+  input: Input,
+  ...args: any[]
+) => Promise<Output | ExecuteOutcome | RuntimeOutcome | Result> | Output

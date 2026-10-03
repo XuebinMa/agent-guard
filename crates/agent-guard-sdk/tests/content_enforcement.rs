@@ -5,8 +5,8 @@
 #![cfg(feature = "content")]
 
 use agent_guard_sdk::{
-    guard::ExecuteOutcome, Context, DecisionCode, Guard, GuardDecision, GuardInput, Tool,
-    TrustLevel,
+    guard::ExecuteOutcome, AuditRecord, Context, DecisionCode, Guard, GuardDecision, GuardInput,
+    Tool, TrustLevel,
 };
 
 /// Policy that allows http_request at the action layer but blocks outbound
@@ -195,6 +195,7 @@ tools:
 #[test]
 fn mask_mode_writes_redacted_file_on_execution() {
     let dir = tempfile::tempdir().expect("tempdir");
+    let audit_path = dir.path().join("audit.jsonl");
     let yaml = format!(
         r#"
 version: 1
@@ -206,8 +207,13 @@ tools:
       - "{}/**"
     content:
       mode: mask
+audit:
+  enabled: true
+  output: file
+  file_path: "{}"
 "#,
-        dir.path().display()
+        dir.path().display(),
+        audit_path.display()
     );
     let g = Guard::from_yaml(&yaml).expect("policy parses");
 
@@ -234,4 +240,39 @@ tools:
         }
         other => panic!("expected Executed, got {other:?}"),
     }
+    drop(g);
+
+    let records: Vec<AuditRecord> = std::fs::read_to_string(&audit_path)
+        .expect("read audit file")
+        .lines()
+        .map(|line| serde_json::from_str(line).expect("valid audit record"))
+        .collect();
+    let request_ids: Vec<&str> = records
+        .iter()
+        .filter_map(|record| match record {
+            AuditRecord::ToolCall(event) => Some(event.request_id.as_str()),
+            AuditRecord::ExecutionStarted(event) | AuditRecord::ExecutionFinished(event) => {
+                Some(event.request_id.as_str())
+            }
+            AuditRecord::ContentFinding(event) => Some(event.request_id.as_str()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        request_ids.len(),
+        4,
+        "unexpected audit records: {records:#?}"
+    );
+    assert!(
+        request_ids
+            .iter()
+            .all(|request_id| *request_id == request_ids[0]),
+        "content finding must share the execution request ID: {records:#?}"
+    );
+    assert!(
+        records
+            .iter()
+            .any(|record| matches!(record, AuditRecord::ContentFinding(_))),
+        "content finding must reach the configured local audit sink"
+    );
 }

@@ -48,3 +48,10 @@ the reason vocabulary was published rather than inferred.
 Our verifier (`src/attenu/`) is written against the published format
 description only. It does not read, port, or invoke either attenu-guard
 reference implementation.
+
+The strict entry-field and schema-v2 record checks added in October 2026 use
+the field sets that attenu-guard published on 2026-09-26 after an independent
+verifier reported they could not be derived from the earlier prose. The local
+v1.4 corpus bytes remain unchanged; agent-guard supplies its own re-sealed
+negative mutations for those rules so conformance does not depend on a future
+corpus row.

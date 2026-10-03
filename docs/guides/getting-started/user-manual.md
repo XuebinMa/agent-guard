@@ -99,9 +99,16 @@ let result = guard.execute_default(&GuardInput {
 `agent-guard` supports two different enforcement layers today:
 
 - **Policy gate for all supported tools**: `check()` and the adapter layers evaluate structured payloads against policy.
-- **Sandboxed execution for shell / Bash**: `execute()` and adapter `enforce` mode are strongest on shell execution paths.
+- **Guard-owned runtime execution**: exact `bash`, WriteFile, and mutating HTTP
+  calls can execute through `execute()` / `run()` instead of an application
+  handler.
 
-For non-shell tools such as `read_file`, `write_file`, `http_request`, and custom tool IDs, the current primary boundary is still `check` + policy evaluation unless your application provides an additional runtime boundary.
+`Guard.run()` chooses among deny, approval, Guard-owned execution, and a
+correlated host Handoff. Read-only and custom tools normally return Handoff;
+the host must report the terminal result using its one-shot request ID.
+Shell-like custom IDs are not Bash aliases: the Python and Node adapters reject
+them in `auto` until the host maps a real Bash-backed tool to exact `bash` or
+selects an explicit mode.
 
 ### Payload Contract
 

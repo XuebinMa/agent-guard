@@ -4,8 +4,8 @@
 | :--- | :--- |
 | **Status** | 🟢 Operational (v0.2.0) |
 | **Audience** | SREs, Security Analysts |
-| **Version** | 1.2 |
-| **Last Reviewed** | 2026-04-08 |
+| **Version** | 1.3 |
+| **Last Reviewed** | 2026-10-01 |
 | **Related Docs** | [Deployment Guide](deployment-guide.md), [Threat Model](../../concepts/threat-model.md) |
 
 ---
@@ -61,17 +61,49 @@ audit:
 - `sandbox_failure`: Emitted on fail-closed errors.
 - `anomaly_triggered` / `agent_locked`.
 - `content_finding`: Content-layer detection on an executed call (opt-in `content` build). See below.
+- `policy_reload`: Successful or failed policy replacement.
+
+One `Guard::run` evaluation owns one `request_id` and one immutable policy
+snapshot. Its `tool_call`, `execution_started`, and terminal
+`execution_finished`, `sandbox_failure`, or host-supplied
+`execution_reported` records reuse that ID. The same serialized records are
+fanned out to the configured local destination (file or stdout/custom sink)
+and the SIEM exporter; `audit.enabled: false` disables the complete stream.
+It does not disable one-shot handoff request tracking: a valid report is still
+consumed once (without emitting a record), while unknown, expired, and duplicate
+IDs are rejected. This audit-disabled compatibility registry is bounded at
+4,096 pending IDs: on overflow it evicts the oldest audit-disabled entry, so a
+host that leaves thousands of handoffs outstanding must treat a later
+``unknown request`` error as a lost lifecycle rather than retrying the action.
+Audited pending handoffs are never evicted to make room for unaudited ones.
+`anomaly_triggered` and `agent_locked` also carry the request ID that produced
+the verdict; readers must tolerate its absence in records written by older
+versions.
 
 ### Host-reported handoff outcomes (`execution_reported`)
 
-When `Guard::run` returns a `Handoff`, the host executes the action itself and reports the outcome via `Guard::report_handoff_result`. The Guard did not observe that execution, so the record is transcribed rather than witnessed. These records carry `tool: "handoff"` and `sandbox_type: "host-handoff"`.
+When `Guard::run` returns a `Handoff`, it first emits
+`execution_started` with `sandbox_type: "host-handoff"`. The host then executes
+the action itself and reports the outcome via `Guard::report_handoff_result`
+using the returned `request_id`. The Guard did not observe that execution, so
+the terminal record is transcribed rather than witnessed. The reported record
+retains the original tool and agent identity and carries
+`sandbox_type: "host-handoff"`. The request ID is one-shot: an unknown,
+expired, or already-reported handoff is rejected by
+`Guard::try_report_handoff_result` rather than creating an orphan terminal
+record. Pending handoffs also retain the original audit destinations across a
+policy reload. If a host action succeeds but its terminal report fails, the
+Python and Node adapters surface an execution error instead of returning an
+apparently complete lifecycle. That error says the action already completed,
+carries the host result, and warns callers not to retry automatically. If the host action itself failed, its original
+exception remains primary and carries the report failure as secondary context.
 
 ```json
 {
   "type": "execution_reported",
   "timestamp": "2026-08-19T12:00:00Z",
   "request_id": "5f1c…",
-  "tool": "handoff",
+  "tool": "read_file",
   "sandbox_type": "host-handoff",
   "duration_ms": 42,
   "exit_code": 0
@@ -85,6 +117,10 @@ When `Guard::run` returns a `Handoff`, the host executes the action itself and r
 > both types. `execution_finished` is now reserved for executions the Guard
 > itself performed and is unchanged for those. Treat an unrecognized `type`
 > value as a signal to update the consumer, not as noise to drop.
+>
+> Handoff reports emitted before this hardening used the synthetic tool value
+> `handoff` and no agent ID. Consumers should now accept the original tool and
+> agent copied from the correlated `execution_started` record.
 
 ### Content findings (`content_finding`)
 

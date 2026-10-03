@@ -4,8 +4,8 @@
 | :--- | :--- |
 | **Status** | 🟢 Active Support Snapshot |
 | **Audience** | Developers, Integrators |
-| **Version** | 1.3 |
-| **Last Reviewed** | 2026-06-04 |
+| **Version** | 1.4 |
+| **Last Reviewed** | 2026-10-02 |
 | **Related Docs** | [README](../README.md), [Node README](../../crates/agent-guard-node/README.md), [Python README](../../crates/agent-guard-python/README.md) |
 
 ---
@@ -103,7 +103,7 @@ The Node package is validated with:
 
 Current concrete validation inputs:
 
-- `@langchain/core` `^0.3.75`
+- `@langchain/core` `^1.2.3`
 - `@openai/agents` `^0.8.3`
 - `zod` `^4.3.6`
 
@@ -150,8 +150,13 @@ The Python adapter layer is now official, but still below the current Node surfa
 Boundary note:
 
 - Python and Node wrapper layers can guard many tool types at the policy level
-- the strongest current `enforce` path across languages is still shell / Bash execution
-- treat non-shell adapters primarily as `check` + policy gate surfaces unless your host adds a stronger execution boundary
+- exact `bash` is the Guard-owned command path; shell-like custom IDs fail
+  closed in `auto` instead of silently falling back to host execution
+- `auto` uses `Guard.run()` for non-shell tools: WriteFile and mutating HTTP can
+  be Guard-executed, while read-only/custom actions return a correlated Handoff
+  that the adapter reports after the host handler completes
+- explicit `check` remains policy-only and intentionally leaves execution in
+  the host
 
 ---
 
@@ -258,7 +263,7 @@ Legend: ✅ primary control · 🟡 containment / blast-radius / accountability 
 | ASI02 | Tool Misuse | ✅ | The wedge: bash intent / destructive detection, workspace confinement, SSRF deny-list, outbound content scan. |
 | ASI03 | Identity & Privilege Abuse | 🟡 | Least-agency scoping via `TrustLevel` (Untrusted default, escalation-proof) + `PolicyMode` + per-agent trust. Not an IAM / secret broker. |
 | ASI04 | Agentic Supply Chain | ⬜ | Policy signing makes the *rules* tamper-evident, but we do not scan MCP servers / plugins / tools for poisoning. |
-| ASI05 | Unexpected Code Execution | ✅ | Flagship: validator filtering + OS sandbox (seccomp / Seatbelt / Job Object / AppContainer) behind the decision boundary. Default build has no OS isolation — the decision layer is the only boundary unless a sandbox feature is compiled in. |
+| ASI05 | Unexpected Code Execution | ✅ | Flagship: validator filtering + an active OS sandbox (seccomp / Landlock / Seatbelt / Low-IL Job Object) behind the decision boundary. Default build has no OS isolation, and the unsafe AppContainer prototype is disabled — the decision layer is the only boundary unless a functional sandbox feature is active. |
 | ASI06 | Memory & Context Poisoning | ⬜ | We do not touch agent memory / vector stores / RAG. |
 | ASI07 | Insecure Inter-Agent Communication | ⬜ | Single-agent execution control; multi-agent control plane is out of scope. |
 | ASI08 | Cascading Failures | 🟡 | Deny Fuse circuit-breaker (lock after N denials in a window) + rate limiting bound a single runaway agent. |

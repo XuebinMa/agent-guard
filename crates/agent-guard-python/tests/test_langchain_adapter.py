@@ -7,9 +7,12 @@ Run with (after `maturin develop`):
 
 import json
 import asyncio
+import threading
 import pytest
 from agent_guard import (
+    AgentGuardAskRequiredError,
     AgentGuardDeniedError,
+    AgentGuardExecutionError,
     AgentGuardSecurityError,
     Guard,
     wrap_langchain_tool,
@@ -109,12 +112,31 @@ def test_wrap_returns_same_instance(guard):
 
 # ── Category 2: Mode Resolution ──────────────────────────────────────────────
 
-def test_auto_mode_non_shell_uses_check(guard):
-    """Non-shell tool in auto mode should use check (original _run runs)."""
+def test_auto_mode_non_shell_uses_runtime_handoff(guard):
+    """Current bindings route a non-shell auto call through run/handoff."""
     tool = MockCalcTool()
     wrapped = wrap_langchain_tool(guard, tool, mode="auto", trust_level="trusted")
     result = wrapped.run("2+2")
     assert "ORIGINAL_CALC" in result
+
+
+def test_auto_mode_falls_back_when_binding_cannot_report_handoff():
+    class RunOnlyLegacyGuard:
+        def check(self, **_kwargs):
+            return type("Decision", (), {"outcome": "allow"})()
+
+        def execute(self, **_kwargs):
+            raise AssertionError("execute must not run for a non-shell tool")
+
+        def run(self, **_kwargs):
+            raise AssertionError("run without a reporting API must not be used")
+
+    tool = MockCalcTool()
+    wrapped = wrap_langchain_tool(
+        RunOnlyLegacyGuard(), tool, mode="auto", trust_level="trusted"
+    )
+
+    assert wrapped.run("2+2") == "ORIGINAL_CALC: 2+2"
 
 
 def test_explicit_check_on_shell_tool(guard):
@@ -283,10 +305,23 @@ class _FakeOutcome:
         self.policy_version = kwargs.get("policy_version", "v1")
         self.policy_verification_status = kwargs.get("policy_verification_status", "unsigned")
         self.policy_verification_error = kwargs.get("policy_verification_error", None)
-        self.message = kwargs.get("message", None)
-        self.code = kwargs.get("code", None)
-        self.matched_rule = kwargs.get("matched_rule", None)
-        self.ask_prompt = kwargs.get("ask_prompt", None)
+        message = kwargs.get("message", None)
+        code = kwargs.get("code", None)
+        matched_rule = kwargs.get("matched_rule", None)
+        ask_prompt = kwargs.get("ask_prompt", None)
+        self.decision = None
+        if outcome in ("denied", "deny", "ask_for_approval", "ask_user"):
+            self.decision = type(
+                "RuntimeDecision",
+                (),
+                {
+                    "outcome": outcome,
+                    "message": message,
+                    "code": code,
+                    "matched_rule": matched_rule,
+                    "ask_prompt": ask_prompt,
+                },
+            )()
 
 
 class FakeGuard:
@@ -312,6 +347,12 @@ class FakeGuard:
         raise AssertionError("execute() must not be called on the run path")
 
 
+class ReportingFailsGuard(FakeGuard):
+    def report_handoff_result(self, request_id, result):
+        super().report_handoff_result(request_id, result)
+        raise RuntimeError("handoff report failed")
+
+
 def test_auto_mode_handoff_invokes_original_and_closes_audit_loop():
     """Non-shell auto mode must take the run() path, call the original tool on
     Handoff, and report the result back via report_handoff_result()."""
@@ -330,6 +371,31 @@ def test_auto_mode_handoff_invokes_original_and_closes_audit_loop():
     assert handoff_result.exit_code == 0
     assert handoff_result.duration_ms >= 0
     assert handoff_result.stderr is None
+
+
+@pytest.mark.parametrize(
+    "tool_name",
+    ["shell", "terminal", "BASH", "sh", "zsh", "cmd", "powershell", "pwsh"],
+)
+def test_auto_mode_requires_exact_bash_tool_id(tool_name):
+    """Only the exact built-in ID ``bash`` belongs to Guard-owned execution.
+    Shell-shaped aliases must not silently widen into host handoff."""
+    fake = FakeGuard(
+        _FakeOutcome("handoff", request_id=f"req-custom-alias-{tool_name}")
+    )
+
+    class AliasTool(MockBaseTool):
+        def __init__(self):
+            super().__init__(tool_name, "custom shell-shaped alias")
+
+        def _run(self, command: str) -> str:
+            return f"HOST_ALIAS: {command}"
+
+    with pytest.raises(AgentGuardExecutionError, match="exact ID 'bash'") as caught:
+        wrap_langchain_tool(fake, AliasTool(), mode="auto", trust_level="trusted")
+    assert caught.value.code == "UnsupportedShellAlias"
+    assert fake.run_calls == []
+    assert fake.handoff_reports == []
 
 
 def test_auto_mode_handoff_handler_raise_still_reports_audit():
@@ -355,6 +421,60 @@ def test_auto_mode_handoff_handler_raise_still_reports_audit():
     assert request_id == "req-handoff-err"
     assert handoff_result.exit_code == 1
     assert handoff_result.stderr == "boom"
+
+
+def test_auto_mode_handoff_report_failure_rejects_apparent_success():
+    fake = ReportingFailsGuard(
+        _FakeOutcome(
+            "handoff",
+            request_id="req-report-error",
+            policy_version="policy-report-error",
+            policy_verification_status="unsigned",
+        )
+    )
+    tool = MockCalcTool()
+    wrapped = wrap_langchain_tool(fake, tool, mode="auto", trust_level="trusted")
+
+    with pytest.raises(
+        AgentGuardExecutionError,
+        match="host action already completed but agent-guard could not record",
+    ) as caught:
+        wrapped.run("2+2")
+    assert isinstance(caught.value.cause, RuntimeError)
+    assert caught.value.host_action_completed is True
+    assert caught.value.host_result == "ORIGINAL_CALC: 2+2"
+    assert caught.value.code == "HandoffReportFailedAfterExecution"
+    assert caught.value.request_id == "req-report-error"
+    assert caught.value.handoff_result.exit_code == 0
+    assert caught.value.policy_version == "policy-report-error"
+    assert caught.value.policy_verification_status == "unsigned"
+    assert caught.value.policy_verification_error is None
+    assert len(fake.handoff_reports) == 1
+
+
+def test_auto_mode_handoff_report_failure_preserves_handler_error():
+    fake = ReportingFailsGuard(_FakeOutcome("handoff", request_id="req-both-errors"))
+
+    class RaisingTool(MockBaseTool):
+        def __init__(self):
+            super().__init__("calc", "raises")
+
+        def _run(self, *args, **kwargs):
+            raise RuntimeError("original handler error")
+
+    wrapped = wrap_langchain_tool(
+        fake, RaisingTool(), mode="auto", trust_level="trusted"
+    )
+
+    with pytest.raises(RuntimeError, match="original handler error") as caught:
+        wrapped.run("ignored")
+    assert isinstance(caught.value.agent_guard_report_error, RuntimeError)
+    if hasattr(caught.value, "__notes__"):
+        assert any(
+            "could not record the handoff result" in note
+            for note in caught.value.__notes__
+        )
+    assert len(fake.handoff_reports) == 1
 
 
 def test_auto_mode_run_deny_raises_security_error_without_handler_call():
@@ -387,7 +507,63 @@ def test_auto_mode_run_deny_raises_security_error_without_handler_call():
 
     assert exc_info.value.code == "DeniedByRule"
     assert exc_info.value.matched_rule == "block-everything"
+    assert str(exc_info.value) == "blocked by policy"
     assert tool.calls == 0
+    assert fake.handoff_reports == []
+
+
+def test_auto_mode_rejects_invalid_runtime_handoff_without_handler_call():
+    fake = FakeGuard(
+        _FakeOutcome(
+            "handoff",
+            request_id="req-invalid-runtime-handoff",
+            policy_version="policy-invalid-runtime",
+            policy_verification_status="invalid",
+            policy_verification_error="signature verification failed",
+        )
+    )
+
+    class TrackingTool(MockBaseTool):
+        def __init__(self):
+            super().__init__("calc", "tracking")
+            self.calls = 0
+
+        def _run(self, *args, **kwargs):
+            self.calls += 1
+            return "should-not-run"
+
+    tool = TrackingTool()
+    wrapped = wrap_langchain_tool(fake, tool, mode="auto", trust_level="trusted")
+
+    with pytest.raises(AgentGuardDeniedError) as caught:
+        wrapped.run("anything")
+
+    assert caught.value.code == "PolicyVerificationFailed"
+    assert caught.value.policy_version == "policy-invalid-runtime"
+    assert caught.value.policy_verification_status == "invalid"
+    assert tool.calls == 0
+    assert fake.handoff_reports == []
+
+
+def test_auto_mode_run_ask_preserves_nested_approval_prompt():
+    fake = FakeGuard(
+        _FakeOutcome(
+            "ask_for_approval",
+            request_id="req-ask",
+            message="approval required",
+            code="AskRequired",
+            ask_prompt="Approve calculator call?",
+        )
+    )
+    tool = MockCalcTool()
+    wrapped = wrap_langchain_tool(fake, tool, mode="auto", trust_level="trusted")
+
+    with pytest.raises(AgentGuardAskRequiredError) as caught:
+        wrapped.run("2+2")
+
+    assert str(caught.value) == "Approve calculator call?"
+    assert caught.value.ask_prompt == "Approve calculator call?"
+    assert caught.value.code == "AskRequired"
     assert fake.handoff_reports == []
 
 
@@ -419,3 +595,82 @@ def test_auto_mode_async_handoff_uses_original_arun_when_present():
     request_id, handoff_result = fake.handoff_reports[0]
     assert request_id == "req-async-handoff"
     assert handoff_result.exit_code == 0
+
+
+def test_auto_mode_async_handoff_reports_off_event_loop_thread():
+    event_loop_thread = threading.get_ident()
+
+    class ThreadRecordingGuard(FakeGuard):
+        def __init__(self, outcome):
+            super().__init__(outcome)
+            self.report_thread = None
+
+        def report_handoff_result(self, request_id, result):
+            self.report_thread = threading.get_ident()
+            super().report_handoff_result(request_id, result)
+
+    fake = ThreadRecordingGuard(
+        _FakeOutcome("handoff", request_id="req-async-report-thread")
+    )
+
+    class DirectAsyncCalc(MockBaseTool):
+        def __init__(self):
+            super().__init__("calc", "async thread probe")
+
+        async def _arun(self, expression: str) -> str:
+            return f"ASYNC_CALC: {expression}"
+
+    wrapped = wrap_langchain_tool(
+        fake, DirectAsyncCalc(), mode="auto", trust_level="trusted"
+    )
+
+    assert asyncio.run(wrapped._arun("4*4")) == "ASYNC_CALC: 4*4"
+    assert fake.report_thread is not None
+    assert fake.report_thread != event_loop_thread
+
+
+def test_auto_mode_async_report_failure_rejects_apparent_success():
+    fake = ReportingFailsGuard(
+        _FakeOutcome("handoff", request_id="req-async-report-error")
+    )
+
+    class AsyncCalc(MockBaseTool):
+        def __init__(self):
+            super().__init__("calc", "async")
+
+        async def _arun(self, expression: str) -> str:
+            return f"ASYNC_CALC: {expression}"
+
+    wrapped = wrap_langchain_tool(
+        fake, AsyncCalc(), mode="auto", trust_level="trusted"
+    )
+
+    with pytest.raises(
+        AgentGuardExecutionError,
+        match="host action already completed but agent-guard could not record",
+    ) as caught:
+        asyncio.run(wrapped._arun("3*3"))
+    assert isinstance(caught.value.cause, RuntimeError)
+    assert caught.value.host_action_completed is True
+    assert caught.value.host_result == "ASYNC_CALC: 3*3"
+
+
+def test_auto_mode_async_report_failure_preserves_handler_error():
+    fake = ReportingFailsGuard(
+        _FakeOutcome("handoff", request_id="req-async-both-errors")
+    )
+
+    class AsyncFailure(MockBaseTool):
+        def __init__(self):
+            super().__init__("calc", "async failure")
+
+        async def _arun(self, _expression: str) -> str:
+            raise RuntimeError("original async handler error")
+
+    wrapped = wrap_langchain_tool(
+        fake, AsyncFailure(), mode="auto", trust_level="trusted"
+    )
+
+    with pytest.raises(RuntimeError, match="original async handler error") as caught:
+        asyncio.run(wrapped._arun("ignored"))
+    assert isinstance(caught.value.agent_guard_report_error, RuntimeError)

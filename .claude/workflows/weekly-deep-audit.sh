@@ -2,7 +2,7 @@
 #
 # .claude/workflows/weekly-deep-audit.sh — Layer 3 weekly deep audit
 #
-# Fires three Claude Code reviewer agents in parallel against the
+# Runs three Claude Code reviewer agents serially against the
 # security-critical surface and aggregates their findings into a single
 # dated markdown report under docs/audits/.
 #
@@ -14,8 +14,8 @@
 #       (invariant expression, illegal-state representability)
 #
 # Driven by a `schedule` skill routine (target: every Monday 09:00 local).
-# Can also be run manually any time. Designed to fail open: if a single
-# agent crashes, the other two still produce output.
+# Can also be run manually any time. If a single agent crashes, the other two
+# still run and produce output, but the overall command exits non-zero.
 #
 # Suppressions (stop already-dispositioned findings from recurring every week):
 # `.claude/audit-suppressions.yaml` lists findings that are intentionally not
@@ -182,6 +182,7 @@ trap 'rm -rf "$TMPDIR_RUN"' EXIT
 run_one() {
     local short="$1" label="$2" prompt="$3"
     local out="$TMPDIR_RUN/$short.md"
+    local run_rc=0
 
     if [[ $DRY_RUN -eq 1 ]]; then
         {
@@ -214,7 +215,9 @@ run_one() {
         # session reads our prompt, sees the "Use the <agent>" directive,
         # invokes that agent via Agent tool, and prints the agent'"'"'s
         # markdown report verbatim. Stdout streams into the section.
-        if ! printf '%s\n' "$prompt" | claude -p 2>>"$TMPDIR_RUN/$short.err"; then
+        printf '%s\n' "$prompt" | claude -p 2>>"$TMPDIR_RUN/$short.err"
+        run_rc=$?
+        if [[ $run_rc -ne 0 ]]; then
             echo
             echo "**Agent run returned non-zero. Stderr tail:**"
             echo
@@ -224,6 +227,8 @@ run_one() {
         fi
         echo
     } > "$out"
+
+    return "$run_rc"
 }
 
 declare -a labels

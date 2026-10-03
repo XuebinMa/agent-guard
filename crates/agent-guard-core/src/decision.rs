@@ -10,7 +10,15 @@ use serde::{Deserialize, Serialize};
 // `#[non_exhaustive]`: pre-1.0 is the only window to reserve room for new
 // decision kinds without a breaking change. Cross-crate `match` must carry a
 // wildcard arm; constructing and destructuring the existing variants is
-// unaffected.
+// unaffected except for the approval variant, which is individually
+// non-exhaustive so callers cannot bypass its validated constructor.
+/// A downstream crate cannot construct a blank approval prompt directly:
+///
+/// ```compile_fail
+/// use agent_guard_core::{DecisionCode, DecisionReason, GuardDecision};
+/// let reason = DecisionReason::new(DecisionCode::AskRequired, "review required");
+/// let _ = GuardDecision::AskUser { message: String::new(), reason };
+/// ```
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(tag = "decision", rename_all = "snake_case")]
 #[non_exhaustive]
@@ -19,6 +27,7 @@ pub enum GuardDecision {
     Deny {
         reason: DecisionReason,
     },
+    #[non_exhaustive]
     AskUser {
         message: String,
         reason: DecisionReason,
@@ -74,15 +83,10 @@ impl GuardDecision {
     /// Build an `AskUser` decision from a pre-assembled [`DecisionReason`],
     /// enforcing a non-empty user-facing prompt (a blank prompt would reach a
     /// human as an empty approval request). This is the single chokepoint for
-    /// `AskUser` construction — callers must not build the variant via a struct
-    /// literal, so the invariant cannot be bypassed in-crate.
+    /// `AskUser` construction. The variant is itself `#[non_exhaustive]`, so
+    /// downstream crates cannot bypass this constructor with a struct literal.
     pub fn ask_with_reason(message: impl Into<String>, reason: DecisionReason) -> Self {
-        let message = message.into();
-        let message = if message.is_empty() {
-            format!("Confirmation required ({:?})", reason.code())
-        } else {
-            message
-        };
+        let message = non_empty_approval_prompt(message, reason.code());
         Self::AskUser { message, reason }
     }
 
@@ -109,6 +113,7 @@ pub enum RuntimeDecision {
     Deny {
         reason: DecisionReason,
     },
+    #[non_exhaustive]
     AskForApproval {
         message: String,
         reason: DecisionReason,
@@ -138,10 +143,28 @@ impl RuntimeDecision {
         code: DecisionCode,
         reason_msg: impl Into<String>,
     ) -> Self {
+        Self::ask_for_approval_with_reason(message, DecisionReason::new(code, reason_msg))
+    }
+
+    /// Build an approval request from an already assembled reason while still
+    /// enforcing the non-blank prompt invariant.
+    pub fn ask_for_approval_with_reason(
+        message: impl Into<String>,
+        reason: DecisionReason,
+    ) -> Self {
         Self::AskForApproval {
-            message: message.into(),
-            reason: DecisionReason::new(code, reason_msg),
+            message: non_empty_approval_prompt(message, reason.code()),
+            reason,
         }
+    }
+}
+
+fn non_empty_approval_prompt(message: impl Into<String>, code: DecisionCode) -> String {
+    let message = message.into();
+    if message.trim().is_empty() {
+        format!("Confirmation required ({code:?})")
+    } else {
+        message
     }
 }
 
@@ -153,7 +176,26 @@ impl RuntimeDecision {
 // to undermine the audit trail. Construction goes through `new` and the
 // `with_*` builders (which always supply a non-empty `message`); `#[non_exhaustive]`
 // additionally blocks cross-crate struct literals that could bypass them.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+/// Why a decision was reached. Every emitted reason has a non-empty `message`,
+/// guaranteed at the single [`DecisionReason::new`] chokepoint.
+///
+/// `Deserialize` is intentionally omitted (mirroring `GuardDecision` /
+/// `RuntimeDecision`). The fields are `pub(crate)`, but a derived `Deserialize`
+/// populates them regardless of visibility, so it would let untrusted JSON
+/// synthesize a reason with an empty `message` — bypassing `new` — and wrap it
+/// in an `AskUser`, surfacing a blank approval prompt. Audit/UI consumers read
+/// the serialized form; nothing deserializes it back into a decision. This lock
+/// keeps the door shut (type-design audit, 2026-08-31):
+///
+/// ```compile_fail
+/// use agent_guard_core::DecisionReason;
+/// // DecisionReason must not be Deserialize: this must fail to compile.
+/// let _: DecisionReason = serde_json::from_str(
+///     r#"{"code":"DENIED_BY_RULE","message":"","details":null,"matched_rule":null}"#,
+/// )
+/// .unwrap();
+/// ```
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[non_exhaustive]
 pub struct DecisionReason {
     pub(crate) code: DecisionCode,
@@ -174,7 +216,7 @@ impl DecisionReason {
         // panicking — constructors run on hot decision paths and must stay
         // panic-free.
         let message = message.into();
-        let message = if message.is_empty() {
+        let message = if message.trim().is_empty() {
             format!("decision: {code:?}")
         } else {
             message
@@ -324,6 +366,10 @@ mod tests {
         assert!(!DecisionReason::new(DecisionCode::DeniedByRule, "")
             .message()
             .is_empty());
+        assert!(!DecisionReason::new(DecisionCode::DeniedByRule, " \n\t ")
+            .message()
+            .trim()
+            .is_empty());
     }
 
     #[test]
@@ -339,12 +385,23 @@ mod tests {
     #[test]
     fn ask_with_reason_enforces_non_empty_prompt() {
         let reason = DecisionReason::new(DecisionCode::AskRequired, "needs review");
-        let decision = GuardDecision::ask_with_reason("", reason);
+        let decision = GuardDecision::ask_with_reason(" \n\t ", reason);
         let prompt = match &decision {
             GuardDecision::AskUser { message, .. } => message.as_str(),
             _ => "",
         };
-        assert!(!prompt.is_empty());
+        assert!(!prompt.trim().is_empty());
+    }
+
+    #[test]
+    fn runtime_ask_enforces_non_empty_prompt() {
+        let decision =
+            RuntimeDecision::ask_for_approval(" \n\t ", DecisionCode::AskRequired, "needs review");
+        let prompt = match &decision {
+            RuntimeDecision::AskForApproval { message, .. } => message.as_str(),
+            _ => "",
+        };
+        assert!(!prompt.trim().is_empty());
     }
 
     #[test]

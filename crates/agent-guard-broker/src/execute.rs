@@ -13,9 +13,9 @@ use chrono::{DateTime, Utc};
 use thiserror::Error;
 
 use crate::git::{GitError, GitSnapshot, PushBroker};
-use crate::grant::{grant_was_spent, peek_grant, spend_grant, GrantError, PushGrant};
+use crate::grant::{claim_grant, grant_was_spent, GrantError, PushGrant};
 use crate::receipt::{PushAttempt, PushReceipt, Witness};
-use crate::transaction::{PushTransaction, RefUpdateKind};
+use crate::transaction::{resolve_from_snapshot_at_url, PushTransaction, RefUpdateKind};
 
 /// What the broker did, and to what.
 #[derive(Debug, Clone)]
@@ -88,65 +88,121 @@ impl PushBroker {
         policy_hash: &str,
         now: DateTime<Utc>,
     ) -> ExecutionAttempt {
-        // Advisory only. Spending below authenticates the target and consumes
-        // the grant before any push is attempted.
-        let target = match peek_grant(grant_dir, grant_id) {
-            Ok(target) => target,
+        // Claim first. Nothing above this point inspects the repository or can
+        // invoke Git, so one approval cannot be reused to probe several
+        // destinations. Policy and expiry are validated as part of the same
+        // claim, after the atomic rename has made it one-use.
+        let grant = match claim_grant(grant_dir, grant_id, policy_hash, now) {
+            Ok(grant) => grant,
             Err(error) => {
                 return ExecutionAttempt {
                     transaction: None,
-                    grant_id: None,
+                    grant_id: grant_was_spent(grant_dir, grant_id).then(|| grant_id.to_string()),
                     result: Err(ExecuteError::Unauthorized(error)),
                 }
             }
         };
-
-        // Keep this snapshot alive through the push. There is one resolution,
-        // so the transaction signed into the receipt is the one executed.
-        let resolved = match self.resolve_with_snapshot(repo, &target.remote, &target.branch) {
-            Ok(resolved) => resolved,
-            Err(error) => {
+        let consumed_grant_id = Some(grant.grant_id.clone());
+        let approved = match grant.transaction.clone() {
+            Some(transaction) => transaction,
+            None => {
                 return ExecutionAttempt {
                     transaction: None,
-                    grant_id: None,
+                    grant_id: consumed_grant_id,
+                    result: Err(ExecuteError::Unauthorized(
+                        GrantError::MissingApprovedTransaction {
+                            version: grant.version,
+                        },
+                    )),
+                }
+            }
+        };
+
+        if !approved.kind.is_executable() {
+            return ExecutionAttempt {
+                transaction: Some(approved.clone()),
+                grant_id: consumed_grant_id,
+                result: Err(ExecuteError::UnsupportedShape {
+                    kind: approved.kind,
+                }),
+            };
+        }
+
+        // Capture repository-local state without asking any remote a
+        // question. GitSnapshot::capture runs only local plumbing. The URL and
+        // OID must still equal what the approver saw before `ls-remote` is
+        // permitted to run.
+        let snapshot =
+            match GitSnapshot::capture(repo, &approved.remote, &approved.branch, &self.options) {
+                Ok(snapshot) => snapshot,
+                Err(error) => {
+                    return ExecutionAttempt {
+                        transaction: Some(approved),
+                        grant_id: consumed_grant_id,
+                        result: Err(ExecuteError::Resolve(error)),
+                    }
+                }
+            };
+
+        let mut local_presentation = approved.clone();
+        local_presentation.remote_url = snapshot.remote_url.clone();
+        local_presentation.local_oid = snapshot.local_oid.clone();
+        if local_presentation.remote_url != approved.remote_url
+            || local_presentation.local_oid != approved.local_oid
+        {
+            return ExecutionAttempt {
+                transaction: Some(approved),
+                grant_id: consumed_grant_id,
+                result: Err(ExecuteError::Drift(GrantError::TransactionMismatch {
+                    approved: grant.transaction_digest,
+                    presented: local_presentation.digest(),
+                })),
+            };
+        }
+
+        // The first remote-capable command is below this line, after the grant
+        // is spent and repository-local destination/OID drift is excluded. It
+        // receives the URL stored in the grant, never a freshly resolved
+        // remote name.
+        let current = match resolve_from_snapshot_at_url(
+            &snapshot,
+            &approved.remote,
+            &approved.branch,
+            &approved.remote_url,
+        ) {
+            Ok(current) => current,
+            Err(error) => {
+                return ExecutionAttempt {
+                    transaction: Some(approved),
+                    grant_id: consumed_grant_id,
                     result: Err(ExecuteError::Resolve(error)),
                 }
             }
         };
-        let current = resolved.transaction;
+        let current_digest = current.digest();
+        if current_digest != grant.transaction_digest {
+            return ExecutionAttempt {
+                transaction: Some(approved),
+                grant_id: consumed_grant_id,
+                result: Err(ExecuteError::Drift(GrantError::TransactionMismatch {
+                    approved: grant.transaction_digest,
+                    presented: current_digest,
+                })),
+            };
+        }
 
-        let grant = match spend_grant(grant_dir, grant_id, &current, policy_hash, now) {
-            Ok(grant) => grant,
-            Err(error) => {
-                let result = match error {
-                    GrantError::TransactionMismatch { .. } => ExecuteError::Drift(error),
-                    other => ExecuteError::Unauthorized(other),
-                };
-                return ExecutionAttempt {
-                    transaction: Some(current),
-                    grant_id: grant_was_spent(grant_dir, grant_id).then(|| grant_id.to_string()),
-                    result: Err(result),
-                };
-            }
-        };
-        let consumed_grant_id = Some(grant.grant_id.clone());
-
-        let result = if current.kind.is_executable() {
-            push_pinned(&resolved.snapshot, &current)
-                .map(|git_output| PushOutcome {
-                    pushed_oid: current.local_oid.clone(),
-                    branch: current.branch.clone(),
-                    remote_url: current.remote_url.clone(),
-                    grant,
-                    git_output,
-                })
-                .map_err(ExecuteError::Push)
-        } else {
-            Err(ExecuteError::UnsupportedShape { kind: current.kind })
-        };
+        let result = push_pinned(&snapshot, &approved)
+            .map(|git_output| PushOutcome {
+                pushed_oid: approved.local_oid.clone(),
+                branch: approved.branch.clone(),
+                remote_url: approved.remote_url.clone(),
+                grant,
+                git_output,
+            })
+            .map_err(ExecuteError::Push);
 
         ExecutionAttempt {
-            transaction: Some(current),
+            transaction: Some(approved),
             grant_id: consumed_grant_id,
             result,
         }

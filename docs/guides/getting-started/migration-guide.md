@@ -2,10 +2,10 @@
 
 | Field | Details |
 | :--- | :--- |
-| **Status** | 🟢 Operational (v0.2.0) |
+| **Status** | 🟢 Operational (current source) |
 | **Audience** | Developers, DevOps |
-| **Version** | 1.1 |
-| **Last Reviewed** | 2026-04-15 |
+| **Version** | 1.2 |
+| **Last Reviewed** | 2026-10-02 |
 | **Related Docs** | [User Manual](user-manual.md), [Capability Parity](../../concepts/capability-parity.md) |
 
 ---
@@ -67,3 +67,23 @@ cargo run -p guard-verify -- doctor --format text
 1. **Start with `Read-Only`**: Even without a sandbox, `agent-guard`'s DSL will block unauthorized `write` tool calls.
 2. **Audit First**: Run in `Phase 1` for a few days, review your `audit.jsonl`, and see which paths your agents actually need.
 3. **Fail-Closed**: Always check the `ExecuteResult` for `SandboxError`.
+
+---
+
+## 5. Compatibility changes in the current source
+
+These changes deliberately reject states that older releases accepted. Apply
+them before upgrading a production integration:
+
+| Area | Previous behavior | Current behavior | Migration |
+| :--- | :--- | :--- | :--- |
+| **Policy parsing** | Unknown fixed-schema keys, empty selectors and some malformed conditions could load and then fail to match. | Loading fails with a named schema/validation error. Runtime condition errors deny rather than becoming “not matched.” | Run the policy through `Guard::from_yaml` in CI. Correct misspellings, remove empty selector maps/strings, use valid HTTP method tokens, and fix condition operand types before rollout. `tools.custom` remains intentionally dynamic. |
+| **Signed policy decisions** | Some decision-only entry points could return a normal verdict after detached-signature verification failed. | Every public check/decide/execute/run entry point returns `PolicyVerificationFailed`. | Treat that code as a hard configuration failure; do not retry through a different SDK method. |
+| **Node adapter trust** | Omitting trust could select a broader implicit value. | Omitted trust is `Untrusted`, matching Rust and Python. | Pass `Trusted` explicitly only when a trusted host—not model output—makes that choice. |
+| **HTTP handoff** | Some unrecognized or extension methods could be returned to the host as an unguarded handoff. | Only `GET`, `HEAD` and `OPTIONS` use the documented read-only handoff. Unsupported mutation/extension methods fail before network access. | Map custom methods to an explicitly implemented owned executor, or reject them in the host. Do not depend on implicit handoff. |
+| **Decision deserialization** | Downstream Rust code could deserialize `DecisionReason`, or construct/destructure every field of approval variants. | `DecisionReason` no longer implements `Deserialize`; approval variants are `non_exhaustive` and validated constructors normalize blank prompts. | Deserialize stable audit/receipt wire records instead of runtime decision types. Construct approval decisions with `GuardDecision::ask_user` / `RuntimeDecision::ask_for_approval` and use accessor methods or wildcard patterns when matching. |
+| **Plugin binary pairing** | A marketplace hook could invoke any `guard-hook` found on `PATH`. | The wrapper requires valid plugin metadata and an exact `guard-hook --version` match; faults fail open with a warning. | Install the matching binaries with the synchronized npm installer or the exact `cargo install ... --version` commands in the plugin guide. Monitor stderr for fail-open warnings. |
+
+For shell execution, the five-minute default timeout and 4 MiB per-stream cap
+may also surface `Timeout` or `OutputLimitExceeded` where an older call ran or
+buffered indefinitely. Tighten the timeout if needed; do not remove the bounds.

@@ -19,12 +19,15 @@ use crate::policy_signing::{
     PolicyVerification,
 };
 
+pub(crate) const DEFAULT_EXECUTION_TIMEOUT_MS: u64 = 5 * 60 * 1_000;
+
 impl Guard {
     /// Create a Guard from an already-parsed PolicyEngine.
     pub fn new(engine: PolicyEngine) -> Result<Self, GuardInitError> {
         let state = GuardState::new(Arc::new(engine), PolicyVerification::unsigned())?;
         Ok(Self {
             state: ArcSwap::from_pointee(state),
+            pending_handoffs: crate::handoff::PendingHandoffs::default(),
         })
     }
 
@@ -70,6 +73,7 @@ impl Guard {
         let state = GuardState::new(Arc::new(engine), policy_verification)?;
         Ok(Self {
             state: ArcSwap::from_pointee(state),
+            pending_handoffs: crate::handoff::PendingHandoffs::default(),
         })
     }
 
@@ -105,6 +109,24 @@ impl Guard {
         });
     }
 
+    /// Set the upper bound for each Guard-owned Bash execution.
+    ///
+    /// The default is five minutes. A non-zero type keeps execution bounded;
+    /// callers that need a shorter operational budget can tighten it without
+    /// replacing the sandbox implementation.
+    pub fn set_execution_timeout_ms(&self, timeout_ms: std::num::NonZeroU64) {
+        self.state.rcu(|current| {
+            let mut new_state = (**current).clone();
+            new_state.execution_timeout_ms = timeout_ms;
+            new_state
+        });
+    }
+
+    /// Return the current Guard-owned Bash execution timeout in milliseconds.
+    pub fn execution_timeout_ms(&self) -> u64 {
+        self.state.load().execution_timeout_ms.get()
+    }
+
     /// Construct a Guard from a YAML string with an Ed25519 signing key for provenance.
     pub fn from_yaml_with_key(
         yaml: &str,
@@ -135,7 +157,20 @@ impl Guard {
         policy_verification: PolicyVerification,
     ) -> Result<(), GuardInitError> {
         let new_version = engine.version().to_string();
-        let base_state = GuardState::new(Arc::new(engine), policy_verification)?;
+        let base_state = match GuardState::new(Arc::new(engine), policy_verification) {
+            Ok(state) => state,
+            Err(error) => {
+                // Parsing is not the only reload failure: constructing the
+                // new state can fail while opening its audit destination.
+                // Report that failure through the still-active snapshot so a
+                // bad replacement cannot make its own rejection invisible.
+                let current = self.state.load_full();
+                let event =
+                    ReloadEvent::failure(current.engine.version().to_string(), error.to_string());
+                self.write_reload_audit(&event, &current);
+                return Err(error);
+            }
+        };
 
         // The carry-over fields must be copied from the state observed at
         // swap time, not from a snapshot taken earlier: a `with_signing_key`
@@ -147,6 +182,7 @@ impl Guard {
             new_state.signing_key = current.signing_key.clone();
             new_state.metrics = current.metrics.clone();
             new_state.audit_sink = current.audit_sink.clone();
+            new_state.execution_timeout_ms = current.execution_timeout_ms;
             new_state
         });
 
