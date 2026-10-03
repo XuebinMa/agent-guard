@@ -4,7 +4,7 @@
 | :--- | :--- |
 | **Status** | ✅ Accepted (2026-06-12) |
 | **Audience** | Contributors, Security Reviewers |
-| **Version** | 1.0 |
+| **Version** | 1.1 |
 | **Related Docs** | [Threat Model](threat-model.md), [Capability Parity](capability-parity.md) |
 | **Tracking** | Decision record for [#57](https://github.com/XuebinMa/agent-guard/issues/57); informed by [#54](https://github.com/XuebinMa/agent-guard/issues/54), [#55](https://github.com/XuebinMa/agent-guard/issues/55) |
 
@@ -12,7 +12,7 @@
 
 ## Decision
 
-`agent-guard` contains two enforcement mechanisms with different guarantees. This
+`agent-guard` contains three enforcement mechanisms with different guarantees. This
 record declares, once, which one is load-bearing in which deployment shape — so
 that security claims, bypass-report triage, and engineering effort all follow the
 same map instead of an implicit one.
@@ -27,8 +27,9 @@ same map instead of an implicit one.
    hardening it reduces friction and improves audit signal, but no validator fix
    ever upgrades it into a boundary.
 3. The **OS sandbox** (`agent-guard-sandbox`: Landlock/seccomp, Seatbelt, Job
-   Objects) is the **only containment boundary** this project can offer — and
-   only when the platform feature is compiled in and
+   Objects) is the only **general command containment boundary** this project
+   can offer. The Git broker is a separate, deliberately narrow outbound-change
+   boundary. OS containment exists only when the platform feature is compiled in and
    `Guard::default_sandbox_diagnosis()` confirms it is active (see Threat Model,
    Sharp Edge #1).
 
@@ -38,12 +39,13 @@ same map instead of an implicit one.
 | :--- | :--- | :--- | :--- |
 | **Decision-only / advisory** | `guard-hook` on Claude Code PreToolUse; `Guard::check` / `decide` from any SDK | Policy decision + JSONL record. The hook is fail-open and the host runtime executes (or doesn't). | The **host runtime** (and whatever isolation it runs under). |
 | **Guard-owned execution** | `Guard::execute` / runtime `run` path | Decision + execution inside the selected sandbox; optional signed receipt when a key is configured. | The **sandbox layer**, iff compiled in and active; otherwise the noop backend provides no OS containment. |
-| **Broker-enforced Git push** | Planned narrow product boundary | Exact push intent, one-use authorization, current remote-state revalidation, and Guard-held credentials/execution. | A separate broker process and credential boundary the agent cannot access. |
+| **Broker-enforced Git push** | `agent-guard push` | Exact push URL and OID preview, one-use short-lived authorization, execution-time policy/remote-state revalidation, an isolated temporary repository, and optional signed receipt. | A separate broker process and credential/config boundary the agent cannot access. If the agent can reach those resources, credential isolation is not established. |
 
-The primary adoption wedge today is **decision-only and advisory**. In that shape there is no
+The easiest adoption wedge remains **decision-only and advisory**; the focused
+product boundary is the brokered Git push path. In the hook shape there is no
 sandbox in the path at all — which is precisely why the validator must not be
-described as a boundary: in the most common deployment it is the only mechanical
-check, and it is best-effort by construction.
+described as a boundary: it is the only mechanical check, and it is best-effort
+by construction.
 
 ## Triage rules for bypass reports
 

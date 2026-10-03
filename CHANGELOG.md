@@ -32,6 +32,35 @@ The `[Unreleased]` heading is rolled forward manually before each release; do no
   does not rescue that case.
 
 ### Security
+- **Release publication is now tied to the tested protected-main commit.** All
+  third-party workflow actions are pinned to reviewed full commit SHAs,
+  workflow permissions default to `contents: read`, and Dependabot tracks
+  action updates. A tag-triggered release fetches `origin/main`, requires its
+  checked-out commit and `GITHUB_SHA` to be identical, and queries the exact
+  successful `ci.yml` push run for that SHA before any registry job can start.
+  The release preflight reruns `cargo deny`, `cargo audit`, and the production
+  npm dependency audit; the Rust registry job now names a dedicated
+  `crates-io` environment alongside the existing PyPI/npm environments.
+- **The marketplace hook now refuses silent plugin/binary version drift.** The
+  wrapper parses `.claude-plugin/plugin.json`, requires the discovered
+  `guard-hook --version` output to match exactly, and otherwise emits the
+  documented fail-open `allow` plus a warning without running `check`. Missing
+  or malformed metadata and a failed version probe follow the same path.
+  Plugin metadata no longer claims that this decision-only hook produces
+  signed audit receipts; its JSONL records are unsigned, while signed receipts
+  require separately configured Guard-owned execution and a signing key.
+- **Release version checks now distinguish source state from published
+  state.** The gate covers both Python project files, both Node lockfile version
+  fields, Cargo.lock workspace packages, every exact local dependency pin,
+  plugin/package metadata, install examples, and current source markers. The
+  atomic bump tool advances only source markers and leaves release links and
+  published-package install commands unchanged until a release actually
+  exists; mutation tests lock both groups independently.
+- **A failed weekly deep-audit reviewer can no longer be reported as a
+  successful run.** Reviewer subprocess status is preserved after report
+  capture, the table marks that reviewer `fail`, remaining reviewers still
+  run, and the workflow exits non-zero. A fake reviewer regression covers both
+  the failure and success paths.
 - **Python and Node adapters now preserve one decision snapshot and one
   complete host-handoff lifecycle.** Binding `check` and `decide` responses
   take the decision, policy version, and verification status from the same

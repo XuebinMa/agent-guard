@@ -2,10 +2,10 @@
 
 | Field | Details |
 | :--- | :--- |
-| **Status** | 🟠 Active Review (v0.2.0) |
+| **Status** | 🟠 Active Review (current source) |
 | **Audience** | Security Auditors, Compliance Officers |
-| **Version** | 2.3 |
-| **Last Reviewed** | 2026-06-03 |
+| **Version** | 2.4 |
+| **Last Reviewed** | 2026-10-02 |
 | **Related Docs** | [Enforcement Layers (ADR)](enforcement-layers.md), [Capability Parity](capability-parity.md), [Archive: Architecture & Future Directions](../archive/architecture-and-vision.md) |
 
 ---
@@ -25,6 +25,7 @@ The following assets are protected by the `agent-guard` execution control layer:
 | **Secrets (Env/SSH Keys)** | **CRITICAL** | **Confidentiality**: Prevent unauthorized reading or exfiltration of sensitive developer credentials. |
 | **Network (Local/External)** | **HIGH** | **SSRF Prevention**: Prevent internal network scanning and unauthorized command-and-control (C2) communication. |
 | **Telemetry Data** | **MEDIUM** | **Availability**: Real-time monitoring data must persist even if an agent process crashes or is compromised. |
+| **Broker Grants and Host Credentials** | **CRITICAL** | **Integrity / Isolation**: A grant must bind the exact push transaction and be consumed before network access. Broker config, SSH agent and credential helpers must be outside agent write/read authority. |
 
 ---
 
@@ -38,6 +39,8 @@ Mapping potential entry points and their mitigation strategies:
 | **Network Stack** | Outbound HTTP/Socket | Data exfiltration, SSRF | Policy-level URL/path controls + platform sandboxing where available. |
 | **Process Management** | Fork-bomb, child escape | DoS, Sandbox Escape | Job Objects (Windows) / cgroups (Linux Planned). |
 | **Config Loader** | Malicious YAML config | Engine DoS, Logic Bypass | AOT Validation + Type-safe parsing + Schema enforcement. |
+| **Git Push Broker** | Mutable repository config, hooks, objects, refs | Credential theft, redirecting an approved push | Exact approved URL/OID, grant claim before network, isolated temporary repository, sanitized Git configuration/environment, and remote lease revalidation. |
+| **Decision-only Hook** | Missing/stale binary, bypassable host hook | Action proceeds without containment | Explicit fail-open advisory contract, exact plugin/binary version check, and host-owned enforcement for callers needing a hard boundary. |
 
 ---
 
@@ -57,7 +60,9 @@ Categorized analysis of threats and implemented defenses:
 
 ### **R**epudiation (Non-repudiability)
 - **Threat**: An attacker claims they did not execute a destructive command.
-- **Mitigation**: Structured JSONL audit logs for forensic review, plus optional signed receipts for cryptographic provenance.
+- **Mitigation**: Structured unsigned JSONL audit logs for forensic review, plus
+  optional Ed25519-signed receipts only when a Guard-owned executor or broker is
+  configured with a signing key. A decision-only hook does not create them.
 
 ### **I**nformation Disclosure (Confidentiality)
 - **Threat**: An agent reads host secrets (e.g., `.ssh/id_rsa`) via a `read_file` tool call.
@@ -78,13 +83,18 @@ Categorized analysis of threats and implemented defenses:
 
 ---
 
-## 🛡️ Security Boundaries (Platform Mapping)
+## 🛡️ Active Boundary Map
 
-| Feature | Linux (Landlock if available, prototype fallback) | macOS (Seatbelt) | Windows (Job Object) |
-| :--- | :--- | :--- | :--- |
-| **Filesystem Write** | 🟡 Workspace write isolation on supporting hosts; fallback Linux wrapper is less strict. | ✅ Restricted (Workspace) | ✅ **Low-IL Enforced** |
-| **Network Blocking** | ❌ Not enforced in the current Linux path. | 🟡 Experimental (Permissive) | ❌ **No** |
-| **Resource Limits** | ❌ No native Linux sandbox resource caps in v0.2.0. | ❌ No | ✅ **Enforced (256MB)** |
+| Execution shape | Enforced property | Not established by this shape |
+| :--- | :--- | :--- |
+| **Decision-only hook / `check` / `decide`** | Policy decision and unsigned audit record; the host may honor the decision. | OS containment, credential isolation, or signed execution evidence. The Claude Code hook deliberately fails open on integration faults. |
+| **Git push broker** | One approved URL/OID transaction, one-use grant, isolated Git execution, remote lease, and optional signed receipt. | Credential isolation when the agent can read/write broker config, credentials, SSH configuration, or the broker process environment. |
+| **Guard-owned execution with `NoopSandbox`** | Policy decision, bounded process/output lifecycle, and execution records. | OS filesystem, network, syscall, or privilege containment. |
+| **Linux seccomp** | Restricted-mode syscall filtering; required rules fail closed. | Path-aware workspace writes in `WorkspaceWrite`; use Landlock or a stronger host sandbox for that property. |
+| **Linux Landlock (ABI v3+)** | Read-only or workspace-scoped filesystem writes according to `PolicyMode`. | Network restriction, global read restriction, PID namespace, or cgroup limits. |
+| **macOS Seatbelt** | Best-effort workspace writes and network denial when the runtime probe succeeds. | Global read restriction or a supported long-term Apple sandbox API. |
+| **Windows Low-IL Job Object** | Protected-location write denial, resource/process lifetime controls when the runtime probe succeeds. | Network restriction, global read restriction, or a precise workspace allowlist. |
+| **Windows AppContainer** | Nothing: this backend is disabled and returns unavailable. | Any AppContainer containment claim until exact DACL restoration and handle ownership are proven in Windows tests. |
 
 ---
 
@@ -97,8 +107,8 @@ behavior, why it exists, and the recommended pattern.
 ### 1. The default build ships no OS-level syscall/network isolation
 Platform sandbox features (`seccomp`, `landlock`, `macos-sandbox`,
 `windows-sandbox` / `windows-appcontainer`) are **off by default**. In a default
-build the sandbox layer is a passthrough shell, so the **policy + validators
-decision layer is the only enforcement boundary**. This is reported truthfully by
+build the sandbox layer is a passthrough shell, so policy + validators provide
+only an agent-guard decision gate, not OS containment. This is reported truthfully by
 `Guard::default_sandbox_diagnosis()` (`selected = "none"`, `fallback_to_noop =
 true`, or `selected = "seccomp"` only when the filter is actually compiled in).
 - **Recommended**: compile with the platform feature for defense-in-depth, run as
@@ -160,6 +170,16 @@ Locked subjects are deliberately not evicted by ordinary capacity compaction.
   adapter and never accept it from model output. If the host cannot authenticate
   that value, describe anomaly detection as advisory rate limiting, not
   per-agent lockout protection.
+
+### 8. Broker isolation is a deployment property
+The push broker removes repository hooks/config from its temporary execution
+repository and binds execution to the approved push URL. That does not protect a
+credential or helper the agent can access directly. `PATH`, `HOME`/SSH config,
+the dedicated broker Git config, `SSH_AUTH_SOCK`, signing keys and the broker
+binary are part of the host trusted computing base.
+- **Recommended**: keep those resources outside the agent-readable/writable
+  boundary, use a host-owned broker process, and follow the independent checks
+  in [Credential isolation](../guides/operations/credential-isolation.md).
 
 ---
 

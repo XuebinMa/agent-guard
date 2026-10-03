@@ -2,10 +2,10 @@
 
 | Field | Details |
 | :--- | :--- |
-| **Status** | 🟢 Baseline Established (v0.2.0-rc1) |
+| **Status** | 🟢 Current source baseline |
 | **Audience** | DevOps, Security Engineers |
-| **Version** | 1.2 |
-| **Last Reviewed** | 2026-05-21 |
+| **Version** | 1.3 |
+| **Last Reviewed** | 2026-10-02 |
 | **Related Docs** | [Threat Model](threat-model.md), [Archive: Architecture & Future Directions](../archive/architecture-and-vision.md) |
 
 ---
@@ -22,18 +22,18 @@
 
 ---
 
-## 📊 Parity Matrix (v0.2.0 Baseline)
+## 📊 Static capability metadata
 
-| **UCM Capability** | **Linux (Seccomp)** | **macOS (Seatbelt)** | **Windows (Low-IL)** | **Windows (AppContainer)** | **Noop (None)** |
-| :--- | :---: | :---: | :---: | :---: | :---: |
-| **`filesystem_read_workspace`** | ✅ | ✅ | ✅ | Disabled | ✅ |
-| **`filesystem_read_global`** | ✅ | ✅ | ✅ | Disabled | ✅ |
-| **`filesystem_write_workspace`** | ✅ | ✅ | ✅ | Disabled | ✅ |
-| **`filesystem_write_global`** | ❌ Allowed | 🛡️ Blocked | 🛡️ Blocked | Disabled | ❌ Allowed |
-| **`network_outbound_any`** | ❌ Allowed | 🛡️ Blocked | ❌ Allowed | Disabled | ❌ Allowed |
-| **`network_outbound_internet`**| ❌ Allowed | 🛡️ Blocked | ❌ Allowed | Disabled | ❌ Allowed |
-| **`child_process_spawn`** | ✅ | ✅ | ✅ | Disabled | ✅ |
-| **`registry_write`** | N/A | N/A | 🛡️ Blocked | Disabled | ❌ Allowed |
+| **UCM Capability** | **Linux Seccomp** | **Linux Landlock** | **macOS Seatbelt** | **Windows Low-IL** | **AppContainer** | **Noop** |
+| :--- | :---: | :---: | :---: | :---: | :---: | :---: |
+| **`filesystem_read_workspace`** | ✅ | ✅ | ✅ | ✅ | Disabled | ✅ |
+| **`filesystem_read_global`** | ✅ | ✅ | ✅ | ✅ | Disabled | ✅ |
+| **`filesystem_write_workspace`** | ✅ | ✅ | ✅ | ✅ | Disabled | ✅ |
+| **`filesystem_write_global`** | ❌ Allowed | ❌ Allowed | 🛡️ Blocked | 🛡️ Blocked | Disabled | ❌ Allowed |
+| **`network_outbound_any`** | ❌ Allowed | ❌ Allowed | 🛡️ Blocked | ❌ Allowed | Disabled | ❌ Allowed |
+| **`network_outbound_internet`**| ❌ Allowed | ❌ Allowed | 🛡️ Blocked | ❌ Allowed | Disabled | ❌ Allowed |
+| **`child_process_spawn`** | ✅ | ✅ | ✅ | ✅ | Disabled | ✅ |
+| **`registry_write`** | N/A | N/A | N/A | 🛡️ Blocked | Disabled | ❌ Allowed |
 
 **Legend**:
 - ✅ **Allowed**: Intentionally permitted by the sandbox.
@@ -41,13 +41,22 @@
 - ❌ **Allowed**: Unintentionally permitted (security gap or non-goal for that platform).
 - **N/A**: Not applicable to the platform.
 
+The two Linux backends report global write/network availability because this
+metadata spans every `PolicyMode`: `FullAccess` intentionally permits them.
+Execution-time behavior is stricter. Seccomp blocks networking in
+`ReadOnly`/`WorkspaceWrite` and common writes in `ReadOnly`; it remains
+path-agnostic in `WorkspaceWrite`. Landlock blocks all writes in `ReadOnly` and
+grants the ABI-v3 write set only below the workspace in `WorkspaceWrite`, but
+does not restrict networking. Do not infer per-call guarantees from this static
+table; use the active backend, mode and OS integration tests together.
+
 ---
 
 ## 🛡️ Security Boundaries (Platform Summary)
 
 | Platform | What this protects | What this does not protect |
 | :--- | :--- | :--- |
-| **Linux** | Native Seccomp-BPF filtering for read-only and workspace-write executions, plus stronger path-aware write isolation on hosts where Landlock is available. | Guaranteed path-aware workspace-only writes from seccomp alone, fine-grained path-level read restriction. Static UCM metadata may still show capabilities that remain available in other modes, such as `full_access`. |
+| **Linux** | Native Seccomp-BPF filtering for read-only and workspace-write executions, or path-aware mode-specific write isolation with Landlock ABI v3+. | Seccomp alone cannot enforce workspace paths; Landlock does not restrict networking or global reads. Backend selection is explicit: neither silently combines with the other. |
 | **macOS** | Workspace write isolation via Seatbelt profiles. | Global read access (Prototype limit). |
 | **Windows** | Integrity-based write protection (Low-IL Job Object) when its runtime probe succeeds. | Network access in Low-IL mode. The AppContainer prototype is disabled because it cannot yet prove exact workspace-DACL restoration. |
 

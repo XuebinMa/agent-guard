@@ -87,7 +87,7 @@ To use the Windows sandbox in your project:
 1.  **Enable the feature** in your `Cargo.toml`:
     ```toml
     [dependencies]
-    agent-guard-sdk = { version = "0.1", features = ["windows-sandbox"] }
+    agent-guard-sdk = { version = "0.2", features = ["windows-sandbox"] }
     ```
 2.  **Initialize the Guard**:
     ```rust
