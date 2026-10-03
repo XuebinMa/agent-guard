@@ -17,8 +17,19 @@ jobs:
   guard:
     name: Verify Tag Matches Workspace Version
     runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+      - name: Require the tag commit to be tested current main
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          git fetch --no-tags origin main:refs/remotes/origin/main
+          python3 scripts/release/verify_release_source.py
       - name: Tag must equal the version every marker agrees on
         run: |
           ./scripts/check-version-consistency.sh
@@ -58,6 +69,7 @@ jobs:
     name: Publish Rust Crates
     needs: preflight
     runs-on: ubuntu-latest
+    environment: crates-io
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - name: Install Linux sandbox deps
@@ -212,6 +224,7 @@ jobs:
     # Trusted publishing: no long-lived token in repository secrets.
     environment: pypi
     permissions:
+      actions: read
       id-token: write
     steps:
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
