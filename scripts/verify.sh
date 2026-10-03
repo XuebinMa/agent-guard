@@ -93,6 +93,8 @@ run_node() {
 run_docs() {
   require_cmd python3
   "$ROOT_DIR/scripts/check-version-consistency.sh"
+  python3 "$ROOT_DIR/scripts/check_workflow_pins.py"
+  python3 -m unittest discover -s "$ROOT_DIR/scripts/tests" -p 'test_*.py'
   python3 "$ROOT_DIR/scripts/check_docs.py"
 }
 
