@@ -65,14 +65,21 @@ Either way, restart Claude Code (or start a new session) so the `PreToolUse` hoo
 
 ## How resolution works
 
-The plugin's hook runs `scripts/guard-hook-plugin.sh`, which resolves two things and then streams the `PreToolUse` event through `guard-hook check`:
+The plugin's hook runs `scripts/guard-hook-plugin.sh`, which resolves the policy
+and binary, verifies that the binary exactly matches the plugin version, and
+then streams the `PreToolUse` event through `guard-hook check`:
 
 | What | Resolution order | Override |
 | :--- | :--- | :--- |
 | **Binary** | `guard-hook` on `PATH` → `~/.cargo/bin/guard-hook` → `${CLAUDE_PLUGIN_ROOT}/bin/guard-hook` | put `guard-hook` on `PATH` |
 | **Policy** | bundled `presets/coding-agent-outbound.yaml` | `AGENT_GUARD_POLICY=/path/to/policy.yaml` |
+| **Expected version** | `.claude-plugin/plugin.json` | none; metadata and `guard-hook --version` must agree exactly |
 
-The wrapper is **fail-open by contract**: a missing binary or missing policy emits an `allow` decision (with a one-line warning on stderr) rather than blocking your agent. A broken or partial install never stalls your workflow.
+The wrapper is **fail-open by contract**: missing or invalid version metadata, a
+missing or mismatched binary, or a missing policy emits an `allow` decision
+(with a one-line warning on stderr) rather than blocking your agent. A broken
+or partial install never stalls your workflow, and a stale binary is never
+silently treated as the version described by the plugin.
 
 That makes the plugin an **advisory decision-only integration**. It does not own
 Git credentials or execute the push, and it cannot contain an agent that can
@@ -110,7 +117,11 @@ The wrapper checks this first and emits an immediate `allow` without touching th
 
   With `output: file` the SDK writes audit through its own file writer and stdout already carries only the decision, so the stderr split becomes a no-op.
 
-Verify a saved receipt or aggregate the audit log with [`guard-verify`](observability.md).
+These decision records are unsigned. Aggregate them with
+[`guard-verify`](observability.md). A cryptographically signed receipt is a
+separate Guard-owned execution artifact: it requires the push broker or another
+owned executor plus an explicit signing key. This decision-only hook does not
+create one.
 
 ---
 

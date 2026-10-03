@@ -5,6 +5,8 @@ One-command setup for the [agent-guard](https://github.com/XuebinMa/agent-guard)
 This path is intentionally fail-open on installation/runtime errors and does
 not own Git credentials or execution. Treat it as an advisory host integration,
 not an isolation boundary against an agent that can bypass the hook.
+The runtime wrapper also fails open, with a warning, unless the installed
+`guard-hook --version` exactly matches this plugin package's version.
 
 ```bash
 npx agent-guard-plugin init
