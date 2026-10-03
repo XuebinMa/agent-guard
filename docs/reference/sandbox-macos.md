@@ -18,6 +18,12 @@ While the Linux implementation uses `seccomp-bpf` for fine-grained syscall filte
     completion. This prevents ordinary background descendants from surviving,
     but an allowed program that deliberately creates another session is not
     contained by a process group alone.
+7.  **Inherited descriptor hygiene**: Seatbelt path rules do not revoke access
+    already carried by a writable file descriptor. The shared Unix runner
+    enumerates the post-fork child descriptors, marks every descriptor above
+    stderr close-on-exec, and fails closed if the complete set cannot be
+    inspected. The macOS integration suite locks this boundary with an
+    inherited outside-file truncation probe.
 
 ## Use Cases
 

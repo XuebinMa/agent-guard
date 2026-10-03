@@ -1,6 +1,6 @@
 //! Linux seccomp-bpf sandbox.
 
-#[cfg(target_os = "linux")]
+#[cfg(all(target_os = "linux", feature = "seccomp"))]
 use crate::process::{configure_process_group, wait_for_child};
 #[cfg(all(target_os = "linux", feature = "seccomp"))]
 use crate::seccomp_rules::{
@@ -14,10 +14,11 @@ use crate::{
 use agent_guard_core::PolicyMode;
 #[cfg(all(target_os = "linux", feature = "seccomp"))]
 use libseccomp::{ScmpAction, ScmpArgCompare, ScmpCompareOp, ScmpFilterContext, ScmpSyscall};
-#[cfg(target_os = "linux")]
+#[cfg(all(target_os = "linux", feature = "seccomp"))]
 use std::os::unix::process::CommandExt;
-#[cfg(target_os = "linux")]
+#[cfg(all(target_os = "linux", feature = "seccomp"))]
 use std::os::unix::process::ExitStatusExt;
+#[cfg(all(target_os = "linux", feature = "seccomp"))]
 use std::process::Command;
 
 /// Linux seccomp-bpf sandbox.
@@ -194,12 +195,12 @@ impl Drop for SeccompHealthProbeDir {
     }
 }
 
-fn execute_with_seccomp(command: &str, context: &SandboxContext) -> SandboxResult {
+fn execute_with_seccomp(_command: &str, _context: &SandboxContext) -> SandboxResult {
     #[cfg(target_os = "linux")]
     {
         #[cfg(feature = "seccomp")]
         {
-            execute_with_native_seccomp(command, context)
+            execute_with_native_seccomp(_command, _context)
         }
 
         #[cfg(not(feature = "seccomp"))]
@@ -217,7 +218,7 @@ fn execute_with_seccomp(command: &str, context: &SandboxContext) -> SandboxResul
     }
 }
 
-#[cfg(target_os = "linux")]
+#[cfg(all(target_os = "linux", feature = "seccomp"))]
 fn execute_compat_shell(command: &str, context: &SandboxContext) -> SandboxResult {
     let mut shell = Command::new("sh");
     configure_process_group(&mut shell);
@@ -277,7 +278,7 @@ fn execute_with_native_seccomp(command: &str, context: &SandboxContext) -> Sandb
     finish_child(child, context.timeout_ms)
 }
 
-#[cfg(target_os = "linux")]
+#[cfg(all(target_os = "linux", feature = "seccomp"))]
 fn finish_child(child: std::process::Child, timeout_ms: Option<u64>) -> SandboxResult {
     let output = wait_for_child(child, timeout_ms)?;
     let exit_status = output.status;

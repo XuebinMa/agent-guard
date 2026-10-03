@@ -25,28 +25,176 @@ pub(crate) struct CapturedChild {
     pub(crate) status: ExitStatus,
 }
 
-/// Arrange for the spawned program and descendants to live in a fresh Unix
-/// session/process group. Multiple `pre_exec` callbacks are supported, so a
-/// backend may add its seccomp/Landlock setup after this callback.
+/// Prepare a Unix sandbox child for bounded lifecycle ownership.
+///
+/// The child and descendants live in a fresh session/process group, and every
+/// inherited descriptor above stderr is marked close-on-exec. Path-oriented
+/// sandboxes cannot revoke authority already attached to a descriptor opened
+/// before their policy is installed, so carrying ambient descriptors into the
+/// executed shell would bypass the claimed filesystem boundary.
+///
+/// Multiple `pre_exec` callbacks are supported, so a backend may add its
+/// seccomp/Landlock setup after this callback.
 #[cfg(unix)]
 pub(crate) fn configure_process_group(command: &mut Command) {
     use std::os::unix::process::CommandExt;
 
-    // SAFETY: `setsid` is async-signal-safe and touches no parent memory. A
-    // failure aborts spawning instead of running without tree ownership.
+    // SAFETY: this callback only invokes async-signal-safe system interfaces
+    // and touches stack/captured scalar state. A failure aborts spawning
+    // instead of running with either ambient descriptors or no tree ownership.
     unsafe {
         command.pre_exec(|| {
             if libc::setsid() == -1 {
-                Err(io::Error::last_os_error())
-            } else {
-                Ok(())
+                return Err(io::Error::last_os_error());
             }
+            mark_non_stdio_descriptors_close_on_exec()
         });
     }
 }
 
 #[cfg(not(unix))]
 pub(crate) fn configure_process_group(_command: &mut Command) {}
+
+#[cfg(target_os = "linux")]
+fn mark_non_stdio_descriptors_close_on_exec() -> io::Result<()> {
+    // Linux 5.11 added CLOSE_RANGE_CLOEXEC; Landlock itself requires 5.13 and
+    // current seccomp deployments use the same fast path. The raw syscall
+    // avoids a dependency on the host glibc exporting close_range(2).
+    let result = unsafe {
+        libc::syscall(
+            libc::SYS_close_range,
+            3_u32,
+            u32::MAX,
+            libc::CLOSE_RANGE_CLOEXEC,
+        )
+    };
+    if result == 0 {
+        return Ok(());
+    }
+
+    let error = io::Error::last_os_error();
+    if error.raw_os_error() != Some(libc::ENOSYS) && error.raw_os_error() != Some(libc::EINVAL) {
+        return Err(error);
+    }
+
+    // CLOSE_RANGE_CLOEXEC arrived after the original close_range syscall.
+    // Preserve the documented older-seccomp-kernel compatibility with a
+    // slower async-signal-safe fallback rather than silently inheriting FDs.
+    let mut limit = std::mem::MaybeUninit::<libc::rlimit>::uninit();
+    if unsafe { libc::getrlimit(libc::RLIMIT_NOFILE, limit.as_mut_ptr()) } == -1 {
+        return Err(io::Error::last_os_error());
+    }
+    let limit = unsafe { limit.assume_init() }.rlim_cur;
+    if limit == libc::RLIM_INFINITY || limit > libc::c_int::MAX as libc::rlim_t {
+        return Err(io::Error::from_raw_os_error(libc::EOVERFLOW));
+    }
+    mark_descriptor_range_close_on_exec(limit as libc::c_int)
+}
+
+#[cfg(target_os = "linux")]
+fn mark_descriptor_range_close_on_exec(upper_bound: libc::c_int) -> io::Result<()> {
+    for descriptor in (libc::STDERR_FILENO + 1)..upper_bound {
+        let flags = unsafe { libc::fcntl(descriptor, libc::F_GETFD) };
+        if flags == -1 {
+            let error = io::Error::last_os_error();
+            if error.raw_os_error() == Some(libc::EBADF) {
+                continue;
+            }
+            return Err(error);
+        }
+        if unsafe { libc::fcntl(descriptor, libc::F_SETFD, flags | libc::FD_CLOEXEC) } == -1 {
+            return Err(io::Error::last_os_error());
+        }
+    }
+    Ok(())
+}
+
+#[cfg(target_os = "macos")]
+fn mark_non_stdio_descriptors_close_on_exec() -> io::Result<()> {
+    const MAX_TRACKED_DESCRIPTORS: usize = 4_096;
+
+    // macOS has no close_range(2). Query the post-fork child itself so file
+    // descriptors opened concurrently in the parent before fork cannot evade
+    // the snapshot. A fixed stack buffer keeps this pre-exec callback free of
+    // allocation; unusually descriptor-heavy hosts fail closed.
+    let mut descriptors =
+        std::mem::MaybeUninit::<[libc::proc_fdinfo; MAX_TRACKED_DESCRIPTORS]>::uninit();
+    let required = list_current_macos_descriptors(std::ptr::null_mut(), 0);
+    if required < 0 {
+        return Err(io::Error::last_os_error());
+    }
+    if required as usize > std::mem::size_of_val(&descriptors) {
+        return Err(io::Error::from_raw_os_error(libc::EMFILE));
+    }
+
+    let listed = list_current_macos_descriptors(
+        descriptors.as_mut_ptr().cast(),
+        std::mem::size_of_val(&descriptors) as libc::c_int,
+    );
+    if listed < 0 {
+        return Err(io::Error::last_os_error());
+    }
+
+    let descriptor_count = listed as usize / std::mem::size_of::<libc::proc_fdinfo>();
+    if descriptor_count > MAX_TRACKED_DESCRIPTORS {
+        return Err(io::Error::from_raw_os_error(libc::EMFILE));
+    }
+    let descriptor_ptr = descriptors.as_ptr().cast::<libc::proc_fdinfo>();
+    for index in 0..descriptor_count {
+        // SAFETY: proc_pidinfo initialized exactly `listed` bytes, and the
+        // bounds above keep this read within that initialized prefix.
+        let descriptor = unsafe { descriptor_ptr.add(index).read() };
+        if descriptor.proc_fd <= libc::STDERR_FILENO {
+            continue;
+        }
+        let flags = unsafe { libc::fcntl(descriptor.proc_fd, libc::F_GETFD) };
+        if flags == -1 {
+            let error = io::Error::last_os_error();
+            if error.raw_os_error() == Some(libc::EBADF) {
+                continue;
+            }
+            return Err(error);
+        }
+        if unsafe { libc::fcntl(descriptor.proc_fd, libc::F_SETFD, flags | libc::FD_CLOEXEC) } == -1
+        {
+            return Err(io::Error::last_os_error());
+        }
+    }
+    Ok(())
+}
+
+#[cfg(target_os = "macos")]
+fn list_current_macos_descriptors(
+    buffer: *mut libc::c_void,
+    buffer_size: libc::c_int,
+) -> libc::c_int {
+    // proc_pidinfo(3) is a thin wrapper over this XNU syscall. Calling it
+    // directly keeps the post-fork callback within an async-signal-safe kernel
+    // interface instead of entering libproc. Constants come from the shipped
+    // macOS SDK's sys/syscall.h and sys/proc_info.h.
+    const SYS_PROC_INFO: libc::c_int = 336;
+    const PROC_INFO_CALL_PIDINFO: libc::c_int = 2;
+
+    unsafe {
+        libc::syscall(
+            SYS_PROC_INFO,
+            PROC_INFO_CALL_PIDINFO,
+            libc::getpid(),
+            libc::PROC_PIDLISTFDS,
+            0_u64,
+            buffer,
+            buffer_size,
+        )
+    }
+}
+
+#[cfg(all(unix, not(any(target_os = "linux", target_os = "macos"))))]
+fn mark_non_stdio_descriptors_close_on_exec() -> io::Result<()> {
+    Err(io::Error::new(
+        io::ErrorKind::Unsupported,
+        "descriptor hygiene is not implemented on this Unix platform",
+    ))
+}
 
 pub(crate) fn wait_for_child(
     mut child: Child,
@@ -295,6 +443,8 @@ pub(crate) fn shell_command(command: &str) -> Command {
 mod tests {
     use super::{configure_process_group, shell_command, wait_for_child};
     use crate::{SandboxError, OUTPUT_CAPTURE_LIMIT_BYTES};
+    use std::fs::OpenOptions;
+    use std::os::fd::AsRawFd;
     use std::process::Stdio;
     use std::time::Duration;
 
@@ -345,6 +495,39 @@ mod tests {
         assert!(matches!(error, SandboxError::Timeout { ms: 100 }));
         std::thread::sleep(Duration::from_millis(600));
         assert!(!sentinel.exists(), "grandchild survived its process group");
+    }
+
+    #[test]
+    fn inherited_non_stdio_descriptors_are_closed_at_exec() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let sentinel = temp.path().join("descriptor-leak");
+        let file = OpenOptions::new()
+            .create(true)
+            .truncate(true)
+            .write(true)
+            .open(&sentinel)
+            .expect("open sentinel");
+        // F_DUPFD deliberately creates a descriptor without FD_CLOEXEC.
+        // SAFETY: `file` is open and remains alive through child spawning.
+        let inherited = unsafe { libc::fcntl(file.as_raw_fd(), libc::F_DUPFD, 9) };
+        assert!(
+            inherited >= 0,
+            "duplicate inherited fd: {}",
+            std::io::Error::last_os_error()
+        );
+
+        let output = wait_for_child(spawn(&format!("printf leaked >&{inherited}")), Some(5_000))
+            .expect("capture descriptor probe");
+        // SAFETY: this test owns the descriptor returned by F_DUPFD.
+        unsafe {
+            libc::close(inherited);
+        }
+
+        assert!(!output.status.success(), "inherited descriptor stayed open");
+        assert_eq!(
+            std::fs::read_to_string(&sentinel).expect("read sentinel"),
+            ""
+        );
     }
 
     fn shell_quote(value: &str) -> String {

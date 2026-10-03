@@ -116,19 +116,26 @@ The `[Unreleased]` heading is rolled forward manually before each release; do no
   `Guard::set_execution_timeout_ms`), and every built-in process runner retains
   at most 4 MiB independently for stdout and stderr before returning the typed
   `OutputLimitExceeded` error. Unix backends launch a fresh session and kill
-  the process group on timeout, overflow, or root-shell exit; Windows uses the
-  existing Job Object to terminate the full job before joining output readers.
-  Regressions prove simultaneous pipe draining and that a background
-  grandchild cannot write its delayed sentinel after timeout.
+  the process group on timeout, overflow, or root-shell exit. They also mark
+  every inherited descriptor above stderr close-on-exec, preventing a
+  pre-opened writable file from bypassing path-oriented sandbox rules. Windows
+  uses the existing Job Object to terminate the full job before joining output
+  readers. Regressions prove simultaneous pipe draining, descriptor hygiene,
+  and that a background grandchild cannot write its delayed sentinel after
+  timeout.
 - **Linux Landlock now proves and enforces the write boundary it advertises.**
   The backend requires Landlock ABI v3 as a hard minimum, so `truncate(2)`,
-  inherited-FD `ftruncate(2)`, and `open(2)` with `O_TRUNC` cannot bypass
-  read-only or workspace-only modes. Filesystem write rights now follow the
-  effective `PolicyMode` instead of being granted beneath the workspace in
-  every mode. Availability runs the complete restriction path in a disposable
-  child, catching hosts that can create a ruleset but block
+  `open(2)` with `O_TRUNC`, and `ftruncate(2)` on descriptors opened after
+  restriction cannot bypass read-only or workspace-only modes. Because
+  Landlock cannot retroactively narrow a descriptor opened before restriction,
+  the shared Unix runner closes inherited non-stdio descriptors at exec.
+  Filesystem write rights now follow the effective `PolicyMode` instead of
+  being granted beneath the workspace in every mode. Availability runs the
+  complete restriction path in a disposable child, catching hosts that can
+  create a ruleset but block
   `landlock_restrict_self(2)`; partial or older enforcement fails closed. A
-  Linux CI lane exercises the exact mutation syscalls against the OS boundary.
+  Linux CI lane exercises the exact mutation syscalls against the combined
+  runner and OS boundary.
 - **Approval expiry and anomaly state now preserve their stated boundaries.**
   The ledger rejects human decisions at or after the recorded expiry, and the
   resume path independently rejects a forged or legacy late approval before

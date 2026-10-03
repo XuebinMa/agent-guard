@@ -82,8 +82,12 @@ Landlock does not restrict networking in this backend. Static capability
 metadata therefore reflects that `FullAccess` can write globally; the table
 above is the source of truth for the stricter per-execution modes.
 
-The Linux-only regression suite exercises write-open, `truncate`, inherited-FD
-`ftruncate`, and read-only `O_TRUNC` behavior:
+Landlock associates truncate permission with a file descriptor when the file
+is opened; it cannot retroactively remove authority from a descriptor opened
+before the domain was entered. The shared Unix runner therefore marks every
+inherited descriptor above stderr close-on-exec before the sandboxed shell can
+run. The Linux-only regression suite exercises write-open, `truncate`,
+inherited-descriptor hygiene, `ftruncate`, and read-only `O_TRUNC` behavior:
 
 ```bash
 cargo test -p agent-guard-sandbox --features landlock --test landlock_integration -- --nocapture

@@ -5,8 +5,10 @@
 
 #[cfg(all(target_os = "macos", feature = "macos-sandbox"))]
 mod macos_tests {
+    use std::fs::OpenOptions;
     use std::io::{Read, Write};
     use std::net::TcpListener;
+    use std::os::fd::{AsRawFd, RawFd};
     use std::path::PathBuf;
     use std::thread;
     use std::time::{Duration, Instant};
@@ -15,6 +17,18 @@ mod macos_tests {
     use agent_guard_sandbox::{
         Sandbox, SandboxContext, SandboxError, SandboxOutput, SeatbeltSandbox,
     };
+
+    struct InheritedFd(RawFd);
+
+    impl Drop for InheritedFd {
+        fn drop(&mut self) {
+            // SAFETY: this type owns the descriptor returned by F_DUPFD and
+            // closes it exactly once here.
+            unsafe {
+                libc::close(self.0);
+            }
+        }
+    }
 
     fn temp_root() -> PathBuf {
         let root = std::env::temp_dir().join("agent_guard_macos_integration");
@@ -176,6 +190,44 @@ mod macos_tests {
         assert!(
             !server.join().expect("join server thread"),
             "blocked network should not reach the local echo server"
+        );
+    }
+
+    #[test]
+    fn m4_inherited_outside_write_descriptor_is_not_usable() {
+        let sandbox = SeatbeltSandbox;
+        if !seatbelt_available(&sandbox) {
+            return;
+        }
+
+        let target = outside_dir().join("seatbelt_inherited_fd.txt");
+        std::fs::write(&target, "original").expect("seed outside target");
+        let file = OpenOptions::new()
+            .write(true)
+            .open(&target)
+            .expect("open target before entering Seatbelt");
+        // F_DUPFD deliberately removes close-on-exec so this catches ambient
+        // descriptor inheritance rather than only path-based opens.
+        // SAFETY: `file` is open and `fcntl` does not outlive this scope.
+        let inherited = unsafe { libc::fcntl(file.as_raw_fd(), libc::F_DUPFD, 200) };
+        assert!(
+            inherited >= 0,
+            "duplicate inherited fd: {}",
+            std::io::Error::last_os_error()
+        );
+        let inherited = InheritedFd(inherited);
+        let command = format!("python3 -c 'import os; os.ftruncate({}, 0)'", inherited.0);
+
+        let output = sandbox
+            .execute(&command, &ctx())
+            .expect("Seatbelt execution");
+        assert_ne!(
+            output.exit_code, 0,
+            "inherited outside descriptor bypassed Seatbelt: {output:?}"
+        );
+        assert_eq!(
+            std::fs::read_to_string(&target).expect("read outside target"),
+            "original"
         );
     }
 }
