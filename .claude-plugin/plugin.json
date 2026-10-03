@@ -1,6 +1,6 @@
 {
   "name": "agent-guard",
-  "version": "0.2.5",
+  "version": "0.2.6",
   "description": "Decision-only outbound policy hook for AI coding agents. Gates git push, package publication, non-local HTTP mutations, and destructive shell commands before they happen. Local-first: no cloud, no telemetry.",
   "author": {
     "name": "Xuebin Ma",
