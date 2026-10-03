@@ -64,6 +64,13 @@ jobs:
           cache-dependency-path: crates/agent-guard-node/package-lock.json
       - name: Run the canonical verification gate
         run: ./scripts/verify.sh full
+      - name: Install pinned release security tools
+        run: bash ./scripts/install-security-tools.sh cargo-deny cargo-audit
+      - name: Run release supply-chain gates
+        run: |
+          cargo deny check
+          cargo audit
+          npm audit --prefix crates/agent-guard-node --omit=dev --audit-level=moderate
 
   crates-io:
     name: Publish Rust Crates

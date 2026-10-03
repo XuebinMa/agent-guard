@@ -259,7 +259,7 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - uses: dtolnay/rust-toolchain@89b12181fb390509a0842a86cc55eeb8eb928c1d # stable
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
-      - run: cargo install cargo-deny --locked
+      - run: bash ./scripts/install-security-tools.sh cargo-deny
       - run: cargo deny check
 
   cargo-audit:
@@ -269,7 +269,7 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - uses: dtolnay/rust-toolchain@89b12181fb390509a0842a86cc55eeb8eb928c1d # stable
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
-      - run: cargo install cargo-audit --locked
+      - run: bash ./scripts/install-security-tools.sh cargo-audit
       # The reqwest/rustls migration the previous blanket ignore list was
       # waiting on is done (now reqwest 0.13 / rustls 0.23 / hyper 1.x, and the
       # async-std path via the httpmock dev-dep is gone), so those ignores were
@@ -322,7 +322,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@89b12181fb390509a0842a86cc55eeb8eb928c1d # stable
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
       - name: Install cargo-cyclonedx
-        run: cargo install cargo-cyclonedx --locked
+        run: bash ./scripts/install-security-tools.sh cargo-cyclonedx
       - name: Generate CycloneDX SBOM (per-crate, all features)
         run: cargo cyclonedx --format json --all-features
       - name: Collect SBOM artifacts
