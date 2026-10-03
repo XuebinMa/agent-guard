@@ -9,6 +9,8 @@ The `[Unreleased]` heading is rolled forward manually before each release; do no
 
 ## [Unreleased]
 
+## [0.2.6] - 2026-10-03
+
 ### Changed
 - **A refused `ln` now names the link source, instead of calling it a write
   target.** `ln -s /etc/passwd workspace_link` is refused because the link

@@ -59,19 +59,19 @@ class VersionMarkerTests(unittest.TestCase):
         result = self.run_script(root, "bump", "9.8.7-rc.1")
 
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn("published release remains 0.2.5", result.stdout)
+        self.assertIn("published release remains 0.2.6", result.stdout)
         check = self.run_script(root, "check")
         self.assertEqual(check.returncode, 0, check.stderr)
-        self.assertIn("source 9.8.7-rc.1, published release 0.2.5", check.stdout)
+        self.assertIn("source 9.8.7-rc.1, published release 0.2.6", check.stdout)
 
         readme = (root / "README.md").read_text(encoding="utf-8")
         self.assertIn("Source version**: `v9.8.7-rc.1`", readme)
-        self.assertIn("releases/tag/v0.2.5", readme)
+        self.assertIn("releases/tag/v0.2.6", readme)
         python_readme = (root / "crates/agent-guard-python/README.md").read_text(
             encoding="utf-8"
         )
-        self.assertIn("latest published package is `0.2.5`", python_readme)
-        self.assertIn("unreleased `9.8.7-rc.1` source", python_readme)
+        self.assertIn("latest published package is `0.2.6`", python_readme)
+        self.assertIn("current `9.8.7-rc.1` source", python_readme)
 
     def test_detects_secondary_node_lock_version_drift(self):
         root = self.fixture()
@@ -89,8 +89,8 @@ class VersionMarkerTests(unittest.TestCase):
         root = self.fixture()
         path = root / "docs/README.md"
         text = path.read_text(encoding="utf-8")
-        text = text.replace("releases/tag/v0.2.5", "releases/tag/v0.2.4", 1)
-        text = text.replace("[`v0.2.5`](https://github.com", "[`v0.2.4`](https://github.com", 1)
+        text = text.replace("releases/tag/v0.2.6", "releases/tag/v0.2.5", 1)
+        text = text.replace("[`v0.2.6`](https://github.com", "[`v0.2.5`](https://github.com", 1)
         path.write_text(text, encoding="utf-8")
 
         result = self.run_script(root, "check")
@@ -102,7 +102,7 @@ class VersionMarkerTests(unittest.TestCase):
         root = self.fixture()
         path = root / "crates/agent-guard-cli/Cargo.toml"
         text = path.read_text(encoding="utf-8").replace(
-            'version = "=0.2.5"', 'version = "0.2.5"', 1
+            'version = "=0.2.6"', 'version = "0.2.6"', 1
         )
         path.write_text(text, encoding="utf-8")
 
@@ -115,8 +115,8 @@ class VersionMarkerTests(unittest.TestCase):
         root = self.fixture()
         lock_path = root / "Cargo.lock"
         lock_text = lock_path.read_text(encoding="utf-8").replace(
-            'name = "agent-guard-broker"\nversion = "0.2.5"',
-            'name = "agent-guard-broker"\nsource = "registry+https://example.invalid/index"\nversion = "0.2.5"',
+            'name = "agent-guard-broker"\nversion = "0.2.6"',
+            'name = "agent-guard-broker"\nsource = "registry+https://example.invalid/index"\nversion = "0.2.6"',
             1,
         )
         lock_path.write_text(lock_text, encoding="utf-8")

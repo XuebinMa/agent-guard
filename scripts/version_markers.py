@@ -133,10 +133,10 @@ def collect_versions(root: Path) -> tuple[dict[str, str], dict[str, str]]:
             rf"cargo install {binary} --version ([0-9A-Za-z.+\-]+) --locked --force",
             f"plugin guide {binary} install",
         )
-    source["Python README unreleased source"] = marker(
+    source["Python README current source"] = marker(
         python_readme,
-        r"unreleased `([0-9A-Za-z.+\-]+)` source",
-        "Python README unreleased source",
+        r"current `([0-9A-Za-z.+\-]+)` source",
+        "Python README current source",
     )
 
     workspace_names = {
@@ -344,9 +344,9 @@ def _apply_bump(root: Path, new: str) -> tuple[str, str]:
 
     replace_one(
         root / "crates/agent-guard-python/README.md",
-        rf"(unreleased `){escaped}(` source)",
+        rf"(current `){escaped}(` source)",
         rf"\g<1>{new}\g<2>",
-        "Python README unreleased source",
+        "Python README current source",
     )
 
     checked_source, checked_published = assert_consistent(root)
