@@ -78,8 +78,119 @@ impl Sandbox for SeccompSandbox {
         execute_with_seccomp(command, context)
     }
 
+    fn health_check(&self, context: &SandboxContext) -> SandboxResult {
+        #[cfg(all(target_os = "linux", feature = "seccomp"))]
+        {
+            let touch = ["/usr/bin/touch", "/bin/touch"]
+                .into_iter()
+                .find(|candidate| std::path::Path::new(candidate).is_file())
+                .ok_or_else(|| {
+                    SandboxError::ExecutionFailed(
+                        "seccomp negative health probe requires /usr/bin/touch or /bin/touch"
+                            .to_string(),
+                    )
+                })?;
+            let probe = SeccompHealthProbeDir::create()?;
+            let control_marker = probe.root.join("control");
+            let control = Command::new(touch)
+                .arg(&control_marker)
+                .status()
+                .map_err(|error| {
+                    SandboxError::ExecutionFailed(format!(
+                        "seccomp health probe control command failed: {error}"
+                    ))
+                })?;
+            if !control.success() || !control_marker.is_file() {
+                return Err(SandboxError::ExecutionFailed(
+                    "seccomp health probe could not create its unsandboxed control file"
+                        .to_string(),
+                ));
+            }
+            std::fs::remove_file(&control_marker).map_err(|error| {
+                SandboxError::ExecutionFailed(format!(
+                    "seccomp health probe could not remove its control file: {error}"
+                ))
+            })?;
+
+            let marker_path = probe.root.join("blocked");
+            let mut probe_context = context.clone();
+            probe_context.mode = PolicyMode::ReadOnly;
+            probe_context.working_directory = probe.root.clone();
+            let result = self.execute(&format!("{touch} blocked"), &probe_context);
+            let blocked = match result {
+                Err(SandboxError::KilledByFilter { .. }) => true,
+                Err(error) => return Err(error),
+                Ok(output) => output.exit_code != 0,
+            };
+            let marker_exists = marker_path.exists();
+
+            if !blocked || marker_exists {
+                return Err(SandboxError::ExecutionFailed(
+                    "seccomp health probe unexpectedly allowed a read-only file creation"
+                        .to_string(),
+                ));
+            }
+
+            Ok(SandboxOutput {
+                stdout: "seccomp negative write probe was blocked\n".to_string(),
+                stderr: String::new(),
+                exit_code: 0,
+            })
+        }
+
+        #[cfg(not(all(target_os = "linux", feature = "seccomp")))]
+        {
+            self.execute("echo 1", context)
+        }
+    }
+
     fn is_available(&self) -> bool {
         cfg!(all(target_os = "linux", feature = "seccomp"))
+    }
+}
+
+#[cfg(all(target_os = "linux", feature = "seccomp"))]
+struct SeccompHealthProbeDir {
+    root: std::path::PathBuf,
+}
+
+#[cfg(all(target_os = "linux", feature = "seccomp"))]
+impl SeccompHealthProbeDir {
+    fn create() -> Result<Self, SandboxError> {
+        use std::io::ErrorKind;
+        use std::sync::atomic::{AtomicU64, Ordering};
+
+        static PROBE_ID: AtomicU64 = AtomicU64::new(0);
+        for _ in 0..32 {
+            let id = PROBE_ID.fetch_add(1, Ordering::Relaxed);
+            let root = std::env::temp_dir().join(format!(
+                "agent-guard-seccomp-health-{}-{id}",
+                std::process::id()
+            ));
+            match std::fs::create_dir(&root) {
+                Ok(()) => return Ok(Self { root }),
+                Err(error) if error.kind() == ErrorKind::AlreadyExists => continue,
+                Err(error) => {
+                    return Err(SandboxError::ExecutionFailed(format!(
+                        "seccomp health probe could not create a private directory: {error}"
+                    )))
+                }
+            }
+        }
+
+        Err(SandboxError::ExecutionFailed(
+            "seccomp health probe could not reserve a unique private directory".to_string(),
+        ))
+    }
+}
+
+#[cfg(all(target_os = "linux", feature = "seccomp"))]
+impl Drop for SeccompHealthProbeDir {
+    fn drop(&mut self) {
+        for name in ["control", "blocked"] {
+            let _ = std::fs::remove_file(self.root.join(name));
+        }
+        let _ = std::fs::remove_dir(&self.root);
     }
 }
 

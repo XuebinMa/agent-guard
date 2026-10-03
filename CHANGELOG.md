@@ -169,13 +169,19 @@ The `[Unreleased]` heading is rolled forward manually before each release; do no
   the documented host-handoff path; WebDAV, custom and unsafe verbs enter the
   owned path and are rejected before DNS unless explicitly implemented. HTTP
   responses are capped at 4 MiB, and the synchronous executor no longer
-  creates one extra unbounded OS thread per call.
+  creates one extra unbounded OS thread per call. A global 64-request
+  in-flight budget now fails fast before DNS or socket work when the guarded
+  executor is saturated.
 - **Linux seccomp no longer drops an unresolved required deny rule.** The
   complete network, dangerous-syscall and mode-specific write rule set is
   preflighted before filter installation; any resolution or installation
   failure returns `FilterSetup`. `SeccompSandbox::new()` and `strict()` are now
   both fail-closed, and a build without native seccomp support cannot execute
-  an unfiltered compatibility shell while reporting `linux-seccomp`.
+  an unfiltered compatibility shell while reporting `linux-seccomp`. The
+  capability doctor now runs an unsandboxed control write in a private probe
+  directory and requires the equivalent read-only sandbox write to fail, so a
+  green health result proves a representative deny instead of only proving
+  that `echo` can run.
 - **A one-use push grant is now claimed before any repository inspection or
   network-capable Git command.** Grant schema v2 retains the exact approved
   transaction. Execution atomically burns the grant, validates its policy,

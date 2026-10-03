@@ -73,7 +73,9 @@ Categorized analysis of threats and implemented defenses:
 - **Mitigation**: **Anomaly Detection** (frequency-based), a five-minute
   default for Guard-owned Bash, a 4 MiB per-stream output cap, Unix
   process-group cleanup, and Windows Job Object process/memory limits (256MB
-  default). Process groups are not cgroups/PID namespaces; a hostile executable
+  default). Guard-owned HTTP also caps response bodies at 4 MiB and admits at
+  most 64 in-flight requests per process, failing before DNS when saturated.
+  Process groups are not cgroups/PID namespaces; a hostile executable
   that can deliberately leave its group still requires a stronger host
   containment boundary.
 

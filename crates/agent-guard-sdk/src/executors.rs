@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::io::{Read, Write};
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, ToSocketAddrs};
 use std::path::{Component, Path, PathBuf};
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 
 use agent_guard_core::{
@@ -253,6 +254,54 @@ pub(crate) struct HttpRequestExecution {
 const HTTP_REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
 const HTTP_CONNECT_TIMEOUT: Duration = Duration::from_secs(5);
 const HTTP_RESPONSE_BODY_LIMIT: usize = 4 * 1024 * 1024;
+const HTTP_EXECUTION_CONCURRENCY_LIMIT: usize = 64;
+static HTTP_EXECUTION_LIMITER: HttpConcurrencyLimiter =
+    HttpConcurrencyLimiter::new(HTTP_EXECUTION_CONCURRENCY_LIMIT);
+
+struct HttpConcurrencyLimiter {
+    in_flight: AtomicUsize,
+    limit: usize,
+}
+
+impl HttpConcurrencyLimiter {
+    const fn new(limit: usize) -> Self {
+        Self {
+            in_flight: AtomicUsize::new(0),
+            limit,
+        }
+    }
+
+    fn try_acquire(&self) -> Result<HttpExecutionPermit<'_>, SandboxError> {
+        let mut current = self.in_flight.load(Ordering::Acquire);
+        loop {
+            if current >= self.limit {
+                return Err(SandboxError::ExecutionFailed(format!(
+                    "HTTP execution concurrency limit of {} reached",
+                    self.limit
+                )));
+            }
+            match self.in_flight.compare_exchange_weak(
+                current,
+                current + 1,
+                Ordering::AcqRel,
+                Ordering::Acquire,
+            ) {
+                Ok(_) => return Ok(HttpExecutionPermit { limiter: self }),
+                Err(observed) => current = observed,
+            }
+        }
+    }
+}
+
+struct HttpExecutionPermit<'a> {
+    limiter: &'a HttpConcurrencyLimiter,
+}
+
+impl Drop for HttpExecutionPermit<'_> {
+    fn drop(&mut self) {
+        self.limiter.in_flight.fetch_sub(1, Ordering::AcqRel);
+    }
+}
 
 pub(crate) fn execute_http_request(payload: &str) -> Result<SandboxOutput, SandboxError> {
     let request: HttpRequestExecution =
@@ -277,6 +326,12 @@ pub(crate) fn execute_http_request(payload: &str) -> Result<SandboxOutput, Sandb
             "HTTP method '{method}' is not supported for owned execution; use mutation methods only"
         )));
     }
+
+    // Guard-owned HTTP is synchronous, but callers may invoke it from many
+    // host threads at once. Reserve a bounded global slot before DNS/network
+    // work so overload fails predictably instead of creating unbounded socket,
+    // response-buffer and TLS state.
+    let _permit = HTTP_EXECUTION_LIMITER.try_acquire()?;
 
     // Method support is decided before DNS or any other network-capable
     // operation. Extension methods take the owned fail-closed path, but an
@@ -765,7 +820,10 @@ mod tests {
     // entirely. New posture: fail-closed -- when parsing can't prove the
     // method is non-mutation, treat it as mutation so the SDK owns it.
 
-    use super::{build_pinned_http_client, payload_declares_mutation_http, read_bounded_http_body};
+    use super::{
+        build_pinned_http_client, payload_declares_mutation_http, read_bounded_http_body,
+        HttpConcurrencyLimiter,
+    };
     use std::io::Cursor;
     use std::net::{SocketAddr, TcpListener};
     use std::process::Command;
@@ -861,6 +919,30 @@ mod tests {
         assert!(
             error.to_string().contains("exceeded the 8-byte limit"),
             "unexpected error: {error}"
+        );
+    }
+
+    #[test]
+    fn http_concurrency_budget_fails_fast_and_releases_slots() {
+        let limiter = HttpConcurrencyLimiter::new(2);
+        let first = limiter.try_acquire().expect("first slot");
+        let second = limiter.try_acquire().expect("second slot");
+
+        let error = match limiter.try_acquire() {
+            Ok(_) => panic!("third slot must be refused"),
+            Err(error) => error,
+        };
+        assert!(error
+            .to_string()
+            .contains("HTTP execution concurrency limit of 2 reached"));
+
+        drop(first);
+        let replacement = limiter.try_acquire().expect("released slot is reusable");
+        drop(replacement);
+        drop(second);
+        assert_eq!(
+            limiter.in_flight.load(std::sync::atomic::Ordering::Acquire),
+            0
         );
     }
 

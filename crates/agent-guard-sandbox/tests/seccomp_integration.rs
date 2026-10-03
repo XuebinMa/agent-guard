@@ -99,6 +99,17 @@ mod seccomp_tests {
     }
 
     #[test]
+    fn c1_doctor_health_check_proves_a_denied_write() {
+        let sandbox = SeccompSandbox::strict();
+        let result = sandbox
+            .health_check(&ctx(PolicyMode::ReadOnly))
+            .expect("negative seccomp health probe should pass");
+
+        assert_eq!(result.exit_code, 0);
+        assert!(result.stdout.contains("negative write probe was blocked"));
+    }
+
+    #[test]
     fn c1_read_only_allows_stat() {
         let sandbox = SeccompSandbox::strict();
         let result = sandbox.execute("stat /etc/hostname", &ctx(PolicyMode::ReadOnly));

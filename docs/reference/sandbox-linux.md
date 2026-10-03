@@ -41,6 +41,13 @@ agent-guard-sandbox = { version = "0.2", features = ["seccomp"] }
 | `SeccompSandbox::new()` | Uses native seccomp and fails closed with `SandboxError::FilterSetup(...)` if every required deny rule cannot be installed. |
 | `SeccompSandbox::strict()` | Compatibility alias for the same fail-closed behavior. |
 
+The capability doctor performs both halves of a runtime check in a private
+temporary directory: an unsandboxed control invocation must be able to create
+a marker, and the equivalent `ReadOnly` seccomp invocation must fail without
+creating it. A green doctor result therefore proves one representative denied
+write as well as successful filter installation. It does not prove every
+syscall rule or provide path-aware isolation.
+
 ## Capability Reporting vs Runtime Enforcement
 
 `Sandbox::capabilities()` reports static sandbox-level metadata, not the exact

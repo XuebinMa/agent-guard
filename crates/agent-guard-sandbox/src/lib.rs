@@ -115,6 +115,15 @@ pub trait Sandbox: Send + Sync {
     /// [`OUTPUT_CAPTURE_LIMIT_BYTES`] for each output stream.
     fn execute(&self, command: &str, context: &SandboxContext) -> SandboxResult;
 
+    /// Exercise the backend for the capability doctor.
+    ///
+    /// The default proves only that an ordinary command can execute. Backends
+    /// with a load-bearing negative property should override this and prove a
+    /// representative denied operation as well.
+    fn health_check(&self, context: &SandboxContext) -> SandboxResult {
+        self.execute("echo 1", context)
+    }
+
     /// Returns `true` if this sandbox implementation is usable on the current platform.
     fn is_available(&self) -> bool;
 
@@ -246,7 +255,7 @@ impl CapabilityDoctor {
                     working_directory: std::env::current_dir().unwrap_or_else(|_| ".".into()),
                     timeout_ms: Some(2000),
                 };
-                match sb.execute("echo 1", &ctx) {
+                match sb.health_check(&ctx) {
                     Ok(_) => HealthStatus::Pass,
                     Err(e) => HealthStatus::Fail {
                         error: e.to_string(),
