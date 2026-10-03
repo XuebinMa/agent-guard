@@ -22,6 +22,7 @@ pub(crate) struct PendingHandoff {
     state: Arc<GuardState>,
     agent_id: Option<String>,
     tool: String,
+    audit_enabled: bool,
     created_at: Instant,
 }
 
@@ -41,23 +42,41 @@ impl PendingHandoffs {
             SandboxError::ExecutionFailed("pending handoff registry is unavailable".to_string())
         })?;
         entries.retain(|_, entry| entry.created_at.elapsed() <= PENDING_HANDOFF_TTL);
-        if entries.len() >= MAX_PENDING_HANDOFFS {
-            return Err(SandboxError::ExecutionFailed(format!(
-                "pending handoff limit ({MAX_PENDING_HANDOFFS}) reached; refusing an unauditable handoff"
-            )));
-        }
 
         if entries.contains_key(request_id) {
             return Err(SandboxError::ExecutionFailed(
                 "duplicate handoff request ID; refusing execution".to_string(),
             ));
         }
+
+        if entries.len() >= MAX_PENDING_HANDOFFS {
+            // A disabled audit sink emits no lifecycle evidence, but the
+            // request ID must still remain a one-shot capability so language
+            // bindings can reject forged and duplicate reports. Keep that
+            // registry bounded without ever evicting a pending audited
+            // lifecycle: only the oldest audit-disabled entry is expendable.
+            let evictable = entries
+                .iter()
+                .filter(|(_, entry)| !entry.audit_enabled)
+                .min_by_key(|(_, entry)| entry.created_at)
+                .map(|(request_id, _)| request_id.clone());
+            if let Some(evictable) = evictable {
+                entries.remove(&evictable);
+            } else {
+                return Err(SandboxError::ExecutionFailed(format!(
+                    "pending handoff limit ({MAX_PENDING_HANDOFFS}) reached; refusing an unreportable handoff"
+                )));
+            }
+        }
+
+        let audit_enabled = state.audit_cfg.enabled;
         entries.insert(
             request_id.to_string(),
             PendingHandoff {
                 state,
                 agent_id: input.context.agent_id.clone(),
                 tool: input.tool.name().to_string(),
+                audit_enabled,
                 created_at: Instant::now(),
             },
         );

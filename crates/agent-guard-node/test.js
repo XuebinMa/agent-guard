@@ -4,6 +4,7 @@ const assert = require('assert/strict')
 const { mkdtempSync, readFileSync } = require('fs')
 const { tmpdir } = require('os')
 const { join } = require('path')
+const { pathToFileURL } = require('url')
 
 let nodePackage
 try {
@@ -35,6 +36,11 @@ tools:
 
 async function runTest() {
   try {
+    const esmPackage = await import(pathToFileURL(join(__dirname, 'runtime.js')).href)
+    assert.strictEqual(esmPackage.Guard, Guard)
+    assert.strictEqual(esmPackage.wrapOpenAITool, wrapOpenAITool)
+    assert.strictEqual(esmPackage.AgentGuardDeniedError, AgentGuardDeniedError)
+
     const guard = Guard.fromYaml(yaml)
     if (typeof guard.policyVerification === 'function') {
       assert.equal(guard.policyVerification().status, 'unsigned')
@@ -116,18 +122,30 @@ tools:
       'handoff outcome should expose a non-empty requestId'
     )
 
-    // Round-trip the handoff result back into the audit stream. This does
-    // not throw and is exercised here mainly for type-surface compatibility;
-    // deeper audit-content assertions live in the Rust integration tests.
+    // Round-trip the handoff result back into the audit stream. Request IDs
+    // are one-shot capabilities: a duplicate or invented ID must be surfaced
+    // to the host instead of being silently ignored.
     guard.reportHandoffResult(runtimeHandoff.requestId, {
       exitCode: 0,
       durationMs: 12,
     })
-    guard.reportHandoffResult(runtimeHandoff.requestId, {
-      exitCode: 1,
-      durationMs: 5,
-      stderr: 'handoff stderr',
-    })
+    assert.throws(
+      () =>
+        guard.reportHandoffResult(runtimeHandoff.requestId, {
+          exitCode: 1,
+          durationMs: 5,
+          stderr: 'duplicate handoff report',
+        }),
+      /no pending handoff|unknown|already reported/i
+    )
+    assert.throws(
+      () =>
+        guard.reportHandoffResult('invented-request-id', {
+          exitCode: 0,
+          durationMs: 1,
+        }),
+      /no pending handoff|unknown|already reported/i
+    )
 
     const writeOutcome = await writeGuard.run(
       'write_file',

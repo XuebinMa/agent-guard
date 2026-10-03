@@ -82,5 +82,18 @@
     "tool": "http_request",
     "payload": {"method": "GET", "url": "https://api.internal.test/records/1"},
     "context": {"trust_level": "trusted", "working_directory": "/workspace"}
+  },
+  {
+    "name": "write_omitted_trust_defaults_untrusted",
+    "tool": "write_file",
+    "payload": {"path": "/workspace/default-trust.txt", "content": "blocked"},
+    "context": {"working_directory": "/workspace"}
+  },
+  {
+    "name": "invalid_signature_denies_check_and_runtime",
+    "tool": "bash",
+    "payload": {"command": "echo signed-policy-probe"},
+    "context": {"trust_level": "trusted", "working_directory": "/workspace"},
+    "invalid_signature": true
   }
 ]

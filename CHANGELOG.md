@@ -32,6 +32,26 @@ The `[Unreleased]` heading is rolled forward manually before each release; do no
   does not rescue that case.
 
 ### Security
+- **Python and Node adapters now preserve one decision snapshot and one
+  complete host-handoff lifecycle.** Binding `check` and `decide` responses
+  take the decision, policy version, and verification status from the same
+  immutable SDK evaluation, so a concurrent reload cannot splice metadata from
+  a newer policy onto an older verdict. Node `auto` now matches Python: the
+  exact `bash` tool uses owned execution, while non-shell custom tool IDs use
+  `run`, execute the host handler only on `Handoff`, and submit one terminal
+  report. Shell-like custom IDs such as `shell`, `sh`, `terminal`, `cmd`, and
+  `powershell` fail closed in `auto` until the host maps a real Bash-backed tool
+  to exact `bash` or selects an explicit mode; they cannot silently widen into
+  unsandboxed host execution. LangChain nested entry points use bounded,
+  single-use transition tickets, so framework delegation is counted once but
+  reentrant or delayed tool calls start a fresh lifecycle. Direct binding
+  reports reject unknown and duplicate IDs, including when audit output is
+  disabled. A successful host action whose report fails now raises
+  `AgentGuardExecutionError` carrying the completed result and an explicit
+  do-not-retry marker; when both action and report fail, the original
+  host error remains primary with the reporting error attached. Shared parity
+  fixtures lock omitted trust to `Untrusted` and invalid signatures to
+  `PolicyVerificationFailed` across Rust, Python, and Node.
 - **`guard-verify` no longer reports success on Attenu ledger content it only
   partly understood.** The verifier now enforces the published 39-field ledger
   vocabulary, rejects the twelve schema-v2 fields on v1 chains, validates v2

@@ -4,8 +4,8 @@
 | :--- | :--- |
 | **Status** | 🟢 Active Support Snapshot |
 | **Audience** | Developers, Integrators |
-| **Version** | 1.3 |
-| **Last Reviewed** | 2026-06-04 |
+| **Version** | 1.4 |
+| **Last Reviewed** | 2026-10-02 |
 | **Related Docs** | [README](../README.md), [Node README](../../crates/agent-guard-node/README.md), [Python README](../../crates/agent-guard-python/README.md) |
 
 ---
@@ -103,7 +103,7 @@ The Node package is validated with:
 
 Current concrete validation inputs:
 
-- `@langchain/core` `^0.3.75`
+- `@langchain/core` `^1.2.3`
 - `@openai/agents` `^0.8.3`
 - `zod` `^4.3.6`
 
@@ -150,8 +150,13 @@ The Python adapter layer is now official, but still below the current Node surfa
 Boundary note:
 
 - Python and Node wrapper layers can guard many tool types at the policy level
-- the strongest current `enforce` path across languages is still shell / Bash execution
-- treat non-shell adapters primarily as `check` + policy gate surfaces unless your host adds a stronger execution boundary
+- exact `bash` is the Guard-owned command path; shell-like custom IDs fail
+  closed in `auto` instead of silently falling back to host execution
+- `auto` uses `Guard.run()` for non-shell tools: WriteFile and mutating HTTP can
+  be Guard-executed, while read-only/custom actions return a correlated Handoff
+  that the adapter reports after the host handler completes
+- explicit `check` remains policy-only and intentionally leaves execution in
+  the host
 
 ---
 

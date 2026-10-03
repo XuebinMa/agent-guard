@@ -388,12 +388,11 @@ impl Guard {
                 }
             }
             RuntimeDecision::Handoff => {
+                // The request ID is a one-shot capability even when audit
+                // output is disabled. Register it before returning control so
+                // bindings can reject forged, expired, and duplicate reports.
+                self.register_handoff(&request_id, std::sync::Arc::clone(&evaluated.state), input)?;
                 if evaluated.state.audit_cfg.enabled {
-                    self.register_handoff(
-                        &request_id,
-                        std::sync::Arc::clone(&evaluated.state),
-                        input,
-                    )?;
                     self.emit_record(
                         &evaluated.state,
                         agent_guard_core::AuditRecord::ExecutionStarted(

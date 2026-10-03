@@ -475,13 +475,13 @@ impl Guard {
         let rust_tool = parse_tool(&tool)?;
         let rust_ctx = context_from_node(options);
 
-        let decision = self
+        let evaluation = self
             .inner
-            .check_tool(rust_tool, normalized_payload, rust_ctx);
+            .evaluate_tool(rust_tool, normalized_payload, rust_ctx);
         Ok(decision_from_rust(
-            decision,
-            self.inner.policy_version(),
-            self.inner.policy_verification(),
+            evaluation.decision,
+            evaluation.policy_version,
+            evaluation.policy_verification,
         ))
     }
 
@@ -496,13 +496,13 @@ impl Guard {
         let rust_tool = parse_tool(&tool)?;
         let rust_ctx = context_from_node(options);
 
-        let decision = self
+        let evaluation = self
             .inner
-            .decide_tool(rust_tool, normalized_payload, rust_ctx);
+            .evaluate_tool(rust_tool, normalized_payload, rust_ctx);
         Ok(runtime_decision_from_rust(
-            decision,
-            self.inner.policy_version(),
-            self.inner.policy_verification(),
+            evaluation.runtime_decision,
+            evaluation.policy_version,
+            evaluation.policy_verification,
         ))
     }
 
@@ -581,8 +581,10 @@ impl Guard {
     /// Call this after executing a handoff returned by `run()` to emit a
     /// `ExecutionReported` audit record, distinct from a witnessed finish.
     /// The `requestId` must be the value from the originating `RuntimeOutcome`.
+    /// Unknown, expired, and already-reported IDs throw an invalid-argument
+    /// error instead of creating an orphan terminal record.
     #[napi]
-    pub fn report_handoff_result(&self, request_id: String, result: HandoffResult) {
+    pub fn report_handoff_result(&self, request_id: String, result: HandoffResult) -> Result<()> {
         let rust_result = RustHandoffResult {
             exit_code: result.exit_code,
             duration_ms: result.duration_ms.max(0) as u64,
@@ -591,7 +593,9 @@ impl Guard {
             // binding-reported outcome is honestly unattested.
             attestation: None,
         };
-        self.inner.report_handoff_result(&request_id, rust_result);
+        self.inner
+            .try_report_handoff_result(&request_id, rust_result)
+            .map_err(|error| Error::new(Status::InvalidArg, error.to_string()))
     }
 
     #[napi]
@@ -708,7 +712,118 @@ pub fn verify_receipt(receipt_json: String, public_key_hex: String) -> Result<bo
 
 #[cfg(test)]
 mod tests {
-    use super::{normalize_payload, parse_tool, RustTool, RustTrustLevel, TrustLevel};
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::{Arc, Barrier, Mutex};
+    use std::time::{Duration, Instant};
+
+    use super::{normalize_payload, parse_tool, Guard, RustTool, RustTrustLevel, TrustLevel};
+
+    const ALLOW_POLICY: &str = r#"
+version: 1
+default_mode: full_access
+tools:
+  bash:
+    allow:
+      - "echo snapshot"
+audit:
+  enabled: true
+  output: stdout
+anomaly:
+  enabled: false
+"#;
+
+    const DENY_POLICY: &str = r#"
+version: 1
+default_mode: full_access
+tools:
+  bash:
+    deny:
+      - "echo snapshot"
+audit:
+  enabled: true
+  output: stdout
+anomaly:
+  enabled: false
+"#;
+
+    const INVALID_PUBLIC_KEY: &str =
+        "0000000000000000000000000000000000000000000000000000000000000001";
+    const INVALID_SIGNATURE: &str =
+        "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff";
+
+    #[derive(Clone)]
+    struct BlockingSink {
+        entered: Arc<Barrier>,
+        release: Arc<Barrier>,
+        blocked_once: Arc<AtomicBool>,
+        output: Arc<Mutex<Vec<u8>>>,
+    }
+
+    impl std::io::Write for BlockingSink {
+        fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+            if !self.blocked_once.swap(true, Ordering::SeqCst) {
+                self.entered.wait();
+                self.release.wait();
+            }
+            self.output
+                .lock()
+                .map_err(|_| std::io::Error::other("snapshot output poisoned"))?
+                .extend_from_slice(buf);
+            Ok(buf.len())
+        }
+
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+
+    fn evaluate_during_reload<T: Send>(evaluate: fn(&Guard) -> T) -> (T, String, String) {
+        let guard = Guard::from_yaml(ALLOW_POLICY.to_string()).expect("guard init");
+        let original_version = guard.policy_version();
+        let replacement_version = Guard::from_signed_yaml(
+            DENY_POLICY.to_string(),
+            INVALID_PUBLIC_KEY.to_string(),
+            INVALID_SIGNATURE.to_string(),
+        )
+        .expect("replacement guard")
+        .policy_version();
+        let entered = Arc::new(Barrier::new(2));
+        let release = Arc::new(Barrier::new(2));
+        guard.inner.set_audit_sink(Box::new(BlockingSink {
+            entered: entered.clone(),
+            release: release.clone(),
+            blocked_once: Arc::new(AtomicBool::new(false)),
+            output: Arc::new(Mutex::new(Vec::new())),
+        }));
+
+        let result = std::thread::scope(|scope| {
+            let evaluator = scope.spawn(|| evaluate(&guard));
+            entered.wait();
+            let reloader = scope.spawn(|| {
+                guard
+                    .inner
+                    .reload_from_signed_yaml(DENY_POLICY, INVALID_PUBLIC_KEY, INVALID_SIGNATURE)
+                    .map_err(|error| napi::Error::from_reason(error.to_string()))
+            });
+
+            let deadline = Instant::now() + Duration::from_secs(5);
+            while guard.policy_version() != replacement_version {
+                assert!(
+                    Instant::now() < deadline,
+                    "replacement snapshot was not installed"
+                );
+                std::thread::yield_now();
+            }
+
+            release.wait();
+            reloader.join().expect("reload thread").expect("reload");
+            evaluator.join().expect("evaluation thread")
+        });
+
+        assert_eq!(guard.policy_verification().status, "invalid");
+
+        (result, original_version, replacement_version)
+    }
 
     #[test]
     fn normalize_payload_wraps_shell_strings() {
@@ -762,5 +877,43 @@ mod tests {
             };
             assert_eq!(RustTrustLevel::from(node_level), core_level);
         }
+    }
+
+    #[test]
+    fn check_returns_decision_metadata_from_one_policy_snapshot() {
+        let (decision, original_version, replacement_version) = evaluate_during_reload(|guard| {
+            guard
+                .check(
+                    "bash".to_string(),
+                    r#"{"command":"echo snapshot"}"#.to_string(),
+                    None,
+                )
+                .expect("check")
+        });
+
+        assert_ne!(original_version, replacement_version);
+        assert_eq!(decision.outcome, "allow");
+        assert_eq!(decision.policy_version, original_version);
+        assert_eq!(decision.policy_verification_status, "unsigned");
+        assert!(decision.policy_verification_error.is_none());
+    }
+
+    #[test]
+    fn decide_returns_runtime_metadata_from_one_policy_snapshot() {
+        let (decision, original_version, replacement_version) = evaluate_during_reload(|guard| {
+            guard
+                .decide(
+                    "bash".to_string(),
+                    r#"{"command":"echo snapshot"}"#.to_string(),
+                    None,
+                )
+                .expect("decide")
+        });
+
+        assert_ne!(original_version, replacement_version);
+        assert_eq!(decision.outcome, "execute");
+        assert_eq!(decision.policy_version, original_version);
+        assert_eq!(decision.policy_verification_status, "unsigned");
+        assert!(decision.policy_verification_error.is_none());
     }
 }

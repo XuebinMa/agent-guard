@@ -75,6 +75,102 @@ tools:
   assert.equal(originalCalls, 0)
 }
 
+async function testLangChainDynamicToolAutoHasOneLifecyclePerInvocation() {
+  let runs = 0
+  let reports = 0
+  const callLog = []
+  const guard = {
+    check() {
+      throw new Error('auto with a runtime API must not call check')
+    },
+    async execute() {
+      throw new Error('a non-bash auto tool must not call execute')
+    },
+    async run() {
+      runs += 1
+      return {
+        status: 'handoff',
+        requestId: `request-${runs}`,
+        policyVersion: 'framework-auto-policy',
+      }
+    },
+    reportHandoffResult() {
+      reports += 1
+    },
+  }
+  const calculator = new DynamicTool({
+    name: 'calculator',
+    description: 'Evaluate concurrent toy expressions',
+    func: async (input) => {
+      callLog.push(input)
+      await Promise.resolve()
+      return `CALC:${input}`
+    },
+  })
+
+  wrapLangChainTool(guard, calculator, {
+    mode: 'auto',
+    tool: 'calculator',
+  })
+
+  assert.deepEqual(
+    await Promise.all([calculator.invoke('2+2'), calculator.invoke('3+3')]),
+    ['CALC:2+2', 'CALC:3+3']
+  )
+  assert.equal(runs, 2, 'one run lifecycle per top-level invocation')
+  assert.equal(reports, 2, 'one terminal report per top-level invocation')
+  assert.deepEqual(callLog, ['2+2', '3+3'])
+}
+
+async function testLangChainDynamicToolReentrantInvocationStartsNewLifecycle() {
+  let runs = 0
+  let reports = 0
+  const callLog = []
+  const guard = {
+    check() {
+      throw new Error('auto with a runtime API must not call check')
+    },
+    async execute() {
+      throw new Error('a non-bash auto tool must not call execute')
+    },
+    async run() {
+      runs += 1
+      return {
+        status: 'handoff',
+        requestId: `request-reentrant-${runs}`,
+        policyVersion: 'framework-reentrant-policy',
+      }
+    },
+    reportHandoffResult() {
+      reports += 1
+    },
+  }
+
+  let calculator
+  calculator = new DynamicTool({
+    name: 'calculator',
+    description: 'Invoke the same tool from its host implementation',
+    func: async (input) => {
+      callLog.push(input)
+      if (input === 'outer') {
+        const inner = await calculator.invoke('inner')
+        return `OUTER:${inner}`
+      }
+      return `CALC:${input}`
+    },
+  })
+
+  wrapLangChainTool(guard, calculator, {
+    mode: 'auto',
+    tool: 'calculator',
+  })
+
+  assert.equal(await calculator.invoke('outer'), 'OUTER:CALC:inner')
+  assert.equal(runs, 2, 'the reentrant host action needs its own Guard run')
+  assert.equal(reports, 2, 'both host actions need terminal reports')
+  assert.deepEqual(callLog, ['outer', 'inner'])
+}
+
 async function testOpenAIAgentsCheckMode() {
   const guard = Guard.fromYaml(`
 version: 1
@@ -206,6 +302,8 @@ tools:
 async function main() {
   await testLangChainDynamicToolCheckMode()
   await testLangChainDynamicToolEnforceMode()
+  await testLangChainDynamicToolAutoHasOneLifecyclePerInvocation()
+  await testLangChainDynamicToolReentrantInvocationStartsNewLifecycle()
   await testOpenAIAgentsCheckMode()
   await testOpenAIAgentsEnforceMode()
   await testOpenAIAgentsBlockedMode()

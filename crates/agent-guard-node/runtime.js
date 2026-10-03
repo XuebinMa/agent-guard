@@ -26,3 +26,18 @@ module.exports = {
   verifyReceipt: exportedVerifyReceipt,
   ...adapterExports,
 }
+
+// Keep CommonJS consumers on the object above while exposing statically
+// discoverable names for Node ESM `import { ... }` interop. Object spreads are
+// not visible to Node's CommonJS export lexer.
+module.exports.TrustLevel = nativeApi.TrustLevel
+module.exports.Guard = nativeApi.Guard
+module.exports.normalizePayload = exportedNormalizePayload
+module.exports.verifyReceipt = exportedVerifyReceipt
+module.exports.AgentGuardAdapterError = adapterExports.AgentGuardAdapterError
+module.exports.AgentGuardDeniedError = adapterExports.AgentGuardDeniedError
+module.exports.AgentGuardAskRequiredError = adapterExports.AgentGuardAskRequiredError
+module.exports.AgentGuardExecutionError = adapterExports.AgentGuardExecutionError
+module.exports.createGuardedExecutor = adapterExports.createGuardedExecutor
+module.exports.wrapLangChainTool = adapterExports.wrapLangChainTool
+module.exports.wrapOpenAITool = adapterExports.wrapOpenAITool

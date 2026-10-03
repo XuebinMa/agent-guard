@@ -4,8 +4,8 @@
 | :--- | :--- |
 | **Status** | 🟢 Operational Guide |
 | **Audience** | Developers, Integrators |
-| **Version** | 1.0 |
-| **Last Reviewed** | 2026-04-14 |
+| **Version** | 1.1 |
+| **Last Reviewed** | 2026-10-02 |
 | **Related Docs** | [User Manual](user-manual.md), [Secure Shell Tools](secure-shell-tools.md) |
 
 ---
@@ -18,9 +18,10 @@
 
 The fastest way to choose correctly is:
 
-- use `check` for API-like or local business-logic tools
-- use `enforce` for shell-like tools that should run through the sandbox
-- use `auto` when you want a lightweight preflight gate before running your original handler
+- use `check` when you explicitly want a policy-only gate before existing host logic
+- use `enforce` when the selected tool ID maps to a Guard-owned execution surface
+- use `auto` for the runtime decision: exact `bash` is Guard-owned, non-shell
+  tools go through `Guard.run()`, and the host runs only a returned `Handoff`
 
 This guide explains how to choose based on where you want the execution boundary to live.
 
@@ -47,14 +48,19 @@ Flow:
 
 ### `auto`
 
-`agent-guard` performs a preflight decision first.  
-If the decision is `allow`, your original handler runs. Otherwise execution stops.
+`agent-guard` uses the unified runtime path. Exact tool ID `bash` goes through
+Guard-owned execution. Non-shell tools call `guard.run()`; only a `Handoff`
+invokes the original handler, after which the adapter submits a one-shot
+terminal report. Guard-owned outcomes such as WriteFile or mutating HTTP can
+execute without calling the handler.
 
 Flow:
 
-`tool call -> guard.check() -> allow? -> original handler`
+`tool call -> guard.run() -> deny / ask / Guard execute / host Handoff + report`
 
-In practice, `auto` is a convenience mode for “guard first, then run the existing logic.”
+Shell-like custom IDs such as `shell`, `terminal`, `sh`, `zsh`, `cmd`, and
+`powershell` fail closed in `auto` with `UnsupportedShellAlias`. Map a real
+Bash-backed tool to exact `bash`, or deliberately choose an explicit mode.
 
 ---
 
@@ -62,11 +68,12 @@ In practice, `auto` is a convenience mode for “guard first, then run the exist
 
 | Tool Type | Recommended Mode | Why |
 | :--- | :--- | :--- |
-| `bash`, `shell`, `terminal` | `enforce` | The execution boundary should move into `agent-guard`, not remain in your original handler. |
+| exact `bash` | `auto` or `enforce` | The execution boundary moves into the Guard-owned Bash path. |
+| shell-like custom ID (`shell`, `terminal`, `sh`, …) | map to exact `bash` | `auto` rejects ambiguous shell aliases instead of silently handing commands back to the host. |
 | local API wrapper | `check` | You usually want policy gating, then normal business logic. |
 | search tool | `check` | These are typically non-OS actions and should keep their original handler. |
 | calculator / utility tool | `check` | Sandboxing is less valuable than authorization and consistency. |
-| migration path for an existing tool set | `auto` | Good for adding a first decision gate with low integration disruption. |
+| mixed tool set using the runtime API | `auto` | Runtime decisions choose Guard execution or a correlated host handoff per call. |
 
 ---
 
@@ -121,9 +128,8 @@ Choose `enforce` when:
 Typical examples:
 
 - bash tool
-- terminal tool
-- local command runner
-- file-system-heavy tools that map cleanly into guarded execution
+- Guard-owned WriteFile or HTTP mutation paths
+- another execution surface explicitly supported by `Guard.execute()`
 
 Example:
 
@@ -153,16 +159,18 @@ Use `enforce` when the main value you need is:
 
 Choose `auto` when:
 
-- you want a light migration step
-- you need a quick policy gate before the original handler runs
-- you are not ready to replace execution with sandboxed execution
+- you want one runtime decision surface across mixed tools
+- you need exact `bash` calls to stay Guard-owned
+- you can close every returned host-handoff lifecycle with its terminal report
 
 This is useful when the team wants to answer:
 
-- “Can we start blocking obviously risky requests today?”
-- “Can we add approval/deny behavior without rewriting the tool implementation yet?”
+- “Should this call be denied, approved, Guard-executed, or handed to the host?”
+- “Can every host action be correlated to the decision that authorized it?”
 
-`auto` is not the preferred final answer for shell execution when strong isolation is the goal. It is a convenient bridge.
+`auto` is not a name-based sandbox for arbitrary command runners. A
+shell-like custom ID is a configuration error until it is mapped to the exact
+owned ID `bash` or assigned an explicit mode.
 
 ---
 
@@ -170,11 +178,14 @@ This is useful when the team wants to answer:
 
 For true shell tools, the safest starting recommendation is:
 
-- `mode: "enforce"`
+- map the tool to exact `bash`
+- use `mode: "auto"` or `mode: "enforce"`
 
 This is important enough to repeat:
 
-If the tool really executes shell commands, do not stop at `check` unless you have a strong reason. `check` still leaves the final OS execution path in your application handler.
+If the tool really executes shell commands, do not leave it under an alias and
+do not stop at `check` unless you have a strong reason. `check` still leaves
+the final OS execution path in your application handler.
 
 For a step-by-step shell-specific guide, see [Secure Shell Tools](secure-shell-tools.md).
 
@@ -198,10 +209,11 @@ That keeps integration simple while still giving you:
 
 This sequence works well for many teams:
 
-1. Put all tools behind `check` or `auto`.
-2. Observe which tool classes are the highest risk.
-3. Move shell-like tools to `enforce`.
-4. Keep lower-risk tools on `check`.
+1. Inventory which tool IDs can execute commands or mutate external state.
+2. Map the real Bash-backed command runner to exact `bash`.
+3. Put mixed non-shell tools behind `auto`, or explicitly choose `check` where
+   the host intentionally owns execution.
+4. Treat every returned Handoff ID as one-shot and report its terminal result.
 
 This lets you increase protection without rewriting everything at once.
 
@@ -219,7 +231,8 @@ Practical meaning:
 
 - `check`: non-allow means your original handler does not run
 - `enforce`: non-executed outcome becomes an adapter error
-- `auto`: non-allow means your original handler does not run
+- `auto`: deny, ask, invalid verification, and shell-alias configuration errors
+  stop the handler; a `Handoff` runs it once and must report completion
 
 ---
 
@@ -228,6 +241,7 @@ Practical meaning:
 If you want the short version:
 
 - protect `bash` first
-- use `enforce` for shell tools
+- map the real command runner to exact `bash`; do not rely on aliases
+- use `auto` or `enforce` for that exact Bash tool
 - use `check` for API and business tools
-- use `auto` as a migration bridge, not the final architecture for high-risk shell execution
+- use `auto` when you want the unified Guard-execute/Handoff lifecycle across a mixed tool set

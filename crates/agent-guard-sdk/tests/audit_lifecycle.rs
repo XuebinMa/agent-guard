@@ -484,7 +484,7 @@ anomaly:
 }
 
 #[test]
-fn disabled_audit_does_not_retain_unreported_handoffs() {
+fn disabled_audit_keeps_recent_handoffs_reportable_without_exhaustion() {
     let guard = Guard::from_yaml(
         r#"
 version: 1
@@ -500,13 +500,95 @@ anomaly:
     .expect("guard init");
     let probe = input(Tool::ReadFile, r#"{"path":"README.md"}"#);
 
+    let mut first_id = None;
+    let mut latest_id = None;
+    for index in 0..4_100 {
+        let outcome = guard
+            .run(&probe, &NoopSandbox)
+            .unwrap_or_else(|error| panic!("disabled audit handoff {index} failed: {error}"));
+        let RuntimeOutcome::Handoff { request_id, .. } = outcome else {
+            panic!("expected handoff at call {index}, got {outcome:?}");
+        };
+        first_id.get_or_insert_with(|| request_id.clone());
+        latest_id = Some(request_id);
+    }
+
+    let result = HandoffResult {
+        exit_code: 0,
+        duration_ms: 1,
+        stderr: None,
+        attestation: None,
+    };
+    guard
+        .try_report_handoff_result(
+            latest_id.as_deref().expect("latest handoff ID"),
+            result.clone(),
+        )
+        .expect("a recent audit-disabled handoff remains reportable");
+    assert!(matches!(
+        guard.try_report_handoff_result(
+            latest_id.as_deref().expect("latest handoff ID"),
+            result.clone()
+        ),
+        Err(HandoffReportError::UnknownRequest { .. })
+    ));
+    assert!(matches!(
+        guard.try_report_handoff_result(first_id.as_deref().expect("first handoff ID"), result),
+        Err(HandoffReportError::UnknownRequest { .. })
+    ));
+}
+
+#[test]
+fn audit_disabled_overflow_never_evicts_an_audited_handoff() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let audit_path = dir.path().join("audit.jsonl");
+    let guard = Guard::from_yaml(&policy(&audit_path)).expect("guard init");
+    let probe = input(Tool::ReadFile, r#"{"path":"README.md"}"#);
+
+    let audited_id = match guard.run(&probe, &NoopSandbox).expect("audited handoff") {
+        RuntimeOutcome::Handoff { request_id, .. } => request_id,
+        other => panic!("expected audited handoff, got {other:?}"),
+    };
+    guard
+        .reload_from_yaml(
+            r#"
+version: 1
+default_mode: workspace_write
+tools:
+  read_file: {}
+audit:
+  enabled: false
+anomaly:
+  enabled: false
+"#,
+        )
+        .expect("disable audit");
+
     for index in 0..4_100 {
         assert!(
             matches!(
                 guard.run(&probe, &NoopSandbox),
                 Ok(RuntimeOutcome::Handoff { .. })
             ),
-            "disabled auditing must not exhaust the pending-handoff registry at call {index}"
+            "audit-disabled overflow must preserve audited entries at call {index}"
         );
     }
+
+    guard
+        .try_report_handoff_result(
+            &audited_id,
+            HandoffResult {
+                exit_code: 0,
+                duration_ms: 1,
+                stderr: None,
+                attestation: None,
+            },
+        )
+        .expect("the audited pending lifecycle must not be evicted");
+    drop(guard);
+
+    let records = records(&audit_path);
+    assert!(records.iter().any(|record| {
+        matches!(record, AuditRecord::ExecutionReported(event) if event.request_id == audited_id)
+    }));
 }

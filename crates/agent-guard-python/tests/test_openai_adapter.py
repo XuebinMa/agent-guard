@@ -105,6 +105,27 @@ def test_openai_wrapper_rejects_invalid_mode(guard):
         wrap_openai_tool(guard, lambda _input_data: None, tool="web_search", mode="invalid")
 
 
+@pytest.mark.parametrize(
+    "tool_name",
+    ["shell", "terminal", "BASH", "sh", "zsh", "cmd", "powershell", "pwsh"],
+)
+def test_openai_auto_mode_refuses_shell_like_custom_ids(guard, tool_name):
+    handler_calls = []
+
+    with pytest.raises(AgentGuardExecutionError) as caught:
+        wrap_openai_tool(
+            guard,
+            lambda value: handler_calls.append(value) or "HOST_RAN",
+            tool=tool_name,
+            mode="auto",
+            trust_level="trusted",
+        )
+
+    assert caught.value.code == "UnsupportedShellAlias"
+    assert "exact ID 'bash'" in str(caught.value)
+    assert handler_calls == []
+
+
 # ── Handoff path through Guard.run (S3-2 runtime API) ────────────────────────
 #
 # As with the LangChain tests, these use a duck-typed FakeGuard so the contract

@@ -28,7 +28,8 @@ You can adopt it incrementally:
 
 - use `check` to put a policy gate in front of an existing tool handler
 - use `enforce` for shell-like tools when you want `agent-guard` to own the execution path
-- use `auto` as a migration bridge when you want a light preflight gate first
+- use `auto` when the exact `bash` tool should execute through the Guard and
+  non-shell tools should use the unified runtime lifecycle
 - or use raw `decide()` / `run()` when you want the normalized runtime decisions directly
 
 ## Why Start Here
@@ -46,7 +47,7 @@ The repository CI validates the Node binding and framework wrappers against:
 - `@langchain/core` `^1.2.3`
 - `@openai/agents` `^0.8.3`
 
-That is the published support floor for the current adapter layer.
+That is the tested support floor for the current adapter layer.
 
 ## What You Get
 
@@ -70,7 +71,24 @@ That is the published support floor for the current adapter layer.
 
 - `check`: call `guard.check()` first, then run the original handler only if the decision is `allow`
 - `enforce`: call `guard.execute()` and return the execution outcome instead of running the original handler
-- `auto`: preflight with `guard.check()`; if the decision is `allow`, run the original handler, otherwise throw
+- `auto`: the exact tool ID `bash` uses `guard.execute()`; non-shell tool IDs
+  use `guard.run()`, invoke the original handler only for a `handoff`, and
+  submit a one-shot terminal report before returning. Guard-owned WriteFile or
+  mutating HTTP outcomes can execute without invoking the host handler.
+
+If a host action finishes but its handoff report is rejected, the adapter
+throws `AgentGuardExecutionError` rather than returning an apparently complete
+result. The error carries `hostActionCompleted: true`, the `hostResult`, and a
+warning not to retry automatically. It also carries `requestId` and the
+attempted `handoffReport` so an operator can reconcile reporting without
+rerunning the action. If both the host action and its report fail, the original host error is
+preserved with the reporting error attached as `agentGuardReportError`.
+
+Shell-like custom IDs such as `shell`, `terminal`, `sh`, `zsh`, `cmd`,
+`powershell`, and `pwsh` are not silently treated as Bash or handed back to the
+host in `auto`: the adapter raises `UnsupportedShellAlias`. Map a real
+Bash-backed framework tool to `tool: "bash"`, or deliberately choose an
+explicit mode.
 
 If you want the normalized wedge vocabulary directly, start with `decide()` and `run()`. If you are integrating through existing handler wrappers, `enforce` is still strongest on shell-like tools today.
 
@@ -195,11 +213,19 @@ The Node test suite exercises real `DynamicTool` objects and real OpenAI Agents 
 
 ## Dependency audit posture
 
-The published `@agent-guard/node` package ships a **compiled native `.node` binary with no runtime npm dependencies** — `package.json` declares only `devDependencies`. Those dev dependencies (`@langchain/core`, `@openai/agents`, `@napi-rs/cli`, `zod`) exist to build the binding and to run the framework-parity tests; they are **not distributed to consumers**.
+`@agent-guard/node` is **not currently published to npm**; build it from this
+repository as described in the root README. The package has no runtime npm
+dependencies. Its declared dev dependencies (`@langchain/core`,
+`@openai/agents`, `@napi-rs/cli`, `zod`) build the binding and exercise
+framework compatibility; they are not part of the runtime dependency tree.
 
 Consequently:
 
-- **Dev-only advisories do not gate releases.** They are reachable only from the test/build tooling, never from the shipped surface. Keep them patched when compatible framework releases are available; the checked-in lockfile currently audits clean.
+- **Dev-only advisories do not gate releases.** They are reachable only from
+  test/build tooling, not the runtime tree. As of 2026-10-02 the checked-in
+  lockfile reports four transitive dev-only findings (three moderate, one high)
+  through framework/build dependencies; `npm audit --omit=dev` reports zero.
+  Keep them patched when compatible upstream releases are available.
 - **Production dependencies are gated in CI.** The Node CI job runs `npm audit --omit=dev --audit-level=moderate`. Because there are no runtime dependencies today, this is currently empty/clean; if a real runtime dependency is ever added, a `moderate`+ advisory there fails CI.
 
 To reproduce locally:

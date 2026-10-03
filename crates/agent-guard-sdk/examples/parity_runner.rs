@@ -20,7 +20,10 @@ struct Scenario {
     name: String,
     tool: Tool,
     payload: serde_json::Value,
+    #[serde(default)]
     context: ScenarioContext,
+    #[serde(default)]
+    invalid_signature: bool,
 }
 
 #[derive(Debug, Deserialize, Default)]
@@ -111,10 +114,21 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .expect("usage: parity_runner <policy.yaml> <scenarios.json>");
 
     let guard = Guard::from_yaml_file(&policy_path)?;
+    let policy_yaml = std::fs::read_to_string(&policy_path)?;
+    let invalid_signed_guard = Guard::from_signed_yaml(
+        &policy_yaml,
+        "0000000000000000000000000000000000000000000000000000000000000001",
+        "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+    )?;
     let scenarios: Vec<Scenario> =
         serde_json::from_str(&std::fs::read_to_string(&scenarios_path)?)?;
 
     for scenario in scenarios {
+        let scenario_guard = if scenario.invalid_signature {
+            &invalid_signed_guard
+        } else {
+            &guard
+        };
         let context = build_context(scenario.context);
         let input = GuardInput {
             tool: scenario.tool.clone(),
@@ -122,8 +136,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             context,
         };
 
-        let decision = guard.check(&input);
-        let runtime = guard.decide(&input);
+        let decision = scenario_guard.check(&input);
+        let runtime = scenario_guard.decide(&input);
 
         let out = Output {
             name: scenario.name,

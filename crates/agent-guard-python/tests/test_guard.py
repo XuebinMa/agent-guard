@@ -218,6 +218,7 @@ def test_invalid_signed_policy_decide_is_denied():
     assert decision.outcome == "deny"
     assert decision.code == "PolicyVerificationFailed"
     assert decision.policy_verification_status == "invalid"
+    assert decision.policy_verification_error is not None
 
 
 def test_invalid_signed_policy_execute_is_denied():

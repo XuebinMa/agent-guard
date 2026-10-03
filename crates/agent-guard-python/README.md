@@ -60,12 +60,21 @@ except AgentGuardDeniedError as error:
 
 Current boundary note:
 
-- non-shell tools are most often a `check`-style policy gate first
-- shell-style execution remains the clearest current enforcement proof point
+- explicit `check` mode remains a policy-only gate; in `auto` mode, non-shell
+  tools use `Guard.run()`. A `Handoff` closes its one-shot lifecycle before
+  returning the original handler result, while Guard-owned WriteFile or
+  mutating HTTP outcomes may execute without invoking that handler
+- the exact tool ID `bash` is the owned shell path; shell-like custom IDs such
+  as `shell`, `terminal`, `sh`, `cmd`, or `powershell` fail closed in `auto`
+  with `UnsupportedShellAlias` until explicitly mapped or assigned a mode
 - Python is an active adapter surface, but still below the current Node path in maturity
 - `Guard.execute()` / `Guard.run()` use the SDK default sandbox selection, or accept an explicit `backend=` keyword (`"none"`, `"linux-seccomp"`, `"linux-landlock"`, `"macos-seatbelt"`, `"windows-job-object"`, `"windows-appcontainer"`); a backend that is not compiled into the module or not functional on the host resolves truthfully to `"none"`, and an unknown name raises
 - to get real isolation through `backend=`, build the module with the matching feature forwarded, e.g. `maturin develop --features extension-module,seccomp` (requires libseccomp on Linux); the default build carries no sandbox feature
 - if the default sandbox diagnosis falls back to `NoopSandbox`, the policy gate still runs, but OS-level isolation is not equivalent
+- unknown, expired, or duplicate handoff report IDs raise `GuardError`; a
+  successful host action whose report fails surfaces `AgentGuardExecutionError`
+  with the host result, request ID, attempted handoff result, and an explicit
+  do-not-retry marker rather than silently returning success
 
 ---
 

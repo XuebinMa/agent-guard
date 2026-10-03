@@ -69,6 +69,13 @@ snapshot. Its `tool_call`, `execution_started`, and terminal
 `execution_reported` records reuse that ID. The same serialized records are
 fanned out to the configured local destination (file or stdout/custom sink)
 and the SIEM exporter; `audit.enabled: false` disables the complete stream.
+It does not disable one-shot handoff request tracking: a valid report is still
+consumed once (without emitting a record), while unknown, expired, and duplicate
+IDs are rejected. This audit-disabled compatibility registry is bounded at
+4,096 pending IDs: on overflow it evicts the oldest audit-disabled entry, so a
+host that leaves thousands of handoffs outstanding must treat a later
+``unknown request`` error as a lost lifecycle rather than retrying the action.
+Audited pending handoffs are never evicted to make room for unaudited ones.
 `anomaly_triggered` and `agent_locked` also carry the request ID that produced
 the verdict; readers must tolerate its absence in records written by older
 versions.
@@ -85,7 +92,11 @@ retains the original tool and agent identity and carries
 expired, or already-reported handoff is rejected by
 `Guard::try_report_handoff_result` rather than creating an orphan terminal
 record. Pending handoffs also retain the original audit destinations across a
-policy reload.
+policy reload. If a host action succeeds but its terminal report fails, the
+Python and Node adapters surface an execution error instead of returning an
+apparently complete lifecycle. That error says the action already completed,
+carries the host result, and warns callers not to retry automatically. If the host action itself failed, its original
+exception remains primary and carries the report failure as secondary context.
 
 ```json
 {

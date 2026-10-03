@@ -38,8 +38,8 @@ def wrap_langchain_tool(
             - ``"check"``   — always go through ``Guard.check`` (policy-only;
               the original tool runs in-process when allowed). Fail-closed on
               invalid policy signatures.
-            - ``"auto"`` (default) — for shell-like tools, behave like
-              ``enforce``. For non-shell tools, dispatch through the unified
+            - ``"auto"`` (default) — for the exact built-in tool ID ``bash``,
+              behave like ``enforce``. For other tool IDs, dispatch through the unified
               ``Guard.run`` runtime API when the binding exposes it. The
               ``RuntimeOutcome::Handoff`` variant means the host runs the
               original tool itself and the adapter then closes the audit loop

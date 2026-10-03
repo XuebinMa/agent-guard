@@ -624,11 +624,11 @@ impl PyGuard {
             actor,
             working_directory: working_directory.map(PathBuf::from),
         };
-        let decision = self.inner.check_tool(tool, &payload, ctx);
+        let evaluated = self.inner.evaluate_tool(tool, payload, ctx);
         Ok(decision_from_rust(
-            decision,
-            self.inner.policy_version(),
-            self.inner.policy_verification(),
+            evaluated.decision,
+            evaluated.policy_version,
+            evaluated.policy_verification,
         ))
     }
 
@@ -776,11 +776,11 @@ impl PyGuard {
             actor,
             working_directory: working_directory.map(PathBuf::from),
         };
-        let decision = self.inner.decide_tool(tool, &payload, ctx);
+        let evaluated = self.inner.evaluate_tool(tool, payload, ctx);
         Ok(runtime_decision_from_rust(
-            decision,
-            self.inner.policy_version(),
-            self.inner.policy_verification(),
+            evaluated.runtime_decision,
+            evaluated.policy_version,
+            evaluated.policy_verification,
         ))
     }
 
@@ -847,10 +847,12 @@ impl PyGuard {
     /// Report the outcome of a host-executed handoff back into the audit
     /// stream. Call this after the host runs an action returned by `run()`
     /// as `RuntimeOutcome::Handoff` so the audit log records a matching
-    /// `ExecutionReported` event with `tool == "handoff"`.
-    fn report_handoff_result(&self, request_id: &str, result: &HandoffResult) {
+    /// `ExecutionReported` event with the original tool identity.
+    fn report_handoff_result(&self, request_id: &str, result: &HandoffResult) -> PyResult<()> {
         let rust_result = handoff_result_to_rust(result);
-        self.inner.report_handoff_result(request_id, rust_result);
+        self.inner
+            .try_report_handoff_result(request_id, rust_result)
+            .map_err(|e| GuardError::new_err(format!("failed to report handoff result: {e}")))
     }
 
     fn reload_from_yaml(&self, yaml: &str) -> PyResult<()> {

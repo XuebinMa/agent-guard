@@ -291,6 +291,25 @@ def test_report_handoff_result_accepts_stderr(tmp_path):
     guard.report_handoff_result(outcome.request_id, result)
 
 
+def test_report_handoff_result_rejects_unknown_request(guard):
+    result = agent_guard.HandoffResult(exit_code=0, duration_ms=1)
+
+    with pytest.raises(agent_guard.GuardError, match="no pending handoff"):
+        guard.report_handoff_result("unknown-request-id", result)
+
+
+def test_report_handoff_result_rejects_duplicate_report_when_audit_disabled(guard):
+    payload = json.dumps({"path": "/workspace/README.md"})
+    outcome = guard.run("read_file", payload, trust_level="trusted")
+    assert outcome.outcome == "handoff"
+
+    result = agent_guard.HandoffResult(exit_code=0, duration_ms=1)
+    assert guard.report_handoff_result(outcome.request_id, result) is None
+
+    with pytest.raises(agent_guard.GuardError, match="no pending handoff"):
+        guard.report_handoff_result(outcome.request_id, result)
+
+
 def test_handoff_result_repr():
     r = agent_guard.HandoffResult(exit_code=0, duration_ms=10)
     text = repr(r)

@@ -108,6 +108,8 @@ export declare class Guard {
    * Call this after executing a handoff returned by `run()` to emit a
    * `ExecutionReported` audit record, distinct from a witnessed finish.
    * The `requestId` must be the value from the originating `RuntimeOutcome`.
+   * Unknown, expired, and already-reported IDs throw an invalid-argument
+   * error instead of creating an orphan terminal record.
    */
   reportHandoffResult(requestId: string, result: HandoffResult): void
   reload(yaml: string): void
