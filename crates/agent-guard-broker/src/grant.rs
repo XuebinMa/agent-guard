@@ -94,13 +94,21 @@ pub enum GrantError {
 
 /// Reject anything that is not one plain filename, so a caller cannot reach
 /// outside the grant directory by naming a path.
+///
+/// The grammar is checked against the raw `id`, not against
+/// `Path::components()`, which normalises a trailing separator or a `.` segment
+/// away and so would accept an `id` such as `"a/"` whose joined form
+/// (`a/.json`) still contains a separator. Issued ids are UUIDs, so a strict
+/// `[A-Za-z0-9._-]` grammar that forbids separators and the `.`/`..` names is
+/// both sufficient and unambiguous.
 fn grant_path(dir: &Path, id: &str) -> Result<PathBuf, GrantError> {
-    let mut components = Path::new(id).components();
-    let single = matches!(
-        (components.next(), components.next()),
-        (Some(std::path::Component::Normal(_)), None)
-    );
-    if !single || id.is_empty() {
+    let safe = !id.is_empty()
+        && id != "."
+        && id != ".."
+        && id
+            .chars()
+            .all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '.' | '_' | '-'));
+    if !safe {
         return Err(GrantError::InvalidId { id: id.to_string() });
     }
     Ok(dir.join(format!("{id}.json")))
@@ -119,6 +127,7 @@ pub fn issue_grant(
     ttl: Duration,
 ) -> Result<String, GrantError> {
     std::fs::create_dir_all(dir)?;
+    restrict_directory(dir)?;
 
     let issued_at = Utc::now();
     let grant = PushGrant {
@@ -139,9 +148,49 @@ pub fn issue_grant(
         id: grant.grant_id.clone(),
         detail: e.to_string(),
     })?;
-    std::fs::write(&path, body)?;
+    write_grant_file(&path, &body)?;
 
     Ok(grant.grant_id)
+}
+
+/// Write the grant to a temporary sibling and rename it into place, so a
+/// concurrent claim never observes a half-written grant, and create it readable
+/// only by the issuing user. A grant is a one-use authorization; its contents
+/// and its id are a capability that other local users should not be able to
+/// read.
+fn write_grant_file(path: &Path, body: &[u8]) -> Result<(), GrantError> {
+    use std::io::Write;
+
+    let tmp = path.with_extension("json.tmp");
+    let mut options = std::fs::OpenOptions::new();
+    options.write(true).create(true).truncate(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.mode(0o600);
+    }
+    let mut file = options.open(&tmp)?;
+    file.write_all(body)?;
+    file.sync_all()?;
+    std::fs::rename(&tmp, path)?;
+    Ok(())
+}
+
+/// Best-effort tightening of the grant directory to the issuing user only.
+#[cfg(unix)]
+fn restrict_directory(dir: &Path) -> Result<(), GrantError> {
+    use std::os::unix::fs::PermissionsExt;
+    let mut perms = std::fs::metadata(dir)?.permissions();
+    if perms.mode() & 0o077 != 0 {
+        perms.set_mode(0o700);
+        std::fs::set_permissions(dir, perms)?;
+    }
+    Ok(())
+}
+
+#[cfg(not(unix))]
+fn restrict_directory(_dir: &Path) -> Result<(), GrantError> {
+    Ok(())
 }
 
 /// Read a grant without spending it.

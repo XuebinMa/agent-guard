@@ -23,6 +23,12 @@
 //! 15. Modeled and explicitly listed process launchers preserve outbound
 //!     decisions; `git send-pack` enters the same authorization path.
 //! 16. Unknown outer commands cannot downgrade embedded Git outbound intent.
+//! 17. Abbreviated options, `--prune`, command-line config and aliases cannot
+//!     downgrade a destructive `git push` to an ordinary one (sec35).
+//! 18. Shell brace expansion and dot-globs cannot smuggle a `..` component
+//!     past the workspace path gate (sec36).
+//! 19. Read-only mode refuses environment variables and command flags that
+//!     launch an uninspected program (sec37).
 
 use agent_guard_sdk::{
     guard::{ExecuteOutcome, Guard, RuntimeOutcome},
@@ -1062,4 +1068,109 @@ fn sec34_dynamic_and_unmodeled_write_targets_fail_closed() {
     }
 
     assert_bash_denied(&readonly_guard(), "project-helper inspect");
+}
+
+// ─── 35. Destructive git push semantics survive Git's own option grammar ──
+
+/// Each destructive push subject is denied on its own, so a form that loses
+/// its destructive classification falls through to the ordinary-push `ask`
+/// and this test fails.
+const DESTRUCTIVE_PUSH_POLICY: &str = r#"
+version: 1
+default_mode: workspace_write
+tools:
+  bash:
+    deny:
+      # Anchored to the canonical subjects, so only the recognizer's
+      # classification (not a raw-string prefix) can produce the deny.
+      - regex: "^git push --(force|force-with-lease|mirror|delete)$"
+    ask:
+      - prefix: "git push"
+audit:
+  enabled: false
+anomaly:
+  enabled: false
+"#;
+
+#[test]
+fn sec35_git_option_abbreviation_config_and_aliases_keep_push_destructive() {
+    let g = Guard::from_yaml(DESTRUCTIVE_PUSH_POLICY).expect("guard init");
+    for command in [
+        // Git accepts unique prefixes of long options.
+        "git push --mirr origin",
+        "git push --force-w origin main",
+        "git push --del origin main",
+        "git send-pack --mirr origin",
+        // `--prune` removes remote refs.
+        "git push --prune origin refs/heads/*:refs/heads/*",
+        // Command-line config that changes push semantics.
+        "git -c remote.origin.mirror=true push origin",
+        "git -c remote.origin.push=+refs/heads/main:refs/heads/main push origin",
+        "GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=k GIT_CONFIG_VALUE_0=v git push origin main",
+        // Aliases defined on the command line.
+        "git -c alias.p=push p --force origin main",
+        "git -c alias.p=p p origin main",
+    ] {
+        assert_bash_denied(&g, command);
+    }
+
+    let workspace = std::path::Path::new("/workspace");
+    for command in [
+        "git push --force-if-includes origin main",
+        "git -c user.name=agent push origin main",
+        "git -c 'alias.p=!git push' p origin main",
+    ] {
+        let payload = serde_json::json!({ "command": command }).to_string();
+        let decision = g.check_tool(Tool::Bash, &payload, ctx_workspace(workspace));
+        assert!(
+            matches!(decision, GuardDecision::AskUser { .. }),
+            "an ordinary push must still reach approval: `{command}`, got {decision:?}"
+        );
+    }
+}
+
+// ─── 36. Shell expansion cannot rewrite a validated target into `..` ──────
+
+#[test]
+fn sec36_brace_expansion_and_dot_globs_cannot_escape_the_workspace() {
+    let g = guard();
+    for command in [
+        "touch /workspace/.{.,.}/x",
+        "touch /workspace/{a,.}./x",
+        "chmod 600 /workspace/.?/.?/x",
+        "chmod 600 /workspace/.*/x",
+        "echo hi > /workspace/.?/x",
+    ] {
+        assert_bash_denied(&g, command);
+    }
+    assert_bash_denied(&readonly_guard(), "cat < /workspace/.?/x");
+}
+
+// ─── 37. Read-only mode cannot be turned into arbitrary execution ──────────
+
+#[test]
+fn sec37_read_only_refuses_program_valued_env_and_exec_flags() {
+    let g = readonly_guard();
+    for command in [
+        "GIT_PAGER=evil git -p log",
+        "GIT_SSH_COMMAND=evil git ls-remote host:repo",
+        "env GIT_EXTERNAL_DIFF=evil git diff",
+        "export GIT_PAGER=evil; git -p log",
+        "GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=core.pager GIT_CONFIG_VALUE_0=evil git -p log",
+        "rg --pre /tmp/run pattern .",
+        "sed -f /tmp/script.sed file",
+    ] {
+        assert_bash_denied(&g, command);
+    }
+    // A genuinely read-only command is unaffected.
+    let payload = serde_json::json!({ "command": "rg pattern src" }).to_string();
+    let decision = g.check_tool(
+        Tool::Bash,
+        &payload,
+        ctx_workspace(std::path::Path::new("/workspace")),
+    );
+    assert!(
+        matches!(decision, GuardDecision::Allow),
+        "an ordinary read-only search must still be allowed, got {decision:?}"
+    );
 }

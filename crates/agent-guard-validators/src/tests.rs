@@ -2109,3 +2109,154 @@ mod bash_codex_security_critical_tests {
         blocks("/bin/rm /etc/passwd", ro());
     }
 }
+
+#[cfg(test)]
+mod bash_shell_expansion_target_tests {
+    use crate::bash::{validate_bash_command, PermissionMode, ValidationResult};
+    use std::path::Path;
+
+    fn workspace() -> &'static Path {
+        Path::new("/workspace")
+    }
+
+    fn blocks(cmd: &str, mode: PermissionMode) {
+        let result = validate_bash_command(cmd, mode, workspace(), &[]);
+        assert!(
+            matches!(&result, ValidationResult::Block { reason } if reason.contains("shell expansion")),
+            "expected an expansion refusal for `{cmd}`, got {result:?}"
+        );
+    }
+
+    fn allows(cmd: &str, mode: PermissionMode) {
+        let result = validate_bash_command(cmd, mode, workspace(), &[]);
+        assert_eq!(
+            result,
+            ValidationResult::Allow,
+            "expected Allow for `{cmd}`"
+        );
+    }
+
+    /// Brace expansion and dot-globs can produce a `..` component that the
+    /// lexical workspace check never sees.
+    #[test]
+    fn targets_that_shell_expansion_could_turn_into_a_parent_component_are_refused() {
+        for cmd in [
+            "touch /workspace/.{.,.}/x",
+            "touch /workspace/{a,.}./x",
+            "touch {a,.}./x",
+            "touch /workspace/{0..1}/x",
+            "chmod 600 /workspace/.?/x",
+            "chmod 600 /workspace/.*/x",
+            "chmod 600 /workspace/.[.]/x",
+            "echo hi > /workspace/.?/x",
+        ] {
+            blocks(cmd, PermissionMode::WorkspaceWrite);
+        }
+        blocks("cat < /workspace/.?/x", PermissionMode::ReadOnly);
+    }
+
+    #[test]
+    fn ordinary_globs_and_placeholders_stay_allowed() {
+        for cmd in [
+            "rm -f /workspace/build/*.o",
+            "rm -f build/*",
+            "rm -f .*.swp",
+            "touch /workspace/file[1].txt",
+            "find . -name '*.tmp' -exec rm {} ;",
+        ] {
+            let result =
+                validate_bash_command(cmd, PermissionMode::WorkspaceWrite, workspace(), &[]);
+            assert!(
+                !matches!(&result, ValidationResult::Block { reason } if reason.contains("shell expansion")),
+                "`{cmd}` must not be refused as an expansion: {result:?}"
+            );
+        }
+        allows("touch /workspace/a/b", PermissionMode::WorkspaceWrite);
+    }
+}
+
+#[cfg(test)]
+mod bash_read_only_exec_vector_tests {
+    use crate::bash::{validate_bash_command, PermissionMode, ValidationResult};
+    use std::path::Path;
+
+    fn ro() -> PermissionMode {
+        PermissionMode::ReadOnly
+    }
+    fn ws() -> PermissionMode {
+        PermissionMode::WorkspaceWrite
+    }
+    fn workspace() -> &'static Path {
+        Path::new("/workspace")
+    }
+
+    fn blocks(cmd: &str, mode: PermissionMode) {
+        let result = validate_bash_command(cmd, mode, workspace(), &[]);
+        assert!(
+            matches!(result, ValidationResult::Block { .. }),
+            "expected Block for `{cmd}`, got {result:?}"
+        );
+    }
+
+    /// A program-valued environment variable plus an allow-listed read-only
+    /// command executes that program. The variable's assignment is refused in
+    /// read-only mode, in every spelling that sets it for the following command.
+    #[test]
+    fn program_valued_env_vars_are_blocked_in_read_only() {
+        for cmd in [
+            "GIT_PAGER=evil git -p log",
+            "PAGER=evil git -p log",
+            "GIT_EXTERNAL_DIFF=evil git diff",
+            "GIT_SSH_COMMAND=evil git ls-remote host:repo",
+            "env GIT_PAGER=evil git -p log",
+            "export GIT_PAGER=evil; git -p log",
+            "GIT_PAGER=evil; git -p log",
+            ": ${GIT_PAGER:=evil}; git -p log",
+            "GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=core.pager GIT_CONFIG_VALUE_0=evil git -p log",
+            "GIT_CONFIG_GLOBAL=/tmp/cfg git -p log",
+        ] {
+            blocks(cmd, ro());
+        }
+    }
+
+    /// These variables permit arbitrary execution, which `WorkspaceWrite`
+    /// already allows directly, so the assignment itself is not what is
+    /// refused there.
+    #[test]
+    fn program_valued_env_vars_are_not_refused_as_injections_in_workspace_write() {
+        let result = validate_bash_command("GIT_PAGER=less git -p log", ws(), workspace(), &[]);
+        assert!(
+            !matches!(&result, ValidationResult::Block { reason } if reason.contains("read-only")),
+            "workspace_write must not refuse this as a read-only violation: {result:?}"
+        );
+    }
+
+    #[test]
+    fn ripgrep_preprocessor_flags_are_blocked_in_read_only() {
+        for cmd in [
+            "rg --pre /tmp/run pattern .",
+            "rg --pre=/tmp/run pattern .",
+            "rg --hostname-bin /tmp/run pattern",
+            "/usr/bin/rg --pre /tmp/run pattern",
+        ] {
+            blocks(cmd, ro());
+        }
+        // An ordinary ripgrep search stays allowed.
+        assert_eq!(
+            validate_bash_command("rg pattern src", ro(), workspace(), &[]),
+            ValidationResult::Allow
+        );
+    }
+
+    #[test]
+    fn sed_script_file_cannot_be_proven_read_only() {
+        for cmd in ["sed -f script.sed file", "sed --file=script.sed file"] {
+            blocks(cmd, ro());
+        }
+        // An inline substitution that only prints stays allowed.
+        assert_eq!(
+            validate_bash_command("sed 's/foo/bar/' file", ro(), workspace(), &[]),
+            ValidationResult::Allow
+        );
+    }
+}

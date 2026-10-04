@@ -178,27 +178,39 @@ fn resolve_remote_oid(
     remote_url: &str,
     branch: &str,
 ) -> Result<Option<String>, GitError> {
-    let refspec = format!("refs/heads/{branch}");
-    let Some(listing) =
-        snapshot.run_optional(&["ls-remote", "--exit-code", remote_url, &refspec], 2)?
+    let full_ref = format!("refs/heads/{branch}");
+    // `--` keeps the URL and refspec positional even if a future value could be
+    // read as an option. The ref argument is passed after it.
+    let Some(listing) = snapshot.run_optional(
+        &["ls-remote", "--exit-code", "--", remote_url, &full_ref],
+        2,
+    )?
     else {
         return Ok(None);
     };
 
-    if listing.is_empty() {
-        return Ok(None);
+    // `ls-remote` treats the ref argument as a pattern that also matches on a
+    // `/`-boundary suffix, so `refs/heads/main` also matches
+    // `refs/elsewhere/refs/heads/main`, and the listing can hold several lines
+    // in sorted order. Taking the first line could therefore read the OID of a
+    // different ref than the branch being pushed, corrupting the preview and the
+    // lease. Select the line whose ref name is exactly the branch.
+    for line in listing.lines() {
+        let mut fields = line.split_whitespace();
+        let oid = fields.next();
+        let name = fields.next();
+        if name == Some(full_ref.as_str()) {
+            let oid = oid.ok_or_else(|| GitError::Unexpected {
+                command: format!("ls-remote {remote_url} {full_ref}"),
+                detail: listing.clone(),
+            })?;
+            return Ok(Some(oid.to_string()));
+        }
     }
 
-    let oid = listing
-        .lines()
-        .next()
-        .and_then(|line| line.split_whitespace().next())
-        .ok_or_else(|| GitError::Unexpected {
-            command: format!("ls-remote {remote_url} {refspec}"),
-            detail: listing.clone(),
-        })?;
-
-    Ok(Some(oid.to_string()))
+    // Any matches were only suffix matches of other refs; the remote does not
+    // hold this branch.
+    Ok(None)
 }
 
 /// Whether this repository holds the object at all.

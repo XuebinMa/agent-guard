@@ -1,9 +1,9 @@
 //! Read-only mode validation: rejects filesystem/state-mutating commands.
 
-use super::ast::{parse_shell, ShellParse};
+use super::ast::{environment_writes, parse_shell, ShellParse};
 use super::tables::{
-    DANGEROUS_ENV_VAR_PREFIXES, READ_ONLY_COMMANDS, STATE_MODIFYING_COMMANDS, WRITE_COMMANDS,
-    WRITE_REDIRECTIONS,
+    is_code_execution_env_var, DANGEROUS_ENV_VAR_PREFIXES, READ_ONLY_COMMANDS,
+    STATE_MODIFYING_COMMANDS, WRITE_COMMANDS, WRITE_REDIRECTIONS,
 };
 use super::tokenize::shell_split;
 use super::types::{PermissionMode, ValidationResult};
@@ -20,7 +20,9 @@ pub fn validate_read_only(command: &str, mode: PermissionMode) -> ValidationResu
 
     // Token-prefix scan for dangerous env-var assignments. Runs over the
     // post-quote-strip tokens, so quoting tricks (`L'D'_PRELOAD=...`) are
-    // caught and benign filename matches are not.
+    // caught and benign filename matches are not. This also sees the
+    // `env NAME=value cmd` form, where the assignment is an argument to `env`
+    // rather than a shell variable_assignment node.
     for token in &parts {
         for &prefix in DANGEROUS_ENV_VAR_PREFIXES {
             if token.starts_with(prefix) {
@@ -31,6 +33,32 @@ pub fn validate_read_only(command: &str, mode: PermissionMode) -> ValidationResu
                     ),
                 };
             }
+        }
+        if let Some((name, _)) = token.split_once('=') {
+            if is_code_execution_env_var(name) {
+                return ValidationResult::Block {
+                    reason: format!(
+                        "Environment variable {name} names a program a later command would \
+                         execute and is not allowed in read-only mode"
+                    ),
+                };
+            }
+        }
+    }
+
+    // The raw-token scan above misses assignments that only the grammar
+    // recovers: `export NAME=...`, a statement-level `NAME=...;`, and the
+    // `${NAME:=value}` default-assignment form. Consult the parsed environment
+    // writes so those spellings cannot reach a code-execution variable either.
+    for write in environment_writes(command) {
+        if is_code_execution_env_var(&write.name) {
+            return ValidationResult::Block {
+                reason: format!(
+                    "Environment variable {} names a program a later command would \
+                     execute and is not allowed in read-only mode",
+                    write.name
+                ),
+            };
         }
     }
 
@@ -142,6 +170,35 @@ fn check_command_segment(parts: &[String]) -> Option<ValidationResult> {
         {
             return Some(ValidationResult::Block {
                 reason: "Sed in-place editing is not allowed in read-only mode".to_string(),
+            });
+        }
+        // A script read from a file is opaque executable text, exactly like
+        // `python3 script.py`: it may carry `w`/`e`/`r` commands that write,
+        // execute, or read outside the workspace, so it cannot be proven
+        // read-only.
+        if parts
+            .iter()
+            .any(|p| p == "-f" || p == "--file" || p.starts_with("--file="))
+        {
+            return Some(ValidationResult::Block {
+                reason: "Sed with a script file (-f) cannot be proven read-only".to_string(),
+            });
+        }
+        return None;
+    }
+
+    if first_command == "rg" || first_command == "ripgrep" {
+        // `--pre` runs a preprocessor program for every searched file, and
+        // `--hostname-bin` runs a program to resolve the hostname. Either turns
+        // an allow-listed search into arbitrary execution.
+        if parts.iter().any(|p| {
+            matches!(p.as_str(), "--pre" | "--hostname-bin")
+                || p.starts_with("--pre=")
+                || p.starts_with("--hostname-bin=")
+        }) {
+            return Some(ValidationResult::Block {
+                reason: "ripgrep is invoked with a flag that runs an external program and is not allowed in read-only mode"
+                    .to_string(),
             });
         }
         return None;

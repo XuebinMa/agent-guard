@@ -56,6 +56,55 @@ pub(crate) const DANGEROUS_ENV_VAR_PREFIXES: &[&str] = &[
     "NODE_OPTIONS=",
 ];
 
+/// Environment variable names whose value is a program that a later command in
+/// the same line will execute, or that inject arbitrary Git configuration
+/// (which can name such a program, e.g. `core.pager`). An agent in `ReadOnly`
+/// mode can set one of these and then run an allow-listed read-only command
+/// (`GIT_PAGER=cmd git -p log`, `GIT_SSH_COMMAND=cmd git ls-remote host:repo`)
+/// to execute `cmd`, so the assignment itself is refused in that mode. These
+/// are not refused in `WorkspaceWrite`, which already permits running arbitrary
+/// programs directly.
+///
+/// Compared with a prefix, the Git config family must match a leading segment
+/// (`GIT_CONFIG_COUNT`, `GIT_CONFIG_KEY_0`), so it is kept separate below.
+pub(crate) const CODE_EXECUTION_ENV_VARS: &[&str] = &[
+    "GIT_PAGER",
+    "PAGER",
+    "GIT_EXTERNAL_DIFF",
+    "GIT_SSH",
+    "GIT_SSH_COMMAND",
+    "GIT_PROXY_COMMAND",
+    "GIT_EDITOR",
+    "GIT_SEQUENCE_EDITOR",
+    "EDITOR",
+    "VISUAL",
+    "GIT_ASKPASS",
+    "SSH_ASKPASS",
+];
+
+/// Leading segments of environment variable names that inject Git
+/// configuration whose contents the command line does not show, and which can
+/// therefore smuggle a `core.pager` / `core.sshCommand` program into an
+/// otherwise read-only Git call.
+pub(crate) const GIT_CONFIG_ENV_PREFIXES: &[&str] = &[
+    "GIT_CONFIG",
+    "GIT_CONFIG_COUNT",
+    "GIT_CONFIG_KEY_",
+    "GIT_CONFIG_VALUE_",
+    "GIT_CONFIG_GLOBAL",
+    "GIT_CONFIG_SYSTEM",
+    "GIT_CONFIG_PARAMETERS",
+];
+
+/// Whether an environment variable `name` can cause command execution in a
+/// subsequent `ReadOnly` command.
+pub(crate) fn is_code_execution_env_var(name: &str) -> bool {
+    CODE_EXECUTION_ENV_VARS.contains(&name)
+        || GIT_CONFIG_ENV_PREFIXES
+            .iter()
+            .any(|prefix| name == *prefix || name.starts_with(prefix))
+}
+
 /// Interpreters that accept an inline-code flag (`-c`, `-e`, `-r`). When
 /// invoked with one of those flags, the interpreter's argument is an
 /// opaque program that the validator cannot introspect — so it must be

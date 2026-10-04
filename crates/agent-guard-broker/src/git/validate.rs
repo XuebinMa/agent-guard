@@ -66,9 +66,15 @@ pub(super) fn read_single_push_url(config: &Path, remote: &str) -> Result<String
 }
 
 pub(super) fn validate_remote_url(url: &str, allow_local: bool) -> Result<(), GitError> {
-    if url.chars().any(char::is_control) || url.chars().any(char::is_whitespace) {
+    // Require printable ASCII. This rejects control and whitespace characters,
+    // and also every non-ASCII character — including bidirectional-override and
+    // other format controls, and homoglyphs — that could make the URL shown in
+    // the approval preview read as a different, trusted destination than the
+    // one Git would actually contact.
+    if !url.chars().all(|ch| ch.is_ascii_graphic()) {
         return Err(GitError::UnsafeRemote {
-            detail: "the remote URL contains whitespace or control characters".to_string(),
+            detail: "the remote URL contains non-printable, whitespace, or non-ASCII characters"
+                .to_string(),
         });
     }
     let secure_network =
@@ -141,8 +147,32 @@ pub(super) fn validate_trusted_config_snapshot(config: &Path) -> Result<(), GitE
                 detail: format!("key {name:?} is not allowed"),
             });
         }
+
+        // `http.extraHeader` is sent on every request. The push transaction's
+        // URL is resolved from the agent-controlled repository config, and the
+        // preview contacts it before a human approves, so an unconditional
+        // header would carry its credential to an agent-chosen host. Require it
+        // to be URL-scoped (`http.<url>.extraHeader`), which Git only applies to
+        // a matching destination.
+        if is_unscoped_http_extra_header(&lower) {
+            return Err(GitError::UnsafeConfig {
+                detail: format!(
+                    "key {name:?} applies to every host; scope it to one destination, e.g. \
+                     [http \"https://host/\"] extraHeader = …, so its credential cannot be \
+                     sent to a repository-chosen URL"
+                ),
+            });
+        }
     }
     Ok(())
+}
+
+/// Whether a (lowercased) config key is an `http.extraHeader` with no URL
+/// subsection. `http.extraheader` has exactly two dot-separated segments;
+/// a scoped key (`http.https://host/.extraheader`) carries the URL between
+/// them.
+fn is_unscoped_http_extra_header(lower_name: &str) -> bool {
+    lower_name == "http.extraheader"
 }
 
 #[cfg(test)]
@@ -201,5 +231,65 @@ mod tests {
             assert!(validate_remote_url(refused, false).is_err(), "{refused}");
         }
         assert!(validate_remote_url("/tmp/repo.git", true).is_ok());
+    }
+
+    #[test]
+    fn trusted_config_requires_http_extra_header_to_be_url_scoped() {
+        let dir = tempfile::tempdir().expect("tempdir");
+
+        let unscoped = dir.path().join("unscoped.gitconfig");
+        std::fs::write(
+            &unscoped,
+            b"[http]\n\textraHeader = Authorization: Bearer secret\n",
+        )
+        .expect("write");
+        let error = validate_trusted_config_snapshot(&unscoped).expect_err("unscoped header");
+        assert!(
+            error.to_string().contains("scope it to one destination"),
+            "{error}"
+        );
+
+        let scoped = dir.path().join("scoped.gitconfig");
+        std::fs::write(
+            &scoped,
+            b"[http \"https://approved.invalid/\"]\n\textraHeader = Authorization: Bearer secret\n",
+        )
+        .expect("write");
+        assert!(
+            validate_trusted_config_snapshot(&scoped).is_ok(),
+            "a URL-scoped header must be accepted"
+        );
+
+        // Ordinary credential/transport settings are unaffected.
+        let ordinary = dir.path().join("ordinary.gitconfig");
+        std::fs::write(
+            &ordinary,
+            b"[credential]\n\thelper = cache\n[http]\n\tsslVerify = true\n",
+        )
+        .expect("write");
+        assert!(validate_trusted_config_snapshot(&ordinary).is_ok());
+    }
+
+    #[test]
+    fn non_ascii_and_control_characters_in_the_url_are_refused() {
+        for refused in [
+            // A right-to-left override could make the previewed URL read as a
+            // different host than Git contacts.
+            "https://evil.invalid/\u{202e}repo.git",
+            // A Cyrillic homoglyph host that looks like "example".
+            "https://\u{0435}xample.invalid/repo.git",
+            // Embedded newline / tab / space.
+            "https://example.invalid/\nrepo.git",
+            "https://example.invalid/\trepo.git",
+            "https://example.invalid/ repo.git",
+        ] {
+            let error = validate_remote_url(refused, false).expect_err(refused);
+            assert!(
+                error
+                    .to_string()
+                    .contains("non-printable, whitespace, or non-ASCII"),
+                "{refused}: {error}"
+            );
+        }
     }
 }

@@ -74,6 +74,19 @@ HTTPS users may put an explicit `credential.helper` and required `http.*`
 settings in this file. Includes, URL rewrites, remote definitions, protocol
 overrides, hooks and arbitrary `core.*` commands are rejected.
 
+If you authenticate with an `http.extraHeader` (for example a bearer token),
+scope it to the destination host rather than setting it unconditionally:
+
+```ini
+[http "https://github.com/"]
+    extraHeader = Authorization: Basic <token>
+```
+
+The push URL is resolved from the repository, which the agent can edit, and the
+preview contacts that URL before you approve. An unscoped `http.extraHeader`
+would be sent to whatever host the repository names, so the broker rejects it
+and only accepts the URL-scoped form, which Git sends to a matching host alone.
+
 You then run `agent-guard push` on the host, against the same repository, where
 your credential is. The repository supplies data only: the broker does not run
 its hooks, use its credential helpers, honour its URL rewrites, or pass its

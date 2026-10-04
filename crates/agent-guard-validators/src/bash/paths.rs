@@ -93,7 +93,11 @@ fn check_target(
         return None;
     }
 
-    if candidate.contains('$') || candidate.contains('`') || candidate.starts_with('~') {
+    if candidate.contains('$')
+        || candidate.contains('`')
+        || candidate.starts_with('~')
+        || may_expand_to_parent_component(candidate)
+    {
         return Some(ValidationResult::Block {
             reason: format!(
                 "{kind_name} '{candidate}' cannot be resolved without ambient shell expansion"
@@ -160,6 +164,53 @@ fn check_target(
     }
 
     None
+}
+
+/// Whether shell expansion could rewrite this target's components after the
+/// lexical checks below have accepted it.
+///
+/// Brace expansion turns `/ws/.{.,.}/x` into `/ws/../x`, and a pathname glob
+/// such as `.?` or `.*` matches `..` under shells that do not skip dot entries
+/// (dash, which is `sh` on Debian and Ubuntu). Neither spelling contains a
+/// literal `..` component, so without this a target could resolve outside the
+/// workspace after validation.
+fn may_expand_to_parent_component(candidate: &str) -> bool {
+    has_brace_expansion(candidate)
+        || candidate
+            .split(['/', '\\'])
+            .any(glob_component_can_match_parent)
+}
+
+/// `{a,b}` or `{x..y}`. Quoted braces are already unquoted in the target, so
+/// a literal `{a,b}` filename is refused too; that over-match is deliberate.
+fn has_brace_expansion(candidate: &str) -> bool {
+    let mut rest = candidate;
+    while let Some(open) = rest.find('{') {
+        let after = &rest[open + 1..];
+        let Some(close) = after.find('}') else {
+            return false;
+        };
+        let body = &after[..close];
+        if body.contains(',') || body.contains("..") {
+            return true;
+        }
+        rest = after;
+    }
+    false
+}
+
+fn glob_component_can_match_parent(component: &str) -> bool {
+    if !component.contains(['*', '?', '[']) {
+        return false;
+    }
+    let options = glob::MatchOptions {
+        case_sensitive: true,
+        require_literal_separator: true,
+        // Shells only match a leading dot literally, so `*` never matches
+        // `..` but `.*` and `.?` do.
+        require_literal_leading_dot: true,
+    };
+    glob::Pattern::new(component).map_or(true, |pattern| pattern.matches_with("..", options))
 }
 
 fn matches_escape_glob(candidate: &str, escape_paths: &[String]) -> bool {

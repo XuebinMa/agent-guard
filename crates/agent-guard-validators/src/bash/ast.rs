@@ -243,6 +243,101 @@ fn argv_of(node: Node, src: &str) -> Vec<String> {
     argv
 }
 
+/// One write to the shell environment that a later or child command can see.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct EnvWrite {
+    /// The variable name, as written.
+    pub name: String,
+    /// The assigned value when it is statically known. `None` means the value
+    /// is dynamic, appended to, or inherited (`export NAME`), so no claim about
+    /// it can be made.
+    pub value: Option<String>,
+}
+
+/// Every environment write in a shell program, wherever it appears.
+///
+/// A `NAME=value` prefix changes the environment of the command it precedes,
+/// and a statement-level assignment, `export`/`declare`, or `${NAME:=value}`
+/// changes it for every later command (an assignment to an already-exported
+/// name stays exported). `argv_of` drops all of these from command positions,
+/// so they are recovered here for the gates that care about them. An input that
+/// does not parse yields nothing; restricted modes reject it before asking.
+pub(crate) fn environment_writes(command: &str) -> Vec<EnvWrite> {
+    let mut parser = Parser::new();
+    if parser
+        .set_language(&tree_sitter_bash::LANGUAGE.into())
+        .is_err()
+    {
+        return Vec::new();
+    }
+    let Some(tree) = parser.parse(command, None) else {
+        return Vec::new();
+    };
+    let mut writes = Vec::new();
+    collect_environment_writes(tree.root_node(), command, &mut writes);
+    writes
+}
+
+fn collect_environment_writes(node: Node, src: &str, writes: &mut Vec<EnvWrite>) {
+    match node.kind() {
+        "variable_assignment" => {
+            if let Ok(text) = node.utf8_text(src.as_bytes()) {
+                if let Some((name, value)) = text.split_once('=') {
+                    let appended = name.ends_with('+');
+                    let name = name.trim_end_matches('+');
+                    let name = name.split('[').next().unwrap_or(name);
+                    writes.push(EnvWrite {
+                        name: name.to_string(),
+                        value: if appended {
+                            None
+                        } else {
+                            static_shell_word(value)
+                        },
+                    });
+                }
+            }
+        }
+        // `export NAME`, `declare -x NAME`: exports a value this program does
+        // not state.
+        "variable_name"
+            if node
+                .parent()
+                .is_some_and(|parent| parent.kind() == "declaration_command") =>
+        {
+            if let Ok(name) = node.utf8_text(src.as_bytes()) {
+                writes.push(EnvWrite {
+                    name: name.to_string(),
+                    value: None,
+                });
+            }
+        }
+        // `${NAME:=word}` / `${NAME=word}` assign when NAME is unset or empty.
+        "expansion" => {
+            if let Ok(text) = node.utf8_text(src.as_bytes()) {
+                if let Some(name) = assigning_expansion_name(text) {
+                    writes.push(EnvWrite { name, value: None });
+                }
+            }
+        }
+        _ => {}
+    }
+
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        collect_environment_writes(child, src, writes);
+    }
+}
+
+fn assigning_expansion_name(text: &str) -> Option<String> {
+    let body = text.strip_prefix("${")?;
+    let name_len = body
+        .find(|ch: char| !(ch.is_ascii_alphanumeric() || ch == '_'))
+        .unwrap_or(body.len());
+    let (name, rest) = body.split_at(name_len);
+    (!name.is_empty() && (rest.starts_with(":=") || rest.starts_with('=')))
+        .then(|| name.to_string())
+}
+
 /// The value of a word, with the shell's outer quoting removed.
 ///
 /// `argv` must carry word *values*, not source spans: the tables and wrapper
@@ -463,6 +558,31 @@ mod tests {
     fn assignment_prefix_is_not_the_command_word() {
         let found = commands("FOO=1 touch /etc/x");
         assert_eq!(found, vec![vec!["touch".to_string(), "/etc/x".to_string()]]);
+    }
+
+    #[test]
+    fn environment_writes_are_recovered_from_every_position() {
+        let names = |input: &str| {
+            environment_writes(input)
+                .into_iter()
+                .map(|write| (write.name, write.value))
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(
+            names("FOO='a b' touch x"),
+            vec![("FOO".to_string(), Some("a b".to_string()))]
+        );
+        assert_eq!(
+            names("FOO=1; ls"),
+            vec![("FOO".to_string(), Some("1".to_string()))]
+        );
+        assert_eq!(
+            names("export FOO=$X; declare -x BAR; ls"),
+            vec![("FOO".to_string(), None), ("BAR".to_string(), None)]
+        );
+        assert_eq!(names(": ${FOO:=x}"), vec![("FOO".to_string(), None)]);
+        assert_eq!(names("FOO+=x ls"), vec![("FOO".to_string(), None)]);
+        assert!(names("echo ${FOO:-x} FOO=1").is_empty());
     }
 
     #[test]
