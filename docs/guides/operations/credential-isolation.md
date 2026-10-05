@@ -66,10 +66,13 @@ container no way to authenticate to the remote:
 On the host, create the dedicated config outside the checkout:
 
 ```bash
-install -m 600 /dev/null ~/.agent-guard/broker.gitconfig
+mkdir -p ~/.agent-guard
+(umask 077; set -C; : > ~/.agent-guard/broker.gitconfig)
 ```
 
 An empty file is sufficient for SSH authentication through `SSH_AUTH_SOCK`.
+Creation refuses to overwrite an existing file; preserve an already configured
+trusted file instead of rerunning initialization over it.
 HTTPS users may put an explicit `credential.helper` and required `http.*`
 settings in this file. Includes, URL rewrites, remote definitions, protocol
 overrides, hooks and arbitrary `core.*` commands are rejected.

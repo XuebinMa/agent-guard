@@ -1,16 +1,9 @@
 # cargo-release configuration
-# Run:  cargo install cargo-release --locked
-#       cargo release <level> [--execute]
-#
-# Where <level> ∈ {major, minor, patch, alpha, beta, rc, release}
-#
-# Without --execute the run is a dry-run. Add --execute to actually move
-# version numbers, commit, and tag. The configured workflow is:
-#
-#  1. cargo release <level>          (dry-run)
-#  2. review the proposed diff + tag
-#  3. cargo release <level> --execute
-#  4. push the reviewed tag; GitHub Actions performs registry publishing
+# Shared workspace metadata for cargo-release. The supported multi-language
+# preparation path is scripts/release/bump-version.sh; see CONTRIBUTING.md.
+# Merge the fully tested version preparation through a PR, wait for successful
+# push CI on the exact current main SHA, then tag that SHA. Do not let a direct
+# cargo-release commit/tag bypass source markers or the protected-main gate.
 #
 # Registry publishing is intentionally kept out of cargo-release: the release
 # workflow publishes each crate in dependency order and sequences crates.io,
@@ -39,4 +32,4 @@ push = false
 # `pre-release-replacements` resolves paths per-crate, so a workspace-level
 # CHANGELOG would be rewritten N times (once per crate) and corrupted.
 # CONTRIBUTING.md § Releasing instructs the human to roll the
-# [Unreleased] heading manually before invoking cargo release.
+# [Unreleased] heading manually during the normal version-preparation PR.

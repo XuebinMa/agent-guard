@@ -1,5 +1,9 @@
 # Defensive security review — 2026-10-04
 
+Status statements below describe the frozen local review before submission.
+For subsequent PR, CI and release progress, see the
+[delivery record](security-delivery-2026-10-04.md).
+
 ## Scope and evidence boundary
 
 Baseline: `origin/main` / `v0.2.6` at

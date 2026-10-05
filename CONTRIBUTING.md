@@ -166,32 +166,46 @@ For non-vulnerability security suggestions (defense in depth, hardening), open a
 
 ## Releasing
 
-Release engineering is centralized in `cargo-release` driven by the workspace-level [`release.toml`](release.toml).
+Release preparation uses the atomic multi-language
+[`bump-version.sh`](scripts/release/bump-version.sh) tool. Registry writes belong
+to [the tag-triggered workflow](.github/workflows/release.yml), not cargo-release.
+[`release.toml`](release.toml) retains shared-version/tag metadata with
+`publish = false` and `push = false`; do not use cargo-release alone to update
+Python, Node, plugin and documentation markers.
 
-```bash
-cargo install cargo-release --locked   # one-time
-cargo release <level>                  # dry-run — review the proposed diff + tag
-cargo release <level> --execute        # commit version bump + create tag
-git push origin main v<semver>         # push manually after review
-```
+- All ten workspace crates share one version (matches the `version = "=0.2.7"` inter-crate pin in `Cargo.toml`).
+- The workflow publishes eight public Rust crates in dependency order using
+  `cargo publish --locked`, Python wheels as `agent-guard-python`, and the npm
+  installer as `agent-guard-plugin`. The Python/Node Cargo binding crates have
+  `publish = false`; the Node binding is not currently published to npm.
+- A release has one workspace tag, not a tag per crate. Do not tag a PR branch:
+  squash merging would leave that tag on an untested/unprotected branch commit.
+- Promote `[Unreleased]` to a dated versioned CHANGELOG heading by hand and add a
+  fresh `[Unreleased]` heading. Keep historical release notes unchanged.
 
-`<level>` is one of `patch`, `minor`, `major`, `alpha`, `beta`, `rc`, or `release`. The configuration:
+Required sequence:
 
-- Uses a **shared version** across all ten workspace crates so they always release together (matches the `version = "=0.2.6"` inter-crate pin in `Cargo.toml`).
-- Creates **one tag per workspace** (`v<semver>`) rather than a tag per crate.
-- Publishes the eight public Rust crates individually in dependency order; the
-  Python and Node binding crates remain `publish = false` because they ship via
-  PyPI and npm.
-- **Does not auto-push** — you push the tag explicitly so the release becomes visible only after a final review.
-- **Does NOT roll `CHANGELOG.md`** automatically — `cargo-release`'s `pre-release-replacements` resolves paths per-crate, which would rewrite a workspace-level CHANGELOG ten times. Update `CHANGELOG.md` by hand before each release: rename the current `## [Unreleased]` heading to `## [<new-version>] — <date>` and add a fresh `## [Unreleased]` stub above it.
-
-Recommended pre-release sequence:
-
-1. Edit `CHANGELOG.md` — promote `[Unreleased]` to a versioned heading with the release date.
-2. `cargo release <level>` — dry-run, review the proposed version bump.
-3. `cargo release <level> --execute` — commit + tag; this does not publish.
-4. `git push origin main v<semver>` — push when ready. The tag-triggered release
-   workflow runs the full preflight, then publishes crates.io → PyPI → npm.
+1. Run `scripts/release/bump-version.sh` with the chosen new version. Review its
+   complete source-marker and exact dependency-pin diff, including Cargo.lock.
+   Keep **published** install/version markers unchanged until publication is
+   verified; source version and latest available release may intentionally differ.
+2. Update CHANGELOG, run `./scripts/verify.sh full` and submit the preparation
+   through a normal PR. Require successful cross-platform CI on its exact head.
+3. Merge only that verified head. Then wait for a successful `ci.yml` **push** run
+   on the exact final `main` merge SHA, including the version preparation.
+4. Recheck that `origin/main` still points at that SHA. Only then create/push the
+   matching version tag (or create it through a GitHub Release). The release gate
+   requires `tag commit == GITHUB_SHA == current origin/main` and the successful
+   main push CI; a previous green PR run or older main commit is insufficient.
+5. The workflow reruns full preflight and supply-chain gates, publishes Rust
+   crates, and only then uploads PyPI wheels and publishes the npm plugin. Wheel
+   builds may run in parallel, but uploads cannot claim a complete release before
+   the Rust publication succeeds. Respect configured environment approvals.
+6. Verify all eight Rust crate versions, all supported Python wheel platforms,
+   and the npm plugin. Test exact-version `--locked` installation before updating
+   published install markers or advertising the release. Correct security
+   advisories only with versions actually available; do not label an unreleased
+   branch as a released fix.
 
 ## Getting help
 

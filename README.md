@@ -4,7 +4,7 @@
 > Your agent writes code and runs tests freely; agent-guard makes the outbound
 > intent visible and gives the host a decision before code leaves the machine.
 
-[![Version](https://img.shields.io/badge/Version-0.2.6-blue.svg)]()
+[![Version](https://img.shields.io/badge/Version-0.2.7-blue.svg)]()
 [![Focus](https://img.shields.io/badge/Focus-Outbound%20Control-green.svg)]()
 [![License](https://img.shields.io/badge/License-MIT-yellow.svg)]()
 [![MSRV](https://img.shields.io/badge/MSRV-1.79-orange.svg)]()
@@ -99,9 +99,13 @@ cargo install guard-verify --locked
 `agent-guard-cli` is what performs the push shown above. From a repository:
 
 ```bash
-install -m 600 /dev/null ~/.agent-guard/broker.gitconfig
+mkdir -p ~/.agent-guard
+(umask 077; set -C; : > ~/.agent-guard/broker.gitconfig)
 agent-guard push --remote origin --branch main
 ```
+
+Config creation refuses to overwrite an existing file; if already configured,
+keep the existing trusted config and run only the push command.
 
 That is the command the hook names when it stops a push, and it runs as
 printed after the host-owned broker config has been created. The config path
@@ -135,7 +139,7 @@ checkout with `npm ci --prefix crates/agent-guard-node && npm run build
 
 ## Release Status
 
-- **Source version**: `v0.2.6`
+- **Source version**: `v0.2.7`
 - **Latest published release**: [`v0.2.6`](https://github.com/XuebinMa/agent-guard/releases/tag/v0.2.6) — crates.io, PyPI, npm
 - **Announcement**: [GitHub Discussions #1](https://github.com/XuebinMa/agent-guard/discussions/1)
 

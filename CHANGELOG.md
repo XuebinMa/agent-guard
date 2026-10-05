@@ -9,6 +9,8 @@ The `[Unreleased]` heading is rolled forward manually before each release; do no
 
 ## [Unreleased]
 
+## [0.2.7] - 2026-10-05
+
 ### Security
 - Broker CLI confirmation now reloads the policy and refuses changed or unreadable
   policy files before issuing a push grant. Pending SDK approvals recheck the
@@ -18,8 +20,8 @@ The `[Unreleased]` heading is rolled forward manually before each release; do no
   suffixes and expressions appearing after filenames. Secondary sed I/O,
   execution, external scripts, and unmodeled syntax fail closed. **Correction:**
   the sed destination fix claimed in GHSA-j64p-f672-v3jq is incomplete in 0.2.6;
-  this unreleased patch closes the reproduced cases. A follow-up release and
-  advisory correction are still required.
+  0.2.7 closes the reproduced cases. Registry availability must be verified
+  before this version is advertised as the remedy in the public advisory.
 - `CustomToolId` deserialization now enforces the same validation as construction.
   Anomaly window configuration cannot panic monotonic clock arithmetic.
 - Unix output capture can be cancelled at its deadline even when another writer
@@ -69,6 +71,10 @@ The `[Unreleased]` heading is rolled forward manually before each release; do no
   Dynamic shell aliases whose forwarding cannot be modeled require a direct
   controlled Git command or another trusted host execution path. Read-only
   ripgrep accepts modeled search options; unknown options fail closed.
+- Release preparation now documents the atomic multi-language version tool and
+  the requirement to tag the exact tested main merge commit. Negative version
+  tests use the fixture's actual version, so later releases cannot silently
+  disable their missing-pin and rollback controls.
 
 ## [0.2.6] - 2026-10-03
 

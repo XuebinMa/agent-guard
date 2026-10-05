@@ -12,7 +12,7 @@ remain supported, but new product work should not expand them horizontally. The
 target broker boundary is: an agent may write and test freely; agent-guard
 decides and executes which exact Git change may leave the machine.
 Plumbing-level `git send-pack` is part of that same outbound boundary, not a
-separate feature surface. Current source version: 0.2.6.
+separate feature surface. Current source version: 0.2.7.
 
 ## Build & Test Commands
 
@@ -146,7 +146,7 @@ GitHub Actions (`.github/workflows/ci.yml`) uses `./scripts/verify.sh` as the sh
 - Prefer landing the bump as a normal PR and tagging the **main merge commit** afterwards — tagging a branch commit gets orphaned by squash-merge.
 - Remote/cloud sessions **cannot push tags**: the session git proxy scopes pushes to the designated branch and returns 403 on tag refs. Hand the tag/Release step to the maintainer (GitHub UI "Draft a new release" creates tag + Release in one step).
 - Historical version strings (old CHANGELOG headings, `docs/archive/`, era status markers) stay untouched on a bump; only current-facing markers move.
-- Registry publishing (added at `0.2.0`): `.github/workflows/release.yml` runs on a `v*` tag and covers crates.io, PyPI wheels, and the npm plugin; `release.toml` now carries `publish = true`, and the two binding crates carry `publish = false` in their own manifests. Two packaging traps were live before that and are easy to reintroduce:
+- Registry publishing (added at `0.2.0`): `.github/workflows/release.yml` runs on a `v*` tag and covers crates.io, PyPI wheels, and the npm plugin. `release.toml` carries `publish = false`: ordered registry writes belong to the workflow, not cargo-release. The two binding crates also carry `publish = false` in their own manifests. Two packaging traps were live before that and are easy to reintroduce:
   - **The root `pyproject.toml` is not the one under test.** `scripts/verify.sh python` and CI both build from `crates/agent-guard-python`. The root file lacked `python-source`, so a wheel built from the repo root shipped the native module alone and silently dropped `python/agent_guard/{adapters,langchain,openai}.py`. Both files must stay aligned; build from the crate directory.
   - **`.gitignore` does not constrain maturin.** `maturin develop` writes a `.so` and (on macOS) a ~75MB `.dSYM` tree into `python-source`, so a maintainer who verifies before publishing would ship debug symbols. The `exclude` list in `crates/agent-guard-python/pyproject.toml` is what keeps them out — verify by unzipping the built wheel, not by reading config.
 - The PyPI distribution is **`agent-guard-python`**, not `agent-guard` (taken on PyPI, npm, and crates.io by unrelated projects). The import name stays `agent_guard`.
