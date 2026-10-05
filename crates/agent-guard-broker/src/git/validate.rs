@@ -148,12 +148,22 @@ pub(super) fn validate_trusted_config_snapshot(config: &Path) -> Result<(), GitE
             });
         }
 
-        // `http.extraHeader` is sent on every request. The push transaction's
-        // URL is resolved from the agent-controlled repository config, and the
-        // preview contacts it before a human approves, so an unconditional
-        // header would carry its credential to an agent-chosen host. Require it
-        // to be URL-scoped (`http.<url>.extraHeader`), which Git only applies to
-        // a matching destination.
+        // Reject generic and URL-scoped redirect settings, including `false`,
+        // so this behavior is owned by the broker rather than by deployment
+        // configuration. A scoped key can outrank a generic command-line key.
+        if lower.starts_with("http.") && lower.ends_with(".followredirects") {
+            return Err(GitError::UnsafeConfig {
+                detail: format!(
+                    "key {name:?} is not allowed: the broker disables HTTP redirects to keep \
+                     requests and scoped headers at the resolved destination"
+                ),
+            });
+        }
+
+        // An unconditional header would carry its credential to any
+        // repository-chosen URL even during the preview, before approval.
+        // Require a URL scope for the initial request, and separately disable
+        // redirects so Git cannot forward that header to another destination.
         if is_unscoped_http_extra_header(&lower) {
             return Err(GitError::UnsafeConfig {
                 detail: format!(
@@ -167,10 +177,7 @@ pub(super) fn validate_trusted_config_snapshot(config: &Path) -> Result<(), GitE
     Ok(())
 }
 
-/// Whether a (lowercased) config key is an `http.extraHeader` with no URL
-/// subsection. `http.extraheader` has exactly two dot-separated segments;
-/// a scoped key (`http.https://host/.extraheader`) carries the URL between
-/// them.
+/// A scoped key carries its URL between `http.` and `.extraheader`.
 fn is_unscoped_http_extra_header(lower_name: &str) -> bool {
     lower_name == "http.extraheader"
 }
@@ -240,7 +247,7 @@ mod tests {
         let unscoped = dir.path().join("unscoped.gitconfig");
         std::fs::write(
             &unscoped,
-            b"[http]\n\textraHeader = Authorization: Bearer secret\n",
+            b"[http]\n\textraHeader = X-Agent-Guard-Test: public-canary\n",
         )
         .expect("write");
         let error = validate_trusted_config_snapshot(&unscoped).expect_err("unscoped header");
@@ -252,7 +259,7 @@ mod tests {
         let scoped = dir.path().join("scoped.gitconfig");
         std::fs::write(
             &scoped,
-            b"[http \"https://approved.invalid/\"]\n\textraHeader = Authorization: Bearer secret\n",
+            b"[http \"https://approved.invalid/\"]\n\textraHeader = X-Agent-Guard-Test: public-canary\n",
         )
         .expect("write");
         assert!(
@@ -260,7 +267,6 @@ mod tests {
             "a URL-scoped header must be accepted"
         );
 
-        // Ordinary credential/transport settings are unaffected.
         let ordinary = dir.path().join("ordinary.gitconfig");
         std::fs::write(
             &ordinary,
@@ -271,14 +277,29 @@ mod tests {
     }
 
     #[test]
+    fn trusted_config_cannot_override_redirect_refusal() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        for body in [
+            "[http]\n\tfollowRedirects = true\n",
+            "[http]\n\tfollowRedirects = initial\n",
+            "[http \"https://approved.invalid/\"]\n\tfollowRedirects = true\n",
+            "[http \"https://approved.invalid/\"]\n\tfollowRedirects = false\n",
+        ] {
+            let config = dir.path().join("redirect.gitconfig");
+            std::fs::write(&config, body).expect("write");
+            let error = validate_trusted_config_snapshot(&config).expect_err(body);
+            assert!(
+                error.to_string().contains("broker disables HTTP redirects"),
+                "{error}"
+            );
+        }
+    }
+
+    #[test]
     fn non_ascii_and_control_characters_in_the_url_are_refused() {
         for refused in [
-            // A right-to-left override could make the previewed URL read as a
-            // different host than Git contacts.
             "https://evil.invalid/\u{202e}repo.git",
-            // A Cyrillic homoglyph host that looks like "example".
             "https://\u{0435}xample.invalid/repo.git",
-            // Embedded newline / tab / space.
             "https://example.invalid/\nrepo.git",
             "https://example.invalid/\trepo.git",
             "https://example.invalid/ repo.git",

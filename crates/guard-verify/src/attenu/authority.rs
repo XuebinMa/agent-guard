@@ -11,8 +11,16 @@ use std::collections::{HashMap, HashSet};
 #[derive(Clone, Default)]
 pub struct Authority {
     scopes: Vec<String>,
-    constraints: HashMap<String, Constraint>,
+    constraints: HashMap<String, BoundConstraint>,
     ttl: Option<i64>,
+}
+
+#[derive(Clone)]
+struct BoundConstraint {
+    // The type and selector are part of the bound, not commentary. A smaller
+    // limit on a different field/scope does not retain the parent's ceiling.
+    identity: Value,
+    limit: Constraint,
 }
 
 #[derive(Clone)]
@@ -89,7 +97,9 @@ impl Authority {
         }
         for (key, parent_constraint) in &self.constraints {
             match child.constraints.get(key) {
-                Some(child_constraint) if parent_constraint.contains(child_constraint) => {}
+                Some(child_constraint)
+                    if parent_constraint.identity == child_constraint.identity
+                        && parent_constraint.limit.contains(&child_constraint.limit) => {}
                 _ => return false,
             }
         }
@@ -120,7 +130,7 @@ impl Constraint {
     }
 }
 
-fn parse_constraint(value: &Value) -> Result<(String, Constraint), ()> {
+fn parse_constraint(value: &Value) -> Result<(String, BoundConstraint), ()> {
     let object = value.as_object().ok_or(())?;
     let key = object
         .get("key")
@@ -205,7 +215,25 @@ fn parse_constraint(value: &Value) -> Result<(String, Constraint), ()> {
         }
         None => Constraint::Opaque(value.clone()),
     };
-    Ok((key, parsed))
+    let mut identity = object.clone();
+    let limit_member = match &parsed {
+        Constraint::Max(_) => Some("max"),
+        Constraint::Rank(_) => Some("rank"),
+        Constraint::Allow(_) => Some("one_of"),
+        Constraint::Deny(_) => Some("not_one_of"),
+        Constraint::Prefix(_) => Some("prefix"),
+        Constraint::Opaque(_) => None,
+    };
+    if let Some(member) = limit_member {
+        identity.remove(member);
+    }
+    Ok((
+        key,
+        BoundConstraint {
+            identity: Value::Object(identity),
+            limit: parsed,
+        },
+    ))
 }
 
 fn exact_members<'a>(actual: impl Iterator<Item = &'a str>, allowed: &[&str]) -> Result<(), ()> {

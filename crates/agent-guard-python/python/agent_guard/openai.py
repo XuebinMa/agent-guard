@@ -1,14 +1,18 @@
+import inspect
 from typing import Any, Callable, Optional
 
 from ._agent_guard import Guard
 from .adapters import (
     build_security_error,
     dispatch_via_run,
+    dispatch_via_run_async,
     ensure_verified_policy,
     handle_execute_result,
     has_runtime_api,
     prepare_payload,
     resolve_mode,
+    run_check_async,
+    run_execute_async,
 )
 
 
@@ -42,6 +46,10 @@ def wrap_openai_tool(
       ``Guard.report_handoff_result`` to close the audit loop. When the binding
       does not expose ``run`` (older builds), ``auto`` for non-shell tools
       degrades to ``check`` semantics.
+
+    Coroutine handlers return an async wrapper. If a synchronous handler
+    returns an awaitable on a handoff, its terminal report waits until that
+    awaitable completes instead of reporting its creation as success.
     """
     if not callable(handler):
         raise TypeError("wrap_openai_tool requires a callable handler")
@@ -56,6 +64,39 @@ def wrap_openai_tool(
         "actor": actor,
         "trust_level": trust_level,
     }
+
+    if inspect.iscoroutinefunction(handler) or inspect.iscoroutinefunction(
+        getattr(handler, "__call__", None)
+    ):
+        async def wrapped_async(input_data: Any, *args, **kwargs):
+            payload = payload_mapper(input_data) if callable(payload_mapper) else prepare_payload(tool, input_data)
+            if resolved_mode == "enforce":
+                result = await run_execute_async(
+                    guard, tool=tool, payload=payload, guard_options=guard_options
+                )
+                return handle_execute_result(
+                    result, result_mapper=result_mapper, original_input=input_data
+                )
+            if resolved_mode == "run":
+                return await dispatch_via_run_async(
+                    guard,
+                    tool=tool,
+                    payload=payload,
+                    guard_options=guard_options,
+                    handler=handler,
+                    handler_args=(input_data, *args),
+                    handler_kwargs=kwargs,
+                    async_handler=handler,
+                )
+            decision = await run_check_async(
+                guard, tool=tool, payload=payload, guard_options=guard_options
+            )
+            if decision.outcome != "allow":
+                raise build_security_error(decision)
+            ensure_verified_policy(decision)
+            return await handler(input_data, *args, **kwargs)
+
+        return wrapped_async
 
     def wrapped(input_data: Any, *args, **kwargs):
         payload = payload_mapper(input_data) if callable(payload_mapper) else prepare_payload(tool, input_data)

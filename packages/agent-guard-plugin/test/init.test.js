@@ -4,6 +4,8 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
+const os = require('node:os');
+const { spawnSync } = require('node:child_process');
 
 const {
   BINARIES,
@@ -18,6 +20,40 @@ const { hasExactVersion, installOne } = require('../bin/cli.js');
 const PACKAGE_VERSION = require('../package.json').version;
 
 const CMD = 'guard-hook check --policy /home/u/.claude/agent-guard/policy.yaml --agent-id claude-code';
+
+test('failed exact-version installation cannot register a stale PATH fallback', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'agent-guard-install-fixture-'));
+  try {
+    const settings = path.join(root, 'settings.json');
+    const original = '{"fixture":"unchanged"}\n';
+    fs.writeFileSync(settings, original);
+    const preload = path.join(root, 'preload.cjs');
+    fs.writeFileSync(preload, `
+      const fs = require('node:fs');
+      require('node:os').homedir = () => ${JSON.stringify(root)};
+      const access = fs.accessSync;
+      fs.accessSync = (candidate, mode) => {
+        if (/[/\\\\](guard-hook|agent-guard)(\\.exe)?$/.test(candidate)) return;
+        return access(candidate, mode);
+      };
+      require('node:child_process').spawnSync = (command, args) => {
+        if (command === 'cargo') return { status: args[0] === '--version' ? 0 : 1, stdout: '' };
+        const bin = command.includes('guard-hook') ? 'guard-hook' : 'agent-guard';
+        return { status: 0, stdout: bin + ' 0.0.0\\n' };
+      };
+    `);
+    for (const flags of [[], ['--binary-only']]) {
+      const result = spawnSync(process.execPath, ['--require', preload,
+        path.join(__dirname, '..', 'bin', 'cli.js'), 'init', '--settings', settings, ...flags],
+        { encoding: 'utf8', timeout: 5000 });
+      assert.notEqual(result.status, 0, result.stdout);
+      assert.equal(fs.readFileSync(settings, 'utf8'), original);
+      assert.equal(fs.existsSync(path.join(root, '.claude', 'agent-guard', 'policy.yaml')), false);
+    }
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
 
 test('withHook adds the gate to empty settings without losing the shape', () => {
   const out = withHook({}, CMD);

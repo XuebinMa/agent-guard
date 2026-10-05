@@ -13,6 +13,7 @@ mod guard_git_preview;
 mod guard_helpers;
 mod guard_lifecycle;
 mod handoff;
+mod jsonl_file;
 pub mod metrics;
 pub mod policy_signing;
 pub mod provenance;

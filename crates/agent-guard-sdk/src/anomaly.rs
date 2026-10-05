@@ -170,6 +170,20 @@ impl AnomalyDetector {
 
     /// Check whether a call is anomalous, or the actor is already locked.
     pub fn check(&self, actor: &str, config: &AnomalyConfig) -> AnomalyVerdict {
+        self.check_subject(actor, config, true)
+    }
+
+    /// Revalidate a pending call without counting its original observation twice.
+    pub(crate) fn recheck(&self, actor: &str, config: &AnomalyConfig) -> AnomalyVerdict {
+        self.check_subject(actor, config, false)
+    }
+
+    fn check_subject(
+        &self,
+        actor: &str,
+        config: &AnomalyConfig,
+        record_call: bool,
+    ) -> AnomalyVerdict {
         if !config.enabled {
             return AnomalyVerdict::normal();
         }
@@ -206,10 +220,13 @@ impl AnomalyDetector {
 
         // 1. Rate limit.
         let call_window = Duration::from_secs(config.rate_limit.window_seconds);
-        let call_cutoff = now - call_window;
-        state.call_history.retain(|o| o.at > call_cutoff);
-        state.call_history.push_back(observation);
-        cap_history(&mut state.call_history, &mut state.calls_truncated);
+        state
+            .call_history
+            .retain(|o| now.saturating_duration_since(o.at) < call_window);
+        if record_call {
+            state.call_history.push_back(observation);
+            cap_history(&mut state.call_history, &mut state.calls_truncated);
+        }
 
         if state.call_history.len() > config.rate_limit.max_calls {
             tracing::warn!(
@@ -233,8 +250,9 @@ impl AnomalyDetector {
         //    last check.
         if config.deny_fuse.enabled {
             let fuse_window = Duration::from_secs(config.deny_fuse.window_seconds);
-            let fuse_cutoff = now - fuse_window;
-            state.denial_history.retain(|o| o.at > fuse_cutoff);
+            state
+                .denial_history
+                .retain(|o| now.saturating_duration_since(o.at) < fuse_window);
 
             if state.denial_history.len() >= config.deny_fuse.threshold {
                 tracing::error!(
@@ -300,8 +318,9 @@ impl AnomalyDetector {
         cap_history(&mut state.denial_history, &mut state.denials_truncated);
 
         let fuse_window = Duration::from_secs(config.deny_fuse.window_seconds);
-        let fuse_cutoff = now - fuse_window;
-        state.denial_history.retain(|o| o.at > fuse_cutoff);
+        state
+            .denial_history
+            .retain(|o| now.saturating_duration_since(o.at) < fuse_window);
 
         if state.denial_history.len() >= config.deny_fuse.threshold {
             tracing::error!(
@@ -383,6 +402,37 @@ fn evict_oldest_unlocked(states: &mut HashMap<String, ActorState>) -> bool {
 mod tests {
     use super::*;
     use agent_guard_core::{AnomalyConfig, DenyFuseConfig, RateLimitConfig};
+
+    #[test]
+    fn unrepresentable_windows_in_direct_config_never_panic_or_disable_limits() {
+        let detector = AnomalyDetector::new();
+        let config = AnomalyConfig {
+            enabled: true,
+            rate_limit: RateLimitConfig {
+                window_seconds: u64::MAX,
+                max_calls: 1,
+            },
+            deny_fuse: DenyFuseConfig {
+                enabled: true,
+                threshold: 1,
+                window_seconds: u64::MAX,
+            },
+        };
+
+        assert_eq!(
+            detector.check("rate-subject", &config).status,
+            AnomalyStatus::Normal
+        );
+        assert_eq!(
+            detector.check("rate-subject", &config).status,
+            AnomalyStatus::RateLimited
+        );
+        detector.report_denial("deny-subject", &config);
+        assert_eq!(
+            detector.check("deny-subject", &config).status,
+            AnomalyStatus::Locked
+        );
+    }
 
     #[test]
     fn test_rate_limiting() {

@@ -291,34 +291,32 @@ fn only_the_shapes_the_broker_performs_report_executable() {
     assert!(!RefUpdateKind::UpToDate.is_executable());
 }
 
-/// `ls-remote` matches its ref argument as a pattern that also matches on a
-/// `/`-boundary suffix, so a sibling ref such as `refs/pr/refs/heads/main` is
-/// returned alongside `refs/heads/main` and, being sorted first, used to be the
-/// line whose OID was read. Resolution must select the exact branch ref, so the
-/// preview and the lease describe the branch actually being pushed.
+/// `ls-remote` also matches a ref pattern on a `/`-boundary suffix. The
+/// decoy must sort before the exact branch so the original first-line parser
+/// fails, rather than accidentally selecting the correct branch.
 #[test]
 fn remote_oid_is_read_from_the_exact_branch_ref_not_a_suffix_match() {
     let (_dir, work, _remote) = repo_with_remote();
     let branch_tip = git(&work, &["rev-parse", "main"]);
 
-    // Create a decoy commit and publish it under a ref whose tail is
-    // `refs/heads/main` and whose name sorts before it.
-    std::fs::write(work.join("file.txt"), "decoy").expect("write");
-    git(&work, &["add", "."]);
-    git(&work, &["commit", "-m", "decoy"]);
-    let decoy = git(&work, &["rev-parse", "HEAD"]);
+    let decoy = commit(&work, "decoy");
     assert_ne!(decoy, branch_tip);
-    git(&work, &["update-ref", "refs/pr/refs/heads/main", &decoy]);
+    git(&work, &["update-ref", "refs/aaa/refs/heads/main", &decoy]);
     git(
         &work,
         &[
             "push",
             "origin",
-            "refs/pr/refs/heads/main:refs/pr/refs/heads/main",
+            "refs/aaa/refs/heads/main:refs/aaa/refs/heads/main",
         ],
     );
-    // Put the working branch back on the shared tip so the push is a real one.
     git(&work, &["reset", "--hard", &branch_tip]);
+    let listing = git(&work, &["ls-remote", "origin", "refs/heads/main"]);
+    assert_eq!(
+        listing.lines().next().unwrap().split_whitespace().nth(1),
+        Some("refs/aaa/refs/heads/main"),
+        "fixture must put the decoy before the exact branch"
+    );
 
     let tx = broker()
         .resolve_push_transaction(&work, "origin", "main")
@@ -329,4 +327,27 @@ fn remote_oid_is_read_from_the_exact_branch_ref_not_a_suffix_match() {
         Some(branch_tip.as_str()),
         "the exact branch ref's OID must be used, not a suffix-matching ref's"
     );
+}
+
+#[test]
+fn a_suffix_matching_decoy_does_not_make_a_missing_branch_an_update() {
+    let (_dir, work, _remote) = repo_with_remote();
+    git(&work, &["checkout", "-b", "feature"]);
+    let head = commit(&work, "new feature");
+    git(&work, &["update-ref", "refs/aaa/refs/heads/feature", &head]);
+    git(
+        &work,
+        &[
+            "push",
+            "origin",
+            "refs/aaa/refs/heads/feature:refs/aaa/refs/heads/feature",
+        ],
+    );
+
+    let tx = broker()
+        .resolve_push_transaction(&work, "origin", "feature")
+        .expect("resolve");
+
+    assert_eq!(tx.remote_oid, None, "the exact remote branch is absent");
+    assert_eq!(tx.kind, RefUpdateKind::Create);
 }

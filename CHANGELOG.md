@@ -9,6 +9,67 @@ The `[Unreleased]` heading is rolled forward manually before each release; do no
 
 ## [Unreleased]
 
+### Security
+- Broker CLI confirmation now reloads the policy and refuses changed or unreadable
+  policy files before issuing a push grant. Pending SDK approvals recheck the
+  current subject's Deny Fuse and rate limit without counting the request twice.
+- Restricted shell validation rejects ambiguous ANSI-C NUL/non-ASCII escape
+  decoding and models `sed` in-place destinations, including attached backup
+  suffixes and expressions appearing after filenames. Secondary sed I/O,
+  execution, external scripts, and unmodeled syntax fail closed. **Correction:**
+  the sed destination fix claimed in GHSA-j64p-f672-v3jq is incomplete in 0.2.6;
+  this unreleased patch closes the reproduced cases. A follow-up release and
+  advisory correction are still required.
+- `CustomToolId` deserialization now enforces the same validation as construction.
+  Anomaly window configuration cannot panic monotonic clock arithmetic.
+- Unix output capture can be cancelled at its deadline even when another writer
+  holds an output pipe open. This does not add cgroup-level process containment.
+- Cooperating approval/audit JSONL writers lock complete frames, and approval
+  readers take a shared lock. This prevents concurrent framing corruption, not
+  malicious same-permission edits or crash/disk-full recovery guarantees.
+- Python wrappers report awaitables only after completion; synchronous handoff
+  workers report their actual outcome even if their asyncio waiter is cancelled.
+  Blocking native Guard calls release the GIL so other Python tasks can progress.
+- Attenu verification preserves a constraint's type and field/scope selector,
+  and rejects malformed signed observation objects. The latter uses the local
+  `envelope_invalid_observation` reason outside the pinned upstream vocabulary;
+  upstream fixture bytes remain unchanged.
+- Lockfile-only updates move `anyhow` to 1.0.103 and `event-listener` to 5.4.2,
+  addressing RustSec's reported unsoundness warnings in the resolved dependency
+  graph. No unrelated dependency versions were advanced.
+- Node LangChain `ToolCall` envelopes are checked against their actual `args`,
+  before the framework's single-use transition ticket skips nested entry points.
+  Bare and enveloped forms now receive the same policy decision.
+- Plugin setup aborts before modifying policy/settings when exact-version binary
+  installation fails; it cannot fall back to an unverified stale PATH binary.
+  The explicit `--skip-binary` opt-out and no-write `--dry-run` remain available.
+- Git outbound recognition models abbreviated destructive flags, pruning,
+  command-line config and aliases without losing inherited config or weakening
+  decisions through unmodeled shell-argument forwarding. Quoted declarations
+  and opaque environment-provided Git config cannot silently hide an update.
+- Restricted-mode path checks refuse brace expansion and dot-glob components
+  that can become a parent directory. Read-only commands reject program-valued
+  environment, opaque ripgrep config and executable ripgrep options, while
+  interpreting option values and `--` before search operands.
+- Broker remote lookup selects the exact branch ref. Approval URLs must be
+  printable ASCII; credential headers require an explicit URL scope and
+  broker HTTP redirects are disabled. Grants use strict raw IDs, private
+  permissions and atomic writes.
+
+### Changed
+- Restricted-mode sed support is deliberately bounded: ordinary inline
+  substitutions and common in-place forms are supported, but external script
+  files and unmodeled scripts/options now require a trusted alternative. ANSI-C
+  byte/Unicode escapes outside ASCII are refused rather than guessed across
+  shell locales. See the [defensive review](docs/security-review-2026-10-04.md)
+  for test evidence, compatibility costs, and remaining platform limitations.
+- Broker URLs containing non-ASCII text and unscoped `http.extraHeader` settings
+  now fail closed. Use an ASCII URL and a header scoped to its HTTPS destination;
+  HTTP endpoints requiring redirection need their final URL configured directly.
+  Dynamic shell aliases whose forwarding cannot be modeled require a direct
+  controlled Git command or another trusted host execution path. Read-only
+  ripgrep accepts modeled search options; unknown options fail closed.
+
 ## [0.2.6] - 2026-10-03
 
 ### Changed

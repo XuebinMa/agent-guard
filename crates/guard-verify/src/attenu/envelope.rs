@@ -258,6 +258,13 @@ fn judge(
         report("envelope_unknown_member", failures);
     }
 
+    // Local fail-closed extension to the pinned v1 corpus: a valid signature
+    // cannot turn an absent/ill-typed observation into understood evidence.
+    // The v1 corpus has no named reason/vector for this shape yet.
+    if !valid_observation(envelope.get("observed")) {
+        report("envelope_invalid_observation", failures);
+    }
+
     if !subject_matches(envelope, entries, found) {
         report("envelope_subject_mismatch", failures);
     }
@@ -323,6 +330,19 @@ fn judge(
     }
 
     preimage
+}
+
+fn valid_observation(observed: Option<&Value>) -> bool {
+    let Some(observed) = observed.and_then(Value::as_object) else {
+        return false;
+    };
+    matches!(
+        observed.get("result").and_then(Value::as_str),
+        Some("matched" | "not_matched" | "indeterminate")
+    ) && ["at", "method"].iter().all(|key| match observed.get(*key) {
+        Some(value) => value.is_string(),
+        None => true,
+    })
 }
 
 fn has_unknown_member(value: &Value, allowed: &[&str]) -> bool {

@@ -189,12 +189,9 @@ fn resolve_remote_oid(
         return Ok(None);
     };
 
-    // `ls-remote` treats the ref argument as a pattern that also matches on a
-    // `/`-boundary suffix, so `refs/heads/main` also matches
-    // `refs/elsewhere/refs/heads/main`, and the listing can hold several lines
-    // in sorted order. Taking the first line could therefore read the OID of a
-    // different ref than the branch being pushed, corrupting the preview and the
-    // lease. Select the line whose ref name is exactly the branch.
+    // `ls-remote` also matches on a `/`-boundary suffix, so another ref can
+    // appear before the branch. Only an exact ref name describes the approved
+    // branch's remote tip and the lease that will protect its update.
     for line in listing.lines() {
         let mut fields = line.split_whitespace();
         let oid = fields.next();
@@ -208,8 +205,7 @@ fn resolve_remote_oid(
         }
     }
 
-    // Any matches were only suffix matches of other refs; the remote does not
-    // hold this branch.
+    // Any matches were only suffix matches of other refs, not this branch.
     Ok(None)
 }
 

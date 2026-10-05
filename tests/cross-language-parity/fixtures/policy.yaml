@@ -10,6 +10,7 @@ tools:
       - prefix: "rm -rf"
       - prefix: "sudo"
       - regex: "curl\\s+.*\\|\\s*bash"
+      - regex: "^git push --(force|force-with-lease|mirror|delete)$"
     ask:
       - prefix: "git push"
     allow:

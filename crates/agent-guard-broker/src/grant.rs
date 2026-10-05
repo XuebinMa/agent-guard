@@ -176,7 +176,7 @@ fn write_grant_file(path: &Path, body: &[u8]) -> Result<(), GrantError> {
     Ok(())
 }
 
-/// Best-effort tightening of the grant directory to the issuing user only.
+/// Tighten the grant directory to the issuing user only.
 #[cfg(unix)]
 fn restrict_directory(dir: &Path) -> Result<(), GrantError> {
     use std::os::unix::fs::PermissionsExt;

@@ -222,12 +222,32 @@ fn matches_escape_glob(candidate: &str, escape_paths: &[String]) -> bool {
 }
 
 pub fn validate_sed(command: &str, mode: PermissionMode) -> ValidationResult {
-    if mode == PermissionMode::ReadOnly
-        && (command.contains("-i") || command.contains("--in-place"))
-    {
-        return ValidationResult::Block {
-            reason: "Sed in-place editing is not allowed in read-only mode".to_string(),
-        };
+    if matches!(
+        mode,
+        PermissionMode::ReadOnly | PermissionMode::WorkspaceWrite
+    ) {
+        for argv in resolved_argvs(command) {
+            let argv = unwrap_command_wrappers(&argv);
+            let Some(name) = argv.first() else {
+                continue;
+            };
+            if command_name(name) != "sed" {
+                continue;
+            }
+            match super::sed::parse(&argv[1..]) {
+                Ok(invocation) if mode == PermissionMode::ReadOnly && invocation.in_place => {
+                    return ValidationResult::Block {
+                        reason: "Sed in-place editing is not allowed in read-only mode".to_string(),
+                    };
+                }
+                Err(reason) => {
+                    return ValidationResult::Block {
+                        reason: reason.to_string(),
+                    }
+                }
+                Ok(_) => {}
+            }
+        }
     }
     ValidationResult::Allow
 }
@@ -399,6 +419,14 @@ fn write_targets_for_segment(segment: &[String]) -> Vec<(String, TargetKind)> {
             );
         }
         "truncate" => targets.extend(truncate_write_targets(args)),
+        "sed" => {
+            let args: Vec<String> = args.iter().map(|arg| (*arg).clone()).collect();
+            match super::sed::parse(&args) {
+                Ok(invocation) if invocation.in_place => targets.extend(invocation.files),
+                Ok(_) => {}
+                Err(_) => targets.push(UNVERIFIABLE_WRAPPER_TARGET.to_string()),
+            }
+        }
         "mv" | "cp" | "install" => {
             // GNU coreutils `-t DEST` / `--target-directory=DEST` write into DEST,
             // not the trailing positional — closes the `cp -t /etc/cron.d payload`

@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::path::Path;
+use std::time::{Duration, Instant};
 
 use evalexpr::{context_map, Node};
 use regex::Regex;
@@ -634,6 +635,14 @@ fn validate_policy_configuration(policy: &PolicyFile) -> Result<(), PolicyError>
         if value == 0 {
             return Err(PolicyError::ParseError(format!(
                 "{field} must be greater than zero"
+            )));
+        }
+        if Instant::now()
+            .checked_sub(Duration::from_secs(value))
+            .is_none()
+        {
+            return Err(PolicyError::ParseError(format!(
+                "{field} exceeds the supported monotonic clock range"
             )));
         }
     }

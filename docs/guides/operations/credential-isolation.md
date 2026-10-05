@@ -75,7 +75,7 @@ settings in this file. Includes, URL rewrites, remote definitions, protocol
 overrides, hooks and arbitrary `core.*` commands are rejected.
 
 If you authenticate with an `http.extraHeader` (for example a bearer token),
-scope it to the destination host rather than setting it unconditionally:
+scope it to an explicit HTTPS destination rather than setting it unconditionally:
 
 ```ini
 [http "https://github.com/"]
@@ -85,7 +85,17 @@ scope it to the destination host rather than setting it unconditionally:
 The push URL is resolved from the repository, which the agent can edit, and the
 preview contacts that URL before you approve. An unscoped `http.extraHeader`
 would be sent to whatever host the repository names, so the broker rejects it
-and only accepts the URL-scoped form, which Git sends to a matching host alone.
+and requires a URL-scoped form. The broker also disables HTTP
+redirects and rejects `http.followRedirects` overrides, including URL-scoped
+ones: a custom credential header can otherwise follow a redirect even though
+its original URL matched the scope. Configure the final URL directly when a
+service uses redirects. These constraints apply to preview and push alike.
+
+The [broker boundary tests](../../../crates/agent-guard-broker/tests/security_boundary.rs),
+[transaction tests](../../../crates/agent-guard-broker/tests/transaction.rs),
+and [sanitized-command regressions](../../../crates/agent-guard-broker/src/git/command.rs)
+check the isolated execution path, exact remote-ref selection, and redirect
+refusal. The redirect test uses loopback endpoints and a public dummy header.
 
 You then run `agent-guard push` on the host, against the same repository, where
 your credential is. The repository supplies data only: the broker does not run

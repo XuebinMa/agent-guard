@@ -200,7 +200,7 @@ fn a_grant_id_cannot_escape_the_grant_directory() {
 fn grant_ids_with_separators_or_dot_names_are_refused() {
     let dir = tempfile::tempdir().expect("tempdir");
     let tx = transaction("cccc");
-    for bad in ["a/", "a/.", "sub/id", ".", "..", "", "a b", "idü "] {
+    for bad in ["a/", "a/.", "sub/id", "a\\id", ".", "..", "", "a b", "idü"] {
         let result = spend_grant(dir.path(), bad, &tx, "policy-hash-1", Utc::now());
         assert!(
             matches!(result, Err(GrantError::InvalidId { .. })),
@@ -215,6 +215,8 @@ fn an_issued_grant_is_not_world_readable() {
     use std::os::unix::fs::PermissionsExt;
 
     let dir = tempfile::tempdir().expect("tempdir");
+    std::fs::set_permissions(dir.path(), std::fs::Permissions::from_mode(0o755))
+        .expect("start with a permissive grant directory");
     let tx = transaction("dddd");
     let id = issue_grant(
         dir.path(),

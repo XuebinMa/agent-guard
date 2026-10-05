@@ -20,9 +20,8 @@ pub fn validate_read_only(command: &str, mode: PermissionMode) -> ValidationResu
 
     // Token-prefix scan for dangerous env-var assignments. Runs over the
     // post-quote-strip tokens, so quoting tricks (`L'D'_PRELOAD=...`) are
-    // caught and benign filename matches are not. This also sees the
-    // `env NAME=value cmd` form, where the assignment is an argument to `env`
-    // rather than a shell variable_assignment node.
+    // caught and benign filename matches are not. This also covers `env`
+    // assignments, which are arguments rather than variable_assignment nodes.
     for token in &parts {
         for &prefix in DANGEROUS_ENV_VAR_PREFIXES {
             if token.starts_with(prefix) {
@@ -38,24 +37,20 @@ pub fn validate_read_only(command: &str, mode: PermissionMode) -> ValidationResu
             if is_code_execution_env_var(name) {
                 return ValidationResult::Block {
                     reason: format!(
-                        "Environment variable {name} names a program a later command would \
-                         execute and is not allowed in read-only mode"
+                        "Environment variable {name} can configure an uninspected program and is not allowed in read-only mode"
                     ),
                 };
             }
         }
     }
 
-    // The raw-token scan above misses assignments that only the grammar
-    // recovers: `export NAME=...`, a statement-level `NAME=...;`, and the
-    // `${NAME:=value}` default-assignment form. Consult the parsed environment
-    // writes so those spellings cannot reach a code-execution variable either.
+    // Declaration arguments and parameter assignments are recovered from the
+    // grammar as well: they need not occur in an ordinary command argv.
     for write in environment_writes(command) {
         if is_code_execution_env_var(&write.name) {
             return ValidationResult::Block {
                 reason: format!(
-                    "Environment variable {} names a program a later command would \
-                     execute and is not allowed in read-only mode",
+                    "Environment variable {} can configure an uninspected program and is not allowed in read-only mode",
                     write.name
                 ),
             };
@@ -99,6 +94,29 @@ fn check_command_segment(parts: &[String]) -> Option<ValidationResult> {
         return None;
     }
 
+    // The grammar has decoded quotes and ANSI-C words here. Only the removed
+    // wrapper prefix carries environment assignments; the real command's
+    // operands may contain identical literal data (for example in `echo`).
+    let unwrapped = unwrap_command_wrappers(parts);
+    // `find -exec` may truncate the child at its terminator, so the returned
+    // slice is not necessarily a suffix. Locate its start rather than infer
+    // the prefix from the two slice lengths.
+    let prefix_len = parts
+        .iter()
+        .position(|token| std::ptr::eq(token, unwrapped.as_ptr()))
+        .unwrap_or(parts.len());
+    for token in &parts[..prefix_len] {
+        if let Some((name, _)) = token.split_once('=') {
+            if is_code_execution_env_var(name) {
+                return Some(ValidationResult::Block {
+                    reason: format!(
+                        "Environment variable {name} can configure an uninspected program and is not allowed in read-only mode"
+                    ),
+                });
+            }
+        }
+    }
+
     // Detect process substitution (CWE-78) over the full, un-unwrapped segment.
     for part in parts {
         if part.contains("<(") || part.contains(">(") {
@@ -113,7 +131,7 @@ fn check_command_segment(parts: &[String]) -> Option<ValidationResult> {
     // or operand — drives the checks below. Without this, `sudo -u root rm`,
     // `env FOO=1 rm`, or `FOO=1 rm` hid the destructive command from this gate
     // (audit 2026-05-18 / 2026-05-19 / 2026-06-08).
-    let parts = unwrap_command_wrappers(parts);
+    let parts = unwrapped;
     let first_command = command_name(parts.first()?);
 
     if first_command == "git" {
@@ -164,44 +182,23 @@ fn check_command_segment(parts: &[String]) -> Option<ValidationResult> {
     }
 
     if first_command == "sed" {
-        if parts
-            .iter()
-            .any(|p| p == "-i" || p.starts_with("--in-place"))
-        {
-            return Some(ValidationResult::Block {
+        return match super::sed::parse(&parts[1..]) {
+            Ok(invocation) if invocation.in_place => Some(ValidationResult::Block {
                 reason: "Sed in-place editing is not allowed in read-only mode".to_string(),
-            });
-        }
-        // A script read from a file is opaque executable text, exactly like
-        // `python3 script.py`: it may carry `w`/`e`/`r` commands that write,
-        // execute, or read outside the workspace, so it cannot be proven
-        // read-only.
-        if parts
-            .iter()
-            .any(|p| p == "-f" || p == "--file" || p.starts_with("--file="))
-        {
-            return Some(ValidationResult::Block {
-                reason: "Sed with a script file (-f) cannot be proven read-only".to_string(),
-            });
-        }
-        return None;
+            }),
+            Ok(_) => None,
+            Err(reason) => Some(ValidationResult::Block {
+                reason: reason.to_string(),
+            }),
+        };
     }
 
     if first_command == "rg" || first_command == "ripgrep" {
-        // `--pre` runs a preprocessor program for every searched file, and
-        // `--hostname-bin` runs a program to resolve the hostname. Either turns
-        // an allow-listed search into arbitrary execution.
-        if parts.iter().any(|p| {
-            matches!(p.as_str(), "--pre" | "--hostname-bin")
-                || p.starts_with("--pre=")
-                || p.starts_with("--hostname-bin=")
-        }) {
-            return Some(ValidationResult::Block {
-                reason: "ripgrep is invoked with a flag that runs an external program and is not allowed in read-only mode"
-                    .to_string(),
+        return super::ripgrep::validate_arguments(&parts[1..])
+            .err()
+            .map(|reason| ValidationResult::Block {
+                reason: reason.to_string(),
             });
-        }
-        return None;
     }
 
     if first_command == "find" {

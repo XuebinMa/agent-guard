@@ -80,6 +80,8 @@ pub(crate) const CODE_EXECUTION_ENV_VARS: &[&str] = &[
     "VISUAL",
     "GIT_ASKPASS",
     "SSH_ASKPASS",
+    // ripgrep loads arguments from this file, including --pre/--hostname-bin.
+    "RIPGREP_CONFIG_PATH",
 ];
 
 /// Leading segments of environment variable names that inject Git
@@ -99,7 +101,10 @@ pub(crate) const GIT_CONFIG_ENV_PREFIXES: &[&str] = &[
 /// Whether an environment variable `name` can cause command execution in a
 /// subsequent `ReadOnly` command.
 pub(crate) fn is_code_execution_env_var(name: &str) -> bool {
-    CODE_EXECUTION_ENV_VARS.contains(&name)
+    DANGEROUS_ENV_VAR_PREFIXES
+        .iter()
+        .any(|prefix| prefix.strip_suffix('=') == Some(name))
+        || CODE_EXECUTION_ENV_VARS.contains(&name)
         || GIT_CONFIG_ENV_PREFIXES
             .iter()
             .any(|prefix| name == *prefix || name.starts_with(prefix))

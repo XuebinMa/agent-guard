@@ -24,11 +24,11 @@
 //!     decisions; `git send-pack` enters the same authorization path.
 //! 16. Unknown outer commands cannot downgrade embedded Git outbound intent.
 //! 17. Abbreviated options, `--prune`, command-line config and aliases cannot
-//!     downgrade a destructive `git push` to an ordinary one (sec35).
+//!     downgrade a destructive `git push` to an ordinary one (sec37).
 //! 18. Shell brace expansion and dot-globs cannot smuggle a `..` component
-//!     past the workspace path gate (sec36).
+//!     past the workspace path gate (sec38).
 //! 19. Read-only mode refuses environment variables and command flags that
-//!     launch an uninspected program (sec37).
+//!     launch an uninspected program (sec39).
 
 use agent_guard_sdk::{
     guard::{ExecuteOutcome, Guard, RuntimeOutcome},
@@ -1070,11 +1070,10 @@ fn sec34_dynamic_and_unmodeled_write_targets_fail_closed() {
     assert_bash_denied(&readonly_guard(), "project-helper inspect");
 }
 
-// ─── 35. Destructive git push semantics survive Git's own option grammar ──
+// ─── 37. Destructive git push semantics survive Git's own option grammar ──
 
-/// Each destructive push subject is denied on its own, so a form that loses
-/// its destructive classification falls through to the ordinary-push `ask`
-/// and this test fails.
+/// Destructive push subjects are denied; losing every destructive subject
+/// falls through to ordinary-push approval and fails this regression.
 const DESTRUCTIVE_PUSH_POLICY: &str = r#"
 version: 1
 default_mode: workspace_write
@@ -1093,7 +1092,7 @@ anomaly:
 "#;
 
 #[test]
-fn sec35_git_option_abbreviation_config_and_aliases_keep_push_destructive() {
+fn sec37_git_option_abbreviation_config_and_aliases_keep_push_destructive() {
     let g = Guard::from_yaml(DESTRUCTIVE_PUSH_POLICY).expect("guard init");
     for command in [
         // Git accepts unique prefixes of long options.
@@ -1129,10 +1128,10 @@ fn sec35_git_option_abbreviation_config_and_aliases_keep_push_destructive() {
     }
 }
 
-// ─── 36. Shell expansion cannot rewrite a validated target into `..` ──────
+// ─── 38. Shell expansion cannot rewrite a validated target into `..` ──────
 
 #[test]
-fn sec36_brace_expansion_and_dot_globs_cannot_escape_the_workspace() {
+fn sec38_brace_expansion_and_dot_globs_cannot_escape_the_workspace() {
     let g = guard();
     for command in [
         "touch /workspace/.{.,.}/x",
@@ -1146,10 +1145,10 @@ fn sec36_brace_expansion_and_dot_globs_cannot_escape_the_workspace() {
     assert_bash_denied(&readonly_guard(), "cat < /workspace/.?/x");
 }
 
-// ─── 37. Read-only mode cannot be turned into arbitrary execution ──────────
+// ─── 39. Read-only mode cannot be turned into arbitrary execution ──────────
 
 #[test]
-fn sec37_read_only_refuses_program_valued_env_and_exec_flags() {
+fn sec39_read_only_refuses_program_valued_env_and_exec_flags() {
     let g = readonly_guard();
     for command in [
         "GIT_PAGER=evil git -p log",
@@ -1159,6 +1158,14 @@ fn sec37_read_only_refuses_program_valued_env_and_exec_flags() {
         "GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=core.pager GIT_CONFIG_VALUE_0=evil git -p log",
         "rg --pre /tmp/run pattern .",
         "sed -f /tmp/script.sed file",
+        "sed -f/workspace/review.sed /workspace/input",
+        "RIPGREP_CONFIG_PATH=/workspace/review.rgconfig rg pattern src",
+        "export 'RIPGREP_CONFIG_PATH=/workspace/review.rgconfig'; rg pattern src",
+        "rg -e -- --pre /workspace/review-helper src",
+        "rg --regexp -- --hostname-bin /workspace/review-helper src",
+        "env $'GIT_PAGER=review-helper' git -p log",
+        "env $'RIPGREP_CONFIG_PATH=/workspace/review.rgconfig' rg pattern src",
+        "env $'LD_PRELOAD=/workspace/review.so' cat file",
     ] {
         assert_bash_denied(&g, command);
     }
@@ -1173,4 +1180,80 @@ fn sec37_read_only_refuses_program_valued_env_and_exec_flags() {
         matches!(decision, GuardDecision::Allow),
         "an ordinary read-only search must still be allowed, got {decision:?}"
     );
+    for command in ["rg -- --pre src", "rg -- --hostname-bin src"] {
+        let payload = serde_json::json!({ "command": command }).to_string();
+        let decision = g.check_tool(
+            Tool::Bash,
+            &payload,
+            ctx_workspace(std::path::Path::new("/workspace")),
+        );
+        assert!(matches!(decision, GuardDecision::Allow), "{decision:?}");
+    }
+}
+
+// ─── 40. Alias/config recovery cannot weaken a destructive decision ──────
+
+#[test]
+fn sec40_alias_inheritance_argument_forwarding_and_environment_keep_deny() {
+    let g = Guard::from_yaml(DESTRUCTIVE_PUSH_POLICY).expect("guard init");
+    for command in [
+        "git -c remote.origin.mirror=true -c alias.q=push -c 'alias.p=!git q' p origin",
+        "git -c alias.q=r -c alias.r=push -c 'alias.p=!git q' p --force origin main",
+        r#"git -c 'alias.p=!f() { git push "$@"; }; f' p --force origin main"#,
+        "export 'GIT_CONFIG_COUNT=1' 'GIT_CONFIG_KEY_0=remote.origin.mirror' 'GIT_CONFIG_VALUE_0=true'; git push origin",
+        "GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=alias.p GIT_CONFIG_VALUE_0='push --mirror' git p origin",
+    ] {
+        assert_bash_denied(&g, command);
+    }
+}
+
+#[test]
+fn sec35_ansi_c_nul_words_cannot_hide_controlled_commands() {
+    let g = guard();
+    for command in [
+        "$'sh\\0ignored' -c 'printf harmless'",
+        "$'git\\x00ignored' push --force origin main",
+        "git $'push\\000ignored' --force origin main",
+        "$'sh\\400ignored' -c 'printf harmless'",
+        "git $'push\\u0000ignored' --force origin main",
+    ] {
+        assert_bash_denied(&g, command);
+    }
+}
+
+#[test]
+fn sec36_sed_in_place_targets_are_confined_and_read_only_is_preserved() {
+    let g = guard();
+    for command in [
+        "sed -i.bak 's/before/after/' /outside/fixture.txt",
+        "sed -i '' 's/before/after/' /outside/fixture.txt",
+        "sed --in-place=.bak -e 's/before/after/' /outside/fixture.txt",
+        // With -e present, even an operand before the option is a filename.
+        "sed /outside/d -i.bak -e 's/before/after/'",
+    ] {
+        assert_bash_denied(&g, command);
+    }
+    assert_bash_denied(
+        &readonly_guard(),
+        "sed -i.bak 's/before/after/' /workspace/fixture.txt",
+    );
+    for command in [
+        "sed 'w extra.txt' /workspace/fixture.txt",
+        "sed 's/before/after/w extra.txt' /workspace/fixture.txt",
+        "sed -f script.sed /workspace/fixture.txt",
+    ] {
+        assert_bash_denied(&g, command);
+        assert_bash_denied(&readonly_guard(), command);
+    }
+    let payload =
+        serde_json::json!({"command": "sed -i.bak 's/before/after/' /workspace/fixture.txt"})
+            .to_string();
+    assert!(matches!(
+        g.check_tool(
+            Tool::Bash,
+            &payload,
+            ctx_workspace(std::path::Path::new("/workspace"))
+        ),
+        GuardDecision::Allow
+    ));
 }

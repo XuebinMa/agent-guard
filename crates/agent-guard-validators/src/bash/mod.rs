@@ -12,6 +12,8 @@ mod destructive;
 mod git_push;
 mod paths;
 mod read_only;
+mod ripgrep;
+mod sed;
 mod tables;
 mod tokenize;
 mod types;
@@ -191,6 +193,11 @@ pub fn validate_bash_command(
                 return result;
             }
         }
+    }
+
+    let res = validate_sed(command, mode);
+    if res != ValidationResult::Allow {
+        return res;
     }
 
     let res = validate_read_only(command, mode);

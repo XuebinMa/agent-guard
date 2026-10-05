@@ -380,6 +380,23 @@ fn run_push(options: PushCommandOptions) -> i32 {
         return 1;
     }
 
+    // A human may leave the preview open while the host tightens or removes
+    // the policy. Re-read it after confirmation, before issuing any grant.
+    // Comparing the original Guard to itself would never detect that change.
+    let current_guard = match Guard::from_yaml_file(&policy_path) {
+        Ok(current_guard) => current_guard,
+        Err(error) => {
+            eprintln!("agent-guard: policy could not be revalidated: {error}; not pushed");
+            return 1;
+        }
+    };
+    if current_guard.policy_version() != guard.policy_version() {
+        eprintln!(
+            "agent-guard: policy changed during confirmation; review a fresh preview; not pushed"
+        );
+        return 1;
+    }
+
     let grant_dir = grants.unwrap_or_else(default_grant_dir);
     let policy_hash = guard.policy_version();
     let grant = match issue_grant(

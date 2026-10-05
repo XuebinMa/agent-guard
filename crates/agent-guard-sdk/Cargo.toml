@@ -44,6 +44,7 @@ chrono.workspace = true
 cap-std.workspace = true
 ed25519-dalek.workspace = true
 hex.workspace = true
+fs2 = "0.4.3"
 reqwest = { workspace = true, features = ["json", "rustls", "blocking"] }
 
 [dev-dependencies]
