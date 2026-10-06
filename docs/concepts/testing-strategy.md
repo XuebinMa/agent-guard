@@ -206,6 +206,7 @@ the signal, but it is deliberately **not** the whole CI bar.
 | Per-OS sandbox integration (seccomp/Landlock/Seatbelt/JobObject) | Matching-host tests may run; `full` does not run the cross-OS matrix | ✅ (matrix runners; inspect skips) |
 | Cross-language `parity-e2e` comparator | ❌ in `full`; independently runnable after rebuilding all bindings | ✅ |
 | Authenticated local Git/TLS host composition | ❌ in `full`; independently runnable with newly built CLI | ✅ (required dedicated job; not container isolation) |
+| Broker-first native container acceptance | ❌ unless explicitly run on a supported native Linux Docker host | ✅ (required dedicated job; I1–I8 map combines real deployment with broker suites) |
 | `cargo-deny` / `cargo-audit` / SBOM / `npm audit` | ❌ | ✅ |
 | Criterion benches | ❌ | ✅ (non-blocking) |
 

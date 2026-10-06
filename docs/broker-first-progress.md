@@ -17,7 +17,8 @@ reviewer's patch are preserved. Version/publication choices remain separate;
   hook 13/13. Shared parity comparator passed all 70 cases on real freshly built
   Rust/Python/Node bindings.
   No negative Shell strings are executed. Local full/strict lint passed below;
-  exact new-head CI remains pending.
+  first exact-head CI passed all 20 jobs at `c1f9ee1` (run `37523251183`). Later
+  additions require their own head; this is not native P4 evidence.
 - P2 C1–C3: document corrections implemented, including README/ROADMAP and
   durable scope/plan entry links. Recheck docs after the remaining additions.
 - P3 D1–D3: fixed native Linux Docker launcher implemented; 20 configuration,
@@ -31,10 +32,17 @@ reviewer's patch are preserved. Version/publication choices remain separate;
   cleanup, and observer-error semantics. These are host composition, not
   container-isolation proof. Three additional bind checks passed (9/9 suite)
   for the opt-in verified private Docker bridge extension; they use mocked
-  interface metadata, not native containment. Native I1–I8 acceptance is being
-  implemented.
-- P5: reproducible synthetic benchmark and operator fault guide in progress;
-  real user feedback and representative deployment acceptance remain pending.
+  interface metadata, not native containment. Native driver/image and dedicated
+  required Ubuntu job are implemented; 10 driver unit tests passed. Actual
+  Docker has not run locally. Five new actual execution-API lifecycle tests
+  pass without remote contact for missing/expired/inconsistent/consumed records,
+  plus valid local-file push/replay. They complement the existing invariants;
+  real native I1–I8 combined acceptance remains pending the new CI head.
+- P5: bounded synthetic benchmark, 8 method tests and operator fault guide are
+  implemented. Completed 1/8/32 MiB × 2 local runs independently checked refs
+  and unsigned receipts. The method and machine are in the operations guide;
+  no pure-copy, true-peak, cold-cache or large-production claim. Real user
+  feedback and representative deployment operating capacity remain pending.
 - Release: held; no registry/advisory writes authorized by this record.
 
 ## Verification checkpoint
@@ -55,13 +63,24 @@ Strict all-target Clippy against the frozen Rust tree also exited 0:
 `/private/tmp/agent-guard-broker-first-parity.log` (70/70 identical, success).
 Python-specific all-target lint:
 `/private/tmp/agent-guard-broker-first-python-strictlint.log` (exit 0).
-Baseline/new-tree results must not be mixed. No commit, remote PR, merge, tag
-or publication has occurred.
+Baseline/new-tree results must not be mixed. Initial commit `c1f9ee1` is pushed
+as [draft PR #171](https://github.com/XuebinMa/agent-guard/pull/171). Its
+[CI run](https://github.com/XuebinMa/agent-guard/actions/runs/37523251183) has
+20/20 completed/success conclusions. No merge, tag or publication occurred.
 
 The fixture-only bridge extension was introduced after the full Rust run. Its
 new unit tests first failed for the absent API (not a pre-existing vulnerability),
 then all nine host/metadata tests passed:
 `/private/tmp/agent-guard-broker-first-auth-final.log` (exit 0). No production
-Rust source changed after the successful full/parity/strict-lint results.
+Rust behavior changed after the successful full/parity/strict-lint results.
+Broker ordering comments were corrected and five lifecycle regressions added;
+their targeted test/lint exited 0. New native/P5 scripts still need final docs,
+driver and exact new-head CI gates. The initial green run must not be reused.
+
+Final pre-push checks for the native/P5 additions: docs/version/workflow pins
+exit 0 (50 script tests, 77 scanned Markdown files), driver 10/10, broker
+authorization 5/5, broker all-target Clippy and workspace format check exit 0.
+These local driver tests do not start Docker. The new CI job must actually
+build the pinned synthetic image and execute the fixed deployment workflow.
 
 Windows ambient handles and shared-inode hard-link limitations remain open.

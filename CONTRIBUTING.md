@@ -93,8 +93,8 @@ merge.** The workflow includes Rust workspace, lint, four
 sandbox integration jobs, two Node version-matrix legs, Python, two real Python
 framework legs, two seccomp-forwarded binding legs (Python + Node), docs,
 parity-e2e, cargo-deny, cargo-audit, SBOM, the authenticated local Git fixture,
-and the non-blocking bench artifact. Strict container acceptance is a separate
-native Linux gate, not a claim made by the host composition fixture.
+strict native Linux container acceptance and the non-blocking bench artifact.
+The host composition fixture alone cannot establish container isolation.
 The workflow is the operational source for this list; skips/unavailable
 backends are not evidence that an OS isolation property passed.
 

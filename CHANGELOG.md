@@ -36,6 +36,13 @@ The `[Unreleased]` heading is rolled forward manually before each release; do no
   of container isolation or completion of the planned I1–I8 deployment checks.
 - Three fixture-bind checks preserve loopback defaults and restrict the future
   native container fixture to the observed private Docker bridge address.
+- Fixed Linux Docker reference, required native authenticated-container CI
+  acceptance driver, and five actual broker execution-authorization tests.
+  Native acceptance is pending until that new exact-head job passes; metadata
+  checks, host tests and automated PTY input are not human identity proof.
+- Reproducible bounded synthetic snapshot-cost driver and operational fault
+  guide. Recorded 1/8/32 MiB local fixtures are not pure-copy timings, true disk
+  peaks or representative production/user acceptance.
 
 ## [0.2.7] - 2026-10-05
 

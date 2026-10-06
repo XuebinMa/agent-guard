@@ -50,6 +50,63 @@ jobs:
       # This tests host composition. Container isolation needs its own native
       # Linux acceptance job; do not call this host suite I1–I8 completion.
 
+  broker-native-acceptance:
+    name: Broker Native Linux Acceptance
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      # Official Ubuntu 24.04 OCI index, verified against Docker Hub 2026-10-06.
+      # The locally built credential-free fixture image ID is captured below.
+      BROKER_FIXTURE_BASE: ubuntu@sha256:534baea6a22c03a63003dbc8dbe78fe34bc0d7e595d9a9dc9834884ff530eb55
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@89b12181fb390509a0842a86cc55eeb8eb928c1d # stable
+      - name: Cache Rust
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+      - name: Check native test prerequisites
+        run: |
+          test "$(id -u)" != 0
+          test "$(uname -s)" = Linux
+          test -S /var/run/docker.sock
+          test -x /usr/bin/docker
+          test -x /usr/bin/git
+          command -v openssl
+          command -v ip
+          docker version
+          mkdir -p "$RUNNER_TEMP/broker-first-evidence"
+          chmod 700 "$RUNNER_TEMP/broker-first-evidence"
+      - name: Build current host broker and run transaction invariants
+        timeout-minutes: 8
+        run: |
+          cargo build -p agent-guard-cli --locked
+          cargo test -p agent-guard-broker --locked 2>&1 | tee "$RUNNER_TEMP/broker-first-evidence/broker-tests.log"
+          cargo test -p agent-guard-cli --locked 2>&1 | tee "$RUNNER_TEMP/broker-first-evidence/cli-tests.log"
+          python3 -m unittest discover -s scripts/tests -p test_broker_first_deployment.py -v
+          python3 -m unittest discover -s tests/broker-first/native -p test_driver.py -v
+      - name: Build disposable credential-free agent fixture
+        timeout-minutes: 5
+        run: |
+          docker build --build-arg "BASE_IMAGE=$BROKER_FIXTURE_BASE" \
+            --iidfile "$RUNNER_TEMP/broker-first-evidence/image.id" \
+            tests/broker-first/native
+      - name: Exercise the actual fixed host and container workflow
+        timeout-minutes: 5
+        run: |
+          fixture_image="$(< "$RUNNER_TEMP/broker-first-evidence/image.id")"
+          python3 tests/broker-first/native/acceptance.py \
+            --image "$fixture_image" --broker "$PWD/target/debug/agent-guard" \
+            --evidence "$RUNNER_TEMP/broker-first-evidence/native.json"
+      - name: Retain bounded synthetic acceptance evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: broker-first-native-${{ github.sha }}
+          path: ${{ runner.temp }}/broker-first-evidence/
+          if-no-files-found: error
+      # No skip/fallback: host composition or unavailable Docker cannot satisfy
+      # this gate. This is not human identity or real-user workflow acceptance.
+
   linux-seccomp-integration:
     name: Linux Seccomp Integration
     runs-on: ubuntu-latest

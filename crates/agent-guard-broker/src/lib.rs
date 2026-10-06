@@ -24,11 +24,11 @@
 //!    from the remote rather than from a local tracking ref.
 //! 2. [`issue_grant`] — a human decision about that one transaction, bound to
 //!    its digest, the policy hash in force, an actor and a deadline.
-//! 3. [`execute_push`] — resolve again, spend the grant against what was just
-//!    resolved, and push with both ends pinned. Authorization and drift
-//!    detection are one check rather than two: a transaction that moved no
-//!    longer matches the digest its grant is bound to and cannot be spent, so
-//!    there is no separate drift step to forget to call.
+//! 3. [`execute_push`] — atomically claim and validate the grant before any
+//!    repository inspection or remote query. Reject local destination/OID
+//!    drift, resolve the approved remote state from an isolated snapshot, then
+//!    validate and push with both ends pinned. A refused or changed transaction
+//!    burns the one-use grant; retry requires a fresh approval.
 //! 4. [`execute_push_with_receipt`] — the same, recording what the broker
 //!    witnessed, for refusals as much as for pushes.
 //!

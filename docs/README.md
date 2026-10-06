@@ -49,6 +49,7 @@ If you are new to the repo, start with the active docs first and only drop into 
 - **I want to see what's shipped vs planned** → [Roadmap](../ROADMAP.md)
 - **I want the accepted project goals and development sequence** → [Broker-first Development Plan](plans/broker-first-development-plan.md)
 - **I want the fixed Linux host/container setup** → [Broker-first Reference](../deploy/broker-first/README.md) (native acceptance is a separate gate)
+- **I want its workflow, fault recovery and measured cost** → [Broker-first Operations](guides/operations/broker-first-operations.md)
 - **I want to know what frameworks are actually supported** → [Framework Support Matrix](reference/framework-support-matrix.md)
 - **I want to compare platform gaps** → [Capability Parity Matrix](concepts/capability-parity.md)
 - **I want historical strategy or release context** → [Document Archive](archive/README.md)

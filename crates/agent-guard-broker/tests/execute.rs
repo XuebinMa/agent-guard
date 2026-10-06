@@ -1,9 +1,9 @@
 //! Executing exactly the approved push, and nothing else.
 //!
 //! The window between deciding and acting is where both sides move, so the
-//! execution path re-resolves, spends the grant against what it just
-//! resolved — which makes authorization and drift detection the same check —
-//! and then pushes in a form that pins both ends: the approved object rather
+//! execution path claims the grant before repository/network work, re-resolves
+//! the approved transaction, rejects drift, and then pushes with both ends
+//! pinned: the approved object rather
 //! than whatever the branch now points at, and a lease on the remote object
 //! the human was shown.
 
