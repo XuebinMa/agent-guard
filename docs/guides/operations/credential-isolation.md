@@ -73,8 +73,21 @@ mkdir -p ~/.agent-guard
 An empty file is sufficient for SSH authentication through `SSH_AUTH_SOCK`.
 Creation refuses to overwrite an existing file; preserve an already configured
 trusted file instead of rerunning initialization over it.
-HTTPS users may put an explicit `credential.helper` and required `http.*`
-settings in this file. Includes, URL rewrites, remote definitions, protocol
+HTTPS users must scope nonempty credential helpers to an explicit destination:
+
+```ini
+[credential "https://github.com/your-org/your-repo.git"]
+    helper = <trusted-host-helper>
+    useHttpPath = true
+```
+
+Use your installed trusted helper in place of the placeholder. A host-root
+scope (`https://github.com/`) deliberately authorizes all repository paths on
+that host; prefer a repository path when that is the intended boundary. The
+broker preserves the path in the helper context and rejects overrides that
+disable it. Helpers remain trusted programs and must respect that context.
+Required non-authentication `http.*` settings may also live in this file.
+Includes, URL rewrites, remote definitions, protocol
 overrides, hooks and arbitrary `core.*` commands are rejected.
 
 If you authenticate with an `http.extraHeader` (for example a bearer token),
@@ -86,9 +99,17 @@ scope it to an explicit HTTPS destination rather than setting it unconditionally
 ```
 
 The push URL is resolved from the repository, which the agent can edit, and the
-preview contacts that URL before you approve. An unscoped `http.extraHeader`
-would be sent to whatever host the repository names, so the broker rejects it
-and requires a URL-scoped form. The broker also disables HTTP
+preview contacts that URL before you approve. An unscoped helper that returns
+the same credential for any context, or an unscoped `http.extraHeader`, can
+send it to a repository-chosen destination. The broker therefore rejects every
+nonempty unscoped helper, even when followed by an empty reset. Empty helper
+resets remain supported. Helpers and headers require canonical HTTPS scopes
+with an exact host/port and optional slash-bounded repository path, without
+userinfo, wildcard, percent escapes, query, fragment or normalization aliases.
+When these authentication settings exist, an HTTPS destination outside every
+scope is refused before any network query. SSH/SCP and explicitly enabled
+local test transports retain their separate trust/protocol boundary; they do
+not use HTTPS helper/header settings. The broker also disables HTTP
 redirects and rejects `http.followRedirects` overrides, including URL-scoped
 ones: a custom credential header can otherwise follow a redirect even though
 its original URL matched the scope. Configure the final URL directly when a
@@ -97,8 +118,10 @@ service uses redirects. These constraints apply to preview and push alike.
 The [broker boundary tests](../../../crates/agent-guard-broker/tests/security_boundary.rs),
 [transaction tests](../../../crates/agent-guard-broker/tests/transaction.rs),
 and [sanitized-command regressions](../../../crates/agent-guard-broker/src/git/command.rs)
-check the isolated execution path, exact remote-ref selection, and redirect
-refusal. The redirect test uses loopback endpoints and a public dummy header.
+check the isolated execution path, exact remote-ref selection, authentication
+scope refusal before connection, and redirect refusal. Real Git helper routing
+is exercised locally with a fixed public canary, not a credential store or
+network destination. Redirect tests use loopback and a public dummy header.
 
 You then run `agent-guard push` on the host, against the same repository, where
 your credential is. The repository supplies data only: the broker does not run
@@ -215,6 +238,11 @@ Even with Deployment A, be careful what you claim:
 - **The broker's `HOME` is trusted.** Host SSH may read `~/.ssh/config`; if
   the agent can edit it, directives such as `ProxyCommand` can execute code
   in the credential-bearing process.
+- **Helper/header scoping is not universal authentication isolation.** Other
+  trusted transport settings (client certificates, cookies, proxies or
+  integrated authentication), SSH configuration and helper behavior remain
+  deployment responsibilities. The helper scope check does not audit programs
+  or make those other mechanisms transaction-bound.
 - **This covers `git push`.** Other ways code leaves a machine — a package
   publish, an HTTP upload, a copy to shared storage — are governed by policy
   where they are recognised, and by nothing where they are not.

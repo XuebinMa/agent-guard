@@ -1,6 +1,7 @@
 use std::path::Path;
 
 use super::command::{config_names, config_values};
+use super::credentials::AuthenticationPolicy;
 use super::GitError;
 
 /// Reject values that are safe as argv but unsafe to restate as an advisory
@@ -136,8 +137,11 @@ pub(super) fn reject_partial_clone(config: &Path) -> Result<(), GitError> {
     Ok(())
 }
 
-pub(super) fn validate_trusted_config_snapshot(config: &Path) -> Result<(), GitError> {
-    for name in config_names(config)? {
+pub(super) fn validate_trusted_config_snapshot(
+    config: &Path,
+) -> Result<AuthenticationPolicy, GitError> {
+    let names = config_names(config)?;
+    for name in &names {
         let lower = name.to_ascii_lowercase();
         let allowed = lower.starts_with("credential.")
             || lower.starts_with("http.")
@@ -174,7 +178,7 @@ pub(super) fn validate_trusted_config_snapshot(config: &Path) -> Result<(), GitE
             });
         }
     }
-    Ok(())
+    AuthenticationPolicy::from_config(config, &names)
 }
 
 /// A scoped key carries its URL between `http.` and `.extraheader`.
@@ -270,7 +274,7 @@ mod tests {
         let ordinary = dir.path().join("ordinary.gitconfig");
         std::fs::write(
             &ordinary,
-            b"[credential]\n\thelper = cache\n[http]\n\tsslVerify = true\n",
+            b"[credential \"https://approved.invalid/\"]\n\thelper = cache\n[http]\n\tsslVerify = true\n",
         )
         .expect("write");
         assert!(validate_trusted_config_snapshot(&ordinary).is_ok());
@@ -292,6 +296,40 @@ mod tests {
                 error.to_string().contains("broker disables HTTP redirects"),
                 "{error}"
             );
+        }
+    }
+
+    #[test]
+    fn trusted_config_requires_destination_scoped_helpers() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let config = dir.path().join("helper.gitconfig");
+        for body in [
+            "[credential]\nhelper = cache\n",
+            "[credential]\nhelper = cache\nhelper =\n",
+            "[credential]\nhelper =\nhelper = cache\n",
+            "[credential \"https://*.example.invalid/\"]\nhelper = cache\n",
+            "[credential \"http://example.invalid/\"]\nhelper = cache\n",
+            "[credential \"https://user@example.invalid/\"]\nhelper = cache\n",
+            "[credential \"https://EXAMPLE.invalid/\"]\nhelper = cache\n",
+            "[credential \"https://example.invalid/a/../b\"]\nhelper = cache\n",
+            "[credential \"https://example.invalid/%61\"]\nhelper = cache\n",
+            "[credential \"https://example.invalid/?q=x\"]\nhelper = cache\n",
+            "[credential \"https://example.invalid/#fragment\"]\nhelper = cache\n",
+            "[credential \"https://example.invalid/\"]\nhelper = cache\nuseHttpPath = false\n",
+        ] {
+            std::fs::write(&config, body).expect("write config");
+            assert!(
+                validate_trusted_config_snapshot(&config).is_err(),
+                "credential-bearing configuration must be bounded: {body}"
+            );
+        }
+        for body in [
+            "[credential]\nhelper =\n",
+            "[credential \"https://example.invalid/\"]\nhelper = cache\n",
+            "[credential \"https://example.invalid:8443/Team/repo.git\"]\nhelper = cache\nhelper = cache --timeout=60\nuseHttpPath = true\n",
+        ] {
+            std::fs::write(&config, body).expect("write config");
+            validate_trusted_config_snapshot(&config).expect(body);
         }
     }
 

@@ -7,6 +7,7 @@
 //! primary object database.
 
 mod command;
+mod credentials;
 mod snapshot;
 mod validate;
 

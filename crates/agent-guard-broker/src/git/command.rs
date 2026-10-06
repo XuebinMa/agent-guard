@@ -51,7 +51,12 @@ pub(super) fn sanitized_git_command(trusted_config: &Path) -> Command {
     // while following a redirect. Never contact a destination other than the
     // one the transaction resolved. Trusted-config validation also rejects
     // URL-scoped overrides, whose specificity could defeat this generic key.
-    command.args(["-c", "http.followRedirects=false"]);
+    command.args([
+        "-c",
+        "http.followRedirects=false",
+        "-c",
+        "credential.useHttpPath=true",
+    ]);
     command
 }
 
@@ -123,9 +128,84 @@ mod tests {
     use super::*;
     use std::io::{Read, Write};
     use std::net::{SocketAddr, TcpListener};
+    use std::process::Stdio;
     use std::sync::mpsc;
     use std::thread;
     use std::time::Duration;
+
+    fn public_canary_credential(config: &Path, url: &str) -> Output {
+        let mut child = sanitized_git_command(config)
+            .args(["credential", "fill"])
+            .current_dir(config.parent().expect("config directory"))
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .expect("local credential context check");
+        child
+            .stdin
+            .take()
+            .expect("stdin")
+            .write_all(format!("url={url}\n\n").as_bytes())
+            .expect("context");
+        child.wait_with_output().expect("credential result")
+    }
+
+    /// No network or real credential store: this helper returns only a fixed,
+    /// public fixture value. It independently exercises Git's context routing.
+    #[test]
+    fn git_scopes_public_canary_helpers_and_preserves_the_repository_path() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let config = dir.path().join("trusted.gitconfig");
+        let helper = "!printf 'username=public-fixture\\npassword=public-canary\\n'";
+        std::fs::write(&config, format!("[credential]\nhelper = {helper}\n")).expect("config");
+        let unbounded = public_canary_credential(&config, "https://unapproved.invalid/other.git");
+        assert!(
+            unbounded.status.success(),
+            "Git invokes an unscoped helper for an arbitrary context"
+        );
+        assert!(String::from_utf8_lossy(&unbounded.stdout).contains("password=public-canary"));
+
+        std::fs::write(
+            &config,
+            format!(
+                "[credential \"https://approved.invalid:8443/Team/repo.git\"]\nhelper = {helper}\n"
+            ),
+        )
+        .expect("config");
+        for url in [
+            "https://unapproved.invalid:8443/Team/repo.git",
+            "https://approved.invalid/Team/repo.git",
+            "https://approved.invalid:8443/Team/repo.git-sibling",
+            "https://approved.invalid:8443/team/repo.git",
+        ] {
+            let output = public_canary_credential(&config, url);
+            assert!(
+                !output.status.success(),
+                "an unmatched context cannot get the fixture credential: {url}"
+            );
+            assert!(!String::from_utf8_lossy(&output.stdout).contains("public-canary"));
+        }
+        let scoped =
+            public_canary_credential(&config, "https://approved.invalid:8443/Team/repo.git");
+        assert!(
+            scoped.status.success(),
+            "{}",
+            String::from_utf8_lossy(&scoped.stderr)
+        );
+        assert!(String::from_utf8_lossy(&scoped.stdout).contains("password=public-canary"));
+        assert!(
+            String::from_utf8_lossy(&scoped.stdout).contains("path=Team/repo.git"),
+            "helper context must retain the path"
+        );
+        std::fs::write(&config, format!("[credential \"https://approved.invalid:8443/Team/repo.git/\"]\nhelper = {helper}\n")).expect("trailing scope");
+        assert!(
+            public_canary_credential(&config, "https://approved.invalid:8443/Team/repo.git")
+                .status
+                .success(),
+            "Git's single trailing scope slash is implicit"
+        );
+    }
 
     struct LoopbackEndpoint {
         address: SocketAddr,
@@ -219,8 +299,10 @@ mod tests {
             ),
         )
         .expect("write scoped dummy header");
-        crate::git::validate::validate_trusted_config_snapshot(&config)
-            .expect("scoped dummy header is permitted");
+        assert!(
+            crate::git::validate::validate_trusted_config_snapshot(&config).is_err(),
+            "the private HTTP fixture is not a production authentication scope"
+        );
 
         let output = sanitized_git_command(&config)
             .args([

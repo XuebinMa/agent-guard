@@ -4,7 +4,8 @@ This continues the [first review](security-review-2026-10-04.md). That review
 patched F1–F22 and left R1 and R2 open. This pass looked for what it did not
 cover and for gaps inside the patches it added. Findings are numbered on from
 it: F23–F40 are patched. Independent follow-up below closes four residuals
-(F41–F44) in those patches; R3–R9 are open or need a decision.
+(F41–F44) in those patches. R3 and R7 were subsequently addressed below;
+remaining limitations are not implied fixed by passing tests.
 
 ## Scope and evidence boundary
 
@@ -310,14 +311,26 @@ coverage is therefore partial; see "Not examined".
 
 ## Open items and decisions
 
-### R3 — Decision: unscoped `credential.helper` in the broker's trusted config
+### R3 — Addressed: destination-scoped credential helpers
 
 F21 requires a URL scope for `http.extraHeader` because the preview contacts
 a repository-chosen URL before approval. `credential.helper` has no such
-requirement. A helper keyed by host is unaffected. A helper that returns one
-token for any host would give it to that URL at preview time. Not reproduced
-and not changed: requiring `credential.<url>.helper` would be the equivalent
-rule, and it changes what a deployment must configure.
+requirement in the initial tree. Real Git `credential fill` with a fixed public
+fixture confirmed that an unscoped helper supplies its canary for an arbitrary
+context, with no network or real credentials involved. New configuration and
+pre-network regressions failed before the patch; a scoped helper also lost its
+path context until `useHttpPath` was forced on.
+
+Nonempty global helpers are now rejected, including those followed by a reset.
+Helpers/headers require canonical exact HTTPS destination scopes, and the
+snapshot refuses an unmatched HTTPS destination before network access. SSH
+and explicit local fixtures retain their separate boundary. Scope paths
+are case-sensitive and slash-bounded; all helper entries are inspected, not
+just a final or most-specific value. Empty resets/anonymous configs remain
+valid. Overrides disabling path context are refused. Permanent tests live in
+`git/validate.rs`, `git/credentials.rs`, `git/command.rs` and
+`tests/security_boundary.rs` in the broker crate. This intentionally tightens
+deployment configuration, not trusted helper behavior or all transport auth.
 
 ### R4 — Documented limit: an agent can run `agent-guard approve`
 
@@ -336,12 +349,19 @@ is the layer for these.
 The non-Unix stdin change (F35) and the installer fix (F28) were verified at
 source and string level only. R1 from the first review is unchanged.
 
-### R7 — Behaviour change to review: `allow_paths` patterns
+### R7 — Addressed: deny correction without expanding grants
 
-The pattern fix in F37 applies to `allow_paths` too. A pattern with a
-wildcard inside its first non-directory component now means what it says:
-`notes-*.md` matches, and `src*` matches `src-old/` as well as `src/`.
-Previously such patterns matched a narrower, unintended set or nothing.
+The initial F37 patch also widened `allow_paths` and `workspace_escape_paths`:
+`src*` could authorize `src-old/`, and `external*` could waive the workspace
+bound for `external-sibling/`. Independent decision-only fixtures reproduced
+both differences against `e6340c9`; permanent `sec63`/`sec64` then failed with
+`Allow` before the repair. The user chose the hotfix compatibility boundary:
+only `deny_paths` receives corrected component glob resolution. Permission
+grants retain the pre-0.2.7 resolver, including old subtree positives and new
+sibling negatives. `sec48` deliberately records that compatibility choice and
+retains `.env*` deny coverage. Six shared parity cases lock the same decisions.
+Any future unified grant semantics requires an explicit migration, not a silent
+permission expansion.
 
 ### R8 — Hand-off hosts must read a payload the way the Guard does
 
@@ -349,11 +369,12 @@ For a duplicated `url` key the validator and the policy engine take the last
 value and the Guard's own executor rejects the payload. A host that executes a
 hand-off itself and takes the first value would act on a URL no rule saw.
 
-### R9 — Cross-language parity comparison not run locally
+### R9 — Subsequently verified: cross-language comparison
 
-`tests/cross-language-parity/compare.py` needs a direct `python3` invocation,
-which this repository's own hook refuses in an agent session. The Python and
-Node binding suites were run through `scripts/verify.sh` and pass.
+The original reviewer could not invoke the comparator in that session. Later
+normal verification ran it successfully: 52 cases in exact-head CI for `8d7a04b`,
+then 58 cases locally after R7/R3. This did not require routing around a refused
+hook. Fresh head CI remains required for the new commit.
 
 ## Not examined
 

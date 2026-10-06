@@ -36,10 +36,18 @@ Second-pass review; details and limits in the
   percent-encoded letters); a `Host` header must name the URL's host; read-only
   allows only `GET`/`HEAD`/`OPTIONS`. The outbound preset covers `127.0.0.0/8`,
   `[::1]` and `169.254.0.0/16`.
-- Path rules: a wildcard inside a file name matches (`.env*`,
+- Denied path rules: a wildcard inside a file name matches (`.env*`,
   `/var/log/app-*.log`); `deny_paths` ignore case on macOS and Windows and are
   matched against the requested name as well as the resolved file.
-  **Behaviour change:** the pattern fix applies to `allow_paths` too.
+  Permission-granting `allow_paths` and `workspace_escape_paths` retain their
+  pre-0.2.7 interpretation; this denial fix does not silently authorize sibling
+  names such as `src-old` or waive bounds for `external-sibling`.
+- Broker helpers must be scoped to canonical HTTPS destinations, like headers.
+  Nonempty global helpers, wildcard/ambiguous scopes and disabled
+  `credential.useHttpPath` are refused. HTTPS destinations outside all trusted
+  helper/header scopes fail before preview network access; empty resets and
+  anonymous configurations remain supported. This does not audit trusted
+  helper programs or other transport authentication mechanisms.
 - Workspace-write confinement covers `unzip -d`, `rsync`/`scp`, `curl -o`,
   `wget -O/-P`, `sort -o`, `git worktree add`/`clone`/`init`/`--output` and
   `find -delete`/`-fprint`. Attached short-option values cannot swallow a copy
@@ -110,9 +118,12 @@ Second-pass review; details and limits in the
   byte/Unicode escapes outside ASCII are refused rather than guessed across
   shell locales. See the [defensive review](docs/security-review-2026-10-04.md)
   for test evidence, compatibility costs, and remaining platform limitations.
-- Broker URLs containing non-ASCII text and unscoped `http.extraHeader` settings
-  now fail closed. Use an ASCII URL and a header scoped to its HTTPS destination;
-  HTTP endpoints requiring redirection need their final URL configured directly.
+- Broker URLs containing non-ASCII text, unscoped `http.extraHeader` settings
+  and nonempty global `credential.helper` entries
+  now fail closed. Use an ASCII URL and a header scoped to its HTTPS destination.
+  Scope helpers to a canonical HTTPS host/repository path and keep
+  `useHttpPath = true`; empty helper resets remain valid. HTTP endpoints
+  requiring redirection need their final URL configured directly.
   Dynamic shell aliases whose forwarding cannot be modeled require a direct
   controlled Git command or another trusted host execution path. Read-only
   ripgrep accepts modeled search options; unknown options fail closed.

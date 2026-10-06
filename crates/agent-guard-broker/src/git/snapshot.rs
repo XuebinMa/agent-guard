@@ -66,7 +66,8 @@ impl GitSnapshot {
 
         let trusted_config = temp.path().join("trusted.gitconfig");
         fs::write(&trusted_config, trusted_bytes)?;
-        validate_trusted_config_snapshot(&trusted_config)?;
+        let authentication = validate_trusted_config_snapshot(&trusted_config)?;
+        authentication.authorize_destination(&remote_url)?;
 
         copy_primary_objects(&source_git.join("objects"), &git_dir.join("objects"))?;
         copy_heads(&source_git.join("refs/heads"), &git_dir.join("refs/heads"))?;

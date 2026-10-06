@@ -8,8 +8,10 @@ delivery separately so old green checks cannot authorize a new commit.
 
 The user authorized incorporating the local patches into a PR, running
 cross-platform CI on the new commit, and preparing the repair release and GHSA
-correction. Formal merge/publication authority has been asked separately; until
-that answer arrives, prepare the release but do not merge or publish packages.
+correction. A prior native-answer authorization route was rejected and was not
+worked around. The subsequent direct human instruction is: "先处理 R7，再验证并
+收紧 R3，随后完成 0.2.7". Continue through normal tool approval and the exact-head
+release gates; a rejected action remains blocked rather than bypassed.
 
 The existing `agent-guard` thread heartbeat is active on its two-hour cadence.
 After normal quota recovery, resume only unfinished work from this file and
@@ -132,13 +134,41 @@ parity probe now uses bounded loopback traffic rather than a public endpoint.
 - [x] Prepare the reviewed tree, tests and this record as one normal follow-up
   commit for #170. Only a confirmed fast-forward remote update counts as
   delivery; never force-push over another contributor's updates.
-- [ ] Verify the new exact PR head's complete cross-platform CI, including all
+- [x] Verify `8d7a04bfa91190b67f40658dbcdf686a023060a9` against
+  [run 37420420489](https://github.com/XuebinMa/agent-guard/actions/runs/37420420489):
+  all 19 actual jobs completed successfully, including all 52 parity cases.
+  This green result does not validate the subsequent R7/R3 edits.
+- [ ] Verify the forthcoming exact PR head's complete cross-platform CI, including all
   52 parity cases and supply-chain gates. Fetch current GitHub state rather
   than relying on the prior version-preparation run.
 - [ ] Merge/publication remains a separate authority gate. Do not work around a
   rejected authorization route. No new tag, registry publication or public
   GHSA mutation has occurred in this continuation.
 
-Known open limitations R1–R9 remain open; their documentation is not a repair.
+R1/R2 and the unclosed limitations remain open; their documentation is not a repair.
 The existing GHSA correction keeps its original three-issue scope rather than
 claiming it covers every second-pass finding.
+
+## R7 then R3 — direct human continuation
+
+- [x] R7: preserve legacy grant resolution for both `allow_paths` and
+  `workspace_escape_paths`; keep corrected `deny_paths`. Permanent `sec63` and
+  `sec64` failed with `Allow` before the patch, then all 75 SDK regressions
+  passed. Shared decision-only fixtures add six cases (58 total).
+- [x] R3: real Git `credential fill` with fixed public canaries reproduced
+  unscoped helper routing without network or real credentials. Configuration
+  rejection, retained path context and pre-connection refusal tests failed first.
+  Helpers/headers now require canonical HTTPS scopes, disabled path context is
+  refused, and unmatched HTTPS destinations fail before connection. Empty
+  resets/anonymous config and other transport boundaries remain supported.
+  Trusted helper behavior and other transport authentication are not audited.
+- [x] Final local gate exit 0: Rust 1,122 passed / 0 failed / 2 ignored across
+  51 result groups; Python 113 passed with real LangChain 1.6.6; Node/plugin
+  suites passed. Strict all-target Clippy and the 58-case Rust/Python/Node
+  comparator exited 0. Initial full invocation failed on sandbox-denied
+  loopback binding; normal approved local-test permissions were used for the
+  successful rerun, without skipping tests or weakening gates. Logs:
+  `/tmp/agent-guard-r7-r3-final-full-approved.log`,
+  `/tmp/agent-guard-r7-r3-strict-lint.log`, `/tmp/agent-guard-r7-r3-parity.log`.
+- [ ] Obtain fresh exact-head cross-platform CI. Only then merge and validate final main
+  push CI before tagging; verify registries/locked installs before GHSA correction.

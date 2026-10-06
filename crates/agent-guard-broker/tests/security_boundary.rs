@@ -177,6 +177,29 @@ fn approved_push_url_is_the_only_remote_updated_and_receipted() {
 }
 
 #[test]
+fn preview_rejects_a_destination_outside_trusted_helper_scopes_before_connecting() {
+    let f = fixture();
+    let (url, contacted, stop, handle) = loopback_https_sentinel();
+    git(&f.work, &["remote", "set-url", "origin", &url]);
+    // A fixed public fixture, never a keychain or real token helper.
+    std::fs::write(&f.trusted_config, b"[credential \"https://approved.invalid/Team/repo.git\"]\nhelper = !printf 'username=public-fixture\\npassword=public-canary\\n'\n").expect("fixture config");
+    let result = f
+        .broker()
+        .resolve_push_transaction(&f.work, "origin", "main");
+    let _ = stop.send(());
+    handle.join().expect("sentinel joins");
+    assert!(
+        !contacted.load(Ordering::SeqCst),
+        "a repository-chosen URL outside trusted auth scopes must not be contacted"
+    );
+    let error = result.expect_err("unapproved authentication destination");
+    assert!(
+        error.to_string().contains("trusted authentication scope"),
+        "{error}"
+    );
+}
+
+#[test]
 fn changing_the_push_url_after_approval_cannot_redirect_execution() {
     let f = fixture();
     let other_remote = f.work.parent().unwrap().join("other.git");
