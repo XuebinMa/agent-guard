@@ -191,3 +191,60 @@ fn a_grant_id_cannot_escape_the_grant_directory() {
         "the file outside the directory must be untouched"
     );
 }
+
+/// A trailing separator used to survive the single-segment check because
+/// `Path::components()` normalises it away before the check saw it, while the
+/// joined `{id}.json` still carried the separator. The grammar is now applied
+/// to the raw id, so these forms are refused.
+#[test]
+fn grant_ids_with_separators_or_dot_names_are_refused() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let tx = transaction("cccc");
+    for bad in ["a/", "a/.", "sub/id", "a\\id", ".", "..", "", "a b", "idü"] {
+        let result = spend_grant(dir.path(), bad, &tx, "policy-hash-1", Utc::now());
+        assert!(
+            matches!(result, Err(GrantError::InvalidId { .. })),
+            "id {bad:?} must be refused, got {result:?}"
+        );
+    }
+}
+
+#[cfg(unix)]
+#[test]
+fn an_issued_grant_is_not_world_readable() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let dir = tempfile::tempdir().expect("tempdir");
+    std::fs::set_permissions(dir.path(), std::fs::Permissions::from_mode(0o755))
+        .expect("start with a permissive grant directory");
+    let tx = transaction("dddd");
+    let id = issue_grant(
+        dir.path(),
+        &tx,
+        "policy-hash-1",
+        "alice",
+        Duration::minutes(5),
+    )
+    .expect("issue");
+
+    let path = dir.path().join(format!("{id}.json"));
+    let mode = std::fs::metadata(&path)
+        .expect("metadata")
+        .permissions()
+        .mode();
+    assert_eq!(
+        mode & 0o077,
+        0,
+        "grant file must not be group/other readable: {mode:o}"
+    );
+
+    let dir_mode = std::fs::metadata(dir.path())
+        .expect("dir metadata")
+        .permissions()
+        .mode();
+    assert_eq!(
+        dir_mode & 0o077,
+        0,
+        "grant directory must not be group/other accessible: {dir_mode:o}"
+    );
+}

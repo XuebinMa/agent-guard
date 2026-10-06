@@ -11,8 +11,9 @@
 //! processes touch it — the agent that creates the pending request and the
 //! human running the CLI — so a read-modify-write table would race. Instead
 //! **every writer only ever appends one line**; readers fold the event stream
-//! into current state. A small `O_APPEND` write is atomic on POSIX, so
-//! concurrent appends interleave cleanly without a lock.
+//! into current state. Writers hold an exclusive advisory file lock across
+//! each complete frame; readers hold a shared lock while reading the log.
+//! `O_APPEND` alone does not make a formatted or partially retried write atomic.
 //!
 //! Two event kinds:
 //! - `created` — immutable request facts (id, tool, payload hash, message).
@@ -33,7 +34,6 @@
 
 use std::collections::BTreeMap;
 use std::fs::OpenOptions;
-use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
@@ -361,7 +361,7 @@ impl ApprovalLedger {
                 })?;
             }
         }
-        let mut file = OpenOptions::new()
+        let file = OpenOptions::new()
             .create(true)
             .append(true)
             .open(&self.path)
@@ -369,7 +369,7 @@ impl ApprovalLedger {
                 path: self.path.clone(),
                 source,
             })?;
-        writeln!(file, "{line}").map_err(|source| ApprovalError::Io {
+        crate::jsonl_file::append_line(&file, &line).map_err(|source| ApprovalError::Io {
             path: self.path.clone(),
             source,
         })
@@ -377,17 +377,18 @@ impl ApprovalLedger {
 
     /// Replay the event log into the current state of every request.
     fn fold(&self) -> Result<BTreeMap<String, ApprovalRecord>, ApprovalError> {
-        let contents = match std::fs::read_to_string(&self.path) {
-            Ok(s) => s,
-            // A ledger that was never written to is simply empty.
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(BTreeMap::new()),
-            Err(source) => {
-                return Err(ApprovalError::Io {
-                    path: self.path.clone(),
-                    source,
-                })
-            }
-        };
+        let contents =
+            match std::fs::File::open(&self.path).and_then(|file| crate::jsonl_file::read(&file)) {
+                Ok(s) => s,
+                // A ledger that was never written to is simply empty.
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(BTreeMap::new()),
+                Err(source) => {
+                    return Err(ApprovalError::Io {
+                        path: self.path.clone(),
+                        source,
+                    })
+                }
+            };
 
         let mut state: BTreeMap<String, ApprovalRecord> = BTreeMap::new();
         for line in contents.lines() {
@@ -444,6 +445,7 @@ fn apply_event(state: &mut BTreeMap<String, ApprovalRecord>, event: LedgerEvent)
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::io::Write;
     use tempfile::tempdir;
 
     fn ledger() -> (tempfile::TempDir, ApprovalLedger) {

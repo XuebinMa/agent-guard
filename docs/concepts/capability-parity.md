@@ -47,8 +47,11 @@ Execution-time behavior is stricter. Seccomp blocks networking in
 `ReadOnly`/`WorkspaceWrite` and common writes in `ReadOnly`; it remains
 path-agnostic in `WorkspaceWrite`. Landlock blocks all writes in `ReadOnly` and
 grants the ABI-v3 write set only below the workspace in `WorkspaceWrite`, but
-does not restrict networking. Do not infer per-call guarantees from this static
-table; use the active backend, mode and OS integration tests together.
+does not restrict networking. The macOS Seatbelt profile is mode-specific in the
+same way: it grants writes below the workspace in `WorkspaceWrite` and
+`FullAccess`, and none but `/dev/null` in `ReadOnly`. Do not infer per-call
+guarantees from this static table; use the active backend, mode and OS
+integration tests together.
 
 ---
 

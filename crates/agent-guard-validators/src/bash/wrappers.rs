@@ -18,19 +18,30 @@
 /// Only wrappers with a regular `<wrapper> [options] [operand]... COMMAND`
 /// grammar are modeled here. Known launchers whose grammar is not modeled may
 /// be listed in `OPAQUE_COMMAND_LAUNCHERS` so restricted modes reject them.
+///
+/// Every option a wrapper is unwrapped through is named in one of the four
+/// lists. An option in none of them makes the invocation opaque: whether it
+/// takes a value decides which word is the command, and guessing "no" let an
+/// abbreviated or unlisted value-taking option hand its value to the gates as
+/// the command while the real command went unchecked.
 struct CommandWrapper {
     name: &'static str,
     /// Short option chars that consume the FOLLOWING token as their value
     /// (e.g. sudo `-u root`, nice `-n 10`, timeout `-s TERM`).
     arg_short_flags: &'static [char],
     /// Long options that consume the FOLLOWING token when no `=VALUE` is
-    /// attached (e.g. env `--chdir /tmp`). Unknown long options are treated
-    /// as boolean rather than guessing over the command word.
+    /// attached (e.g. env `--chdir /tmp`).
     arg_long_flags: &'static [&'static str],
+    /// Short option chars that take no value.
+    bool_short_flags: &'static [char],
+    /// Long options that take no value, or only an attached `=VALUE`.
+    bool_long_flags: &'static [&'static str],
     /// Count of non-flag positional operands the wrapper takes before the
     /// command word (e.g. `timeout DURATION cmd` has one).
     leading_operands: usize,
 }
+
+const HELP_VERSION: &[&str] = &["help", "version"];
 
 const COMMAND_WRAPPERS: &[CommandWrapper] = &[
     CommandWrapper {
@@ -39,6 +50,7 @@ const COMMAND_WRAPPERS: &[CommandWrapper] = &[
         arg_long_flags: &[
             "chdir",
             "close-from",
+            "command-timeout",
             "group",
             "host",
             "prompt",
@@ -48,14 +60,46 @@ const COMMAND_WRAPPERS: &[CommandWrapper] = &[
             "other-user",
             "user",
         ],
+        bool_short_flags: &[
+            'A', 'b', 'B', 'E', 'e', 'H', 'i', 'K', 'k', 'l', 'N', 'n', 'P', 'S', 's', 'V', 'v',
+        ],
+        bool_long_flags: &[
+            "askpass",
+            "background",
+            "bell",
+            "preserve-env",
+            "edit",
+            "set-home",
+            "help",
+            "login",
+            "remove-timestamp",
+            "reset-timestamp",
+            "list",
+            "non-interactive",
+            "preserve-groups",
+            "stdin",
+            "shell",
+            "version",
+            "validate",
+            "no-update",
+        ],
         leading_operands: 0,
     },
     CommandWrapper {
-        // POSIX/GNU `time` executes the remaining argv. GNU -o/-f and their
-        // long spellings consume values; the common -p/-a switches do not.
+        // POSIX/GNU/BSD `time` executes the remaining argv. -o/-f and their
+        // long spellings consume values.
         name: "time",
         arg_short_flags: &['o', 'f'],
         arg_long_flags: &["output", "format"],
+        bool_short_flags: &['p', 'a', 'v', 'l', 'h', 'q', 'V'],
+        bool_long_flags: &[
+            "portability",
+            "append",
+            "verbose",
+            "quiet",
+            "help",
+            "version",
+        ],
         leading_operands: 0,
     },
     CommandWrapper {
@@ -63,12 +107,16 @@ const COMMAND_WRAPPERS: &[CommandWrapper] = &[
         name: "proxychains",
         arg_short_flags: &['f'],
         arg_long_flags: &[],
+        bool_short_flags: &['q'],
+        bool_long_flags: &[],
         leading_operands: 0,
     },
     CommandWrapper {
         name: "proxychains4",
         arg_short_flags: &['f'],
         arg_long_flags: &[],
+        bool_short_flags: &['q'],
+        bool_long_flags: &[],
         leading_operands: 0,
     },
     CommandWrapper {
@@ -76,18 +124,36 @@ const COMMAND_WRAPPERS: &[CommandWrapper] = &[
         name: "eatmydata",
         arg_short_flags: &[],
         arg_long_flags: &[],
+        bool_short_flags: &[],
+        bool_long_flags: &[],
         leading_operands: 0,
     },
     CommandWrapper {
         name: "doas",
-        arg_short_flags: &['u', 'C'],
+        arg_short_flags: &['u', 'C', 'a'],
         arg_long_flags: &[],
+        bool_short_flags: &['L', 'n', 's'],
+        bool_long_flags: &[],
         leading_operands: 0,
     },
     CommandWrapper {
+        // GNU `-a ARG`, BSD `-P altpath`, FreeBSD `-L`/`-U user` take values.
+        // `-S` is refused separately (`has_env_split_string`).
         name: "env",
-        arg_short_flags: &['u', 'C'],
+        arg_short_flags: &['u', 'C', 'S', 'a', 'P', 'L', 'U'],
         arg_long_flags: &["unset", "chdir", "split-string", "argv0"],
+        bool_short_flags: &['i', '0', 'v'],
+        bool_long_flags: &[
+            "ignore-environment",
+            "null",
+            "debug",
+            "list-signal-handling",
+            "default-signal",
+            "ignore-signal",
+            "block-signal",
+            "help",
+            "version",
+        ],
         leading_operands: 0,
     },
     CommandWrapper {
@@ -95,36 +161,65 @@ const COMMAND_WRAPPERS: &[CommandWrapper] = &[
         name: "command",
         arg_short_flags: &[],
         arg_long_flags: &[],
+        bool_short_flags: &['p', 'v', 'V'],
+        bool_long_flags: &[],
         leading_operands: 0,
     },
     CommandWrapper {
         name: "exec",
         arg_short_flags: &['a'],
         arg_long_flags: &[],
+        bool_short_flags: &['c', 'l'],
+        bool_long_flags: &[],
         leading_operands: 0,
     },
     CommandWrapper {
         name: "builtin",
         arg_short_flags: &[],
         arg_long_flags: &[],
+        bool_short_flags: &[],
+        bool_long_flags: &[],
         leading_operands: 0,
     },
     CommandWrapper {
+        // `coproc COMMAND` runs COMMAND. The grammar only yields this simple
+        // form as an ordinary command; `coproc NAME { … }` is rejected by it.
+        name: "coproc",
+        arg_short_flags: &[],
+        arg_long_flags: &[],
+        bool_short_flags: &[],
+        bool_long_flags: &[],
+        leading_operands: 0,
+    },
+    CommandWrapper {
+        // `nice -10 cmd` is the historical spelling of `-n 10`.
         name: "nice",
         arg_short_flags: &['n'],
         arg_long_flags: &["adjustment"],
+        bool_short_flags: &['0', '1', '2', '3', '4', '5', '6', '7', '8', '9'],
+        bool_long_flags: HELP_VERSION,
         leading_operands: 0,
     },
     CommandWrapper {
         name: "nohup",
         arg_short_flags: &[],
         arg_long_flags: &[],
+        bool_short_flags: &[],
+        bool_long_flags: HELP_VERSION,
         leading_operands: 0,
     },
     CommandWrapper {
         name: "timeout",
         arg_short_flags: &['s', 'k'],
         arg_long_flags: &["signal", "kill-after"],
+        bool_short_flags: &['v', 'f', 'p'],
+        bool_long_flags: &[
+            "foreground",
+            "preserve-status",
+            "verbose",
+            "help",
+            "version",
+        ],
         leading_operands: 1,
     },
     CommandWrapper {
@@ -132,6 +227,8 @@ const COMMAND_WRAPPERS: &[CommandWrapper] = &[
         name: "stdbuf",
         arg_short_flags: &['i', 'o', 'e'],
         arg_long_flags: &["input", "output", "error"],
+        bool_short_flags: &[],
+        bool_long_flags: HELP_VERSION,
         leading_operands: 0,
     },
     CommandWrapper {
@@ -140,6 +237,8 @@ const COMMAND_WRAPPERS: &[CommandWrapper] = &[
         name: "setsid",
         arg_short_flags: &[],
         arg_long_flags: &[],
+        bool_short_flags: &['c', 'f', 'w', 'h', 'V'],
+        bool_long_flags: &["ctty", "fork", "wait", "help", "version"],
         leading_operands: 0,
     },
     // ── irregular spawners with a regular-enough grammar (issue #55) ──────────
@@ -149,44 +248,142 @@ const COMMAND_WRAPPERS: &[CommandWrapper] = &[
     CommandWrapper {
         // strace -o file -e expr -p pid CMD
         name: "strace",
-        arg_short_flags: &['o', 'e', 'p', 'E', 's', 'a'],
+        arg_short_flags: &[
+            'o', 'e', 'p', 'E', 's', 'a', 'u', 'b', 'I', 'O', 'S', 'P', 'X', 'U',
+        ],
         arg_long_flags: &["output", "trace", "attach", "string-limit"],
+        bool_short_flags: &[
+            'c', 'C', 'd', 'D', 'f', 'F', 'h', 'i', 'k', 'n', 'N', 'q', 'r', 't', 'T', 'v', 'V',
+            'w', 'x', 'y', 'Y', 'z', 'Z', 'A',
+        ],
+        bool_long_flags: HELP_VERSION,
         leading_operands: 0,
     },
     CommandWrapper {
         name: "ltrace",
-        arg_short_flags: &['o', 'e', 'p', 's', 'a', 'u'],
+        arg_short_flags: &[
+            'o', 'e', 'p', 's', 'a', 'u', 'l', 'n', 'x', 'A', 'D', 'F', 'w',
+        ],
         arg_long_flags: &["output", "expr", "attach", "string-limit"],
+        bool_short_flags: &['b', 'c', 'C', 'f', 'h', 'i', 'L', 'r', 'S', 't', 'T', 'V'],
+        bool_long_flags: HELP_VERSION,
         leading_operands: 0,
     },
     CommandWrapper {
-        // nsenter -t pid -S uid -G gid CMD (option-arg flags only; the rare
-        // `-r[dir]`/`-w[dir]` optional-arg forms are treated as boolean).
+        // nsenter -t pid -S uid -G gid CMD. The namespace switches take only
+        // an attached file (`-m=file`, `--mount=file`).
         name: "nsenter",
         arg_short_flags: &['t', 'S', 'G'],
         arg_long_flags: &["target", "setuid", "setgid"],
+        bool_short_flags: &[
+            'a', 'm', 'u', 'i', 'n', 'p', 'U', 'C', 'T', 'r', 'w', 'F', 'Z', 'e', 'h', 'V',
+        ],
+        bool_long_flags: &[
+            "all",
+            "mount",
+            "uts",
+            "ipc",
+            "net",
+            "pid",
+            "user",
+            "cgroup",
+            "time",
+            "preserve-credentials",
+            "root",
+            "wd",
+            "no-fork",
+            "follow-context",
+            "env",
+            "help",
+            "version",
+        ],
         leading_operands: 0,
     },
     CommandWrapper {
-        // unshare's short flags are all boolean (-m/-u/-i/-n/-p/-U/-C/-T/-r/-f).
+        // unshare -S uid -G gid -R dir -w dir CMD.
         name: "unshare",
-        arg_short_flags: &[],
-        arg_long_flags: &["map-user", "map-group", "propagation", "root", "wd"],
+        arg_short_flags: &['S', 'G', 'R', 'w'],
+        arg_long_flags: &[
+            "map-user",
+            "map-group",
+            "map-users",
+            "map-groups",
+            "propagation",
+            "root",
+            "wd",
+            "setuid",
+            "setgid",
+            "setgroups",
+            "monotonic",
+            "boottime",
+        ],
+        bool_short_flags: &[
+            'm', 'u', 'i', 'n', 'p', 'U', 'C', 'T', 'r', 'f', 'c', 'h', 'V',
+        ],
+        bool_long_flags: &[
+            "mount",
+            "uts",
+            "ipc",
+            "net",
+            "pid",
+            "user",
+            "cgroup",
+            "time",
+            "fork",
+            "map-root-user",
+            "map-current-user",
+            "map-auto",
+            "mount-proc",
+            "kill-child",
+            "keep-caps",
+            "help",
+            "version",
+        ],
         leading_operands: 0,
     },
     CommandWrapper {
         // watch -n SECS CMD
         name: "watch",
-        arg_short_flags: &['n'],
-        arg_long_flags: &["interval"],
+        arg_short_flags: &['n', 'q'],
+        arg_long_flags: &["interval", "equexit"],
+        bool_short_flags: &['d', 'b', 'e', 'g', 'c', 'C', 't', 'x', 'p', 'w', 'h', 'v'],
+        bool_long_flags: &[
+            "differences",
+            "beep",
+            "errexit",
+            "chgexit",
+            "color",
+            "no-color",
+            "no-title",
+            "exec",
+            "precise",
+            "no-wrap",
+            "help",
+            "version",
+        ],
         leading_operands: 0,
     },
     CommandWrapper {
         // flock [-w secs] [-E code] <lockfile|fd> CMD — the lock target is a
-        // leading operand before the command word.
+        // leading operand before the command word. `flock FILE -c STRING`
+        // gives STRING to a shell and is not unwrapped (see
+        // `skip_wrapper_tokens`).
         name: "flock",
         arg_short_flags: &['w', 'E'],
-        arg_long_flags: &["timeout", "conflict-exit-code"],
+        arg_long_flags: &["timeout", "wait", "conflict-exit-code"],
+        bool_short_flags: &['s', 'x', 'e', 'u', 'n', 'o', 'v', 'F', 'h', 'V'],
+        bool_long_flags: &[
+            "shared",
+            "exclusive",
+            "unlock",
+            "nonblock",
+            "nb",
+            "close",
+            "verbose",
+            "no-fork",
+            "help",
+            "version",
+        ],
         leading_operands: 1,
     },
     CommandWrapper {
@@ -194,16 +391,58 @@ const COMMAND_WRAPPERS: &[CommandWrapper] = &[
         // follows the flags; its *operands* come from stdin (see
         // `leads_with_target_hiding_spawner`).
         name: "xargs",
-        // GNU -i/-e/-l take OPTIONAL attached values. They must not consume
-        // the following command token when used bare.
-        arg_short_flags: &['I', 'J', 'E', 'd', 'n', 'P', 's', 'a', 'L'],
+        // GNU -i/-e/-l take OPTIONAL attached values. Bare, they are flags;
+        // with a value attached the token is not understood and fails closed.
+        arg_short_flags: &['I', 'J', 'E', 'd', 'n', 'P', 's', 'a', 'L', 'R', 'S'],
         arg_long_flags: &[
             "delimiter",
             "max-args",
             "max-procs",
             "max-chars",
             "arg-file",
+            "process-slot-var",
         ],
+        bool_short_flags: &['0', 't', 'p', 'r', 'x', 'o', 'i', 'e', 'l'],
+        bool_long_flags: &[
+            "null",
+            "no-run-if-empty",
+            "interactive",
+            "verbose",
+            "open-tty",
+            "exit",
+            "show-limits",
+            "replace",
+            "eof",
+            "max-lines",
+            "help",
+            "version",
+        ],
+        leading_operands: 0,
+    },
+    CommandWrapper {
+        // `busybox APPLET ARGS…`: the applet is the command.
+        name: "busybox",
+        arg_short_flags: &[],
+        arg_long_flags: &[],
+        bool_short_flags: &[],
+        bool_long_flags: &[],
+        leading_operands: 0,
+    },
+    CommandWrapper {
+        name: "toybox",
+        arg_short_flags: &[],
+        arg_long_flags: &[],
+        bool_short_flags: &[],
+        bool_long_flags: &[],
+        leading_operands: 0,
+    },
+    CommandWrapper {
+        // macOS `caffeinate [-disu] [-t SECS] [-w PID] COMMAND`.
+        name: "caffeinate",
+        arg_short_flags: &['t', 'w'],
+        arg_long_flags: &[],
+        bool_short_flags: &['d', 'i', 'm', 's', 'u'],
+        bool_long_flags: &[],
         leading_operands: 0,
     },
 ];
@@ -211,7 +450,18 @@ const COMMAND_WRAPPERS: &[CommandWrapper] = &[
 /// Programs known to spawn a child command whose option/operand grammar is not
 /// modeled above. Restricted modes reject these listed launchers. Membership
 /// is deliberately conservative, but it is not an exhaustive launcher class.
-const OPAQUE_COMMAND_LAUNCHERS: &[&str] = &["numactl", "prlimit", "runuser", "systemd-run"];
+const OPAQUE_COMMAND_LAUNCHERS: &[&str] = &[
+    "numactl",
+    "prlimit",
+    "runuser",
+    "systemd-run",
+    // `arch -arch NAME`, `script FILE CMD` / `script -c STRING`, `chroot DIR`
+    // and `setpriv` all end in a command; none has its grammar modeled.
+    "arch",
+    "script",
+    "chroot",
+    "setpriv",
+];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum SpecializedLauncherDisposition {
@@ -287,7 +537,13 @@ fn is_env_assignment(token: &str) -> bool {
 /// bundle. If it is the last char (`-u`, `-knu`) its value is the next token,
 /// so that token is consumed too; otherwise the value is attached (`-uroot`)
 /// or the token is a boolean bundle (`-kn`) — either way it is self-contained.
-fn skip_wrapper_tokens<S: AsRef<str>>(args: &[S], wrapper: &CommandWrapper) -> usize {
+///
+/// Returns `None` when an option is not one the wrapper's table names,
+/// including an unknown long option with an attached `=VALUE`. An attached
+/// value can still carry executable syntax (`env --split=...` abbreviates
+/// `--split-string`), so knowing where the next token starts is not enough to
+/// establish that the wrapper is transparent.
+fn skip_wrapper_tokens<S: AsRef<str>>(args: &[S], wrapper: &CommandWrapper) -> Option<usize> {
     let mut idx = 0;
     while idx < args.len() {
         let token = args[idx].as_ref();
@@ -295,29 +551,46 @@ fn skip_wrapper_tokens<S: AsRef<str>>(args: &[S], wrapper: &CommandWrapper) -> u
             idx += 1;
             break;
         }
+        // `env -` is `env -i`; anywhere else a lone `-` is an operand.
+        if token == "-" && wrapper.name == "env" {
+            idx += 1;
+            continue;
+        }
         // A lone `-` or a non-option token ends the option run.
         if !token.starts_with('-') || token == "-" {
             break;
         }
         if let Some(option) = token.strip_prefix("--") {
-            let (name, has_attached_value) = match option.split_once('=') {
-                Some((name, _)) => (name, true),
-                None => (option, false),
-            };
-            if !has_attached_value && wrapper.arg_long_flags.contains(&name) {
-                idx += 2;
+            let (name, attached) = option
+                .split_once('=')
+                .map_or((option, false), |(name, _)| (name, true));
+            idx += if wrapper.arg_long_flags.contains(&name) {
+                if attached {
+                    1
+                } else {
+                    2
+                }
+            } else if wrapper.bool_long_flags.contains(&name) {
+                1
             } else {
-                idx += 1;
-            }
+                return None;
+            };
             continue;
         }
-        let flag_chars: Vec<char> = token.chars().skip(1).collect();
-        match flag_chars
-            .iter()
-            .position(|c| wrapper.arg_short_flags.contains(c))
-        {
-            Some(pos) if pos + 1 == flag_chars.len() => idx += 2,
-            _ => idx += 1,
+        let mut flags = token.chars().skip(1).peekable();
+        idx += 1;
+        while let Some(flag) = flags.next() {
+            if wrapper.arg_short_flags.contains(&flag) {
+                // Last in the bundle: the value is the next token. Otherwise
+                // the rest of this token is the value.
+                if flags.peek().is_none() {
+                    idx += 1;
+                }
+                break;
+            }
+            if !wrapper.bool_short_flags.contains(&flag) {
+                return None;
+            }
         }
     }
     // Leading positional operands (e.g. timeout's DURATION).
@@ -326,7 +599,16 @@ fn skip_wrapper_tokens<S: AsRef<str>>(args: &[S], wrapper: &CommandWrapper) -> u
             idx += 1;
         }
     }
-    idx
+    // `flock FILE -c STRING` runs STRING through a shell, so what follows the
+    // lock file is not an argv to unwrap.
+    if wrapper.name == "flock"
+        && args
+            .get(idx)
+            .is_some_and(|next| matches!(next.as_ref(), "-c" | "--command"))
+    {
+        return None;
+    }
+    Some(idx)
 }
 
 fn parse_ionice_layer<S: AsRef<str>>(tokens: &[S]) -> SpecializedLauncherDisposition {
@@ -632,8 +914,10 @@ fn launcher_layer<S: AsRef<str>>(tokens: &[S]) -> LauncherLayer<'_, S> {
     else {
         return LauncherLayer::NotLauncher;
     };
-    let skipped = 1 + skip_wrapper_tokens(&tokens[1..], wrapper);
-    LauncherLayer::Child(&tokens[skipped.min(tokens.len())..])
+    match skip_wrapper_tokens(&tokens[1..], wrapper) {
+        Some(skipped) => LauncherLayer::Child(&tokens[(1 + skipped).min(tokens.len())..]),
+        None => LauncherLayer::Opaque(wrapper.name),
+    }
 }
 
 fn resolve_command_layers<S: AsRef<str>>(tokens: &[S]) -> CommandLayerResolution<'_, S> {
@@ -942,6 +1226,43 @@ mod tests {
                 classify_command_launcher(argv),
                 LauncherDisposition::Opaque(_)
             ));
+        }
+    }
+
+    #[test]
+    fn unknown_attached_long_wrapper_options_are_not_transparent() {
+        for argv in [
+            &["env", "--split=sh -c true", "cat"][..],
+            &["env", "--future-option=value", "cat"][..],
+            &["nice", "--adj=5", "cat"][..],
+            &["timeout", "--sig=TERM", "5", "cat"][..],
+        ] {
+            assert!(
+                matches!(
+                    classify_command_launcher(argv),
+                    LauncherDisposition::Opaque(_)
+                ),
+                "an unknown attached option was classified transparent: {argv:?}"
+            );
+            assert_eq!(unwrap_command_wrappers(argv), argv);
+        }
+    }
+
+    #[test]
+    fn modeled_attached_long_wrapper_options_keep_the_child_visible() {
+        for (argv, child) in [
+            (
+                &["env", "--unset=HOME", "cat", "file"][..],
+                &["cat", "file"][..],
+            ),
+            (&["timeout", "--signal=TERM", "5", "cat"][..], &["cat"][..]),
+            (&["sudo", "--preserve-env=PATH", "cat"][..], &["cat"][..]),
+        ] {
+            assert!(matches!(
+                classify_command_launcher(argv),
+                LauncherDisposition::Transparent
+            ));
+            assert_eq!(unwrap_command_wrappers(argv), child);
         }
     }
 

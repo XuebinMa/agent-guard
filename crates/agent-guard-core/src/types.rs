@@ -55,8 +55,17 @@ impl std::fmt::Display for Tool {
 
 // ── CustomToolId ──────────────────────────────────────────────────────────────
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize)]
 pub struct CustomToolId(String);
+
+impl<'de> Deserialize<'de> for CustomToolId {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        Self::new(String::deserialize(deserializer)?).map_err(serde::de::Error::custom)
+    }
+}
 
 impl CustomToolId {
     const MAX_LEN: usize = 64;

@@ -186,6 +186,10 @@ function cmdInit(opts) {
     : installBinaries(opts.dryRun);
   const binPath = resolved['guard-hook'];
 
+  if (!opts.dryRun && !opts.skipBinary && BINARIES.some((entry) => !resolved[entry.bin])) {
+    throw new Error('exact-version binary installation failed; settings and policy were not changed');
+  }
+
   if (opts.binaryOnly) {
     log('');
     log('Binary-only setup done. Register the hook via the marketplace plugin:');
@@ -246,8 +250,9 @@ Options:
   -h, --help        show this help
   -v, --version     show version
 
-Binary delivery uses 'cargo install' (Rust required). The hook fails open if
-the binary is absent, so a partial install never blocks your agent.`);
+Binary delivery uses 'cargo install' (Rust required). Setup stops before changing
+settings when an exact-version binary is unavailable. --skip-binary explicitly
+opts out of that setup check. The hook itself retains its fail-open contract.`);
 }
 
 function main() {

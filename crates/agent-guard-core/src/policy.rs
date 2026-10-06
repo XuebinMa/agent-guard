@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::path::Path;
+use std::time::{Duration, Instant};
 
 use evalexpr::{context_map, Node};
 use regex::Regex;
@@ -8,7 +9,10 @@ use sha2::{Digest, Sha256};
 use thiserror::Error;
 
 use crate::decision::{DecisionCode, DecisionReason, GuardDecision};
-use crate::file_paths::{resolve_path_glob_pattern, resolve_tool_path};
+use crate::file_paths::{
+    requested_tool_path, resolve_granted_path_glob_pattern, resolve_path_glob_pattern,
+    resolve_tool_path,
+};
 use crate::payload::{extract_bash_command, extract_http_request, extract_path, ExtractedPayload};
 use crate::types::{Context, Tool, TrustLevel};
 
@@ -235,8 +239,51 @@ pub struct ToolsConfig {
     pub http_request: Option<ToolPolicy>,
     /// Custom tool policies, keyed by CustomToolId string (e.g. "acme.sql.query").
     /// Parsed separately from builtin tools to maintain clear boundaries.
-    #[serde(default)]
+    #[serde(default, deserialize_with = "deserialize_custom_tools")]
     pub custom: HashMap<String, ToolPolicy>,
+}
+
+/// Read `tools.custom`, refusing a section that could never be applied.
+///
+/// Rules here are looked up by `CustomToolId`. A key no id can equal — a
+/// builtin's name, or text outside the id grammar — holds rules that are never
+/// consulted, and a repeated key replaces the rules written under the first.
+/// Both load as a policy that looks stricter than it is.
+fn deserialize_custom_tools<'de, D>(
+    deserializer: D,
+) -> Result<HashMap<String, ToolPolicy>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    struct CustomTools;
+
+    impl<'de> serde::de::Visitor<'de> for CustomTools {
+        type Value = HashMap<String, ToolPolicy>;
+
+        fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            formatter.write_str("a map of custom tool ids to tool policies")
+        }
+
+        fn visit_map<A>(self, mut map: A) -> Result<Self::Value, A::Error>
+        where
+            A: serde::de::MapAccess<'de>,
+        {
+            let mut tools = HashMap::new();
+            while let Some(id) = map.next_key::<String>()? {
+                crate::types::CustomToolId::new(id.as_str()).map_err(|error| {
+                    serde::de::Error::custom(format!("tools.custom.{id:?}: {error}"))
+                })?;
+                if tools.insert(id.clone(), map.next_value()?).is_some() {
+                    return Err(serde::de::Error::custom(format!(
+                        "tools.custom.{id:?} is defined more than once"
+                    )));
+                }
+            }
+            Ok(tools)
+        }
+    }
+
+    deserializer.deserialize_map(CustomTools)
 }
 
 #[derive(Debug, Deserialize, Default, Clone)]
@@ -636,6 +683,14 @@ fn validate_policy_configuration(policy: &PolicyFile) -> Result<(), PolicyError>
                 "{field} must be greater than zero"
             )));
         }
+        if Instant::now()
+            .checked_sub(Duration::from_secs(value))
+            .is_none()
+        {
+            return Err(PolicyError::ParseError(format!(
+                "{field} exceeds the supported monotonic clock range"
+            )));
+        }
     }
     for (field, value) in [
         ("anomaly.rate_limit.max_calls", anomaly.rate_limit.max_calls),
@@ -792,9 +847,19 @@ impl PolicyEngine {
 
         let is_blocked = effective_mode == PolicyMode::Blocked;
 
+        // The file path as it was asked for, before any symlink is followed.
+        // Deny rules are matched against it as well as against the resolved
+        // file: a rule that names `.env` must hold when `.env` is a link.
+        let mut requested_path = None;
+
         let extracted = match tool {
             Tool::ReadFile | Tool::WriteFile => match extract_path(payload) {
                 Ok(ExtractedPayload::Path(path)) => {
+                    requested_path = Some(
+                        requested_tool_path(&path, context.working_directory.as_deref())
+                            .to_string_lossy()
+                            .into_owned(),
+                    );
                     // A path that matches the tool's `workspace_escape_paths`
                     // bypasses the workspace-bound check inside resolve_tool_path
                     // and is then subject to the normal deny / ask / allow flow.
@@ -803,7 +868,11 @@ impl PolicyEngine {
                         .unwrap_or_default();
                     let escapes = |candidate: &str| {
                         escape_globs.iter().any(|pat| {
-                            path_glob_matches(pat, candidate, context.working_directory.as_deref())
+                            granted_path_glob_matches(
+                                pat,
+                                candidate,
+                                context.working_directory.as_deref(),
+                            )
                         })
                     };
 
@@ -857,13 +926,28 @@ impl PolicyEngine {
             // `tool_policy` returns Some, the compiled view is always present.
             let compiled_tp = compiled_tp.expect("compiled tool policy missing for known tool");
 
+            let denied_subjects: Vec<&str> = std::iter::once(match_value)
+                .chain(
+                    requested_path
+                        .as_deref()
+                        .filter(|path| *path != match_value),
+                )
+                .collect();
+
             for (i, rule) in compiled_tp.deny.iter().enumerate() {
                 let rule_ref = format!("tools.{}.deny[{}]", tool_name, i);
-                let res = match pattern_matches(rule, match_value, http_method, tool, context) {
-                    Ok(result) => result,
-                    Err(error) => return condition_evaluation_denied(rule_ref, error),
-                };
-                if res.matched {
+                let mut matched = None;
+                for subject in denied_subjects.iter().copied() {
+                    match pattern_matches(rule, subject, http_method, tool, context) {
+                        Ok(result) if result.matched => {
+                            matched = Some(result);
+                            break;
+                        }
+                        Ok(_) => {}
+                        Err(error) => return condition_evaluation_denied(rule_ref, error),
+                    }
+                }
+                if let Some(res) = matched {
                     let mut reason = DecisionReason::new(
                         DecisionCode::DeniedByRule,
                         format!("payload matched deny rule: {}", pattern_display(rule)),
@@ -878,11 +962,13 @@ impl PolicyEngine {
             }
 
             for (i, glob_pattern) in tp.deny_paths.iter().enumerate() {
-                if path_glob_matches(
-                    glob_pattern,
-                    match_value,
-                    context.working_directory.as_deref(),
-                ) {
+                if denied_subjects.iter().any(|subject| {
+                    denied_path_glob_matches(
+                        glob_pattern,
+                        subject,
+                        context.working_directory.as_deref(),
+                    )
+                }) {
                     let rule_ref = format!("tools.{}.deny_paths[{}]", tool_name, i);
                     let reason = DecisionReason::new(
                         DecisionCode::PathOutsideWorkspace,
@@ -921,7 +1007,7 @@ impl PolicyEngine {
 
             if !tp.allow_paths.is_empty() {
                 let in_allowlist = tp.allow_paths.iter().any(|p| {
-                    path_glob_matches(p, match_value, context.working_directory.as_deref())
+                    granted_path_glob_matches(p, match_value, context.working_directory.as_deref())
                 });
                 if !in_allowlist {
                     let reason = DecisionReason::new(
@@ -1150,13 +1236,29 @@ fn pattern_display(rule: &CompiledRulePattern) -> String {
     }
 }
 
-fn path_glob_matches(pattern: &str, path: &str, working_directory: Option<&Path>) -> bool {
-    let resolved_pattern = resolve_path_glob_pattern(pattern, working_directory);
+fn granted_path_glob_matches(pattern: &str, path: &str, working_directory: Option<&Path>) -> bool {
+    let resolved_pattern = resolve_granted_path_glob_pattern(pattern, working_directory);
     if let Ok(glob) = glob::Pattern::new(&resolved_pattern) {
         glob.matches(path)
     } else {
         false
     }
+}
+
+/// Whether the platform's usual filesystem treats `A` and `a` as one name.
+const FILESYSTEM_IGNORES_CASE: bool = cfg!(any(target_os = "macos", windows));
+
+/// `deny_paths` matching. Where the filesystem ignores letter case, so does
+/// this: an existing file resolves to its stored spelling, but one that does
+/// not exist yet keeps the spelling requested, and `.NPMRC` then creates the
+/// `.npmrc` a rule denies. Only denial is widened; `allow_paths` stays exact.
+fn denied_path_glob_matches(pattern: &str, path: &str, working_directory: Option<&Path>) -> bool {
+    let resolved_pattern = resolve_path_glob_pattern(pattern, working_directory);
+    let options = glob::MatchOptions {
+        case_sensitive: !FILESYSTEM_IGNORES_CASE,
+        ..glob::MatchOptions::new()
+    };
+    glob::Pattern::new(&resolved_pattern).is_ok_and(|glob| glob.matches_with(path, options))
 }
 
 /// A structured tool whose call intrinsically mutates state is not permitted in
@@ -1171,30 +1273,28 @@ fn read_only_tool_violation(tool: &Tool, payload: &str) -> Option<String> {
             "write_file modifies the filesystem and is not allowed in read-only mode".to_string(),
         ),
         Tool::HttpRequest if http_method_is_mutation(payload) => Some(
-            "http_request with a mutation method (POST/PUT/PATCH/DELETE) is not allowed in read-only mode"
+            "http_request with a method other than GET/HEAD/OPTIONS is not allowed in read-only mode"
                 .to_string(),
         ),
         _ => None,
     }
 }
 
-/// True when an `HttpRequest` payload declares a mutation method
-/// (POST/PUT/PATCH/DELETE). Method parsing is delegated to the canonical
-/// [`extract_http_request`] extractor (normalization, `GET` default, size
-/// guard) so this predicate cannot drift from the rest of the HTTP path. A
-/// malformed payload yields `Err` here and is surfaced as `InvalidPayload` by
-/// the extraction step in `check`, so the gate reports no mutation for it; a
-/// missing method defaults to `GET` (a read). GET is a legitimate read under
-/// read-only, so this is intentionally not fail-closed — contrast the SDK's
-/// routing helper, which fails *closed* to the SSRF-guarded Execute path.
+/// True when an `HttpRequest` payload declares anything but a read method
+/// (GET/HEAD/OPTIONS). The read methods are listed rather than the mutating
+/// ones: WebDAV and extension verbs (MKCOL, COPY, MOVE, PROPPATCH, …) change
+/// state too, and a list of known mutations lets every unlisted one through.
+/// The SDK's routing helper draws the same line. Method parsing is delegated
+/// to the canonical [`extract_http_request`] extractor (normalization, `GET`
+/// default, size guard) so this predicate cannot drift from the rest of the
+/// HTTP path. A malformed payload yields `Err` here and is surfaced as
+/// `InvalidPayload` by the extraction step in `check`, so the gate reports no
+/// mutation for it; a missing method defaults to `GET` (a read).
 fn http_method_is_mutation(payload: &str) -> bool {
     let Ok(extracted) = extract_http_request(payload) else {
         return false;
     };
-    matches!(
-        extracted.http_method(),
-        Some("POST" | "PUT" | "PATCH" | "DELETE")
-    )
+    !matches!(extracted.http_method(), Some("GET" | "HEAD" | "OPTIONS"))
 }
 
 fn trust_level_str(level: &TrustLevel) -> &'static str {

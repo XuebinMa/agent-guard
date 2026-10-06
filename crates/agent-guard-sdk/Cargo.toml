@@ -26,9 +26,9 @@ windows-sandbox = ["agent-guard-sandbox/windows-sandbox"]
 windows-appcontainer = ["agent-guard-sandbox/windows-appcontainer"]
 
 [dependencies]
-agent-guard-core = { path = "../agent-guard-core", version = "=0.2.6" }
-agent-guard-validators = { path = "../agent-guard-validators", version = "=0.2.6" }
-agent-guard-sandbox = { path = "../agent-guard-sandbox", version = "=0.2.6" }
+agent-guard-core = { path = "../agent-guard-core", version = "=0.2.7" }
+agent-guard-validators = { path = "../agent-guard-validators", version = "=0.2.7" }
+agent-guard-sandbox = { path = "../agent-guard-sandbox", version = "=0.2.7" }
 tracing.workspace = true
 tracing-subscriber = { workspace = true, optional = true }
 prometheus-client.workspace = true
@@ -44,7 +44,12 @@ chrono.workspace = true
 cap-std.workspace = true
 ed25519-dalek.workspace = true
 hex.workspace = true
+fs2 = "0.4.3"
 reqwest = { workspace = true, features = ["json", "rustls", "blocking"] }
+
+# `O_NONBLOCK` for WriteFile opens, so a FIFO cannot hold the host thread.
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
 
 [dev-dependencies]
 criterion.workspace = true

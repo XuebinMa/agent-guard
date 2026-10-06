@@ -13,6 +13,7 @@ mod guard_git_preview;
 mod guard_helpers;
 mod guard_lifecycle;
 mod handoff;
+mod jsonl_file;
 pub mod metrics;
 pub mod policy_signing;
 pub mod provenance;
@@ -41,9 +42,10 @@ pub use siem::SiemExporter;
 
 // Re-export core types so SDK users don't need to depend on agent-guard-core
 pub use agent_guard_core::{
-    AnomalyEvent, AuditConfig, AuditDecision, AuditEvent, AuditRecord, Context, CustomToolId,
-    DecisionCode, DecisionReason, ExecutionEvent, GuardDecision, GuardInput, HostAttestation,
-    ReloadEvent, ReloadStatus, RuntimeDecision, SandboxFailureEvent, Tool, TrustLevel,
+    display_safe, AnomalyEvent, AuditConfig, AuditDecision, AuditEvent, AuditRecord, Context,
+    CustomToolId, DecisionCode, DecisionReason, ExecutionEvent, GuardDecision, GuardInput,
+    HostAttestation, ReloadEvent, ReloadStatus, RuntimeDecision, SandboxFailureEvent, Tool,
+    TrustLevel,
 };
 
 // Re-export sandbox types for direct usage

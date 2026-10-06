@@ -213,14 +213,30 @@ impl PushBroker {
 fn push_pinned(snapshot: &GitSnapshot, tx: &PushTransaction) -> Result<String, GitError> {
     let refspec = format!("{}:refs/heads/{}", tx.local_oid, tx.branch);
 
+    // `--` ends option parsing before the positional URL and refspec, so
+    // neither can ever be read as an option by Git.
     match &tx.remote_oid {
         Some(remote_oid) => {
             let lease = format!("--force-with-lease=refs/heads/{}:{}", tx.branch, remote_oid);
-            snapshot.push(&["push", "--no-verify", &lease, &tx.remote_url, &refspec])
+            snapshot.push(&[
+                "push",
+                "--no-verify",
+                &lease,
+                "--",
+                &tx.remote_url,
+                &refspec,
+            ])
         }
         None => {
             let lease = format!("--force-with-lease=refs/heads/{}:", tx.branch);
-            snapshot.push(&["push", "--no-verify", &lease, &tx.remote_url, &refspec])
+            snapshot.push(&[
+                "push",
+                "--no-verify",
+                &lease,
+                "--",
+                &tx.remote_url,
+                &refspec,
+            ])
         }
     }
 }

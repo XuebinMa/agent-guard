@@ -1,9 +1,11 @@
 import json
 from pathlib import Path
+import re
 import shutil
 import subprocess
 import sys
 import tempfile
+import tomllib
 import unittest
 
 
@@ -30,6 +32,16 @@ FILES = (
 
 
 class VersionMarkerTests(unittest.TestCase):
+    def source_version(self, root: Path) -> str:
+        document = tomllib.loads((root / "Cargo.toml").read_text(encoding="utf-8"))
+        return document["workspace"]["package"]["version"]
+
+    def published_version(self, root: Path) -> str:
+        text = (root / "README.md").read_text(encoding="utf-8")
+        match = re.search(r"Latest published release\*\*:\s*\[`v([^`]+)`", text)
+        self.assertIsNotNone(match, "fixture must name its actual published release")
+        return match.group(1)
+
     def fixture(self) -> Path:
         context = tempfile.TemporaryDirectory()
         root = Path(context.__enter__())
@@ -55,22 +67,23 @@ class VersionMarkerTests(unittest.TestCase):
 
     def test_bump_changes_source_markers_but_preserves_published_release(self):
         root = self.fixture()
+        published = self.published_version(root)
 
         result = self.run_script(root, "bump", "9.8.7-rc.1")
 
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn("published release remains 0.2.6", result.stdout)
+        self.assertIn(f"published release remains {published}", result.stdout)
         check = self.run_script(root, "check")
         self.assertEqual(check.returncode, 0, check.stderr)
-        self.assertIn("source 9.8.7-rc.1, published release 0.2.6", check.stdout)
+        self.assertIn(f"source 9.8.7-rc.1, published release {published}", check.stdout)
 
         readme = (root / "README.md").read_text(encoding="utf-8")
         self.assertIn("Source version**: `v9.8.7-rc.1`", readme)
-        self.assertIn("releases/tag/v0.2.6", readme)
+        self.assertIn(f"releases/tag/v{published}", readme)
         python_readme = (root / "crates/agent-guard-python/README.md").read_text(
             encoding="utf-8"
         )
-        self.assertIn("latest published package is `0.2.6`", python_readme)
+        self.assertIn(f"latest published package is `{published}`", python_readme)
         self.assertIn("current `9.8.7-rc.1` source", python_readme)
 
     def test_detects_secondary_node_lock_version_drift(self):
@@ -87,11 +100,13 @@ class VersionMarkerTests(unittest.TestCase):
 
     def test_detects_published_release_drift_independently(self):
         root = self.fixture()
+        published = self.published_version(root)
         path = root / "docs/README.md"
         text = path.read_text(encoding="utf-8")
-        text = text.replace("releases/tag/v0.2.6", "releases/tag/v0.2.5", 1)
-        text = text.replace("[`v0.2.6`](https://github.com", "[`v0.2.5`](https://github.com", 1)
-        path.write_text(text, encoding="utf-8")
+        changed = text.replace(f"releases/tag/v{published}", "releases/tag/v0.0.0", 1)
+        changed = changed.replace(f"[`v{published}`](https://github.com", "[`v0.0.0`](https://github.com", 1)
+        self.assertNotEqual(changed, text, "negative control must actually change the fixture")
+        path.write_text(changed, encoding="utf-8")
 
         result = self.run_script(root, "check")
 
@@ -100,11 +115,12 @@ class VersionMarkerTests(unittest.TestCase):
 
     def test_requires_exact_local_dependency_pins(self):
         root = self.fixture()
+        source = self.source_version(root)
         path = root / "crates/agent-guard-cli/Cargo.toml"
-        text = path.read_text(encoding="utf-8").replace(
-            'version = "=0.2.6"', 'version = "0.2.6"', 1
-        )
-        path.write_text(text, encoding="utf-8")
+        text = path.read_text(encoding="utf-8")
+        changed = text.replace(f'version = "={source}"', f'version = "{source}"', 1)
+        self.assertNotEqual(changed, text, "negative control must remove a real exact pin")
+        path.write_text(changed, encoding="utf-8")
 
         result = self.run_script(root, "check")
 
@@ -113,20 +129,25 @@ class VersionMarkerTests(unittest.TestCase):
 
     def test_failed_bump_rolls_back_earlier_file_changes(self):
         root = self.fixture()
+        source = self.source_version(root)
         lock_path = root / "Cargo.lock"
-        lock_text = lock_path.read_text(encoding="utf-8").replace(
-            'name = "agent-guard-broker"\nversion = "0.2.6"',
-            'name = "agent-guard-broker"\nsource = "registry+https://example.invalid/index"\nversion = "0.2.6"',
+        lock_text = lock_path.read_text(encoding="utf-8")
+        changed = lock_text.replace(
+            f'name = "agent-guard-broker"\nversion = "{source}"',
+            f'name = "agent-guard-broker"\nsource = "registry+https://example.invalid/index"\nversion = "{source}"',
             1,
         )
-        lock_path.write_text(lock_text, encoding="utf-8")
-        cargo_before = (root / "Cargo.toml").read_bytes()
+        self.assertNotEqual(changed, lock_text, "negative control must alter the real broker entry")
+        lock_path.write_text(changed, encoding="utf-8")
+        paths = {root / relative for relative in FILES} | set((root / "crates").glob("*/Cargo.toml"))
+        originals = {path: path.read_bytes() for path in paths}
 
         result = self.run_script(root, "bump", "9.8.7")
 
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("Cargo.lock package agent-guard-broker", result.stderr)
-        self.assertEqual((root / "Cargo.toml").read_bytes(), cargo_before)
+        for path, original in originals.items():
+            self.assertEqual(path.read_bytes(), original, f"partial rollback at {path.relative_to(root)}")
 
 
 if __name__ == "__main__":

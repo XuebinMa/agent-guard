@@ -2,19 +2,24 @@
 
 One-command setup for the [agent-guard](https://github.com/XuebinMa/agent-guard) advisory outbound hook in Claude Code.
 
-This path is intentionally fail-open on installation/runtime errors and does
+The runtime hook is intentionally fail-open on evaluation errors and does
 not own Git credentials or execution. Treat it as an advisory host integration,
 not an isolation boundary against an agent that can bypass the hook.
-The runtime wrapper also fails open, with a warning, unless the installed
-`guard-hook --version` exactly matches this plugin package's version.
+`npx init` verifies exact binary versions at installation time and registers a
+direct `guard-hook check` command. It does not install a per-call version wrapper.
+The separate marketplace plugin checks exact versions on every call and fails
+open, with a warning, on a mismatch.
 
 ```bash
 npx agent-guard-plugin init
-install -m 600 /dev/null ~/.agent-guard/broker.gitconfig
+mkdir -p ~/.agent-guard
+(umask 077; set -C; : > ~/.agent-guard/broker.gitconfig)
 ```
 
-The second line creates the host-owned configuration required by
-`agent-guard push`; keep it outside any agent-writable checkout. See the
+The configuration steps create a private host-owned file required by
+`agent-guard push`; creation refuses to overwrite an existing config. If already
+configured, keep that trusted file instead. Keep it outside any agent-writable
+checkout. See the
 [plugin guide](https://github.com/XuebinMa/agent-guard/blob/main/docs/guides/operations/claude-code-plugin.md).
 
 ## What `init` does
@@ -23,7 +28,10 @@ The second line creates the host-owned configuration required by
    - `guard-hook` — the PreToolUse gate itself.
    - `agent-guard-cli`, providing `agent-guard` — the broker path the gate *names*. When the gate stops a push it tells you to run `agent-guard push`, so installing the gate without this leaves you at a `command not found`.
 
-   If cargo is missing, or one install fails, it says which binary is absent and what it costs you, then continues — the hook remains advisory and fails open until `guard-hook` exists.
+   If cargo is missing, an install fails, or a resulting version does not match,
+   setup aborts before writing policy/settings; it does not register an old PATH
+   binary as a fallback. `--skip-binary` is an explicit opt-out from installation
+   checks, and `--dry-run` only previews changes.
 2. **Writes the policy** to `~/.claude/agent-guard/policy.yaml` (the bundled outbound preset, with audit routed to `~/.claude/agent-guard/audit.jsonl` so the hook's stdout stays clean).
 3. **Wires the hook** into `~/.claude/settings.json` under `PreToolUse` for `Bash`, `Write`, `Edit`, and `WebFetch`. The edit is idempotent and preserves every other setting and hook.
 

@@ -1,4 +1,5 @@
 import asyncio
+import inspect
 import json
 import logging
 import time
@@ -330,6 +331,40 @@ def _raise_success_report_failure(
     ) from report_error
 
 
+async def _complete_async_handoff(guard, outcome, request_id, started, action):
+    """Report an awaitable's actual completion, including its host exception."""
+    try:
+        result = await action()
+    except BaseException as host_exc:
+        handoff_result = _build_handoff_result(
+            guard,
+            exit_code=1,
+            duration_ms=int((time.monotonic() - started) * 1000),
+            stderr=str(host_exc),
+        )
+        try:
+            await asyncio.to_thread(
+                guard.report_handoff_result, request_id, handoff_result
+            )
+        except Exception as report_error:
+            _surface_report_failure_on_host_error(host_exc, report_error)
+        raise
+    handoff_result = _build_handoff_result(
+        guard,
+        exit_code=0,
+        duration_ms=int((time.monotonic() - started) * 1000),
+    )
+    try:
+        await asyncio.to_thread(
+            guard.report_handoff_result, request_id, handoff_result
+        )
+    except Exception as report_error:
+        _raise_success_report_failure(
+            report_error, result, outcome, request_id, handoff_result
+        )
+    return result
+
+
 def dispatch_via_run(
     guard: Any,
     *,
@@ -388,6 +423,10 @@ def dispatch_via_run(
                 # remain visible on that exception and in host logs.
                 _surface_report_failure_on_host_error(host_exc, report_error)
             raise
+        if inspect.isawaitable(result):
+            return _complete_async_handoff(
+                guard, outcome, request_id, start, lambda: result
+            )
         duration_ms = int((time.monotonic() - start) * 1000)
         handoff_result = _build_handoff_result(
             guard,
@@ -437,10 +476,22 @@ async def dispatch_via_run_async(
     handler_kwargs: Optional[dict] = None,
     async_handler: Optional[Callable[..., Any]] = None,
 ) -> Any:
-    """Async variant of :func:`dispatch_via_run`. ``async_handler``, when set,
-    is awaited on the Handoff path; otherwise ``handler`` is invoked on a
-    worker thread."""
+    """Async handoff dispatch. A synchronous handler's entire lifecycle runs
+    on one worker, so cancellation of the waiter cannot prematurely consume
+    its handoff. The worker reports its actual result when it finishes."""
     handler_kwargs = handler_kwargs or {}
+    if async_handler is None:
+        result = await asyncio.to_thread(
+            dispatch_via_run,
+            guard,
+            tool=tool,
+            payload=payload,
+            guard_options=guard_options,
+            handler=handler,
+            handler_args=handler_args,
+            handler_kwargs=handler_kwargs,
+        )
+        return await result if inspect.isawaitable(result) else result
 
     try:
         outcome = await asyncio.to_thread(
@@ -458,42 +509,10 @@ async def dispatch_via_run_async(
     if _is_handoff_outcome(outcome):
         request_id = getattr(outcome, "request_id", "")
         start = time.monotonic()
-        try:
-            if async_handler is not None:
-                result = await async_handler(*handler_args, **handler_kwargs)
-            else:
-                result = await asyncio.to_thread(handler, *handler_args, **handler_kwargs)
-        except BaseException as host_exc:  # noqa: BLE001
-            duration_ms = int((time.monotonic() - start) * 1000)
-            handoff_result = _build_handoff_result(
-                guard,
-                exit_code=1,
-                duration_ms=duration_ms,
-                stderr=str(host_exc),
-            )
-            try:
-                await asyncio.to_thread(
-                    guard.report_handoff_result, request_id, handoff_result
-                )
-            except Exception as report_error:
-                _surface_report_failure_on_host_error(host_exc, report_error)
-            raise
-        duration_ms = int((time.monotonic() - start) * 1000)
-        handoff_result = _build_handoff_result(
-            guard,
-            exit_code=0,
-            duration_ms=duration_ms,
-            stderr=None,
+        return await _complete_async_handoff(
+            guard, outcome, request_id, start,
+            lambda: async_handler(*handler_args, **handler_kwargs),
         )
-        try:
-            await asyncio.to_thread(
-                guard.report_handoff_result, request_id, handoff_result
-            )
-        except Exception as report_error:
-            _raise_success_report_failure(
-                report_error, result, outcome, request_id, handoff_result
-            )
-        return result
 
     if _is_executed_outcome(outcome):
         return outcome

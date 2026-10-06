@@ -22,7 +22,7 @@ use std::io::Write;
 use std::path::Path;
 use std::path::PathBuf;
 
-use agent_guard_core::{Context, GuardDecision, GuardInput, Tool, TrustLevel};
+use agent_guard_core::{display_safe, Context, GuardDecision, GuardInput, Tool, TrustLevel};
 use agent_guard_sdk::Guard;
 use serde::{Deserialize, Serialize};
 
@@ -63,7 +63,10 @@ impl HookResponse {
             hook_specific_output: HookSpecificOutput {
                 hook_event_name: "PreToolUse",
                 permission_decision: decision,
-                permission_decision_reason: reason.into(),
+                // A refusal quotes the command it refused. JSON encoding keeps
+                // that text inert in transit; this keeps it inert once a
+                // terminal UI decodes and prints it.
+                permission_decision_reason: display_safe(&reason.into()),
             },
         }
     }

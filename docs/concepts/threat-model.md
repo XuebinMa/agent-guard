@@ -183,6 +183,35 @@ binary are part of the host trusted computing base.
   boundary, use a host-owned broker process, and follow the independent checks
   in [Credential isolation](../guides/operations/credential-isolation.md).
 
+### 9. Directory authority does not separate hard-linked aliases
+The capability-relative `WriteFile` executor prevents path/symlink traversal,
+but a pre-existing regular file can have another hard link outside the workspace.
+Writing that inode also changes its other names. This is not prevented by checking
+the final path, and a pre-open link-count check alone would introduce another race.
+- **Recommended**: do not share writable inodes between a hostile workspace and
+  trusted host data. Use a separate filesystem or copy-based staging. Atomic
+  replacement semantics for overwrite/append require a separate compatibility
+  design before claiming alias isolation.
+
+### 10. Windows inherited handles remain a review item
+The experimental Job Object launcher currently enables handle inheritance without
+an explicit handle allowlist. A parent handle deliberately marked inheritable can
+carry authority not granted by the child's restricted token. The current unit
+test checks non-inheritable defaults, not that adversarial case.
+- **Recommended**: do not treat this backend as an ambient-handle isolation
+  boundary until a `PROC_THREAD_ATTRIBUTE_HANDLE_LIST` launch path and a real
+  Windows child-handle regression pass. This was source-reviewed on macOS, not
+  demonstrated on a Windows host; see the [review](../security-review-2026-10-04.md).
+
+### 11. Cancelling a Python waiter is not cancelling a host action
+A synchronous host callback running in a worker thread may continue after its
+asyncio waiter is cancelled. The worker reports its actual terminal result, not
+a premature failure attributed to cancellation. Process exit can still interrupt
+reporting. Native Guard calls release the GIL, but that does not make arbitrary
+host code cancellable.
+- **Recommended**: use cooperative cancellation or an independently managed
+  process for host work that must be stopped; do not retry on cancellation alone.
+
 ---
 
 ## 🛠️ Security Hardening Checklist

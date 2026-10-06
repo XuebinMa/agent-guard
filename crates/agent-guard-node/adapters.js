@@ -638,7 +638,23 @@ function createAdapterExports(nativeApi = {}) {
 
     for (const methodName of methodNames) {
       const originalMethod = tool[methodName]
-      const wrapHandler = createGuardedExecutor(guard, { ...options, tool: toolName })
+      const wrapHandler = createGuardedExecutor(guard, {
+        ...options,
+        tool: toolName,
+        payloadMapper(input) {
+          // LangChain invoke unwraps ToolCall.args before call/_call. Apply
+          // policy to those same arguments, not transport metadata that the
+          // one-use framework transition ticket will subsequently discard.
+          let actionInput = input
+          if (methodName === 'invoke' && isPlainObjectLike(input) && input.type === 'tool_call') {
+            if (!isPlainObjectLike(input.args) || Array.isArray(input.args)) {
+              throw new AgentGuardExecutionError('ToolCall.args must be an object', { status: 'error' })
+            }
+            actionInput = input.args
+          }
+          return serializePayload(normalizePayload, toolName, actionInput, options.payloadMapper)
+        },
+      })
       const guardedMethod = wrapHandler(function invokeGuardedOriginal(value, ...handlerRest) {
         return invokeOriginal(
           methodName,

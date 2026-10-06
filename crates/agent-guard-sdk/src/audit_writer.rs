@@ -1,6 +1,6 @@
 //! Async audit-file writer.
 //!
-//! `AuditFileWriter` moves the synchronous `writeln!` to an audit file off the
+//! `AuditFileWriter` moves complete, file-locked JSONL writes off the
 //! request hot path. Each `Guard` instance configured with `audit.output: file`
 //! owns one writer, which spawns a dedicated `std::thread` that holds the
 //! `File` handle and drains lines from a bounded `mpsc::sync_channel` in
@@ -149,7 +149,7 @@ impl Drop for AuditFileWriter {
 
 fn run_worker(mut file: File, rx: mpsc::Receiver<String>) {
     while let Ok(line) = rx.recv() {
-        if let Err(e) = writeln!(file, "{}", line) {
+        if let Err(e) = crate::jsonl_file::append_line(&file, &line) {
             tracing::error!("Failed to write to audit file: {}", e);
         }
     }

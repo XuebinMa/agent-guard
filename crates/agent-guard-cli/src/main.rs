@@ -26,7 +26,7 @@ use agent_guard_broker::{
 use agent_guard_sdk::approval::{
     default_ledger_path, ApprovalError, ApprovalLedger, ApprovalRecord,
 };
-use agent_guard_sdk::{Context, Guard, GuardDecision, GuardInput, Tool};
+use agent_guard_sdk::{display_safe, Context, Guard, GuardDecision, GuardInput, Tool};
 use chrono::{Duration, Utc};
 use clap::{Parser, Subcommand};
 
@@ -168,13 +168,15 @@ fn run_list(ledger: &ApprovalLedger) -> i32 {
                 "{:<26} {:<12} {:<26} MESSAGE",
                 "REQUEST_ID", "TOOL", "CREATED"
             );
+            // The ledger is a file any same-user process can write, and its
+            // message restates the agent's command. Nothing from it is printed raw.
             for record in pending {
                 println!(
                     "{:<26} {:<12} {:<26} {}",
-                    record.request_id,
-                    record.tool,
+                    display_safe(&record.request_id),
+                    display_safe(&record.tool),
                     record.created_at.to_rfc3339(),
-                    record.message
+                    display_safe(&record.message)
                 );
             }
             0
@@ -212,8 +214,8 @@ fn run_decision(
             println!(
                 "{} request '{}' ({}).",
                 verb_past(&decision),
-                record.request_id,
-                record.tool
+                display_safe(&record.request_id),
+                display_safe(&record.tool)
             );
             0
         }
@@ -229,27 +231,36 @@ fn verb_past(decision: &Decision) -> &'static str {
 }
 
 fn print_record(record: &ApprovalRecord) {
-    println!("request_id:   {}", record.request_id);
-    println!("tool:         {}", record.tool);
+    println!("request_id:   {}", display_safe(&record.request_id));
+    println!("tool:         {}", display_safe(&record.tool));
     println!("status:       {:?}", record.status);
     println!(
         "agent_id:     {}",
-        record.agent_id.as_deref().unwrap_or("-")
+        display_safe(record.agent_id.as_deref().unwrap_or("-"))
     );
     println!("created_at:   {}", record.created_at.to_rfc3339());
     if let Some(decided_at) = record.decided_at {
         println!("decided_at:   {}", decided_at.to_rfc3339());
     }
     if let Some(by) = &record.decided_by {
-        println!("decided_by:   {by}");
+        println!("decided_by:   {}", display_safe(by));
     }
-    println!("payload_hash: {}", record.payload_hash);
-    println!("message:      {}", record.message);
+    println!("payload_hash: {}", display_safe(&record.payload_hash));
+    println!("message:      {}", display_safe(&record.message));
 }
 
 fn fail(error: &ApprovalError) -> i32 {
     eprintln!("error: {error}");
     1
+}
+
+/// Git's own words, which include whatever a remote sent back, with line
+/// breaks kept and nothing else a terminal would act on.
+fn printable(text: &str) -> String {
+    text.lines()
+        .map(display_safe)
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 /// Resolve, show, authorize and execute one push.
@@ -355,7 +366,10 @@ fn run_push(options: PushCommandOptions) -> i32 {
     let transaction = match broker.resolve_push_transaction(repo, remote, branch) {
         Ok(transaction) => transaction,
         Err(error) => {
-            eprintln!("agent-guard: could not resolve the push: {error}");
+            eprintln!(
+                "agent-guard: could not resolve the push: {}",
+                printable(&error.to_string())
+            );
             return 2;
         }
     };
@@ -377,6 +391,23 @@ fn run_push(options: PushCommandOptions) -> i32 {
 
     if !yes && !preview::confirm() {
         println!("\nNot pushed.");
+        return 1;
+    }
+
+    // A human may leave the preview open while the host tightens or removes
+    // the policy. Re-read it after confirmation, before issuing any grant.
+    // Comparing the original Guard to itself would never detect that change.
+    let current_guard = match Guard::from_yaml_file(&policy_path) {
+        Ok(current_guard) => current_guard,
+        Err(error) => {
+            eprintln!("agent-guard: policy could not be revalidated: {error}; not pushed");
+            return 1;
+        }
+    };
+    if current_guard.policy_version() != guard.policy_version() {
+        eprintln!(
+            "agent-guard: policy changed during confirmation; review a fresh preview; not pushed"
+        );
         return 1;
     }
 
@@ -422,7 +453,7 @@ fn run_push(options: PushCommandOptions) -> i32 {
             0
         }
         PushAttempt::Refused { reason } => {
-            eprintln!("\nNot pushed: {reason}");
+            eprintln!("\nNot pushed: {}", printable(reason));
             1
         }
     }

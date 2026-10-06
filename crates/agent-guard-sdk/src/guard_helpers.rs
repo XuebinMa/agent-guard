@@ -80,3 +80,58 @@ pub(crate) fn sha256_hash(data: &str) -> String {
     hasher.update(data.as_bytes());
     hex::encode(hasher.finalize())
 }
+
+/// The request payload restated once per canonical spelling of its URL, so
+/// policy rules are also matched against what a client would connect to.
+/// Everything but `url` is carried over, which keeps method-aware rules and
+/// the read-only gate deciding on the same request.
+pub(crate) fn canonical_http_payloads(payload: &str) -> Vec<CanonicalPayload> {
+    use agent_guard_validators::http::{canonical_url_subjects, url_without_userinfo};
+
+    let Ok(request) = serde_json::from_str::<serde_json::Value>(payload) else {
+        return Vec::new();
+    };
+    let Some(url) = request.get("url").and_then(|url| url.as_str()) else {
+        return Vec::new();
+    };
+    let restate = |subject: String| {
+        let mut restated = request.clone();
+        restated["url"] = serde_json::Value::String(subject);
+        restated.to_string()
+    };
+    // Userinfo changes which host a textual prefix names, so that form is a
+    // request to be decided in full. Every other spelling names the same
+    // destination as the original: a rule that matches one of them applies,
+    // but an allow rule written as `host:443/…` is not unmatched by `host/…`.
+    let without_userinfo = url_without_userinfo(url).map(|subject| CanonicalPayload {
+        payload: restate(subject),
+        decided_in_full: true,
+    });
+    let spellings = canonical_url_subjects(url)
+        .into_iter()
+        .map(|subject| CanonicalPayload {
+            payload: restate(subject),
+            decided_in_full: false,
+        });
+    without_userinfo.into_iter().chain(spellings).collect()
+}
+
+/// One canonical restatement of a request, and how much of its decision is
+/// taken over.
+pub(crate) struct CanonicalPayload {
+    pub(crate) payload: String,
+    /// `true`: the whole decision applies, including a refusal for matching no
+    /// allow rule. `false`: only a deny or ask rule that matched applies.
+    pub(crate) decided_in_full: bool,
+}
+
+/// Whether a decision came from a rule that matched, as opposed to a mode or
+/// an allow-list the payload matched nothing in.
+pub(crate) fn decided_by_a_matching_rule(decision: &GuardDecision) -> bool {
+    match decision {
+        GuardDecision::Deny { reason } | GuardDecision::AskUser { reason, .. } => {
+            reason.matched_rule().is_some()
+        }
+        _ => false,
+    }
+}

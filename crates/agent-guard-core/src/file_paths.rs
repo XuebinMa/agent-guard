@@ -14,17 +14,24 @@ pub fn resolve_tool_path(
         ));
     }
 
-    let path = Path::new(raw_path);
-    let anchored = if path.is_absolute() {
-        path.to_path_buf()
-    } else if let Some(working_directory) = working_directory {
-        working_directory.join(path)
-    } else {
-        path.to_path_buf()
-    };
-    let normalized = normalize_path(&anchored);
+    let normalized = requested_tool_path(raw_path, working_directory);
 
     resolve_with_existing_ancestor(&normalized, working_directory)
+}
+
+/// The path as the caller named it: anchored to the working directory and
+/// with `.`/`..` folded, but with no symlink followed.
+///
+/// [`resolve_tool_path`] answers "which file is this". A rule that denies a
+/// name also has to be asked about the name, because a symlink resolves to
+/// something the rule does not mention.
+pub fn requested_tool_path(raw_path: &str, working_directory: Option<&Path>) -> PathBuf {
+    let path = Path::new(raw_path);
+    let anchored = match working_directory {
+        Some(working_directory) if !path.is_absolute() => working_directory.join(path),
+        _ => path.to_path_buf(),
+    };
+    normalize_path(&anchored)
 }
 
 pub fn resolve_path_glob_pattern(pattern: &str, working_directory: Option<&Path>) -> String {
@@ -32,6 +39,52 @@ pub fn resolve_path_glob_pattern(pattern: &str, working_directory: Option<&Path>
         return resolve_tool_path(pattern, working_directory)
             .map(|path| path.to_string_lossy().into_owned())
             .unwrap_or_else(|_| pattern.to_string());
+    };
+
+    // A pattern that opens with a wildcard (`**/.env`) is not anchored.
+    if split_index == 0 {
+        return pattern.to_string();
+    }
+
+    // Only whole directory components are resolved. The component holding the
+    // first wildcard stays attached to it: `logs/app-*.log` is the resolved
+    // `logs/` plus `app-*.log`. Resolving the literal text `logs/app-` instead
+    // and joining with a separator made the pattern `logs/app-/*.log`, which
+    // matches nothing a rule author meant.
+    let directory_end = pattern[..split_index]
+        .rfind(['/', std::path::MAIN_SEPARATOR])
+        .map_or(0, |separator| separator + 1);
+    let (prefix, suffix) = pattern.split_at(directory_end);
+    // A bare `.env*` is relative to the working directory itself.
+    let anchor = if prefix.is_empty() { "." } else { prefix };
+    if prefix.is_empty() && working_directory.is_none() {
+        return pattern.to_string();
+    }
+
+    let resolved_prefix = resolve_tool_path(anchor, working_directory)
+        .map(|path| path.to_string_lossy().into_owned())
+        .unwrap_or_else(|_| prefix.to_string());
+
+    if suffix.is_empty() {
+        return resolved_prefix;
+    }
+
+    if resolved_prefix.ends_with(std::path::MAIN_SEPARATOR) {
+        format!("{resolved_prefix}{suffix}")
+    } else {
+        format!("{resolved_prefix}{}{suffix}", std::path::MAIN_SEPARATOR)
+    }
+}
+
+/// Preserve the pre-0.2.7 interpretation of permission-granting patterns.
+/// Correcting partial-component deny globs must not silently authorize sibling
+/// names via `allow_paths` or waive their bound via `workspace_escape_paths`.
+pub(crate) fn resolve_granted_path_glob_pattern(
+    pattern: &str,
+    working_directory: Option<&Path>,
+) -> String {
+    let Some(split_index) = pattern.find(['*', '?', '[']) else {
+        return resolve_path_glob_pattern(pattern, working_directory);
     };
 
     let (prefix, suffix) = pattern.split_at(split_index);
@@ -42,10 +95,6 @@ pub fn resolve_path_glob_pattern(pattern: &str, working_directory: Option<&Path>
     let resolved_prefix = resolve_tool_path(prefix, working_directory)
         .map(|path| path.to_string_lossy().into_owned())
         .unwrap_or_else(|_| prefix.to_string());
-
-    if suffix.is_empty() {
-        return resolved_prefix;
-    }
 
     if resolved_prefix.ends_with(std::path::MAIN_SEPARATOR) {
         format!("{resolved_prefix}{suffix}")

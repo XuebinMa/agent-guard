@@ -4,7 +4,7 @@
 | :--- | :--- |
 | **Status** | 🟢 Baseline Established (v0.2.0-rc1) |
 | **Audience** | SDK consumers picking a language binding |
-| **Last Reviewed** | 2026-10-02 |
+| **Last Reviewed** | 2026-10-04 |
 | **Enforced by** | `tests/cross-language-parity/` + `parity-e2e` CI job |
 
 ---
@@ -17,7 +17,7 @@
 - **Python binding** (`agent_guard`, PyO3 / abi3-py310).
 - **Node binding** (`@agent-guard/node`, napi-rs).
 
-Each surface evaluates the same policy and must produce the **same decision** for the **same inputs**. Drift between bindings is a security regression — a payload denied in one language must not be allowed in another. The `parity-e2e` CI job blocks merges whenever any of the 16 cross-language scenarios diverge.
+Each surface evaluates the same policy and must produce the **same decision** for the **same inputs**. Drift between bindings is a security regression — a payload denied in one language must not be allowed in another. The `parity-e2e` CI job blocks merges whenever any of the 58 cross-language scenarios diverge.
 
 This document is the human-readable map of what's covered. The machine truth lives in the `tests/cross-language-parity/` fixtures.
 
@@ -121,7 +121,7 @@ All exception classes carry the canonical attribute set: `policy_version`, `poli
 
 ## What the e2e suite covers
 
-16 scenarios (see `tests/cross-language-parity/fixtures/scenarios.json`):
+58 scenarios (see `tests/cross-language-parity/fixtures/scenarios.json`):
 
 1. `bash_allow_echo` — bash allow path → Execute
 2. `bash_destructive_rm` — `rm -rf /tmp/x` → deny / `PathOutsideWorkspace`
@@ -139,6 +139,30 @@ All exception classes carry the canonical attribute set: `policy_version`, `poli
 14. `http_get_internal_method_allow` — the same URL with GET → Handoff
 15. `write_omitted_trust_defaults_untrusted` — absent trust cannot inherit a trusted tool-mode elevation
 16. `invalid_signature_denies_check_and_runtime` — invalid signed policy → `PolicyVerificationFailed` from both decision APIs
+17. `bash_git_alias_mirror_deny` — an inherited mirror config cannot become ordinary approval
+18. `bash_git_alias_chain_force_deny` — nested aliases cannot hide an outbound update
+19. `bash_git_alias_forwarded_force_deny` — unmodeled shell forwarding preserves destructive refusal
+20. `bash_git_quoted_export_deny` — quoted declarations cannot hide Git configuration
+21. `bash_git_environment_alias_deny` — opaque environment config cannot introduce an unchecked alias
+22. `bash_ansi_c_nul_deny` — decoded NUL cannot change the controlled command word
+23. `bash_sed_outside_workspace_deny` — in-place sed destinations stay in the workspace
+24. `bash_readonly_rg_config_deny` — opaque search configuration is refused in read-only mode
+25. `bash_readonly_rg_value_terminator_deny` — an option value does not end option parsing
+26. `bash_readonly_env_decoded_deny` — decoded wrapper assignments are checked before unwrapping
+27. `bash_readonly_rg_option_data_allow` — searching for an option name is harmless data
+28. `bash_readonly_sed_attached_script_deny` — compact script-file options receive the same refusal
+29. `bash_readonly_decoded_env_name_is_data_allow` — an echo operand is not an environment assignment
+30. `bash_readonly_find_child_env_name_is_data_allow` — trailing find actions must not make the child echo's operand an environment assignment
+
+Scenarios 31–52 add negative and positive controls for canonical HTTP URLs,
+Host consistency and read-only methods, broker CLI push recognition, attached
+wrapper options, subcommand-specific Git options and helper re-enabling,
+repeated line continuations, and attached copy-option destinations. All runners
+only check/decide these inputs; they do not execute the commands or requests.
+Scenarios 53–58 preserve permission-granting glob boundaries for allowed paths
+and workspace escapes while retaining corrected denied-name matching.
+Parity proves agreement, not correctness: the SDK security regressions also
+assert the expected deny/ask/allow outcomes independently.
 
 If you add an SDK feature that affects decisions, add a scenario that exercises it.
 

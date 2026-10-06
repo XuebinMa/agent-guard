@@ -95,5 +95,257 @@
     "payload": {"command": "echo signed-policy-probe"},
     "context": {"trust_level": "trusted", "working_directory": "/workspace"},
     "invalid_signature": true
+  },
+  {
+    "name": "bash_git_alias_mirror_deny",
+    "tool": "bash",
+    "payload": {"command": "git -c remote.origin.mirror=true -c alias.q=push -c 'alias.p=!git q' p origin"},
+    "context": {"trust_level": "trusted", "working_directory": "/workspace"}
+  },
+  {
+    "name": "bash_git_alias_chain_force_deny",
+    "tool": "bash",
+    "payload": {"command": "git -c alias.q=r -c alias.r=push -c 'alias.p=!git q' p --force origin main"},
+    "context": {"trust_level": "trusted", "working_directory": "/workspace"}
+  },
+  {
+    "name": "bash_git_alias_forwarded_force_deny",
+    "tool": "bash",
+    "payload": {"command": "git -c 'alias.p=!f() { git push \"$@\"; }; f' p --force origin main"},
+    "context": {"trust_level": "trusted", "working_directory": "/workspace"}
+  },
+  {
+    "name": "bash_git_quoted_export_deny",
+    "tool": "bash",
+    "payload": {"command": "export 'GIT_CONFIG_COUNT=1' 'GIT_CONFIG_KEY_0=remote.origin.mirror' 'GIT_CONFIG_VALUE_0=true'; git push origin"},
+    "context": {"trust_level": "trusted", "working_directory": "/workspace"}
+  },
+  {
+    "name": "bash_git_environment_alias_deny",
+    "tool": "bash",
+    "payload": {"command": "GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=alias.p GIT_CONFIG_VALUE_0='push --mirror' git p origin"},
+    "context": {"trust_level": "trusted", "working_directory": "/workspace"}
+  },
+  {
+    "name": "bash_ansi_c_nul_deny",
+    "tool": "bash",
+    "payload": {"command": "$'git\\x00ignored' push --force origin main"},
+    "context": {"trust_level": "trusted", "working_directory": "/workspace"}
+  },
+  {
+    "name": "bash_sed_outside_workspace_deny",
+    "tool": "bash",
+    "payload": {"command": "sed -i 's/old/new/' /outside/review-fixture"},
+    "context": {"trust_level": "trusted", "working_directory": "/workspace"}
+  },
+  {
+    "name": "bash_readonly_rg_config_deny",
+    "tool": "bash",
+    "payload": {"command": "RIPGREP_CONFIG_PATH=/workspace/review.rgconfig rg pattern src"},
+    "context": {"trust_level": "untrusted", "working_directory": "/workspace"}
+  },
+  {
+    "name": "bash_readonly_rg_value_terminator_deny",
+    "tool": "bash",
+    "payload": {"command": "rg -e -- --pre /workspace/review-helper src"},
+    "context": {"trust_level": "untrusted", "working_directory": "/workspace"}
+  },
+  {
+    "name": "bash_readonly_env_decoded_deny",
+    "tool": "bash",
+    "payload": {"command": "env $'GIT_PAGER=review-helper' git -p log"},
+    "context": {"trust_level": "untrusted", "working_directory": "/workspace"}
+  },
+  {
+    "name": "bash_readonly_rg_option_data_allow",
+    "tool": "bash",
+    "payload": {"command": "rg -- --pre src"},
+    "context": {"trust_level": "untrusted", "working_directory": "/workspace"}
+  },
+  {
+    "name": "bash_readonly_sed_attached_script_deny",
+    "tool": "bash",
+    "payload": {"command": "sed -f/workspace/review.sed /workspace/input"},
+    "context": {"trust_level": "untrusted", "working_directory": "/workspace"}
+  },
+  {
+    "name": "bash_readonly_decoded_env_name_is_data_allow",
+    "tool": "bash",
+    "payload": {"command": "echo $'GIT_PAGER=review-data'"},
+    "context": {"trust_level": "untrusted", "working_directory": "/workspace"}
+  },
+  {
+    "name": "bash_readonly_find_child_env_name_is_data_allow",
+    "tool": "bash",
+    "payload": {"command": "find . -exec echo $'GIT_PAGER=review-data' \\; -print"},
+    "context": {"trust_level": "untrusted", "working_directory": "/workspace"}
+  },
+  {
+    "name": "http_canonical_scheme_metadata_deny",
+    "tool": "http_request",
+    "payload": {"method": "GET", "url": "HTTP://169.254.169.254/review-fixture"},
+    "context": {"trust_level": "trusted", "working_directory": "/workspace"}
+  },
+  {
+    "name": "http_canonical_numeric_metadata_deny",
+    "tool": "http_request",
+    "payload": {"method": "GET", "url": "http://2852039166/review-fixture"},
+    "context": {"trust_level": "trusted", "working_directory": "/workspace"}
+  },
+  {
+    "name": "http_canonical_userinfo_metadata_deny",
+    "tool": "http_request",
+    "payload": {"method": "GET", "url": "http://review-data@169.254.169.254/review-fixture"},
+    "context": {"trust_level": "trusted", "working_directory": "/workspace"}
+  },
+  {
+    "name": "http_canonical_public_url_allow",
+    "tool": "http_request",
+    "payload": {"method": "GET", "url": "HTTPS://API.example.com:443/v1/items"},
+    "context": {"trust_level": "trusted", "working_directory": "/workspace"}
+  },
+  {
+    "name": "http_host_mismatch_deny",
+    "tool": "http_request",
+    "payload": {"method": "GET", "url": "https://api.example.com/v1/items", "headers": {"Host": "other.example.invalid"}},
+    "context": {"trust_level": "trusted", "working_directory": "/workspace"}
+  },
+  {
+    "name": "http_host_same_origin_allow",
+    "tool": "http_request",
+    "payload": {"method": "GET", "url": "https://api.example.com/v1/items", "headers": {"Host": "API.example.com:443"}},
+    "context": {"trust_level": "trusted", "working_directory": "/workspace"}
+  },
+  {
+    "name": "http_readonly_extension_method_deny",
+    "tool": "http_request",
+    "payload": {"method": "MKCOL", "url": "https://api.example.com/review-fixture"},
+    "context": {"trust_level": "untrusted", "working_directory": "/workspace"}
+  },
+  {
+    "name": "http_readonly_head_allow",
+    "tool": "http_request",
+    "payload": {"method": "HEAD", "url": "https://api.example.com/review-fixture"},
+    "context": {"trust_level": "untrusted", "working_directory": "/workspace"}
+  },
+  {
+    "name": "bash_broker_cli_push_ask",
+    "tool": "bash",
+    "payload": {"command": "agent-guard push --remote origin --branch main --yes"},
+    "context": {"trust_level": "trusted", "working_directory": "/workspace"}
+  },
+  {
+    "name": "bash_broker_cli_non_push_allow",
+    "tool": "bash",
+    "payload": {"command": "agent-guard list"},
+    "context": {"trust_level": "trusted", "working_directory": "/workspace"}
+  },
+  {
+    "name": "bash_unknown_attached_wrapper_option_deny",
+    "tool": "bash",
+    "payload": {"command": "env --split='sh -c true' cat"},
+    "context": {"trust_level": "trusted", "working_directory": "/workspace"}
+  },
+  {
+    "name": "bash_modeled_attached_wrapper_option_allow",
+    "tool": "bash",
+    "payload": {"command": "env --unset=KEY cat file"},
+    "context": {"trust_level": "untrusted", "working_directory": "/workspace"}
+  },
+  {
+    "name": "bash_readonly_cat_file_text_abbreviation_deny",
+    "tool": "bash",
+    "payload": {"command": "git cat-file --text HEAD:file"},
+    "context": {"trust_level": "untrusted", "working_directory": "/workspace"}
+  },
+  {
+    "name": "bash_readonly_cat_file_filter_abbreviation_deny",
+    "tool": "bash",
+    "payload": {"command": "git cat-file --filter HEAD:file"},
+    "context": {"trust_level": "untrusted", "working_directory": "/workspace"}
+  },
+  {
+    "name": "bash_readonly_diff_text_option_allow",
+    "tool": "bash",
+    "payload": {"command": "git diff --text HEAD"},
+    "context": {"trust_level": "untrusted", "working_directory": "/workspace"}
+  },
+  {
+    "name": "bash_repeated_continuation_git_force_deny",
+    "tool": "bash",
+    "payload": {"command": "g\\\n\\\nit push --force origin main"},
+    "context": {"trust_level": "trusted", "working_directory": "/workspace"}
+  },
+  {
+    "name": "bash_repeated_continuation_echo_allow",
+    "tool": "bash",
+    "payload": {"command": "ec\\\n\\\nho safe"},
+    "context": {"trust_level": "untrusted", "working_directory": "/workspace"}
+  },
+  {
+    "name": "bash_attached_copy_option_outside_deny",
+    "tool": "bash",
+    "payload": {"command": "rsync source -Ttempf /outside/dest"},
+    "context": {"trust_level": "trusted", "working_directory": "/workspace"}
+  },
+  {
+    "name": "bash_attached_copy_option_workspace_allow",
+    "tool": "bash",
+    "payload": {"command": "rsync source -Ttempf dest"},
+    "context": {"trust_level": "trusted", "working_directory": "/workspace"}
+  },
+  {
+    "name": "bash_readonly_cat_file_single_letter_option_deny",
+    "tool": "bash",
+    "payload": {"command": "git cat-file --t HEAD:file"},
+    "context": {"trust_level": "untrusted", "working_directory": "/workspace"}
+  },
+  {
+    "name": "bash_readonly_double_negated_helper_option_deny",
+    "tool": "bash",
+    "payload": {"command": "git cat-file --no-no-textconv HEAD:file"},
+    "context": {"trust_level": "untrusted", "working_directory": "/workspace"}
+  },
+  {
+    "name": "bash_readonly_disabled_helper_options_allow",
+    "tool": "bash",
+    "payload": {"command": "git diff --no-textconv --no-ext-diff HEAD"},
+    "context": {"trust_level": "untrusted", "working_directory": "/workspace"}
+  },
+  {
+    "name": "read_legacy_grant_subtree_allow",
+    "tool": "read_file",
+    "payload": {"path": "/r7-parity/src/main.rs"},
+    "context": {"trust_level": "trusted", "working_directory": "/r7-parity"}
+  },
+  {
+    "name": "read_legacy_grant_sibling_deny",
+    "tool": "read_file",
+    "payload": {"path": "/r7-parity/src-old/main.rs"},
+    "context": {"trust_level": "trusted", "working_directory": "/r7-parity"}
+  },
+  {
+    "name": "write_legacy_escape_subtree_allow",
+    "tool": "write_file",
+    "payload": {"path": "/r7-parity/external/public.txt", "content": "public fixture"},
+    "context": {"trust_level": "trusted", "working_directory": "/r7-parity/workspace"}
+  },
+  {
+    "name": "write_legacy_escape_sibling_deny",
+    "tool": "write_file",
+    "payload": {"path": "/r7-parity/external-sibling/public.txt", "content": "public fixture"},
+    "context": {"trust_level": "trusted", "working_directory": "/r7-parity/workspace"}
+  },
+  {
+    "name": "read_corrected_deny_partial_component_deny",
+    "tool": "read_file",
+    "payload": {"path": "/workspace/.env.local"},
+    "context": {"trust_level": "trusted", "working_directory": "/workspace"}
+  },
+  {
+    "name": "read_corrected_deny_unmatched_file_allow",
+    "tool": "read_file",
+    "payload": {"path": "/workspace/env.txt"},
+    "context": {"trust_level": "trusted", "working_directory": "/workspace"}
   }
 ]

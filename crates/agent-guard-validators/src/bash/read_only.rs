@@ -1,9 +1,9 @@
 //! Read-only mode validation: rejects filesystem/state-mutating commands.
 
-use super::ast::{parse_shell, ShellParse};
+use super::ast::{environment_writes, parse_shell, ShellParse};
 use super::tables::{
-    DANGEROUS_ENV_VAR_PREFIXES, READ_ONLY_COMMANDS, STATE_MODIFYING_COMMANDS, WRITE_COMMANDS,
-    WRITE_REDIRECTIONS,
+    is_code_execution_env_var, DANGEROUS_ENV_VAR_PREFIXES, READ_ONLY_COMMANDS,
+    STATE_MODIFYING_COMMANDS, WRITE_COMMANDS, WRITE_REDIRECTIONS,
 };
 use super::tokenize::shell_split;
 use super::types::{PermissionMode, ValidationResult};
@@ -20,7 +20,8 @@ pub fn validate_read_only(command: &str, mode: PermissionMode) -> ValidationResu
 
     // Token-prefix scan for dangerous env-var assignments. Runs over the
     // post-quote-strip tokens, so quoting tricks (`L'D'_PRELOAD=...`) are
-    // caught and benign filename matches are not.
+    // caught and benign filename matches are not. This also covers `env`
+    // assignments, which are arguments rather than variable_assignment nodes.
     for token in &parts {
         for &prefix in DANGEROUS_ENV_VAR_PREFIXES {
             if token.starts_with(prefix) {
@@ -31,6 +32,28 @@ pub fn validate_read_only(command: &str, mode: PermissionMode) -> ValidationResu
                     ),
                 };
             }
+        }
+        if let Some((name, _)) = token.split_once('=') {
+            if is_code_execution_env_var(name) {
+                return ValidationResult::Block {
+                    reason: format!(
+                        "Environment variable {name} can configure an uninspected program and is not allowed in read-only mode"
+                    ),
+                };
+            }
+        }
+    }
+
+    // Declaration arguments and parameter assignments are recovered from the
+    // grammar as well: they need not occur in an ordinary command argv.
+    for write in environment_writes(command) {
+        if is_code_execution_env_var(&write.name) {
+            return ValidationResult::Block {
+                reason: format!(
+                    "Environment variable {} can configure an uninspected program and is not allowed in read-only mode",
+                    write.name
+                ),
+            };
         }
     }
 
@@ -71,6 +94,29 @@ fn check_command_segment(parts: &[String]) -> Option<ValidationResult> {
         return None;
     }
 
+    // The grammar has decoded quotes and ANSI-C words here. Only the removed
+    // wrapper prefix carries environment assignments; the real command's
+    // operands may contain identical literal data (for example in `echo`).
+    let unwrapped = unwrap_command_wrappers(parts);
+    // `find -exec` may truncate the child at its terminator, so the returned
+    // slice is not necessarily a suffix. Locate its start rather than infer
+    // the prefix from the two slice lengths.
+    let prefix_len = parts
+        .iter()
+        .position(|token| std::ptr::eq(token, unwrapped.as_ptr()))
+        .unwrap_or(parts.len());
+    for token in &parts[..prefix_len] {
+        if let Some((name, _)) = token.split_once('=') {
+            if is_code_execution_env_var(name) {
+                return Some(ValidationResult::Block {
+                    reason: format!(
+                        "Environment variable {name} can configure an uninspected program and is not allowed in read-only mode"
+                    ),
+                });
+            }
+        }
+    }
+
     // Detect process substitution (CWE-78) over the full, un-unwrapped segment.
     for part in parts {
         if part.contains("<(") || part.contains(">(") {
@@ -85,7 +131,7 @@ fn check_command_segment(parts: &[String]) -> Option<ValidationResult> {
     // or operand — drives the checks below. Without this, `sudo -u root rm`,
     // `env FOO=1 rm`, or `FOO=1 rm` hid the destructive command from this gate
     // (audit 2026-05-18 / 2026-05-19 / 2026-06-08).
-    let parts = unwrap_command_wrappers(parts);
+    let parts = unwrapped;
     let first_command = command_name(parts.first()?);
 
     if first_command == "git" {
@@ -119,7 +165,13 @@ fn check_command_segment(parts: &[String]) -> Option<ValidationResult> {
             "verify-tag",
         ];
         if READ_ONLY_GIT_SUBCOMMANDS.contains(&subcommand) {
-            return None;
+            return git_option_that_writes_or_executes(parts).map(|option| {
+                ValidationResult::Block {
+                    reason: format!(
+                        "Git option '{option}' writes a file or runs a program and is not allowed in read-only mode"
+                    ),
+                }
+            });
         }
         return Some(ValidationResult::Block {
             reason: format!(
@@ -136,15 +188,23 @@ fn check_command_segment(parts: &[String]) -> Option<ValidationResult> {
     }
 
     if first_command == "sed" {
-        if parts
-            .iter()
-            .any(|p| p == "-i" || p.starts_with("--in-place"))
-        {
-            return Some(ValidationResult::Block {
+        return match super::sed::parse(&parts[1..]) {
+            Ok(invocation) if invocation.in_place => Some(ValidationResult::Block {
                 reason: "Sed in-place editing is not allowed in read-only mode".to_string(),
+            }),
+            Ok(_) => None,
+            Err(reason) => Some(ValidationResult::Block {
+                reason: reason.to_string(),
+            }),
+        };
+    }
+
+    if first_command == "rg" || first_command == "ripgrep" {
+        return super::ripgrep::validate_arguments(&parts[1..])
+            .err()
+            .map(|reason| ValidationResult::Block {
+                reason: reason.to_string(),
             });
-        }
-        return None;
     }
 
     if first_command == "find" {
@@ -211,10 +271,70 @@ fn is_interpreter_metadata_query(command: &str, arguments: &[String]) -> bool {
         "zsh", "ksh", "dash", "fish",
     ];
     INTERPRETERS.contains(&command)
-        && !arguments.is_empty()
-        && arguments
-            .iter()
-            .all(|argument| matches!(argument.as_str(), "--version" | "-V" | "--help" | "-h"))
+        && super::tokenize::is_interpreter_information_query(command, arguments)
+}
+
+/// The first option of a read-only Git subcommand that makes it something
+/// else: one that writes a file, or names or enables a program to run.
+///
+/// * `--output[=]<file>` (the diff family) writes the output to a file.
+/// * `-O[<pager>]` / `--open-files-in-pager` (`grep`) opens matches in a
+///   program. `diff -O<orderfile>` only reads, so the short form is `grep`'s.
+/// * `-u` / `--upload-pack` / `--exec` (`ls-remote`) name the program run for
+///   the repository.
+/// * `--ext-diff`, `--textconv` and `--filters` turn on programs the
+///   repository's configuration names where they are otherwise off.
+///
+/// Git accepts any unambiguous prefix of a long option, so prefixes count.
+/// Everything after the subcommand is scanned: an operand that looks like one
+/// of these is refused too, which costs a rare false refusal and no bypass.
+fn git_option_that_writes_or_executes(parts: &[String]) -> Option<&str> {
+    const LONG: &[&str] = &[
+        "output",
+        "open-files-in-pager",
+        "upload-pack",
+        "exec",
+        "ext-diff",
+        "textconv",
+        "filters",
+    ];
+    let subcommand_at = parts
+        .iter()
+        .position(|part| Some(part.as_str()) == git_subcommand(parts))?;
+    let subcommand = parts[subcommand_at].as_str();
+    parts[subcommand_at + 1..]
+        .iter()
+        .map(String::as_str)
+        .take_while(|argument| *argument != "--")
+        .find(|argument| {
+            if let Some(name) = argument.strip_prefix("--") {
+                let mut name = name.split_once('=').map_or(name, |(name, _)| name);
+                // Git's option parser accepts paired negations as enabling
+                // options again. A single `--no-` disables the helper.
+                while let Some(enabled) = name.strip_prefix("no-no-") {
+                    name = enabled;
+                }
+                // These complete options only override the dangerous prefix
+                // in subcommands that actually define them. In cat-file they
+                // are abbreviations for textconv / filters instead.
+                let is_plain_text =
+                    name == "text" && matches!(subcommand, "diff" | "log" | "show" | "grep");
+                let is_object_filter = name == "filter" && subcommand == "rev-list";
+                if is_plain_text || is_object_filter {
+                    return false;
+                }
+                // Even one letter can be unambiguous for a particular
+                // subcommand (cat-file --t enables textconv).
+                return !name.is_empty() && LONG.iter().any(|option| option.starts_with(name));
+            }
+            // Short options bundle, so `-nO<pager>` carries `-O` too.
+            let bundles = |flag| argument.starts_with('-') && argument.contains(flag);
+            match subcommand {
+                "grep" => bundles('O'),
+                "ls-remote" => bundles('u'),
+                _ => false,
+            }
+        })
 }
 
 /// Resolve a Git subcommand without mistaking a global option operand for the

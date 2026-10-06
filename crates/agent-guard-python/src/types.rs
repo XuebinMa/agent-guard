@@ -606,6 +606,7 @@ impl PyGuard {
     ))]
     fn check(
         &self,
+        py: Python<'_>,
         tool: &str,
         payload: &str,
         trust_level: &str,
@@ -624,7 +625,7 @@ impl PyGuard {
             actor,
             working_directory: working_directory.map(PathBuf::from),
         };
-        let evaluated = self.inner.evaluate_tool(tool, payload, ctx);
+        let evaluated = py.detach(|| self.inner.evaluate_tool(tool, payload, ctx));
         Ok(decision_from_rust(
             evaluated.decision,
             evaluated.policy_version,
@@ -646,6 +647,7 @@ impl PyGuard {
     ))]
     fn execute(
         &self,
+        py: Python<'_>,
         tool: &str,
         payload: &str,
         trust_level: &str,
@@ -681,9 +683,8 @@ impl PyGuard {
             None => Guard::default_sandbox(),
         };
 
-        let result = self
-            .inner
-            .execute(&input, sandbox.as_ref())
+        let result = py
+            .detach(|| self.inner.execute(&input, sandbox.as_ref()))
             .map_err(|e| GuardError::new_err(format!("Execution failed: {e}")))?;
 
         match result {
@@ -758,6 +759,7 @@ impl PyGuard {
     ))]
     fn decide(
         &self,
+        py: Python<'_>,
         tool: &str,
         payload: &str,
         trust_level: &str,
@@ -776,7 +778,7 @@ impl PyGuard {
             actor,
             working_directory: working_directory.map(PathBuf::from),
         };
-        let evaluated = self.inner.evaluate_tool(tool, payload, ctx);
+        let evaluated = py.detach(|| self.inner.evaluate_tool(tool, payload, ctx));
         Ok(runtime_decision_from_rust(
             evaluated.runtime_decision,
             evaluated.policy_version,
@@ -803,6 +805,7 @@ impl PyGuard {
     ))]
     fn run(
         &self,
+        py: Python<'_>,
         tool: &str,
         payload: &str,
         trust_level: &str,
@@ -836,9 +839,8 @@ impl PyGuard {
         };
         let sandbox_type = sandbox.sandbox_type().to_string();
 
-        let outcome = self
-            .inner
-            .run(&input, sandbox.as_ref())
+        let outcome = py
+            .detach(|| self.inner.run(&input, sandbox.as_ref()))
             .map_err(|e| GuardError::new_err(format!("runtime error: {e}")))?;
 
         Ok(runtime_outcome_from_rust(outcome, Some(sandbox_type)))
@@ -848,11 +850,18 @@ impl PyGuard {
     /// stream. Call this after the host runs an action returned by `run()`
     /// as `RuntimeOutcome::Handoff` so the audit log records a matching
     /// `ExecutionReported` event with the original tool identity.
-    fn report_handoff_result(&self, request_id: &str, result: &HandoffResult) -> PyResult<()> {
+    fn report_handoff_result(
+        &self,
+        py: Python<'_>,
+        request_id: &str,
+        result: &HandoffResult,
+    ) -> PyResult<()> {
         let rust_result = handoff_result_to_rust(result);
-        self.inner
-            .try_report_handoff_result(request_id, rust_result)
-            .map_err(|e| GuardError::new_err(format!("failed to report handoff result: {e}")))
+        py.detach(|| {
+            self.inner
+                .try_report_handoff_result(request_id, rust_result)
+        })
+        .map_err(|e| GuardError::new_err(format!("failed to report handoff result: {e}")))
     }
 
     fn reload_from_yaml(&self, yaml: &str) -> PyResult<()> {

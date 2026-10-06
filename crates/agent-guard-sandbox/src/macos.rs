@@ -6,6 +6,8 @@ use crate::{
     RuntimeCheck, Sandbox, SandboxCapabilities, SandboxContext, SandboxError, SandboxResult,
 };
 #[cfg(target_os = "macos")]
+use agent_guard_core::PolicyMode;
+#[cfg(target_os = "macos")]
 use std::process::{Command, Stdio};
 #[cfg(target_os = "macos")]
 use std::sync::OnceLock;
@@ -166,15 +168,30 @@ impl Sandbox for SeatbeltSandbox {
 
             let escaped_workspace = escape_seatbelt_string(&resolved_dir.to_string_lossy())?;
 
+            // The workspace is writable only in a mode that permits writes.
+            // Granting it in every mode left read-only resting entirely on
+            // the command classifier. `/dev/null` stays writable so ordinary
+            // output redirection keeps working.
+            //
+            // One consequence is accepted rather than worked around: macOS
+            // `sh` (bash 3.2) writes a here-document to a temporary file, and
+            // with no system temporary directory writable it uses the working
+            // directory. Read-only therefore cannot run `cmd <<EOF`. Granting
+            // that file name back would be a write into the workspace again.
+            let workspace_write = match context.mode {
+                PolicyMode::ReadOnly | PolicyMode::Blocked => String::new(),
+                PolicyMode::WorkspaceWrite | PolicyMode::FullAccess => {
+                    format!("(allow file-write* (subpath \"{escaped_workspace}\"))\n")
+                }
+            };
             let profile = format!(
                 r#"(version 1)
 (deny default)
 (allow file-read* (subpath "/"))
-(allow file-write* (subpath "{}"))
-(allow process-fork)
+(allow file-write* (literal "/dev/null"))
+{workspace_write}(allow process-fork)
 (allow process-exec)
-(deny network*)"#,
-                escaped_workspace
+(deny network*)"#
             );
 
             let mut command_process = Command::new("sandbox-exec");

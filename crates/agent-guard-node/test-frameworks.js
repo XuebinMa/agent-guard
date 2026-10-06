@@ -300,6 +300,7 @@ tools:
 }
 
 async function main() {
+  await testLangChainToolCallArgumentsHaveTheSamePolicyAsBareInput()
   await testLangChainDynamicToolCheckMode()
   await testLangChainDynamicToolEnforceMode()
   await testLangChainDynamicToolAutoHasOneLifecyclePerInvocation()
@@ -308,6 +309,42 @@ async function main() {
   await testOpenAIAgentsEnforceMode()
   await testOpenAIAgentsBlockedMode()
   console.log('Node framework compatibility tests passed.')
+}
+
+async function testLangChainToolCallArgumentsHaveTheSamePolicyAsBareInput() {
+  for (const mode of ['check', 'auto']) {
+    const guard = Guard.fromYaml(`
+version: 1
+default_mode: full_access
+tools:
+  custom:
+    calculator:
+      deny:
+        - regex: '^\\{"input":"blocked-fixture"\\}$'
+anomaly:
+  enabled: false
+audit:
+  enabled: false
+`)
+    const calls = []
+    const calculator = new DynamicTool({
+      name: 'calculator', description: 'Local input normalization fixture',
+      func: async input => { calls.push(input); return input },
+    })
+    wrapLangChainTool(guard, calculator, { mode })
+    await assert.rejects(async () => calculator.invoke('blocked-fixture'), /denied|Denied/i)
+    await assert.rejects(async () => calculator.invoke({
+      type: 'tool_call', name: 'calculator', id: 'local-denied',
+      args: { input: 'blocked-fixture' },
+    }), /denied|Denied/i)
+    assert.deepEqual(calls, [])
+    const result = await calculator.invoke({
+      type: 'tool_call', name: 'calculator', id: 'local-allowed',
+      args: { input: 'allowed-fixture' },
+    })
+    assert.equal(result.content, 'allowed-fixture')
+    assert.deepEqual(calls, ['allowed-fixture'])
+  }
 }
 
 main().catch((error) => {

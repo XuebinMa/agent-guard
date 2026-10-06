@@ -182,6 +182,25 @@ impl Walk {
 
         let kind = node.kind();
 
+        // Bash truncates an ANSI-C quoted fragment at a decoded NUL. Keeping
+        // that byte in argv would classify a different command/option. Other
+        // undecodable ANSI-C escapes must not become guessed word values either.
+        if kind == "ansi_c_string" {
+            let value = node
+                .utf8_text(src.as_bytes())
+                .ok()
+                .and_then(static_shell_word);
+            match value {
+                Some(value) if !value.contains('\0') => {}
+                _ => {
+                    self.rejection = Some(
+                        "ANSI-C quoted word contains a NUL or an unsupported escape".to_string(),
+                    );
+                    return;
+                }
+            }
+        }
+
         if let Some((_, why)) = REJECTED_KINDS.iter().find(|(name, _)| *name == kind) {
             self.rejection = Some(format!("unsupported shell construct `{kind}`: {why}"));
             return;
@@ -221,8 +240,14 @@ impl Walk {
 /// Collect the argv of a `command` node: its name plus its argument words,
 /// skipping the redirections and assignment prefixes that the grammar models
 /// as separate children.
+///
+/// The shell deletes a backslash-newline pair before it reads words, so
+/// `tou\⏎ch` is the one word `touch`. The grammar reads the pair as blank
+/// space and yields two words. Two words with nothing else between them are
+/// therefore joined back into the word the shell would run.
 fn argv_of(node: Node, src: &str) -> Vec<String> {
-    let mut argv = Vec::new();
+    let mut argv: Vec<String> = Vec::new();
+    let mut previous_word_end = None;
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
         if !child.is_named() {
@@ -231,16 +256,213 @@ fn argv_of(node: Node, src: &str) -> Vec<String> {
         match child.kind() {
             // Redirections name files, not arguments; the path gate reads
             // them separately.
-            "file_redirect" | "heredoc_redirect" => continue,
+            "file_redirect" | "heredoc_redirect" |
             // `FOO=bar cmd` — the assignment is a prefix, not the command.
-            "variable_assignment" => continue,
+            "variable_assignment" => {
+                previous_word_end = None;
+                continue;
+            }
             _ => {}
         }
         if let Ok(text) = child.utf8_text(src.as_bytes()) {
-            argv.push(word_value(text));
+            let value = word_value(text);
+            let continues_previous = previous_word_end.is_some_and(|end| {
+                src.get(end..child.start_byte())
+                    .is_some_and(is_line_continuation_gap)
+            });
+            match argv.last_mut() {
+                Some(previous) if continues_previous => previous.push_str(&value),
+                _ => argv.push(value),
+            }
+            previous_word_end = Some(child.end_byte());
         }
     }
     argv
+}
+
+/// One or more continuations are deleted before shell word splitting. Any
+/// actual whitespace left in the gap must still separate the words.
+fn is_line_continuation_gap(mut gap: &str) -> bool {
+    if gap.is_empty() {
+        return false;
+    }
+    while !gap.is_empty() {
+        if let Some(rest) = gap
+            .strip_prefix("\\\n")
+            .or_else(|| gap.strip_prefix("\\\r\n"))
+        {
+            gap = rest;
+        } else {
+            return false;
+        }
+    }
+    true
+}
+
+/// One write to the shell environment that a later or child command can see.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct EnvWrite {
+    /// The variable name, as written.
+    pub name: String,
+    /// The assigned value when it is statically known. `None` means the value
+    /// is dynamic, appended to, or inherited (`export NAME`), so no claim about
+    /// it can be made.
+    pub value: Option<String>,
+}
+
+/// Every environment write in a shell program, wherever it appears.
+///
+/// A `NAME=value` prefix changes the environment of the command it precedes,
+/// and a statement-level assignment, `export`/`declare`, or `${NAME:=value}`
+/// changes it for every later command (an assignment to an already-exported
+/// name stays exported). `argv_of` drops all of these from command positions,
+/// so they are recovered here for the gates that care about them. An input that
+/// does not parse yields nothing; restricted modes reject it before asking.
+pub(crate) fn environment_writes(command: &str) -> Vec<EnvWrite> {
+    let mut parser = Parser::new();
+    if parser
+        .set_language(&tree_sitter_bash::LANGUAGE.into())
+        .is_err()
+    {
+        return Vec::new();
+    }
+    let Some(tree) = parser.parse(command, None) else {
+        return Vec::new();
+    };
+    let mut writes = Vec::new();
+    collect_environment_writes(tree.root_node(), command, &mut writes);
+    writes
+}
+
+/// Shell aliases with runtime substitutions cannot be reduced to literal Git
+/// argv, even when the grammar understands their shell structure.
+pub(crate) fn has_dynamic_shell_words(command: &str) -> bool {
+    fn dynamic(node: Node) -> bool {
+        if matches!(
+            node.kind(),
+            "simple_expansion"
+                | "expansion"
+                | "command_substitution"
+                | "process_substitution"
+                | "arithmetic_expansion"
+                | "translated_string"
+        ) {
+            return true;
+        }
+        let mut cursor = node.walk();
+        let found = node.children(&mut cursor).any(dynamic);
+        found
+    }
+
+    let mut parser = Parser::new();
+    if parser
+        .set_language(&tree_sitter_bash::LANGUAGE.into())
+        .is_err()
+    {
+        return true;
+    }
+    match parser.parse(command, None) {
+        Some(tree) => dynamic(tree.root_node()),
+        None => true,
+    }
+}
+
+fn collect_environment_writes(node: Node, src: &str, writes: &mut Vec<EnvWrite>) {
+    match node.kind() {
+        "declaration_command" => {
+            // Declaration arguments may be quoted literals or adjacent nodes
+            // (`export F'O'O=value`). Join only spans with no source gap.
+            let mut cursor = node.walk();
+            let mut span: Option<std::ops::Range<usize>> = None;
+            for child in node.named_children(&mut cursor) {
+                if let Some(previous) = span.as_mut() {
+                    if previous.end == child.start_byte() {
+                        previous.end = child.end_byte();
+                        continue;
+                    }
+                    writes.extend(declaration_environment_write(&src[previous.clone()]));
+                }
+                span = Some(child.byte_range());
+            }
+            if let Some(span) = span {
+                writes.extend(declaration_environment_write(&src[span]));
+            }
+        }
+        "variable_assignment"
+            if node.parent().map(|parent| parent.kind()) != Some("declaration_command") =>
+        {
+            if let Ok(text) = node.utf8_text(src.as_bytes()) {
+                if let Some((name, value)) = text.split_once('=') {
+                    let appended = name.ends_with('+');
+                    let name = name.trim_end_matches('+');
+                    let name = name.split('[').next().unwrap_or(name);
+                    writes.push(EnvWrite {
+                        name: name.to_string(),
+                        value: if appended {
+                            None
+                        } else {
+                            static_shell_word(value)
+                        },
+                    });
+                }
+            }
+        }
+        // `${NAME:=word}` / `${NAME=word}` assign when NAME is unset or empty.
+        "expansion" => {
+            if let Ok(text) = node.utf8_text(src.as_bytes()) {
+                if let Some(name) = assigning_expansion_name(text) {
+                    writes.push(EnvWrite { name, value: None });
+                }
+            }
+        }
+        _ => {}
+    }
+
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        collect_environment_writes(child, src, writes);
+    }
+}
+
+fn declaration_environment_write(text: &str) -> Option<EnvWrite> {
+    let (name, value) = if let Some(word) = static_shell_word(text) {
+        word.split_once('=')
+            .map_or((word.clone(), None), |(name, value)| {
+                (name.to_string(), Some(value.to_string()))
+            })
+    } else {
+        // A dynamic value still has a static assignment name. The '=' may be
+        // inside a quoted argument, so complete the name's open quote only.
+        let (prefix, _) = text.split_once('=')?;
+        let name = static_shell_word(prefix)
+            .or_else(|| static_shell_word(&format!("{prefix}'")))
+            .or_else(|| static_shell_word(&format!("{prefix}\"")))?;
+        (name, None)
+    };
+    let appended = name.ends_with('+');
+    let name = name.trim_end_matches('+').split('[').next()?;
+    if name.is_empty()
+        || name.starts_with(|ch: char| ch.is_ascii_digit())
+        || !name
+            .chars()
+            .all(|ch| ch.is_ascii_alphanumeric() || ch == '_')
+    {
+        return None;
+    }
+    Some(EnvWrite {
+        name: name.to_string(),
+        value: if appended { None } else { value },
+    })
+}
+
+fn assigning_expansion_name(text: &str) -> Option<String> {
+    let body = text.strip_prefix("${")?;
+    let name_len = body
+        .find(|ch: char| !(ch.is_ascii_alphanumeric() || ch == '_'))
+        .unwrap_or(body.len());
+    let (name, rest) = body.split_at(name_len);
+    (!name.is_empty() && (rest.starts_with(":=") || rest.starts_with('=')))
+        .then(|| name.to_string())
 }
 
 /// The value of a word, with the shell's outer quoting removed.
@@ -299,7 +521,11 @@ fn static_shell_word(text: &str) -> Option<String> {
                     return None;
                 }
                 let digits: String = chars[start..*index].iter().collect();
-                out.push(char::from_u32(u32::from_str_radix(&digits, 16).ok()?)?);
+                let byte = u8::from_str_radix(&digits, 16).ok()?;
+                if !byte.is_ascii() {
+                    return None;
+                }
+                out.push(char::from(byte));
             }
             'u' | 'U' => {
                 let width = if escaped == 'u' { 4 } else { 8 };
@@ -314,7 +540,13 @@ fn static_shell_word(text: &str) -> Option<String> {
                     return None;
                 }
                 let digits: String = chars[start..*index].iter().collect();
-                out.push(char::from_u32(u32::from_str_radix(&digits, 16).ok()?)?);
+                let value = u32::from_str_radix(&digits, 16).ok()?;
+                // Non-ASCII Unicode escapes depend on the executing shell's
+                // locale. Refuse them rather than assuming UTF-8 word values.
+                if value > 0x7f {
+                    return None;
+                }
+                out.push(char::from_u32(value)?);
             }
             '0'..='7' => {
                 let mut digits = String::from(escaped);
@@ -323,7 +555,12 @@ fn static_shell_word(text: &str) -> Option<String> {
                     digits.push(chars[*index]);
                     *index += 1;
                 }
-                out.push(char::from_u32(u32::from_str_radix(&digits, 8).ok()?)?);
+                // Bash's octal escape is a byte, including wraparound at 256.
+                let byte = (u32::from_str_radix(&digits, 8).ok()? & 0xff) as u8;
+                if !byte.is_ascii() {
+                    return None;
+                }
+                out.push(char::from(byte));
             }
             // Bash leaves unrecognised ANSI-C escapes implementation-defined
             // enough that treating them as a known executable would be unsafe.
@@ -463,6 +700,64 @@ mod tests {
     fn assignment_prefix_is_not_the_command_word() {
         let found = commands("FOO=1 touch /etc/x");
         assert_eq!(found, vec![vec!["touch".to_string(), "/etc/x".to_string()]]);
+    }
+
+    #[test]
+    fn environment_writes_are_recovered_from_every_position() {
+        let names = |input: &str| {
+            environment_writes(input)
+                .into_iter()
+                .map(|write| (write.name, write.value))
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(
+            names("FOO='a b' touch x"),
+            vec![("FOO".to_string(), Some("a b".to_string()))]
+        );
+        assert_eq!(
+            names("FOO=1; ls"),
+            vec![("FOO".to_string(), Some("1".to_string()))]
+        );
+        assert_eq!(
+            names("export FOO=$X; declare -x BAR; ls"),
+            vec![("FOO".to_string(), None), ("BAR".to_string(), None)]
+        );
+        assert_eq!(names(": ${FOO:=x}"), vec![("FOO".to_string(), None)]);
+        assert_eq!(names("FOO+=x ls"), vec![("FOO".to_string(), None)]);
+        assert!(names("echo ${FOO:-x} FOO=1").is_empty());
+    }
+
+    #[test]
+    fn pr170_quoted_declaration_arguments_are_environment_writes() {
+        for input in [
+            "export 'FOO=a b'",
+            "declare -x \"FOO=a b\"",
+            "export F'O'O='a b'",
+        ] {
+            assert_eq!(
+                environment_writes(input),
+                vec![EnvWrite {
+                    name: "FOO".to_string(),
+                    value: Some("a b".to_string()),
+                }],
+                "{input}"
+            );
+        }
+        assert_eq!(
+            environment_writes("export 'FOO'"),
+            vec![EnvWrite {
+                name: "FOO".to_string(),
+                value: None,
+            }]
+        );
+        assert_eq!(
+            environment_writes(r#"export "FOO=$BAR""#),
+            vec![EnvWrite {
+                name: "FOO".to_string(),
+                value: None,
+            }]
+        );
+        assert!(environment_writes("echo 'FOO=a b'").is_empty());
     }
 
     #[test]

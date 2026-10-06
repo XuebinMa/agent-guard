@@ -221,4 +221,6 @@ mod test_support;
 #[cfg(test)]
 mod tests;
 #[cfg(test)]
+mod value_boundary_tests;
+#[cfg(test)]
 mod version_tests;

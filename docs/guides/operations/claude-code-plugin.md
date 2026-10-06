@@ -2,10 +2,10 @@
 
 | Field | Details |
 | :--- | :--- |
-| **Status** | 🟡 Preview (v0.2.6) |
+| **Status** | 🟡 Preview (v0.2.7) |
 | **Audience** | Claude Code users who want the agent-guard outbound gate installed as a plugin |
 | **Version** | 0.1 |
-| **Last Reviewed** | 2026-09-09 |
+| **Last Reviewed** | 2026-10-04 |
 | **Related Docs** | [Claude Code Hook](claude-code-hook.md), [Observability](observability.md) |
 
 ---
@@ -32,14 +32,20 @@ The plugin is the distribution wrapper. The actual evaluation is done by the `gu
 
 ```bash
 npx agent-guard-plugin init
-install -m 600 /dev/null ~/.agent-guard/broker.gitconfig
+mkdir -p ~/.agent-guard
+(umask 077; set -C; : > ~/.agent-guard/broker.gitconfig)
 ```
 
 The installer requires Rust, installs matching `guard-hook` and `agent-guard`
 binaries, writes the outbound policy, and wires the hook. A binary is reused
-only when its reported version exactly matches the plugin. The second command
-creates the separate host-owned config required by the push broker; add trusted
+only when its reported version exactly matches the plugin. The configuration
+steps create the separate private host-owned config required by the push broker
+and refuse to overwrite an existing file; retain an existing trusted config.
+Add trusted
 credential or HTTP settings there when SSH-agent authentication is not used.
+Missing cargo, installation failure or a version mismatch aborts before
+policy/settings writes. The synchronized installer records a direct hook
+command with an installation-time check, not the marketplace runtime wrapper.
 
 ### Option B — Claude Code marketplace plugin
 
@@ -50,11 +56,17 @@ The repo doubles as a single-plugin marketplace:
 /plugin install agent-guard@agent-guard
 ```
 
-Then install both matching binaries (the plugin **fails open** until the hook is present):
+The following pins match the current **source** metadata. Until this version is
+available in crates.io, do not run these registry-install commands; use the
+matching already-published release tag for both marketplace metadata and binaries,
+or wait for the new release. Mixing a newer marketplace checkout with older
+binaries produces the documented fail-open version warning.
+
+Then install both matching binaries (the marketplace plugin **fails open** until the hook is present):
 
 ```bash
-cargo install guard-hook --version 0.2.6 --locked --force
-cargo install agent-guard-cli --version 0.2.6 --locked --force
+cargo install guard-hook --version 0.2.7 --locked --force
+cargo install agent-guard-cli --version 0.2.7 --locked --force
 ```
 
 `cargo install` drops `guard-hook` into `~/.cargo/bin`, which the plugin's wrapper finds automatically.
@@ -65,7 +77,7 @@ Either way, restart Claude Code (or start a new session) so the `PreToolUse` hoo
 
 ## How resolution works
 
-The plugin's hook runs `scripts/guard-hook-plugin.sh`, which resolves the policy
+The **marketplace** plugin's hook runs `scripts/guard-hook-plugin.sh`, which resolves the policy
 and binary, verifies that the binary exactly matches the plugin version, and
 then streams the `PreToolUse` event through `guard-hook check`:
 
@@ -75,7 +87,7 @@ then streams the `PreToolUse` event through `guard-hook check`:
 | **Policy** | bundled `presets/coding-agent-outbound.yaml` | `AGENT_GUARD_POLICY=/path/to/policy.yaml` |
 | **Expected version** | `.claude-plugin/plugin.json` | none; metadata and `guard-hook --version` must agree exactly |
 
-The wrapper is **fail-open by contract**: missing or invalid version metadata, a
+The marketplace wrapper is **fail-open by contract**: missing or invalid version metadata, a
 missing or mismatched binary, or a missing policy emits an `allow` decision
 (with a one-line warning on stderr) rather than blocking your agent. A broken
 or partial install never stalls your workflow, and a stale binary is never

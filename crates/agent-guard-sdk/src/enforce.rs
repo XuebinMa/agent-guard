@@ -620,6 +620,32 @@ impl Guard {
             });
         }
 
+        let subject = crate::guard_helpers::anomaly_subject(&input.context);
+        let anomaly_config = state.engine.anomaly_config();
+        let anomaly_reason = match state
+            .anomaly_detector
+            .recheck(&subject, anomaly_config)
+            .status
+        {
+            crate::anomaly::AnomalyStatus::Normal => None,
+            crate::anomaly::AnomalyStatus::RateLimited => Some(DecisionReason::new(
+                DecisionCode::AnomalyDetected,
+                "agent is currently rate limited; refusing approval resume",
+            )),
+            crate::anomaly::AnomalyStatus::Locked => Some(DecisionReason::new(
+                DecisionCode::AgentLocked,
+                "agent is currently locked by the Deny Fuse; refusing approval resume",
+            )),
+        };
+        if let Some(reason) = anomaly_reason {
+            return Ok(RuntimeOutcome::Denied {
+                request_id,
+                reason,
+                policy_version,
+                policy_verification: state.policy_verification.clone(),
+            });
+        }
+
         let current_decision = self.evaluate_policy_only(input, &state);
         if let GuardDecision::Deny { reason } = current_decision {
             return Ok(RuntimeOutcome::Denied {

@@ -1,6 +1,7 @@
 use std::path::Path;
 
 use super::command::{config_names, config_values};
+use super::credentials::AuthenticationPolicy;
 use super::GitError;
 
 /// Reject values that are safe as argv but unsafe to restate as an advisory
@@ -66,9 +67,15 @@ pub(super) fn read_single_push_url(config: &Path, remote: &str) -> Result<String
 }
 
 pub(super) fn validate_remote_url(url: &str, allow_local: bool) -> Result<(), GitError> {
-    if url.chars().any(char::is_control) || url.chars().any(char::is_whitespace) {
+    // Require printable ASCII. This rejects control and whitespace characters,
+    // and also every non-ASCII character — including bidirectional-override and
+    // other format controls, and homoglyphs — that could make the URL shown in
+    // the approval preview read as a different, trusted destination than the
+    // one Git would actually contact.
+    if !url.chars().all(|ch| ch.is_ascii_graphic()) {
         return Err(GitError::UnsafeRemote {
-            detail: "the remote URL contains whitespace or control characters".to_string(),
+            detail: "the remote URL contains non-printable, whitespace, or non-ASCII characters"
+                .to_string(),
         });
     }
     let secure_network =
@@ -130,8 +137,11 @@ pub(super) fn reject_partial_clone(config: &Path) -> Result<(), GitError> {
     Ok(())
 }
 
-pub(super) fn validate_trusted_config_snapshot(config: &Path) -> Result<(), GitError> {
-    for name in config_names(config)? {
+pub(super) fn validate_trusted_config_snapshot(
+    config: &Path,
+) -> Result<AuthenticationPolicy, GitError> {
+    let names = config_names(config)?;
+    for name in &names {
         let lower = name.to_ascii_lowercase();
         let allowed = lower.starts_with("credential.")
             || lower.starts_with("http.")
@@ -141,8 +151,39 @@ pub(super) fn validate_trusted_config_snapshot(config: &Path) -> Result<(), GitE
                 detail: format!("key {name:?} is not allowed"),
             });
         }
+
+        // Reject generic and URL-scoped redirect settings, including `false`,
+        // so this behavior is owned by the broker rather than by deployment
+        // configuration. A scoped key can outrank a generic command-line key.
+        if lower.starts_with("http.") && lower.ends_with(".followredirects") {
+            return Err(GitError::UnsafeConfig {
+                detail: format!(
+                    "key {name:?} is not allowed: the broker disables HTTP redirects to keep \
+                     requests and scoped headers at the resolved destination"
+                ),
+            });
+        }
+
+        // An unconditional header would carry its credential to any
+        // repository-chosen URL even during the preview, before approval.
+        // Require a URL scope for the initial request, and separately disable
+        // redirects so Git cannot forward that header to another destination.
+        if is_unscoped_http_extra_header(&lower) {
+            return Err(GitError::UnsafeConfig {
+                detail: format!(
+                    "key {name:?} applies to every host; scope it to one destination, e.g. \
+                     [http \"https://host/\"] extraHeader = …, so its credential cannot be \
+                     sent to a repository-chosen URL"
+                ),
+            });
+        }
     }
-    Ok(())
+    AuthenticationPolicy::from_config(config, &names)
+}
+
+/// A scoped key carries its URL between `http.` and `.extraheader`.
+fn is_unscoped_http_extra_header(lower_name: &str) -> bool {
+    lower_name == "http.extraheader"
 }
 
 #[cfg(test)]
@@ -201,5 +242,113 @@ mod tests {
             assert!(validate_remote_url(refused, false).is_err(), "{refused}");
         }
         assert!(validate_remote_url("/tmp/repo.git", true).is_ok());
+    }
+
+    #[test]
+    fn trusted_config_requires_http_extra_header_to_be_url_scoped() {
+        let dir = tempfile::tempdir().expect("tempdir");
+
+        let unscoped = dir.path().join("unscoped.gitconfig");
+        std::fs::write(
+            &unscoped,
+            b"[http]\n\textraHeader = X-Agent-Guard-Test: public-canary\n",
+        )
+        .expect("write");
+        let error = validate_trusted_config_snapshot(&unscoped).expect_err("unscoped header");
+        assert!(
+            error.to_string().contains("scope it to one destination"),
+            "{error}"
+        );
+
+        let scoped = dir.path().join("scoped.gitconfig");
+        std::fs::write(
+            &scoped,
+            b"[http \"https://approved.invalid/\"]\n\textraHeader = X-Agent-Guard-Test: public-canary\n",
+        )
+        .expect("write");
+        assert!(
+            validate_trusted_config_snapshot(&scoped).is_ok(),
+            "a URL-scoped header must be accepted"
+        );
+
+        let ordinary = dir.path().join("ordinary.gitconfig");
+        std::fs::write(
+            &ordinary,
+            b"[credential \"https://approved.invalid/\"]\n\thelper = cache\n[http]\n\tsslVerify = true\n",
+        )
+        .expect("write");
+        assert!(validate_trusted_config_snapshot(&ordinary).is_ok());
+    }
+
+    #[test]
+    fn trusted_config_cannot_override_redirect_refusal() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        for body in [
+            "[http]\n\tfollowRedirects = true\n",
+            "[http]\n\tfollowRedirects = initial\n",
+            "[http \"https://approved.invalid/\"]\n\tfollowRedirects = true\n",
+            "[http \"https://approved.invalid/\"]\n\tfollowRedirects = false\n",
+        ] {
+            let config = dir.path().join("redirect.gitconfig");
+            std::fs::write(&config, body).expect("write");
+            let error = validate_trusted_config_snapshot(&config).expect_err(body);
+            assert!(
+                error.to_string().contains("broker disables HTTP redirects"),
+                "{error}"
+            );
+        }
+    }
+
+    #[test]
+    fn trusted_config_requires_destination_scoped_helpers() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let config = dir.path().join("helper.gitconfig");
+        for body in [
+            "[credential]\nhelper = cache\n",
+            "[credential]\nhelper = cache\nhelper =\n",
+            "[credential]\nhelper =\nhelper = cache\n",
+            "[credential \"https://*.example.invalid/\"]\nhelper = cache\n",
+            "[credential \"http://example.invalid/\"]\nhelper = cache\n",
+            "[credential \"https://user@example.invalid/\"]\nhelper = cache\n",
+            "[credential \"https://EXAMPLE.invalid/\"]\nhelper = cache\n",
+            "[credential \"https://example.invalid/a/../b\"]\nhelper = cache\n",
+            "[credential \"https://example.invalid/%61\"]\nhelper = cache\n",
+            "[credential \"https://example.invalid/?q=x\"]\nhelper = cache\n",
+            "[credential \"https://example.invalid/#fragment\"]\nhelper = cache\n",
+            "[credential \"https://example.invalid/\"]\nhelper = cache\nuseHttpPath = false\n",
+        ] {
+            std::fs::write(&config, body).expect("write config");
+            assert!(
+                validate_trusted_config_snapshot(&config).is_err(),
+                "credential-bearing configuration must be bounded: {body}"
+            );
+        }
+        for body in [
+            "[credential]\nhelper =\n",
+            "[credential \"https://example.invalid/\"]\nhelper = cache\n",
+            "[credential \"https://example.invalid:8443/Team/repo.git\"]\nhelper = cache\nhelper = cache --timeout=60\nuseHttpPath = true\n",
+        ] {
+            std::fs::write(&config, body).expect("write config");
+            validate_trusted_config_snapshot(&config).expect(body);
+        }
+    }
+
+    #[test]
+    fn non_ascii_and_control_characters_in_the_url_are_refused() {
+        for refused in [
+            "https://evil.invalid/\u{202e}repo.git",
+            "https://\u{0435}xample.invalid/repo.git",
+            "https://example.invalid/\nrepo.git",
+            "https://example.invalid/\trepo.git",
+            "https://example.invalid/ repo.git",
+        ] {
+            let error = validate_remote_url(refused, false).expect_err(refused);
+            assert!(
+                error
+                    .to_string()
+                    .contains("non-printable, whitespace, or non-ASCII"),
+                "{refused}: {error}"
+            );
+        }
     }
 }

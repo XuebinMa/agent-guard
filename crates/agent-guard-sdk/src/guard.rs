@@ -17,11 +17,11 @@ use thiserror::Error;
 use uuid::Uuid;
 
 use crate::audit_writer::AuditFileWriter;
-use crate::guard_audit::{stdout_audit_sink, AuditSink};
+use crate::guard_audit::{stderr_audit_sink, stdout_audit_sink, AuditSink};
 use crate::guard_git_preview::with_git_push_preview;
 use crate::guard_helpers::{
-    anomaly_subject, classify_block_reason, policy_mode_to_permission_mode,
-    runtime_decision_for_input,
+    anomaly_subject, canonical_http_payloads, classify_block_reason, decided_by_a_matching_rule,
+    policy_mode_to_permission_mode, runtime_decision_for_input, CanonicalPayload,
 };
 use crate::policy_signing::PolicyVerification;
 use crate::sandbox_resolution::{resolve_default_sandbox, resolve_sandbox_by_name};
@@ -175,6 +175,9 @@ pub(crate) struct GuardState {
     /// can be given separate registries (#60).
     pub(crate) metrics: Arc<crate::metrics::Metrics>,
     pub(crate) audit_sink: AuditSink,
+    /// Whether the host named `audit_sink`. One the Guard chose for itself is
+    /// chosen again on reload; one the host named is carried over.
+    pub(crate) audit_sink_named_by_host: bool,
     /// Guard-owned Bash executions are always bounded. Hosts may tighten the
     /// default through `Guard::set_execution_timeout_ms`.
     pub(crate) execution_timeout_ms: std::num::NonZeroU64,
@@ -286,6 +289,26 @@ impl Guard {
         use crate::content_filter::ContentCheckOutcome;
 
         let state = self.state.load();
+        // A policy whose signature failed decides nothing. Asking it whether
+        // input scanning is on would let whoever changed it turn scanning off.
+        if state.policy_verification.should_fail_closed() {
+            let outcome = ContentCheckOutcome::unverified_policy();
+            self.emit_record(
+                &state,
+                agent_guard_core::AuditRecord::ContentFinding(
+                    agent_guard_core::ContentFindingEvent {
+                        timestamp: chrono::Utc::now(),
+                        request_id: Uuid::new_v4().to_string(),
+                        agent_id: context.agent_id.clone(),
+                        tool: "input".to_string(),
+                        mode: "block".to_string(),
+                        count: 0,
+                        labels: outcome.labels.clone(),
+                    },
+                ),
+            );
+            return outcome;
+        }
         let Some(policy) = state.engine.input_content_policy() else {
             return ContentCheckOutcome::benign();
         };
@@ -589,13 +612,27 @@ impl Guard {
             decision = stronger_decision(decision, warning);
         }
 
+        // Rules match text, and one action has several spellings. Each
+        // canonical spelling is evaluated as well; like the Git subjects
+        // above, that can only strengthen the decision.
+        let canonical_payloads: Vec<CanonicalPayload> = match &input.tool {
+            Tool::HttpRequest => canonical_http_payloads(&input.payload),
+            _ => bash_policy_subjects
+                .into_iter()
+                .map(|subject| CanonicalPayload {
+                    payload: serde_json::json!({ "command": subject }).to_string(),
+                    decided_in_full: true,
+                })
+                .collect(),
+        };
         if !matches!(decision, GuardDecision::Deny { .. }) {
-            for subject in bash_policy_subjects {
-                let canonical_payload = serde_json::json!({ "command": subject }).to_string();
-                let canonical = state
+            for canonical in canonical_payloads {
+                let candidate = state
                     .engine
-                    .check(&input.tool, &canonical_payload, &input.context);
-                decision = stronger_decision(decision, canonical);
+                    .check(&input.tool, &canonical.payload, &input.context);
+                if canonical.decided_in_full || decided_by_a_matching_rule(&candidate) {
+                    decision = stronger_decision(decision, candidate);
+                }
                 if matches!(decision, GuardDecision::Deny { .. }) {
                     break;
                 }
@@ -636,7 +673,25 @@ impl GuardState {
         engine: Arc<PolicyEngine>,
         policy_verification: PolicyVerification,
     ) -> Result<Self, GuardInitError> {
-        let audit_cfg = engine.audit_config().clone();
+        // A policy whose signature failed is kept only so the refusals that
+        // follow can say which policy was refused. It is not a source of
+        // configuration: its audit block could create a file, post records
+        // to a webhook, or switch recording off. Records go to the host's
+        // sink instead: standard error until the host names one.
+        let audit_sink = if policy_verification.should_fail_closed() {
+            stderr_audit_sink()
+        } else {
+            stdout_audit_sink()
+        };
+        let audit_cfg = if policy_verification.should_fail_closed() {
+            AuditConfig {
+                enabled: true,
+                include_payload_hash: true,
+                ..AuditConfig::default()
+            }
+        } else {
+            engine.audit_config().clone()
+        };
         let audit_file_writer = if audit_cfg.output == "file" {
             if let Some(ref path) = audit_cfg.file_path {
                 let writer = AuditFileWriter::open(Path::new(path)).map_err(|e| {
@@ -665,7 +720,8 @@ impl GuardState {
             signing_key: None,
             policy_verification,
             metrics: crate::metrics::get_metrics(),
-            audit_sink: stdout_audit_sink(),
+            audit_sink,
+            audit_sink_named_by_host: false,
             execution_timeout_ms: std::num::NonZeroU64::new(
                 crate::guard_lifecycle::DEFAULT_EXECUTION_TIMEOUT_MS,
             )

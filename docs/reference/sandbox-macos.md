@@ -11,7 +11,7 @@ While the Linux implementation uses `seccomp-bpf` for fine-grained syscall filte
 1.  **Deprecated Framework**: `sandbox-exec` is a legacy interface and has been formally deprecated by Apple. While it still works on modern macOS versions (Sequoia/Sonoma), it may be removed or further restricted in future updates.
 2.  **Runtime Availability Risk**: Because this implementation depends on `/usr/bin/sandbox-exec`, availability is host-dependent. On hosts where Apple has disabled or removed that tool, `SeatbeltSandbox::is_available()` returns `false`, capabilities are reported as unavailable, and execution fails closed instead of silently degrading.
 3.  **Global Read Access**: To ensure developer tools (compilers, interpreters) function correctly, the profile currently uses `(allow file-read*)`. This means a sandboxed process can **read any file** on the system that the current user has permission to read (including SSH keys, browser cookies, etc.), even if the policy is set to `ReadOnly`.
-4.  **Coarse-Grained Filesystem Policy**: The current profile allows workspace writes and denies all network access, but it does so with broad Seatbelt path rules rather than syscall-level mediation. It should be treated as a best-effort containment layer, not a hardened isolation boundary.
+4.  **Coarse-Grained Filesystem Policy**: The profile denies all network access and grants writes below the workspace in `WorkspaceWrite` and `FullAccess`; in `ReadOnly` (and `Blocked`) the only writable path is `/dev/null`. It does so with broad Seatbelt path rules rather than syscall-level mediation, and should be treated as a best-effort containment layer, not a hardened isolation boundary. One consequence in `ReadOnly`: macOS `sh` (bash 3.2) writes a here-document to a temporary file, which is refused like any other write, so `cmd <<EOF` does not run in that mode.
 5.  **No Syscall Filtering**: Seatbelt profiles in this implementation do not restrict specific syscalls. It relies entirely on path-based filesystem rules.
 6.  **Process-group cleanup, not a PID namespace**: commands run in a fresh
     Unix session and the group is killed on timeout, output overflow, or shell
@@ -73,12 +73,15 @@ The sandbox generates a Scheme-style profile at runtime:
 ```lisp
 (version 1)
 (deny default)
-(allow file-read*)
-(allow file-write* (subpath "/path/to/workspace"))
+(allow file-read* (subpath "/"))
+(allow file-write* (literal "/dev/null"))
+(allow file-write* (subpath "/path/to/workspace"))  ; WorkspaceWrite / FullAccess only
 (allow process-fork)
 (allow process-exec)
 (deny network*)
 ```
+
+The executed command's standard input is `/dev/null`, as on every Unix backend.
 
 ## Future Work
 

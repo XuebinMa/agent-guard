@@ -66,7 +66,8 @@ impl GitSnapshot {
 
         let trusted_config = temp.path().join("trusted.gitconfig");
         fs::write(&trusted_config, trusted_bytes)?;
-        validate_trusted_config_snapshot(&trusted_config)?;
+        let authentication = validate_trusted_config_snapshot(&trusted_config)?;
+        authentication.authorize_destination(&remote_url)?;
 
         copy_primary_objects(&source_git.join("objects"), &git_dir.join("objects"))?;
         copy_heads(&source_git.join("refs/heads"), &git_dir.join("refs/heads"))?;
@@ -167,7 +168,7 @@ impl GitSnapshot {
         let fields = answer.split_whitespace().collect::<Vec<_>>();
         match fields.as_slice() {
             [reported_oid, "missing"] if *reported_oid == oid => Ok(false),
-            [_reported_oid, "commit"] => Ok(true),
+            [reported_oid, "commit"] if *reported_oid == oid => Ok(true),
             _ => Err(GitError::Unexpected {
                 command: args.join(" "),
                 detail: answer.trim().to_string(),

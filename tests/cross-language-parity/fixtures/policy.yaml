@@ -10,6 +10,7 @@ tools:
       - prefix: "rm -rf"
       - prefix: "sudo"
       - regex: "curl\\s+.*\\|\\s*bash"
+      - regex: "^git push --(force|force-with-lease|mirror|delete)$"
     ask:
       - prefix: "git push"
     allow:
@@ -20,13 +21,19 @@ tools:
 
   write_file:
     mode: workspace_write
+    workspace_escape_paths:
+      - "/r7-parity/external*"
     deny_paths:
       - "/etc/**"
       - "**/.ssh/**"
 
   read_file:
     mode: workspace_write
+    allow_paths:
+      - "/workspace/**"
+      - "/r7-parity/src*"
     deny_paths:
+      - ".env*"
       - "/etc/shadow"
       - "/etc/passwd"
       - "**/.ssh/id_*"

@@ -74,12 +74,19 @@ function withoutHook(settings) {
 // gives durable forensic storage. Operates on the single `output: stdout` line
 // the preset ships with; if it is absent (already file-based) the text is
 // returned unchanged so a user-edited preset keeps its own audit routing.
+//
+// The path is written as a JSON string, which is also a YAML double-quoted
+// scalar with the same value. Interpolated raw, a Windows home directory
+// (`C:\Users\…`) is an invalid `\U` escape: the policy stops parsing, and a
+// hook that cannot load its policy approves everything.
 function policyWithFileAudit(presetText, auditFilePath) {
-  const fileBlock = `output: file\n  file_path: "${auditFilePath}"`;
-  if (/^\s*output:\s*stdout\s*$/m.test(presetText)) {
-    return presetText.replace(/^(\s*)output:\s*stdout\s*$/m, `$1${fileBlock}`);
-  }
-  return presetText;
+  const fileBlock = `output: file\n  file_path: ${JSON.stringify(auditFilePath)}`;
+  // A replacer function, so `$&` or `$1` in the path is text and not a pattern.
+  // Spaces and tabs only: `\s` also matches the line break after the value.
+  return presetText.replace(
+    /^([ \t]*)output:[ \t]*stdout[ \t]*$/m,
+    (_line, indent) => `${indent}${fileBlock}`
+  );
 }
 
 // The binaries `init` installs, and why each one has to be there.

@@ -141,6 +141,119 @@ fn approval_is_revalidated_against_the_current_policy() {
     }
 }
 
+fn pending_local_write(
+    rate_limit: usize,
+    fuse_threshold: usize,
+) -> (
+    tempfile::TempDir,
+    std::sync::Arc<Guard>,
+    ApprovalLedger,
+    GuardInput,
+) {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let guard = std::sync::Arc::new(Guard::from_yaml(&format!(
+        "version: 1\ndefault_mode: workspace_write\nanomaly:\n  rate_limit:\n    max_calls: {rate_limit}\n  deny_fuse:\n    enabled: true\n    threshold: {fuse_threshold}\ntools:\n  write_file:\n    ask:\n      - plain: approved-output.txt\n  read_file:\n    deny:\n      - plain: denied-input.txt\n"
+    )).expect("policy parses"));
+    let ledger = ApprovalLedger::open(dir.path().join("approvals.jsonl"));
+    let pending = GuardInput::new(
+        Tool::WriteFile,
+        serde_json::json!({"path":"approved-output.txt","content":"local fixture"}).to_string(),
+    )
+    .with_context(Context {
+        agent_id: Some("approval-subject".to_string()),
+        working_directory: Some(dir.path().to_path_buf()),
+        ..Default::default()
+    });
+    (dir, guard, ledger, pending)
+}
+
+fn run_pending_write(
+    guard: &std::sync::Arc<Guard>,
+    ledger: &ApprovalLedger,
+    pending: &GuardInput,
+) -> thread::JoinHandle<agent_guard_sdk::RuntimeResult> {
+    let guard = guard.clone();
+    let ledger = ledger.clone();
+    let pending = pending.clone();
+    thread::spawn(move || {
+        guard.run_until_approved(
+            &pending,
+            &NoopSandbox,
+            &config(&ledger, Duration::from_secs(10)),
+        )
+    })
+}
+
+#[test]
+fn approval_cannot_resume_after_the_subject_is_locked() {
+    let (dir, guard, ledger, pending) = pending_local_write(10, 1);
+    let runner = run_pending_write(&guard, &ledger, &pending);
+    let request_id = wait_for_pending(&ledger);
+    let denied = GuardInput::new(Tool::ReadFile, r#"{"path":"denied-input.txt"}"#)
+        .with_context(pending.context.clone());
+    assert!(matches!(
+        guard.check(&denied),
+        agent_guard_sdk::GuardDecision::Deny { .. }
+    ));
+    assert!(
+        matches!(guard.check(&pending), agent_guard_sdk::GuardDecision::Deny { reason } if reason.code() == DecisionCode::AgentLocked)
+    );
+    ledger
+        .approve(&request_id, Some("local-reviewer".to_string()))
+        .expect("approve");
+    let outcome = runner
+        .join()
+        .expect("runner thread")
+        .expect("runtime result");
+    assert!(
+        matches!(outcome, RuntimeOutcome::Denied { reason, .. } if reason.code() == DecisionCode::AgentLocked)
+    );
+    assert!(!dir.path().join("approved-output.txt").exists());
+}
+
+#[test]
+fn approval_cannot_resume_while_the_subject_is_rate_limited() {
+    let (dir, guard, ledger, pending) = pending_local_write(2, 10);
+    let runner = run_pending_write(&guard, &ledger, &pending);
+    let request_id = wait_for_pending(&ledger);
+    let read = GuardInput::new(Tool::ReadFile, r#"{"path":"safe-input.txt"}"#)
+        .with_context(pending.context.clone());
+    assert!(guard.check(&read).is_allowed());
+    assert!(
+        matches!(guard.check(&read), agent_guard_sdk::GuardDecision::Deny { reason } if reason.code() == DecisionCode::AnomalyDetected)
+    );
+    ledger
+        .approve(&request_id, Some("local-reviewer".to_string()))
+        .expect("approve");
+    let outcome = runner
+        .join()
+        .expect("runner thread")
+        .expect("runtime result");
+    assert!(
+        matches!(outcome, RuntimeOutcome::Denied { reason, .. } if reason.code() == DecisionCode::AnomalyDetected)
+    );
+    assert!(!dir.path().join("approved-output.txt").exists());
+}
+
+#[test]
+fn approval_revalidation_does_not_count_the_pending_call_twice() {
+    let (dir, guard, ledger, pending) = pending_local_write(1, 10);
+    let runner = run_pending_write(&guard, &ledger, &pending);
+    let request_id = wait_for_pending(&ledger);
+    ledger
+        .approve(&request_id, Some("local-reviewer".to_string()))
+        .expect("approve");
+    let outcome = runner
+        .join()
+        .expect("runner thread")
+        .expect("runtime result");
+    assert!(matches!(outcome, RuntimeOutcome::Executed { .. }));
+    assert_eq!(
+        std::fs::read_to_string(dir.path().join("approved-output.txt")).unwrap(),
+        "local fixture"
+    );
+}
+
 #[test]
 fn approval_record_must_stay_bound_to_the_original_payload() {
     let dir = tempfile::tempdir().expect("tempdir");

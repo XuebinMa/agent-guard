@@ -9,6 +9,129 @@ The `[Unreleased]` heading is rolled forward manually before each release; do no
 
 ## [Unreleased]
 
+## [0.2.7] - 2026-10-05
+
+### Security
+Second-pass review; details and limits in the
+[review](docs/security-review-2026-10-05.md) (F23–F44).
+
+- Shell wrappers (`env`, `sudo`, `nice`, `timeout`, `xargs`, …): an option the
+  wrapper table does not name now makes the invocation opaque instead of being
+  skipped as a flag, which had let an abbreviated or unlisted value-taking
+  option hand its value to the gates as the command. Attached unknown options
+  also fail closed. `flock -c`, `coproc`,
+  `busybox`, `caffeinate` and four more launchers are handled.
+- A command word the shell computes is refused or resolved: backslash-newline
+  inside a word (including repeated continuations), a pathname pattern or
+  brace expansion as the command, `hash -p`,
+  `alias NAME=VALUE`, `enable -f`, `trap ACTION`, and `sh -h`/`-V`.
+- Git recognition: `--attr-source`/`--shallow-file` values no longer hide a
+  push; `agent-guard push` is itself an outbound push. Read-only Git
+  subcommands refuse `--output`, `grep -O`, `ls-remote --upload-pack`,
+  `--ext-diff`, `--textconv` and `--filters`, including one-letter prefixes and
+  paired negations that re-enable helpers. Harmless complete options such as
+  `diff --text` and `rev-list --filter` remain subcommand-specific exceptions.
+- HTTP: a request needs an absolute `http`/`https` URL; rules also match its
+  canonical spellings (case, numeric and IPv6-embedded IPv4, userinfo,
+  percent-encoded letters); a `Host` header must name the URL's host; read-only
+  allows only `GET`/`HEAD`/`OPTIONS`. The outbound preset covers `127.0.0.0/8`,
+  `[::1]` and `169.254.0.0/16`.
+- Denied path rules: a wildcard inside a file name matches (`.env*`,
+  `/var/log/app-*.log`); `deny_paths` ignore case on macOS and Windows and are
+  matched against the requested name as well as the resolved file.
+  Permission-granting `allow_paths` and `workspace_escape_paths` retain their
+  pre-0.2.7 interpretation; this denial fix does not silently authorize sibling
+  names such as `src-old` or waive bounds for `external-sibling`.
+- Broker helpers must be scoped to canonical HTTPS destinations, like headers.
+  Nonempty global helpers, wildcard/ambiguous scopes and disabled
+  `credential.useHttpPath` are refused. HTTPS destinations outside all trusted
+  helper/header scopes fail before preview network access; empty resets and
+  anonymous configurations remain supported. This does not audit trusted
+  helper programs or other transport authentication mechanisms.
+- Workspace-write confinement covers `unzip -d`, `rsync`/`scp`, `curl -o`,
+  `wget -O/-P`, `sort -o`, `git worktree add`/`clone`/`init`/`--output` and
+  `find -delete`/`-fprint`. Attached short-option values cannot swallow a copy
+  destination as another flag operand.
+- A policy whose signature fails no longer supplies the audit destination or
+  decides the input-content check; a failed reload is recorded as a failure.
+- Approval prompts, `agent-guard list`/`show`, the hook reason and Git error
+  text escape control, invisible and bidirectional characters. The broker
+  accepts only an object id as a remote tip.
+- Commands using the shared runner get null standard input. The macOS Seatbelt
+  profile grants workspace writes only in a mode that permits them
+  (here-documents therefore do not run in read-only mode on macOS). WriteFile
+  refuses a FIFO or device instead of waiting on it.
+- `tools.custom` rejects a repeated key and a key no custom tool id can equal.
+- Plugin installer writes the audit path as a JSON string; a Windows path no
+  longer produces a policy the hook cannot parse and therefore approves under.
+
+- Broker CLI confirmation now reloads the policy and refuses changed or unreadable
+  policy files before issuing a push grant. Pending SDK approvals recheck the
+  current subject's Deny Fuse and rate limit without counting the request twice.
+- Restricted shell validation rejects ambiguous ANSI-C NUL/non-ASCII escape
+  decoding and models `sed` in-place destinations, including attached backup
+  suffixes and expressions appearing after filenames. Secondary sed I/O,
+  execution, external scripts, and unmodeled syntax fail closed. **Correction:**
+  the sed destination fix claimed in GHSA-j64p-f672-v3jq is incomplete in 0.2.6;
+  0.2.7 closes the reproduced cases. Registry availability must be verified
+  before this version is advertised as the remedy in the public advisory.
+- `CustomToolId` deserialization now enforces the same validation as construction.
+  Anomaly window configuration cannot panic monotonic clock arithmetic.
+- Unix output capture can be cancelled at its deadline even when another writer
+  holds an output pipe open. This does not add cgroup-level process containment.
+- Cooperating approval/audit JSONL writers lock complete frames, and approval
+  readers take a shared lock. This prevents concurrent framing corruption, not
+  malicious same-permission edits or crash/disk-full recovery guarantees.
+- Python wrappers report awaitables only after completion; synchronous handoff
+  workers report their actual outcome even if their asyncio waiter is cancelled.
+  Blocking native Guard calls release the GIL so other Python tasks can progress.
+- Attenu verification preserves a constraint's type and field/scope selector,
+  and rejects malformed signed observation objects. The latter uses the local
+  `envelope_invalid_observation` reason outside the pinned upstream vocabulary;
+  upstream fixture bytes remain unchanged.
+- Lockfile-only updates move `anyhow` to 1.0.103 and `event-listener` to 5.4.2,
+  addressing RustSec's reported unsoundness warnings in the resolved dependency
+  graph. No unrelated dependency versions were advanced.
+- Node LangChain `ToolCall` envelopes are checked against their actual `args`,
+  before the framework's single-use transition ticket skips nested entry points.
+  Bare and enveloped forms now receive the same policy decision.
+- Plugin setup aborts before modifying policy/settings when exact-version binary
+  installation fails; it cannot fall back to an unverified stale PATH binary.
+  The explicit `--skip-binary` opt-out and no-write `--dry-run` remain available.
+- Git outbound recognition models abbreviated destructive flags, pruning,
+  command-line config and aliases without losing inherited config or weakening
+  decisions through unmodeled shell-argument forwarding. Quoted declarations
+  and opaque environment-provided Git config cannot silently hide an update.
+- Restricted-mode path checks refuse brace expansion and dot-glob components
+  that can become a parent directory. Read-only commands reject program-valued
+  environment, opaque ripgrep config and executable ripgrep options, while
+  interpreting option values and `--` before search operands.
+- Broker remote lookup selects the exact branch ref. Approval URLs must be
+  printable ASCII; credential headers require an explicit URL scope and
+  broker HTTP redirects are disabled. Grants use strict raw IDs, private
+  permissions and atomic writes.
+
+### Changed
+- Restricted-mode sed support is deliberately bounded: ordinary inline
+  substitutions and common in-place forms are supported, but external script
+  files and unmodeled scripts/options now require a trusted alternative. ANSI-C
+  byte/Unicode escapes outside ASCII are refused rather than guessed across
+  shell locales. See the [defensive review](docs/security-review-2026-10-04.md)
+  for test evidence, compatibility costs, and remaining platform limitations.
+- Broker URLs containing non-ASCII text, unscoped `http.extraHeader` settings
+  and nonempty global `credential.helper` entries
+  now fail closed. Use an ASCII URL and a header scoped to its HTTPS destination.
+  Scope helpers to a canonical HTTPS host/repository path and keep
+  `useHttpPath = true`; empty helper resets remain valid. HTTP endpoints
+  requiring redirection need their final URL configured directly.
+  Dynamic shell aliases whose forwarding cannot be modeled require a direct
+  controlled Git command or another trusted host execution path. Read-only
+  ripgrep accepts modeled search options; unknown options fail closed.
+- Release preparation now documents the atomic multi-language version tool and
+  the requirement to tag the exact tested main merge commit. Negative version
+  tests use the fixture's actual version, so later releases cannot silently
+  disable their missing-pin and rollback controls.
+
 ## [0.2.6] - 2026-10-03
 
 ### Changed

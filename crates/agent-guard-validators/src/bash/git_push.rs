@@ -9,8 +9,14 @@
 //! adjacent standalone Git argv tokens, the module also emits a conservative
 //! candidate without claiming that the outer program will execute them.
 
-use super::ast::{parse_shell, ShellParse};
+use super::ast::{environment_writes, has_dynamic_shell_words, parse_shell, ShellParse};
+use super::tokenize::shell_split;
 use super::wrappers::{command_name, unwrap_command_wrappers};
+
+/// Alias expansion and alias shell snippets are followed at most this deep.
+/// Git refuses an alias loop; a chain this long is treated as an unmodeled
+/// push rather than silently dropped.
+const MAX_ALIAS_DEPTH: usize = 8;
 
 /// How strongly the shell syntax establishes that the Git argv will execute.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -81,17 +87,58 @@ impl GitPushIntent {
 
 /// Recover modeled Git outbound updates plus conservative embedded argv
 /// candidates from a shell program.
+///
+/// Push semantics can also come from configuration. Command-line config
+/// (`git -c`, `--config-env`, aliases defined there) and the `GIT_CONFIG_*`
+/// environment are visible in the command and are modeled here. Repository and
+/// user config files are not: an agent that can edit them can change what a
+/// plain `git push` does, which is why the broker, not this recognizer, is the
+/// outbound boundary.
 pub fn git_push_intents(command: &str) -> Result<Vec<GitPushIntent>, String> {
+    git_push_intents_at_depth(command, &[], 0)
+}
+
+fn git_push_intents_at_depth(
+    command: &str,
+    inherited: &[ConfigEntry],
+    depth: usize,
+) -> Result<Vec<GitPushIntent>, String> {
     let commands = match parse_shell(command) {
         ShellParse::Understood(commands) => commands,
         ShellParse::TooComplex(reason) => return Err(reason),
     };
+    let environment_config = environment_writes(command)
+        .iter()
+        .any(|write| injects_git_config(&write.name));
 
     let mut intents = Vec::new();
     for resolved in &commands {
         let argv = unwrap_command_wrappers(&resolved.argv);
-        if let Some(intent) = parse_git_push(argv) {
-            intents.push(intent);
+        let wrapper_config = resolved.argv[..resolved.argv.len() - argv.len()]
+            .iter()
+            .any(|token| {
+                token
+                    .split_once('=')
+                    .is_some_and(|(name, _)| injects_git_config(name))
+            });
+        let unknown_config = environment_config || wrapper_config;
+
+        let mut direct = parse_git_push(argv, inherited, depth);
+        if direct.is_empty()
+            && unknown_config
+            && argv.first().is_some_and(|word| command_name(word) == "git")
+        {
+            // Injected config can define the subcommand as an alias. Without
+            // reading that config, absence of a literal push proves nothing.
+            direct.push(unmodeled_push("git", 0));
+        }
+        if !direct.is_empty() {
+            for mut intent in direct {
+                if unknown_config {
+                    assume_config_changes_semantics(&mut intent);
+                }
+                intents.push(intent);
+            }
             continue;
         }
 
@@ -100,14 +147,24 @@ pub fn git_push_intents(command: &str) -> Result<Vec<GitPushIntent>, String> {
         };
         for argument_index in 1..argv.len() {
             let candidate = command_name(&argv[argument_index]);
-            if !matches!(candidate, "git" | "git-push" | "git-send-pack") {
+            if !matches!(
+                candidate,
+                "git" | "git-push" | "git-send-pack" | "agent-guard"
+            ) {
                 continue;
             }
-            if let Some(mut intent) = parse_git_push(&argv[argument_index..]) {
+            let mut candidates = parse_git_push(&argv[argument_index..], inherited, depth);
+            if candidates.is_empty() && unknown_config && candidate == "git" {
+                candidates.push(unmodeled_push(&outer_command, argument_index));
+            }
+            for mut intent in candidates {
                 intent.detection = GitPushDetection::EmbeddedArgv {
                     outer_command: outer_command.clone(),
                     argument_index,
                 };
+                if unknown_config {
+                    assume_config_changes_semantics(&mut intent);
+                }
                 intents.push(intent);
             }
         }
@@ -115,29 +172,158 @@ pub fn git_push_intents(command: &str) -> Result<Vec<GitPushIntent>, String> {
     Ok(intents)
 }
 
-fn parse_git_push(argv: &[String]) -> Option<GitPushIntent> {
+/// One `name=value` pair from Git's command-line config.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ConfigEntry {
+    /// Lowercased section, e.g. `remote`.
+    section: String,
+    /// Subsection as written (Git compares it case-sensitively), e.g. `origin`.
+    subsection: Option<String>,
+    /// Lowercased variable name, e.g. `push`.
+    variable: String,
+    /// `None` when the value comes from somewhere this command does not show,
+    /// such as `--config-env`.
+    value: Option<String>,
+}
+
+impl ConfigEntry {
+    fn parse(key: &str, value: Option<String>) -> Option<Self> {
+        let (section, rest) = key.split_once('.')?;
+        let (subsection, variable) = match rest.rsplit_once('.') {
+            Some((subsection, variable)) => (Some(subsection.to_string()), variable),
+            None => (None, rest),
+        };
+        Some(Self {
+            section: section.to_ascii_lowercase(),
+            subsection,
+            variable: variable.to_ascii_lowercase(),
+            value,
+        })
+    }
+
+    /// `-c key=value`; a bare `-c key` sets a boolean to true.
+    fn from_assignment(assignment: &str) -> Option<Self> {
+        match assignment.split_once('=') {
+            Some((key, value)) => Self::parse(key, Some(value.to_string())),
+            None => Self::parse(assignment, Some("true".to_string())),
+        }
+    }
+
+    /// `--config-env=key=ENVVAR`: the value lives in the environment.
+    fn from_config_env(assignment: &str) -> Option<Self> {
+        let (key, _) = assignment.split_once('=')?;
+        Self::parse(key, None)
+    }
+
+    fn is_false(&self) -> bool {
+        self.value.as_deref().is_some_and(|value| {
+            matches!(
+                value.to_ascii_lowercase().as_str(),
+                "false" | "no" | "off" | "0" | ""
+            )
+        })
+    }
+}
+
+/// Environment variables that inject Git configuration whose contents a
+/// command line does not show in a form this module models.
+fn injects_git_config(name: &str) -> bool {
+    matches!(
+        name,
+        "GIT_CONFIG_PARAMETERS"
+            | "GIT_CONFIG_COUNT"
+            | "GIT_CONFIG"
+            | "GIT_CONFIG_GLOBAL"
+            | "GIT_CONFIG_SYSTEM"
+    ) || name.starts_with("GIT_CONFIG_KEY_")
+        || name.starts_with("GIT_CONFIG_VALUE_")
+}
+
+/// Config the command injects but this module cannot read may turn an
+/// ordinary push into any destructive one, so it is classified as all of them.
+fn assume_config_changes_semantics(intent: &mut GitPushIntent) {
+    intent.force = true;
+    intent.mirror = true;
+    intent.delete = true;
+}
+
+/// Apply command-line config that changes what a push does.
+///
+/// `remote.<name>.mirror` makes the push a mirror, and `remote.<name>.push`
+/// supplies refspecs as if they were typed: `+` forces and a leading `:`
+/// removes. The remote name is not compared, so config for any remote counts.
+fn apply_push_config(mut intent: GitPushIntent, config: &[ConfigEntry]) -> GitPushIntent {
+    for entry in config {
+        if entry.section != "remote" || entry.subsection.is_none() {
+            continue;
+        }
+        match entry.variable.as_str() {
+            "mirror" if !entry.is_false() => intent.mirror = true,
+            "push" => match entry.value.as_deref() {
+                Some(refspec) => {
+                    intent.force |= refspec.starts_with('+');
+                    intent.delete |= refspec.starts_with(':');
+                }
+                None => {
+                    intent.force = true;
+                    intent.delete = true;
+                }
+            },
+            _ => {}
+        }
+    }
+    intent
+}
+
+/// A push this module could not model, e.g. an alias whose definition is not
+/// visible. Classified as every destructive form so no rule is relaxed by it.
+fn unmodeled_push(outer_command: &str, argument_index: usize) -> GitPushIntent {
+    GitPushIntent {
+        command: "git push",
+        directory_changes: Vec::new(),
+        git_dir: None,
+        work_tree: None,
+        remote: None,
+        refspecs: Vec::new(),
+        force: true,
+        force_with_lease: false,
+        force_if_includes: false,
+        mirror: true,
+        delete: true,
+        detection: GitPushDetection::EmbeddedArgv {
+            outer_command: outer_command.to_string(),
+            argument_index,
+        },
+    }
+}
+
+fn parse_git_push(argv: &[String], inherited: &[ConfigEntry], depth: usize) -> Vec<GitPushIntent> {
     let argv = unwrap_command_wrappers(argv);
-    let executable = command_name(argv.first()?);
+    let Some(first) = argv.first() else {
+        return Vec::new();
+    };
+    let executable = command_name(first);
 
     if executable == "git-push" {
-        return Some(parse_push_args(
-            &argv[1..],
-            "git push",
-            Vec::new(),
-            None,
-            None,
-        ));
+        let intent = parse_push_args(&argv[1..], "git push", Vec::new(), None, None);
+        return vec![apply_push_config(intent, inherited)];
     }
     if executable == "git-send-pack" {
-        return Some(parse_send_pack_args(&argv[1..], Vec::new(), None, None));
+        let intent = parse_send_pack_args(&argv[1..], Vec::new(), None, None);
+        return vec![apply_push_config(intent, inherited)];
+    }
+    if executable == "agent-guard" {
+        return parse_broker_push(&argv[1..]).into_iter().collect();
     }
     if executable != "git" {
-        return None;
+        return Vec::new();
     }
 
+    let mut config = inherited.to_vec();
     let mut directory_changes = Vec::new();
     let mut git_dir = None;
     let mut work_tree = None;
+    let mut unmodeled_switch = false;
     let mut index = 1;
     while index < argv.len() {
         let token = argv[index].as_str();
@@ -147,18 +333,26 @@ fn parse_git_push(argv: &[String]) -> Option<GitPushIntent> {
         }
 
         if token == "-C" {
-            let value = argv.get(index + 1)?.clone();
-            directory_changes.push(value);
+            let Some(value) = argv.get(index + 1) else {
+                return Vec::new();
+            };
+            directory_changes.push(value.clone());
             index += 2;
             continue;
         }
         if token == "--git-dir" {
-            git_dir = Some(argv.get(index + 1)?.clone());
+            let Some(value) = argv.get(index + 1) else {
+                return Vec::new();
+            };
+            git_dir = Some(value.clone());
             index += 2;
             continue;
         }
         if token == "--work-tree" {
-            work_tree = Some(argv.get(index + 1)?.clone());
+            let Some(value) = argv.get(index + 1) else {
+                return Vec::new();
+            };
+            work_tree = Some(value.clone());
             index += 2;
             continue;
         }
@@ -180,16 +374,33 @@ fn parse_git_push(argv: &[String]) -> Option<GitPushIntent> {
             continue;
         }
 
-        if matches!(token, "-c" | "--config-env" | "--namespace") {
-            argv.get(index + 1)?;
+        if matches!(
+            token,
+            "-c" | "--config-env" | "--namespace" | "--attr-source" | "--shallow-file"
+        ) {
+            let Some(value) = argv.get(index + 1) else {
+                return Vec::new();
+            };
+            let entry = match token {
+                "-c" => ConfigEntry::from_assignment(value),
+                "--config-env" => ConfigEntry::from_config_env(value),
+                _ => None,
+            };
+            config.extend(entry);
             index += 2;
             continue;
         }
-        if token.starts_with("-c")
-            || token.starts_with("--config-env=")
-            || token.starts_with("--namespace=")
-            || token.starts_with("--exec-path=")
-        {
+        if let Some(value) = token.strip_prefix("--config-env=") {
+            config.extend(ConfigEntry::from_config_env(value));
+            index += 1;
+            continue;
+        }
+        if let Some(value) = token.strip_prefix("-c") {
+            config.extend(ConfigEntry::from_assignment(value));
+            index += 1;
+            continue;
+        }
+        if token.starts_with("--namespace=") || token.starts_with("--exec-path=") {
             index += 1;
             continue;
         }
@@ -208,30 +419,218 @@ fn parse_git_push(argv: &[String]) -> Option<GitPushIntent> {
         }
 
         if token.starts_with('-') {
-            // Remaining global switches are boolean. Unknown switches make Git
-            // fail, but skipping them keeps a later literal `push` visible.
+            // Known boolean switches are skipped. A switch this module does
+            // not know may be one a newer Git gives a separate value to, so
+            // the word after it is not necessarily the subcommand.
+            unmodeled_switch |= !is_boolean_global_switch(token);
             index += 1;
             continue;
         }
         break;
     }
 
-    match argv.get(index).map(String::as_str) {
-        Some("push") => Some(parse_push_args(
-            &argv[index + 1..],
-            "git push",
-            directory_changes,
-            git_dir,
-            work_tree,
-        )),
-        Some("send-pack") => Some(parse_send_pack_args(
-            &argv[index + 1..],
-            directory_changes,
-            git_dir,
-            work_tree,
-        )),
-        _ => None,
+    // `git --new-option VALUE push …`: reading VALUE as the subcommand would
+    // lose the push. Keep it as an unverified candidate instead.
+    if unmodeled_switch
+        && matches!(
+            argv.get(index + 1).map(String::as_str),
+            Some("push" | "send-pack")
+        )
+        && !matches!(
+            argv.get(index).map(String::as_str),
+            Some("push" | "send-pack")
+        )
+    {
+        let mut candidate = vec![argv[0].clone()];
+        candidate.extend_from_slice(&argv[index + 1..]);
+        return parse_git_push(&candidate, &config, depth)
+            .into_iter()
+            .map(|mut intent| {
+                intent.detection = GitPushDetection::EmbeddedArgv {
+                    outer_command: "git".to_string(),
+                    argument_index: index + 1,
+                };
+                intent
+            })
+            .collect();
     }
+
+    match argv.get(index).map(String::as_str) {
+        Some("push") => vec![apply_push_config(
+            parse_push_args(
+                &argv[index + 1..],
+                "git push",
+                directory_changes,
+                git_dir,
+                work_tree,
+            ),
+            &config,
+        )],
+        Some("send-pack") => vec![apply_push_config(
+            parse_send_pack_args(&argv[index + 1..], directory_changes, git_dir, work_tree),
+            &config,
+        )],
+        Some(subcommand) => expand_alias(argv, index, subcommand, &config, depth),
+        None => Vec::new(),
+    }
+}
+
+/// `GitPushIntent::command` for the broker's own `agent-guard push`.
+pub const BROKER_PUSH_COMMAND: &str = "agent-guard push";
+
+/// Recognize `agent-guard push`, which performs the push itself.
+///
+/// Its confirmation is skipped by `--yes` or answered by piped input, so a
+/// caller that can run it reaches the remote without the decision a plain
+/// `git push` would get. It is classified as the ordinary push it performs;
+/// the broker refuses every destructive shape.
+fn parse_broker_push(args: &[String]) -> Option<GitPushIntent> {
+    // The CLI's own default when `--remote` is absent.
+    let mut remote = "origin".to_string();
+    let mut branch = None;
+    let mut repo = None;
+    let mut is_push = false;
+    let mut iter = args.iter();
+    while let Some(token) = iter.next() {
+        let (name, attached) = match token.split_once('=') {
+            Some((name, value)) if name.starts_with("--") => (name, Some(value.to_string())),
+            _ => (token.as_str(), None),
+        };
+        match name {
+            "push" if !is_push => is_push = true,
+            "--ledger" | "--policy" | "--grants" | "--git-config" | "--receipt" | "--remote"
+            | "--branch" | "--repo" => {
+                let value = attached.or_else(|| iter.next().cloned());
+                match name {
+                    "--remote" => remote = value?,
+                    "--branch" => branch = value,
+                    "--repo" => repo = value,
+                    _ => {}
+                }
+            }
+            _ if name.starts_with('-') => {}
+            // Another subcommand (`list`, `approve`, …) is not a push.
+            _ if !is_push => return None,
+            _ => {}
+        }
+    }
+    is_push.then(|| GitPushIntent {
+        command: BROKER_PUSH_COMMAND,
+        directory_changes: repo.into_iter().collect(),
+        git_dir: None,
+        work_tree: None,
+        remote: Some(remote),
+        refspecs: branch.into_iter().collect(),
+        force: false,
+        force_with_lease: false,
+        force_if_includes: false,
+        mirror: false,
+        delete: false,
+        detection: GitPushDetection::ModeledExecution,
+    })
+}
+
+/// Git's global switches that take no value, as of Git 2.49. Value-taking
+/// ones are consumed where they are parsed; anything absent from both is
+/// treated as possibly value-taking.
+fn is_boolean_global_switch(token: &str) -> bool {
+    matches!(
+        token,
+        "-v" | "--version"
+            | "-h"
+            | "--help"
+            | "--html-path"
+            | "--man-path"
+            | "--info-path"
+            | "-p"
+            | "--paginate"
+            | "-P"
+            | "--no-pager"
+            | "--no-replace-objects"
+            | "--no-lazy-fetch"
+            | "--no-optional-locks"
+            | "--no-advice"
+            | "--bare"
+            | "--literal-pathspecs"
+            | "--glob-pathspecs"
+            | "--noglob-pathspecs"
+            | "--icase-pathspecs"
+    ) || token.starts_with("--list-cmds=")
+        || token.starts_with("--attr-source=")
+        || token.starts_with("--super-prefix=")
+}
+
+/// Follow a command-line alias (`git -c alias.p=push p`) to what it runs.
+///
+/// Only aliases defined on this command line are visible. A plain alias is
+/// spliced in place of its name, as Git does. A `!` alias is a shell snippet
+/// that receives the remaining arguments; it is parsed as a shell program and
+/// inherits the command-line config, which Git exports to it.
+fn expand_alias(
+    argv: &[String],
+    index: usize,
+    subcommand: &str,
+    config: &[ConfigEntry],
+    depth: usize,
+) -> Vec<GitPushIntent> {
+    let Some(alias) = config.iter().rev().find(|entry| {
+        entry.section == "alias"
+            && entry.subsection.is_none()
+            && entry.variable.eq_ignore_ascii_case(subcommand)
+    }) else {
+        return Vec::new();
+    };
+    if depth >= MAX_ALIAS_DEPTH {
+        return vec![unmodeled_push("git", index)];
+    }
+    let Some(definition) = alias.value.as_deref() else {
+        return vec![unmodeled_push("git", index)];
+    };
+
+    if let Some(snippet) = definition.strip_prefix('!') {
+        // Positional parameters may forward destructive flags into a nested
+        // function or choose the command itself. We do not interpret shell
+        // data flow, so preserve a conservative outbound candidate instead.
+        if has_dynamic_shell_words(snippet) {
+            return vec![unmodeled_push("git", index)];
+        }
+        let mut program = snippet.to_string();
+        for argument in &argv[index + 1..] {
+            program.push_str(" '");
+            program.push_str(&argument.replace('\'', r"'\''"));
+            program.push('\'');
+        }
+        return match git_push_intents_at_depth(&program, config, depth + 1) {
+            Ok(intents) => intents
+                .into_iter()
+                .map(|mut intent| {
+                    intent.detection = GitPushDetection::EmbeddedArgv {
+                        outer_command: "git".to_string(),
+                        argument_index: index,
+                    };
+                    intent
+                })
+                .collect(),
+            Err(_) => vec![unmodeled_push("git", index)],
+        };
+    }
+
+    let mut expanded = argv[..index].to_vec();
+    expanded.extend(shell_split(definition));
+    expanded.extend(argv[index + 1..].iter().cloned());
+    parse_git_push(&expanded, config, depth + 1)
+}
+
+/// Git's option parser accepts any unambiguous prefix of a long option, so
+/// `--mirr` is `--mirror`. Matching only the full spelling let an abbreviated
+/// destructive flag classify as an ordinary push. Any prefix counts here: a
+/// prefix Git finds ambiguous makes it refuse the command, so over-matching
+/// cannot hide a push.
+fn abbreviates(token: &str, option: &str) -> bool {
+    token
+        .strip_prefix("--")
+        .map(|name| name.split_once('=').map_or(name, |(name, _)| name))
+        .is_some_and(|name| !name.is_empty() && option.starts_with(name))
 }
 
 fn parse_push_args(
@@ -289,7 +688,12 @@ fn parse_push_args(
             "--mirror" => mirror = true,
             "--no-mirror" => mirror = false,
             "--delete" => delete = true,
-            _ if token.starts_with("--force-with-lease=") => force_with_lease = true,
+            _ if abbreviates(token, "force-with-lease") => force_with_lease = true,
+            _ if abbreviates(token, "force") => explicit_force = true,
+            _ if abbreviates(token, "mirror") => mirror = true,
+            // `--prune` removes every remote ref the refspecs no longer name,
+            // which is the same effect as an explicit removal.
+            _ if abbreviates(token, "delete") || abbreviates(token, "prune") => delete = true,
             _ if short_option_contains(token, 'f') => explicit_force = true,
             _ if short_option_contains(token, 'd') => delete = true,
             _ if !token.starts_with('-') => operands.push(token.to_string()),
@@ -379,7 +783,9 @@ fn parse_send_pack_args(
             "--no-force" => explicit_force = false,
             "--mirror" => mirror = true,
             "--no-mirror" => mirror = false,
-            _ if token.starts_with("--force-with-lease=") => force_with_lease = true,
+            _ if abbreviates(token, "force-with-lease") => force_with_lease = true,
+            _ if abbreviates(token, "force") => explicit_force = true,
+            _ if abbreviates(token, "mirror") => mirror = true,
             _ if short_option_contains(token, 'f') => explicit_force = true,
             _ if !token.starts_with('-') => operands.push(token.to_string()),
             _ => {}
@@ -418,184 +824,4 @@ fn short_option_contains(token: &str, wanted: char) -> bool {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn normalizes_equivalent_push_entry_points() {
-        for command in [
-            "/usr/bin/git push origin main",
-            "env git push origin main",
-            "command git push origin main",
-            "stdbuf -o0 git push origin main",
-            "setsid -fw git push origin main",
-            r#""git" push origin main"#,
-            r#"g""it push origin main"#,
-            r#"g\it push origin main"#,
-            "git -C /workspace push origin main",
-            "git --git-dir=/workspace/.git push origin main",
-            "git-push origin main",
-            "{ git push origin main; }",
-        ] {
-            let intents = git_push_intents(command).expect("valid shell");
-            assert_eq!(intents.len(), 1, "push missing from {command:?}");
-            assert!(intents[0].policy_subjects().contains(&"git push"));
-        }
-    }
-
-    #[test]
-    fn classifies_destructive_push_semantics() {
-        let cases = [
-            ("git push -f origin main", "git push --force"),
-            (
-                "git -C repo push origin main --force-with-lease",
-                "git push --force-with-lease",
-            ),
-            ("git push origin +main:main", "git push --force"),
-            ("git push origin :main", "git push --delete"),
-            ("git push --delete origin main", "git push --delete"),
-            ("git push --mirror origin", "git push --mirror"),
-        ];
-
-        for (command, subject) in cases {
-            let intents = git_push_intents(command).expect("valid shell");
-            assert!(
-                intents[0].policy_subjects().contains(&subject),
-                "{command:?} did not produce {subject:?}: {:?}",
-                intents[0]
-            );
-        }
-    }
-
-    #[test]
-    fn retains_repository_remote_and_refspec_scope() {
-        let intent = git_push_intents(
-            "git -C /workspace --git-dir=.git --work-tree=src push origin main:main tag:v1",
-        )
-        .expect("valid shell")
-        .pop()
-        .expect("push intent");
-
-        assert_eq!(intent.directory_changes, ["/workspace"]);
-        assert_eq!(intent.git_dir.as_deref(), Some(".git"));
-        assert_eq!(intent.work_tree.as_deref(), Some("src"));
-        assert_eq!(intent.remote.as_deref(), Some("origin"));
-        assert_eq!(intent.refspecs, ["main:main", "tag:v1"]);
-    }
-
-    #[test]
-    fn positional_repository_overrides_repo_option_like_git() {
-        let intent = git_push_intents("git push --repo=origin backup main")
-            .expect("valid shell")
-            .pop()
-            .expect("push intent");
-
-        assert_eq!(intent.remote.as_deref(), Some("backup"));
-        assert_eq!(intent.refspecs, ["main"]);
-    }
-
-    #[test]
-    fn force_if_includes_alone_is_not_a_forced_push() {
-        let intent = git_push_intents("git push --force-if-includes origin main")
-            .expect("valid shell")
-            .pop()
-            .expect("push intent");
-
-        assert!(intent.force_if_includes);
-        assert!(!intent.force_with_lease);
-        assert!(!intent.force);
-        assert!(!intent.policy_subjects().contains(&"git push --force"));
-    }
-
-    #[test]
-    fn recognizes_send_pack_as_the_same_outbound_boundary() {
-        for command in [
-            "git send-pack origin main",
-            "git-send-pack origin main",
-            "git -C repo send-pack origin main",
-            "git --exec-path send-pack origin main",
-        ] {
-            let intents = git_push_intents(command).expect("valid shell");
-            assert_eq!(intents.len(), 1, "send-pack missing from {command:?}");
-            assert!(intents[0].policy_subjects().contains(&"git push"));
-        }
-
-        for command in [
-            "git send-pack --force origin main",
-            "git-send-pack -f origin main",
-            "git send-pack --force-with-lease origin main",
-            "git send-pack --mirror origin",
-            "git send-pack origin +main:main",
-        ] {
-            let intents = git_push_intents(command).expect("valid shell");
-            assert_eq!(intents.len(), 1, "send-pack missing from {command:?}");
-            assert!(
-                intents[0].policy_subjects().contains(&"git push --force")
-                    || intents[0].policy_subjects().contains(&"git push --mirror"),
-                "destructive send-pack was not canonicalized: {command:?}"
-            );
-        }
-    }
-
-    #[test]
-    fn conservatively_recognizes_git_intent_after_unknown_prefix_tokens() {
-        for command in [
-            "firejail --quiet git push origin main",
-            "bwrap --ro-bind / / git push origin main",
-            "torsocks git-send-pack origin main",
-            "flatpak-spawn --host /usr/bin/git send-pack origin main",
-            r#"probe "git" "push" origin main"#,
-        ] {
-            let intents = git_push_intents(command).expect("valid shell");
-            assert_eq!(
-                intents.len(),
-                1,
-                "embedded Git intent missing from {command:?}"
-            );
-            assert!(intents[0].policy_subjects().contains(&"git push"));
-            assert!(matches!(
-                intents[0].detection,
-                GitPushDetection::EmbeddedArgv { .. }
-            ));
-        }
-
-        for command in [
-            "firejail git push --force origin main",
-            "cpulimit -l 50 -- git push origin +main:main",
-            "ssh-agent git-send-pack --mirror origin",
-            "echo git push --force origin main",
-            "probe git status git push --force origin main",
-        ] {
-            let intents = git_push_intents(command).expect("valid shell");
-            assert_eq!(
-                intents.len(),
-                1,
-                "embedded Git intent missing from {command:?}"
-            );
-            assert!(
-                intents[0].force || intents[0].mirror,
-                "destructive strength was lost for {command:?}: {:?}",
-                intents[0]
-            );
-        }
-    }
-
-    #[test]
-    fn quoted_git_push_text_is_not_an_executable_intent() {
-        for command in [
-            "grep -r 'git push --force' src",
-            "echo 'git push origin main'",
-        ] {
-            assert!(
-                git_push_intents(command).expect("valid shell").is_empty(),
-                "one quoted data token must not become executable Git intent: {command:?}"
-            );
-        }
-        assert!(
-            git_push_intents("echo git status")
-                .expect("valid shell")
-                .is_empty(),
-            "non-outbound Git words must not become a push intent"
-        );
-    }
-}
+mod tests;

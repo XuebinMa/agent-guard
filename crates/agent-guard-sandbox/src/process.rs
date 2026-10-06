@@ -7,7 +7,7 @@
 
 use std::io::{self, Read};
 use std::process::{Child, Command, ExitStatus};
-use std::sync::atomic::{AtomicU8, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
 use std::sync::Arc;
 use std::thread;
 use std::time::{Duration, Instant};
@@ -17,6 +17,32 @@ use crate::{SandboxError, OUTPUT_CAPTURE_LIMIT_BYTES};
 const STDOUT_LIMIT_BIT: u8 = 1;
 const STDERR_LIMIT_BIT: u8 = 2;
 const POLL_INTERVAL: Duration = Duration::from_millis(5);
+
+// Stop readers on every error/early return as well as an ordinary timeout.
+// Unix pipe reads are nonblocking, so no live writer can prevent cancellation.
+struct CancelReaders(Arc<AtomicBool>);
+
+impl Drop for CancelReaders {
+    fn drop(&mut self) {
+        self.0.store(true, Ordering::Release);
+    }
+}
+
+#[cfg(unix)]
+fn prepare_output_reader(reader: &impl std::os::fd::AsRawFd) -> io::Result<()> {
+    let fd = reader.as_raw_fd();
+    // SAFETY: fd is owned by the live pipe, and flags only affect its read end.
+    let flags = unsafe { libc::fcntl(fd, libc::F_GETFL) };
+    if flags == -1 || unsafe { libc::fcntl(fd, libc::F_SETFL, flags | libc::O_NONBLOCK) } == -1 {
+        return Err(io::Error::last_os_error());
+    }
+    Ok(())
+}
+
+#[cfg(not(unix))]
+fn prepare_output_reader(_reader: &impl Read) -> io::Result<()> {
+    Ok(())
+}
 
 #[derive(Debug)]
 pub(crate) struct CapturedChild {
@@ -33,11 +59,17 @@ pub(crate) struct CapturedChild {
 /// before their policy is installed, so carrying ambient descriptors into the
 /// executed shell would bypass the claimed filesystem boundary.
 ///
+/// Standard input is the null device. The host's own input — the protocol
+/// stream, under a stdio server — is neither readable by the executed command
+/// nor consumable by it.
+///
 /// Multiple `pre_exec` callbacks are supported, so a backend may add its
 /// seccomp/Landlock setup after this callback.
 #[cfg(unix)]
 pub(crate) fn configure_process_group(command: &mut Command) {
     use std::os::unix::process::CommandExt;
+
+    command.stdin(std::process::Stdio::null());
 
     // SAFETY: this callback only invokes async-signal-safe system interfaces
     // and touches stack/captured scalar state. A failure aborts spawning
@@ -53,7 +85,9 @@ pub(crate) fn configure_process_group(command: &mut Command) {
 }
 
 #[cfg(not(unix))]
-pub(crate) fn configure_process_group(_command: &mut Command) {}
+pub(crate) fn configure_process_group(command: &mut Command) {
+    command.stdin(std::process::Stdio::null());
+}
 
 #[cfg(target_os = "linux")]
 fn mark_non_stdio_descriptors_close_on_exec() -> io::Result<()> {
@@ -235,11 +269,25 @@ pub(crate) fn wait_for_child(
         }
     };
 
+    if let Err(error) = prepare_output_reader(&stdout).and_then(|_| prepare_output_reader(&stderr))
+    {
+        let _ = terminate_process_tree(&mut child);
+        let _ = child.kill();
+        let _ = child.wait();
+        return Err(SandboxError::ExecutionFailed(format!(
+            "failed to prepare output capture: {error}"
+        )));
+    }
+    let cancel = CancelReaders(Arc::new(AtomicBool::new(false)));
+    let stdout_cancel = Arc::clone(&cancel.0);
+    let stderr_cancel = Arc::clone(&cancel.0);
     let limit_flags = Arc::new(AtomicU8::new(0));
     let stdout_flags = Arc::clone(&limit_flags);
     let stderr_flags = Arc::clone(&limit_flags);
-    let stdout_thread = thread::spawn(move || read_bounded(stdout, STDOUT_LIMIT_BIT, stdout_flags));
-    let stderr_thread = thread::spawn(move || read_bounded(stderr, STDERR_LIMIT_BIT, stderr_flags));
+    let stdout_thread =
+        thread::spawn(move || read_bounded(stdout, STDOUT_LIMIT_BIT, stdout_flags, stdout_cancel));
+    let stderr_thread =
+        thread::spawn(move || read_bounded(stderr, STDERR_LIMIT_BIT, stderr_flags, stderr_cancel));
 
     let mut status = None;
     let mut terminal_error = None;
@@ -274,6 +322,7 @@ pub(crate) fn wait_for_child(
             status = match child.try_wait() {
                 Ok(status) => status,
                 Err(error) => {
+                    cancel.0.store(true, Ordering::Release);
                     let _ = terminate_process_tree(&mut child);
                     let _ = child.kill();
                     let _ = child.wait();
@@ -296,6 +345,7 @@ pub(crate) fn wait_for_child(
         }
 
         if terminal_error.is_some() && status.is_none() {
+            cancel.0.store(true, Ordering::Release);
             status = match child.wait() {
                 Ok(status) => Some(status),
                 Err(error) => {
@@ -306,6 +356,10 @@ pub(crate) fn wait_for_child(
                     )));
                 }
             };
+        }
+
+        if terminal_error.is_some() {
+            cancel.0.store(true, Ordering::Release);
         }
 
         if status.is_some() && stdout_thread.is_finished() && stderr_thread.is_finished() {
@@ -336,12 +390,24 @@ fn read_bounded(
     mut reader: impl Read,
     stream_bit: u8,
     limit_flags: Arc<AtomicU8>,
+    cancel: Arc<AtomicBool>,
 ) -> io::Result<Vec<u8>> {
     let mut retained = Vec::new();
     let mut buffer = [0_u8; 8192];
 
     loop {
-        let read = reader.read(&mut buffer)?;
+        if cancel.load(Ordering::Acquire) {
+            return Ok(retained);
+        }
+        let read = match reader.read(&mut buffer) {
+            Ok(read) => read,
+            Err(error) if error.kind() == io::ErrorKind::Interrupted => continue,
+            Err(error) if error.kind() == io::ErrorKind::WouldBlock => {
+                thread::sleep(POLL_INTERVAL);
+                continue;
+            }
+            Err(error) => return Err(error),
+        };
         if read == 0 {
             return Ok(retained);
         }
@@ -444,7 +510,9 @@ mod tests {
     use super::{configure_process_group, shell_command, wait_for_child};
     use crate::{SandboxError, OUTPUT_CAPTURE_LIMIT_BYTES};
     use std::fs::OpenOptions;
-    use std::os::fd::AsRawFd;
+    use std::os::fd::{AsRawFd, OwnedFd};
+    use std::os::unix::fs::MetadataExt;
+    use std::os::unix::net::UnixStream;
     use std::process::Stdio;
     use std::time::Duration;
 
@@ -498,6 +566,60 @@ mod tests {
     }
 
     #[test]
+    fn deadline_bounds_output_drain_when_an_unrelated_writer_remains_open() {
+        let (reader, writer) = UnixStream::pair().expect("output pipe fixture");
+        let held_writer = writer.try_clone().expect("hold another output writer");
+        let holder = std::thread::spawn(move || {
+            std::thread::sleep(Duration::from_millis(750));
+            drop(held_writer);
+        });
+        let mut command = shell_command("echo harmless-output");
+        configure_process_group(&mut command);
+        command
+            .stdout(Stdio::from(OwnedFd::from(writer)))
+            .stderr(Stdio::piped());
+        let mut child = command.spawn().expect("spawn harmless output child");
+        drop(command);
+        child.stdout = Some(std::process::ChildStdout::from(OwnedFd::from(reader)));
+
+        let started = std::time::Instant::now();
+        let result = wait_for_child(child, Some(100));
+        let elapsed = started.elapsed();
+        holder.join().expect("release unrelated writer");
+
+        assert!(matches!(result, Err(SandboxError::Timeout { ms: 100 })));
+        assert!(
+            elapsed < Duration::from_millis(500),
+            "the 100ms deadline must bound output drain even without EOF: {elapsed:?}"
+        );
+    }
+
+    #[test]
+    fn inherited_descriptor_child_observer() {
+        let Ok(fd) = std::env::var("AGENT_GUARD_TEST_INHERITED_FD") else {
+            return;
+        };
+        let fd = fd.parse::<i32>().unwrap();
+        let mut stat = std::mem::MaybeUninit::<libc::stat>::uninit();
+        // Test-only observer: never reads or writes through the candidate fd.
+        if unsafe { libc::fstat(fd, stat.as_mut_ptr()) } == 0 {
+            let stat = unsafe { stat.assume_init() };
+            let device = std::env::var("AGENT_GUARD_TEST_INHERITED_DEVICE").unwrap();
+            let inode = std::env::var("AGENT_GUARD_TEST_INHERITED_INODE").unwrap();
+            assert_ne!(
+                (stat.st_dev.to_string(), stat.st_ino.to_string()),
+                (device, inode),
+                "child retained the fixture file's authority"
+            );
+        } else {
+            assert_eq!(
+                std::io::Error::last_os_error().raw_os_error(),
+                Some(libc::EBADF)
+            );
+        }
+    }
+
+    #[test]
     fn inherited_non_stdio_descriptors_are_closed_at_exec() {
         let temp = tempfile::tempdir().expect("tempdir");
         let sentinel = temp.path().join("descriptor-leak");
@@ -516,17 +638,103 @@ mod tests {
             std::io::Error::last_os_error()
         );
 
-        let output = wait_for_child(spawn(&format!("printf leaked >&{inherited}")), Some(5_000))
-            .expect("capture descriptor probe");
+        let metadata = file.metadata().unwrap();
+        for enforce_hygiene in [false, true] {
+            let mut command = std::process::Command::new(std::env::current_exe().unwrap());
+            command
+                .args([
+                    "--exact",
+                    "process::tests::inherited_descriptor_child_observer",
+                ])
+                .env("AGENT_GUARD_TEST_INHERITED_FD", inherited.to_string())
+                .env(
+                    "AGENT_GUARD_TEST_INHERITED_DEVICE",
+                    metadata.dev().to_string(),
+                )
+                .env(
+                    "AGENT_GUARD_TEST_INHERITED_INODE",
+                    metadata.ino().to_string(),
+                )
+                .stdout(Stdio::piped())
+                .stderr(Stdio::piped());
+            if enforce_hygiene {
+                configure_process_group(&mut command);
+            } else {
+                // Negative control: identical fork/exec path, with no hygiene.
+                // SAFETY: the test-only pre-exec closure does no work.
+                use std::os::unix::process::CommandExt;
+                unsafe {
+                    command.pre_exec(|| Ok(()));
+                }
+            }
+            let output = wait_for_child(command.spawn().unwrap(), Some(5_000))
+                .expect("capture descriptor observer");
+            // The negative control proves that this fixture really was inheritable.
+            // The hygienic case must remove that exact file authority, independently
+            // of whether a runtime reuses the descriptor number for something else.
+            assert_eq!(
+                output.status.success(),
+                enforce_hygiene,
+                "descriptor observer (hygiene={enforce_hygiene}): {} {}",
+                output.stdout,
+                output.stderr
+            );
+        }
         // SAFETY: this test owns the descriptor returned by F_DUPFD.
         unsafe {
             libc::close(inherited);
         }
 
-        assert!(!output.status.success(), "inherited descriptor stayed open");
         assert_eq!(
             std::fs::read_to_string(&sentinel).expect("read sentinel"),
             ""
+        );
+    }
+
+    #[test]
+    fn host_stdin_child_observer() {
+        if std::env::var_os("AGENT_GUARD_TEST_HOST_STDIN").is_none() {
+            return;
+        }
+        // `cat` copies whatever its standard input holds, then exits at EOF.
+        let output = wait_for_child(spawn("cat"), Some(5_000)).expect("capture cat");
+        println!("CHILD-READ:{}", output.stdout);
+    }
+
+    /// The host's standard input is the host's: under an MCP stdio server it
+    /// is the protocol stream. An executed command must not be able to read
+    /// from it or consume it.
+    #[test]
+    fn the_executed_command_does_not_read_the_hosts_standard_input() {
+        use std::io::Write;
+
+        let mut host = std::process::Command::new(std::env::current_exe().unwrap())
+            .args([
+                "--exact",
+                "process::tests::host_stdin_child_observer",
+                "--nocapture",
+            ])
+            .env("AGENT_GUARD_TEST_HOST_STDIN", "1")
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .expect("spawn host stand-in");
+        host.stdin
+            .take()
+            .expect("host stdin")
+            .write_all(b"host-only-marker\n")
+            .expect("write host stdin");
+        let output = host.wait_with_output().expect("host stand-in exits");
+        let stdout = String::from_utf8_lossy(&output.stdout);
+
+        assert!(
+            stdout.contains("CHILD-READ:"),
+            "the observer must have run: {stdout}"
+        );
+        assert!(
+            !stdout.contains("host-only-marker"),
+            "the executed command read the host's standard input: {stdout}"
         );
     }
 

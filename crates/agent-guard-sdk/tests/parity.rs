@@ -178,12 +178,14 @@ fn test_parity_network_outbound() {
     // Keep a host-level deadline even when the sandbox drops packets instead
     // of returning a permission error. Without it, the release gate can wait
     // indefinitely on a network policy that is working as intended.
+    // A loopback probe tests the same network prohibition without contacting
+    // a third-party endpoint or depending on external connectivity.
     let cmd = if cfg!(windows) {
-        "ping -n 1 -w 2000 8.8.8.8"
+        "ping -n 1 -w 2000 127.0.0.1"
     } else if cfg!(target_os = "macos") {
-        "ping -c 1 -t 2 8.8.8.8"
+        "ping -c 1 -t 2 127.0.0.1"
     } else {
-        "ping -c 1 -w 2 8.8.8.8"
+        "ping -c 1 -w 2 127.0.0.1"
     };
 
     let res = guard.execute(
