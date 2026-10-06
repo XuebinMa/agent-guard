@@ -1,0 +1,12 @@
+   Compiling agent-guard-validators v0.2.7 (/Users/xuebinma/.codex/worktrees/broker-first/agent-guard/crates/agent-guard-validators)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.58s
+     Running tests/parser_boundary.rs (/private/tmp/agent-guard-broker-first-target/debug/deps/parser_boundary-b1361af4d68a7beb)
+
+running 5 tests
+test unquoted_control_bytes_cannot_create_a_grammar_only_comment ... ok
+test nested_executable_regions_do_not_inherit_outer_literal_exemptions ... ok
+test computed_command_words_are_not_empty_environment_assignments ... ok
+test literal_assignment_looking_command_words_are_never_discarded ... ok
+test literal_data_real_assignments_and_supported_wrappers_remain_allowed ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s

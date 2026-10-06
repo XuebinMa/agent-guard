@@ -442,6 +442,9 @@ pub(crate) fn contains_dynamic_command_word(command: &str) -> bool {
     any_command(command, |argv| {
         unwrap_command_wrappers(argv).first().is_some_and(|token| {
             token.contains('$')
+                // zsh may resolve `=name` as an executable path. This shell
+                // dialect feature is outside the supported static subset.
+                || token.starts_with('=')
                 || super::paths::has_brace_expansion(token)
                 || (!matches!(token.as_str(), "[" | "[[") && token.contains(['*', '?', '[']))
         })

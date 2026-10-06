@@ -1,0 +1,101 @@
+   Compiling agent-guard-validators v0.2.7 (/Users/xuebinma/.codex/worktrees/broker-first/agent-guard/crates/agent-guard-validators)
+   Compiling agent-guard-sdk v0.2.7 (/Users/xuebinma/.codex/worktrees/broker-first/agent-guard/crates/agent-guard-sdk)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 1.28s
+     Running tests/security_regression.rs (/private/tmp/agent-guard-broker-first-target/debug/deps/security_regression-c748863f640289bf)
+
+running 79 tests
+test sec07_write_file_dotdot_traversal_resolves_outside_allowlist ... ok
+test sec08b_http_mutation_to_link_local_blocked_by_executor_when_policy_silent ... ok
+test sec13_http_method_override_cannot_bypass_method_deny ... ok
+test sec06_write_file_to_etc_is_denied ... ok
+test sec08_http_mutation_to_link_local_metadata_is_denied ... ok
+test sec01_curl_pipe_bash_is_denied ... ok
+test sec11_runtime_outcome_for_blocked_call_carries_reason ... ok
+test sec04_write_redirect_outside_workspace_is_denied ... ok
+test sec05_read_redirect_with_dotdot_traversal_is_denied ... ok
+test sec02_rm_rf_root_is_denied ... ok
+test sec03_read_redirect_outside_workspace_is_denied ... ok
+test sec12_decide_and_check_agree_on_block ... ok
+test sec09_git_push_triggers_ask_for_approval ... ok
+test sec14_command_builtin_wrappers_cannot_hide_write_commands ... ok
+test sec18_interpreter_script_file_is_opaque_code ... ok
+test sec22_shell_negation_cannot_hide_write_command ... ok
+test sec21_parameter_expansion_cannot_supply_command_word ... ok
+test sec20_heredoc_opener_substitution_is_not_skipped ... ok
+test sec24_absolute_command_path_is_classified_by_basename ... ok
+test sec19_watch_reparsed_shell_string_is_validated ... ok
+test sec27_grouping_cannot_hide_code_laundering ... ok
+test sec15_env_long_option_value_cannot_hide_write_command ... ok
+test sec10_sudo_command_is_denied ... ok
+test sec17_wrapped_xargs_cannot_hide_unverifiable_write_target ... ok
+test sec16_multiple_find_exec_actions_cannot_hide_later_write ... ok
+test sec25_write_file_without_working_directory_is_denied_without_writing ... ok
+test sec23_subshell_grouping_cannot_hide_write_command ... ok
+test sec26_relative_workspace_root_cannot_escape_the_workspace ... ok
+test sec33_invalid_signed_policy_check_is_denied ... ok
+test sec27_unparseable_shell_input_fails_closed ... ok
+test sec33_invalid_signed_policy_decide_is_denied ... ok
+test sec33_invalid_signed_policy_execute_is_denied ... ok
+test sec33_invalid_signed_policy_run_is_denied ... ok
+test sec30_listed_opaque_process_launchers_fail_closed_in_restricted_modes ... ok
+test sec26_bash_without_working_directory_cannot_escape_the_workspace ... ok
+test sec27_grouping_constructs_cannot_hide_a_workspace_escape ... ok
+test sec27_grouping_constructs_cannot_hide_a_write_in_read_only ... ok
+test sec35_ansi_c_nul_words_cannot_hide_controlled_commands ... ok
+test sec34_dynamic_and_unmodeled_write_targets_fail_closed ... ok
+test sec31_send_pack_is_governed_as_outbound_git ... ok
+test sec38_brace_expansion_and_dot_globs_cannot_escape_the_workspace ... ok
+test sec28_host_reported_handoff_never_emits_execution_finished ... ok
+test sec36_sed_in_place_targets_are_confined_and_read_only_is_preserved ... ok
+test sec29_destructive_git_push_forms_are_denied ... ok
+test sec40_alias_inheritance_argument_forwarding_and_environment_keep_deny ... ok
+test sec46_read_only_http_allows_only_safe_methods ... ok
+test sec47_a_host_header_cannot_name_a_destination_the_url_does_not ... ok
+test sec49_deny_paths_ignore_case_where_the_filesystem_does ... ok
+test sec48_a_wildcard_inside_a_file_name_is_not_turned_into_a_directory ... ok
+test sec50_an_unverified_policy_cannot_choose_or_silence_the_audit_trail ... FAILED
+test sec44_control_and_bidi_characters_never_reach_the_approval_prompt ... ok
+test sec37_git_option_abbreviation_config_and_aliases_keep_push_destructive ... ok
+test sec42_the_broker_cli_reaches_the_same_outbound_decision_as_git_push ... ok
+test sec39_read_only_refuses_program_valued_env_and_exec_flags ... ok
+test sec30_modeled_process_launchers_preserve_inner_outbound_decisions ... ok
+test sec56_child_recovers_from_an_unverified_policy ... ok
+test sec55_percent_encoded_paths_match_and_allow_rules_keep_their_spelling ... ok
+test sec54_deny_paths_match_the_requested_name_and_what_it_resolves_to ... ok
+test sec32_unknown_prefix_cannot_downgrade_embedded_git_outbound_intent ... ok
+test sec41_git_global_option_values_cannot_hide_an_outbound_push ... ok
+test sec59_git_option_exemptions_depend_on_the_subcommand ... ok
+test sec29_equivalent_and_recoverable_git_push_forms_trigger_approval ... ok
+test sec60_repeated_line_continuations_preserve_command_identity ... ok
+test sec56_a_verified_reload_does_not_keep_the_unverified_audit_sink ... ok
+test sec58_attached_unknown_wrapper_options_do_not_hide_executable_syntax ... ok
+test sec62_read_only_git_option_prefixes_cannot_reenable_helpers ... ok
+test sec53_line_continuations_globs_and_rebinding_cannot_rename_a_command ... ok
+test sec63_allow_path_glob_correction_does_not_authorize_sibling_names ... ok
+test sec64_workspace_escape_glob_correction_does_not_waive_sibling_bounds ... ok
+test sec61_attached_copy_option_values_do_not_consume_the_destination ... ok
+test sec57_brace_words_traps_shell_flags_and_known_launchers_fail_closed ... ok
+test sec52_wrapper_options_the_table_does_not_know_fail_closed ... ok
+test sec43_archive_sync_download_and_git_checkout_destinations_are_confined ... ok
+test sec51_read_only_git_subcommands_cannot_write_or_execute_through_options ... ok
+test sec68_readonly_literal_assignment_looking_executables_are_not_skipped ... ok
+test sec66_computed_command_words_cannot_disappear_as_assignments ... ok
+test sec67_nested_executable_regions_still_enter_real_guard_refusal ... ok
+test sec65_control_bytes_cannot_hide_command_positions ... ok
+test sec45_url_spelling_cannot_bypass_an_http_deny_rule ... ok
+
+failures:
+
+---- sec50_an_unverified_policy_cannot_choose_or_silence_the_audit_trail stdout ----
+
+thread 'sec50_an_unverified_policy_cannot_choose_or_silence_the_audit_trail' (49384095) panicked at crates/agent-guard-sdk/tests/security_regression.rs:1764:66:
+loopback listener: Os { code: 1, kind: PermissionDenied, message: "Operation not permitted" }
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    sec50_an_unverified_policy_cannot_choose_or_silence_the_audit_trail
+
+test result: FAILED. 78 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.56s
+
+error: test failed, to rerun pass `-p agent-guard-sdk --test security_regression`

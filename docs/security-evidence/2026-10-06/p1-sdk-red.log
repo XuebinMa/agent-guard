@@ -1,0 +1,206 @@
+   Compiling libc v0.2.184
+   Compiling memchr v2.8.0
+   Compiling smallvec v1.15.1
+   Compiling bitflags v2.11.0
+   Compiling zeroize v1.8.2
+   Compiling futures-core v0.3.32
+   Compiling zerocopy v0.8.48
+   Compiling bytes v1.11.1
+   Compiling pkg-config v0.3.32
+   Compiling dunce v1.0.5
+   Compiling fs_extra v1.3.0
+   Compiling tokio-macros v2.7.0
+   Compiling zerocopy-derive v0.8.48
+   Compiling futures-sink v0.3.32
+   Compiling log v0.4.29
+   Compiling aws-lc-rs v1.18.1
+   Compiling slab v0.4.12
+   Compiling num-traits v0.2.19
+   Compiling tracing v0.1.44
+   Compiling percent-encoding v2.3.2
+   Compiling icu_normalizer v2.2.0
+   Compiling futures-macro v0.3.32
+   Compiling aho-corasick v1.1.4
+   Compiling serde_json v1.0.149
+   Compiling system-configuration-sys v0.6.0
+   Compiling futures-io v0.3.32
+   Compiling http v1.4.0
+   Compiling httparse v1.10.1
+   Compiling crossbeam-utils v0.8.21
+   Compiling futures-task v0.3.32
+   Compiling idna_adapter v1.2.1
+   Compiling rustls-pki-types v1.14.1
+   Compiling untrusted v0.9.0
+   Compiling ipnet v2.12.0
+   Compiling futures-util v0.3.32
+   Compiling regex-automata v0.4.14
+   Compiling http-body v1.0.1
+   Compiling jobserver v0.1.34
+   Compiling errno v0.3.14
+   Compiling mio v1.2.0
+   Compiling socket2 v0.6.3
+   Compiling signal-hook-registry v1.4.8
+   Compiling cpufeatures v0.2.17
+   Compiling cc v1.2.59
+   Compiling getrandom v0.2.17
+   Compiling rand_core v0.6.4
+   Compiling rustix v1.1.4
+   Compiling tokio v1.51.0
+   Compiling try-lock v0.2.5
+   Compiling tower-service v0.3.3
+   Compiling fnv v1.0.7
+   Compiling rustls v0.23.45
+   Compiling atomic-waker v1.1.2
+   Compiling httpdate v1.0.3
+   Compiling want v0.3.1
+   Compiling getrandom v0.4.2
+   Compiling core-foundation v0.9.4
+   Compiling idna v1.1.0
+   Compiling form_urlencoded v1.2.2
+   Compiling futures-channel v0.3.32
+   Compiling cmake v0.1.58
+   Compiling base64 v0.22.1
+   Compiling io-lifetimes v2.0.4
+   Compiling io-lifetimes v3.0.1
+   Compiling crossbeam-epoch v0.9.20
+   Compiling url v2.5.8
+   Compiling aws-lc-sys v0.45.0
+   Compiling regex v1.12.3
+   Compiling system-configuration v0.7.0
+   Compiling curve25519-dalek v4.1.3
+   Compiling sha2 v0.10.9
+   Compiling parking_lot_core v0.9.12
+   Compiling io-extras v0.19.0
+   Compiling parking v2.2.1
+   Compiling event-listener v5.4.2
+   Compiling tree-sitter v0.26.12
+   Compiling ed25519-dalek v2.2.0
+   Compiling chrono v0.4.44
+   Compiling tree-sitter-bash v0.25.1
+   Compiling uuid v1.23.0
+   Compiling security-framework-sys v2.17.0
+   Compiling core-foundation v0.10.1
+   Compiling sync_wrapper v1.0.2
+   Compiling rayon-core v1.13.0
+   Compiling rustversion v1.0.22
+   Compiling cap-primitives v4.0.3
+   Compiling mime v0.3.17
+   Compiling scopeguard v1.2.0
+   Compiling either v1.15.0
+   Compiling tower-layer v0.3.3
+   Compiling lock_api v0.4.14
+   Compiling security-framework v3.7.0
+   Compiling crossbeam-deque v0.8.6
+   Compiling fs-set-times v0.20.3
+   Compiling event-listener-strategy v0.5.4
+   Compiling http-body-util v0.1.3
+   Compiling ambient-authority v0.0.2
+   Compiling ciborium-io v0.2.2
+   Compiling maybe-owned v0.3.4
+   Compiling cap-std v4.0.3
+   Compiling anstyle v1.0.14
+   Compiling clap_lex v1.1.0
+   Compiling plotters-backend v0.3.7
+   Compiling prometheus-client v0.22.3
+   Compiling thiserror v2.0.18
+   Compiling ppv-lite86 v0.2.21
+   Compiling half v2.7.1
+   Compiling plotters-svg v0.3.7
+   Compiling rand_chacha v0.3.1
+   Compiling ciborium-ll v0.2.2
+   Compiling rand v0.8.6
+   Compiling tokio-util v0.7.18
+   Compiling tower v0.5.3
+   Compiling clap_builder v4.6.0
+   Compiling h2 v0.4.17
+   Compiling agent-guard-core v0.2.7 (/Users/xuebinma/.codex/worktrees/broker-first/agent-guard/crates/agent-guard-core)
+   Compiling tower-http v0.6.10
+   Compiling async-lock v3.4.2
+   Compiling parking_lot v0.12.5
+   Compiling itertools v0.10.5
+   Compiling sha1 v0.10.6
+   Compiling headers-core v0.3.0
+   Compiling prometheus-client-derive-encode v0.4.2
+   Compiling thiserror-impl v2.0.18
+   Compiling encoding_rs v0.8.35
+   Compiling dtoa v1.0.11
+   Compiling same-file v1.0.6
+   Compiling cast v0.3.0
+   Compiling unicode-width v0.2.2
+   Compiling tabwriter v1.4.1
+   Compiling clap v4.6.0
+   Compiling walkdir v2.5.0
+   Compiling criterion-plot v0.5.0
+   Compiling headers v0.4.1
+   Compiling agent-guard-sandbox v0.2.7 (/Users/xuebinma/.codex/worktrees/broker-first/agent-guard/crates/agent-guard-sandbox)
+   Compiling agent-guard-validators v0.2.7 (/Users/xuebinma/.codex/worktrees/broker-first/agent-guard/crates/agent-guard-validators)
+   Compiling async-object-pool v0.2.0
+   Compiling arc-swap v1.9.1
+   Compiling rayon v1.12.0
+   Compiling ciborium v0.2.2
+   Compiling plotters v0.3.7
+   Compiling serde_regex v1.1.0
+   Compiling fs2 v0.4.3
+   Compiling is-terminal v0.4.17
+   Compiling assert-json-diff v2.0.2
+   Compiling tinytemplate v1.2.1
+   Compiling path-tree v0.8.3
+   Compiling async-trait v0.1.89
+   Compiling stringmetrics v2.2.2
+   Compiling fastrand v2.4.1
+   Compiling oorandom v11.1.5
+   Compiling futures-timer v3.0.3
+   Compiling similar v2.7.0
+   Compiling anes v0.1.6
+   Compiling tempfile v3.27.0
+   Compiling hyper v1.9.0
+   Compiling criterion v0.5.1
+   Compiling hyper-util v0.1.20
+   Compiling httpmock v0.8.3
+   Compiling rustls-webpki v0.103.15
+   Compiling tokio-rustls v0.26.4
+   Compiling rustls-platform-verifier v0.7.0
+   Compiling hyper-rustls v0.27.9
+   Compiling reqwest v0.13.3
+   Compiling agent-guard-sdk v0.2.7 (/Users/xuebinma/.codex/worktrees/broker-first/agent-guard/crates/agent-guard-sdk)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 19.20s
+     Running tests/security_regression.rs (/private/tmp/agent-guard-broker-first-target/debug/deps/security_regression-c748863f640289bf)
+
+running 9 tests
+test sec64_workspace_escape_glob_correction_does_not_waive_sibling_bounds ... ok
+test sec68_readonly_literal_assignment_looking_executables_are_not_skipped ... FAILED
+test sec63_allow_path_glob_correction_does_not_authorize_sibling_names ... ok
+test sec62_read_only_git_option_prefixes_cannot_reenable_helpers ... ok
+test sec60_repeated_line_continuations_preserve_command_identity ... ok
+test sec61_attached_copy_option_values_do_not_consume_the_destination ... ok
+test sec66_computed_command_words_cannot_disappear_as_assignments ... FAILED
+test sec65_control_bytes_cannot_hide_command_positions ... FAILED
+test sec67_nested_executable_regions_still_enter_real_guard_refusal ... ok
+
+failures:
+
+---- sec68_readonly_literal_assignment_looking_executables_are_not_skipped stdout ----
+
+thread 'sec68_readonly_literal_assignment_looking_executables_are_not_skipped' (49378194) panicked at crates/agent-guard-sdk/tests/security_regression.rs:101:5:
+shell payload must be denied: `"NAME=value" echo safe`, got Allow
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+---- sec66_computed_command_words_cannot_disappear_as_assignments stdout ----
+
+thread 'sec66_computed_command_words_cannot_disappear_as_assignments' (49378192) panicked at crates/agent-guard-sdk/tests/security_regression.rs:101:5:
+shell payload must be denied: `=printf visible`, got Allow
+
+---- sec65_control_bytes_cannot_hide_command_positions stdout ----
+
+thread 'sec65_control_bytes_cannot_hide_command_positions' (49378191) panicked at crates/agent-guard-sdk/tests/security_regression.rs:101:5:
+shell payload must be denied: `ls #;printf visible`, got Allow
+
+
+failures:
+    sec65_control_bytes_cannot_hide_command_positions
+    sec66_computed_command_words_cannot_disappear_as_assignments
+    sec68_readonly_literal_assignment_looking_executables_are_not_skipped
+
+test result: FAILED. 6 passed; 3 failed; 0 ignored; 0 measured; 70 filtered out; finished in 0.17s
+
+error: test failed, to rerun pass `-p agent-guard-sdk --test security_regression`

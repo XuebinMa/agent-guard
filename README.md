@@ -266,6 +266,13 @@ push without consulting the broker.
 the code and deployment requirements together and gives you a check that tells
 you whether the agent can authenticate independently.
 
+The new [fixed Linux Docker reference](deploy/broker-first/README.md) implements
+host-controlled setup and approval without a new daemon or RPC. Its configuration
+tests are not isolation proof: native authenticated container acceptance is a
+separate required gate. The [accepted plan](docs/plans/broker-first-development-plan.md)
+keeps Shell in bounded maintenance and credential isolation as the next product
+milestone; it does not change the publication hold.
+
 ---
 
 ## Why Developers Adopt It
@@ -345,6 +352,8 @@ What to understand before integrating:
 - adapter `enforce` is still strongest on shell-like execution paths today
 - Bash has the deepest validator path; `read_file` / `write_file` normalize paths and fail closed on symlink escapes; HTTP policy rules can match on URL and method
 - Python and Node bindings default to the SDK's platform sandbox selection; both also accept an explicit `backend` argument on `execute` / `run`, resolved truthfully (a backend that is not compiled in or not functional yields the `none` backend, never a false isolation claim)
+- default builds carry no OS sandbox feature and resolve to `none`; enabling a
+  compiled backend does not by itself isolate the complete agent's credentials
 - broader capability coverage is intentionally narrow, not generic
 - broader policy workflow and control-plane ideas are future expansion paths, not the phase-one hook
 - the advisory shell layer cannot prove arbitrary launcher semantics or stop a

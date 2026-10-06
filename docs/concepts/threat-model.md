@@ -5,27 +5,37 @@
 | **Status** | 🟠 Active Review (current source) |
 | **Audience** | Security Auditors, Compliance Officers |
 | **Version** | 2.4 |
-| **Last Reviewed** | 2026-10-02 |
+| **Last Reviewed** | 2026-10-06 |
 | **Related Docs** | [Enforcement Layers (ADR)](enforcement-layers.md), [Capability Parity](capability-parity.md), [Archive: Architecture & Future Directions](../archive/architecture-and-vision.md) |
 
 ---
 
-> This document serves as the primary security posture entry point for `agent-guard`. It outlines the assets, attack surfaces, and current defensive posture of the execution-control runtime across supported platforms.
+> This document separates current decision/execution checks from deployment requirements. The focused boundary is an exact brokered Git transaction; a same-user installation and the default noop executor are not credential isolation.
 
 ---
 
 ## 1. 🏗️ Asset Inventory
-The following assets are protected by the `agent-guard` execution control layer:
+
+The agent may control checkout contents, commits, tool inputs and its own
+container processes. Its explanation or staged plan is not trusted authorization.
+The host kernel/runtime, broker/Git binaries, dedicated authentication programs,
+host config and approving terminal are trusted computing base. The first profile
+does not promise containment of a compromised host, a malicious human approver
+or every possible non-Git data-export path.
+
+These are assets a deployment must protect, not guarantees supplied by the SDK
+alone. The [credential-isolation guide](../guides/operations/credential-isolation.md)
+maps read, write and use authority for the first planned container profile.
 
 | Asset | Importance | Security Requirement |
 | :--- | :--- | :--- |
 | **Policy Files (`policy.yaml`)** | **CRITICAL** | **Integrity**: Unauthorized modification leads to complete bypass. Must be protected by OS-level permissions. |
 | **Audit Logs (JSONL)** | **HIGH** | **Integrity / Availability**: Logs should be preserved for investigations, but local JSONL alone is not cryptographic non-repudiation. |
-| **Host System (Kernel/FS)** | **CRITICAL** | **Isolation**: Prevent local privilege escalation (LPE) and unauthorized writes to critical system paths. |
+| **Host System (Kernel/FS)** | **CRITICAL** | **Isolation**: Keep the unprivileged agent inside the chosen runtime boundary. Host kernel/runtime correctness is trusted, not a property proven by a command validator. |
 | **Secrets (Env/SSH Keys)** | **CRITICAL** | **Confidentiality**: Prevent unauthorized reading or exfiltration of sensitive developer credentials. |
 | **Network (Local/External)** | **HIGH** | **SSRF Prevention**: Prevent internal network scanning and unauthorized command-and-control (C2) communication. |
 | **Telemetry Data** | **MEDIUM** | **Availability**: Real-time monitoring data must persist even if an agent process crashes or is compromised. |
-| **Broker Grants and Host Credentials** | **CRITICAL** | **Integrity / Isolation**: A grant must bind the exact push transaction and be consumed before network access. Broker config, SSH agent and credential helpers must be outside agent write/read authority. |
+| **Broker Grants and Host Credentials** | **CRITICAL** | **Integrity / Isolation**: A grant binds the exact push transaction and is consumed before execution-stage network access. Preview may query a permitted remote before approval. Config, grants, credentials, sockets and helper invocation must be outside agent read/write/use authority. |
 
 ---
 
@@ -34,13 +44,13 @@ Mapping potential entry points and their mitigation strategies:
 
 | Surface Component | Entry Vector | Potential Impact | Mitigation Strategy |
 | :--- | :--- | :--- | :--- |
-| **Tool Payloads** | Malicious JSON/CLI args | Command Injection, RCE | `evalexpr` Restricted DSL + Regex Validation Patterns. |
+| **Tool Payloads** | Malicious JSON/CLI args | Unintended action, command execution | Strict payload validation, policy rules and bounded Bash AST classification; arbitrary-program effects still require deployment containment. |
 | **Filesystem Access** | Path traversal, Symlinks | Data exfiltration, Overwrite | Glob-based Allow/Deny paths + platform sandbox isolation (Landlock/Seatbelt/Windows token model). |
 | **Network Stack** | Outbound HTTP/Socket | Data exfiltration, SSRF | Policy-level URL/path controls + platform sandboxing where available. |
 | **Process Management** | Fork-bomb, child escape | DoS, Sandbox Escape | Job Objects (Windows) / cgroups (Linux Planned). |
 | **Config Loader** | Malicious YAML config | Engine DoS, Logic Bypass | AOT Validation + Type-safe parsing + Schema enforcement. |
-| **Git Push Broker** | Mutable repository config, hooks, objects, refs | Credential theft, redirecting an approved push | Exact approved URL/OID, grant claim before network, isolated temporary repository, sanitized Git configuration/environment, and remote lease revalidation. |
-| **Decision-only Hook** | Missing/stale binary, bypassable host hook | Action proceeds without containment | Explicit fail-open advisory contract, exact plugin/binary version check, and host-owned enforcement for callers needing a hard boundary. |
+| **Git Push Broker** | Mutable repository config, hooks, objects, refs | Credential theft, redirecting an approved push | Exact approved URL/OID, grant claim before execution-stage network, isolated temporary repository, sanitized Git configuration/environment, and remote lease revalidation. Preview can query a scoped destination before approval. |
+| **Decision-only Hook** | Missing/stale binary, bypassable host hook | Action proceeds without containment | Explicit fail-open advisory contract, exact plugin/binary version check, and a host-owned runtime boundary covering all tools, not only shell execution. |
 
 ---
 
@@ -60,13 +70,19 @@ Categorized analysis of threats and implemented defenses:
 
 ### **R**epudiation (Non-repudiability)
 - **Threat**: An attacker claims they did not execute a destructive command.
-- **Mitigation**: Structured unsigned JSONL audit logs for forensic review, plus
-  optional Ed25519-signed receipts only when a Guard-owned executor or broker is
-  configured with a signing key. A decision-only hook does not create them.
+- **Mitigation**: Structured unsigned JSONL audit logs for forensic review. The
+  SDK can sign `ExecutionReceipt` values with an explicit key. The broker library
+  has a separate optional signing API; the current `agent-guard push` CLI creates
+  unsigned `PushReceipt` values and persists them only with `--receipt`, after
+  entering execution. Early policy refusals, preview failures and cancellation
+  do not produce a broker execution receipt. None proves credential isolation.
 
 ### **I**nformation Disclosure (Confidentiality)
 - **Threat**: An agent reads host secrets (e.g., `.ssh/id_rsa`) via a `read_file` tool call.
-- **Mitigation**: Mandatory `ReadOnly` modes + path-based deny-lists + OS-level Sandboxing.
+- **Mitigation**: Deny-path rules for modeled file operations, plus a deployment
+  that does not expose secrets through mounts, environment, sockets or tools.
+  `ReadOnly` limits writes; it does not mean "cannot read host credentials".
+  Current sandbox capabilities do not provide global read isolation.
 
 ### **D**enial of Service (Availability)
 - **Threat**: An agent exhausts CPU/RAM or initiates a rapid-fire loop of tool calls.
@@ -81,7 +97,11 @@ Categorized analysis of threats and implemented defenses:
 
 ### **E**levation of Privilege (Isolation)
 - **Threat**: An agent escapes the sandbox to gain root/Administrator privileges.
-- **Mitigation**: **Low-IL Token + Job Object** (Windows), Seatbelt on macOS, and Landlock-backed write isolation on supported Linux hosts.
+- **Mitigation**: Run the agent unprivileged in the chosen host/container
+  boundary. Low-IL/Job Object, Seatbelt and Landlock provide their documented
+  resource restrictions, not a general guarantee against kernel/runtime
+  privilege escalation. Their availability and mode-specific coverage must be
+  checked independently.
 
 ---
 
@@ -90,9 +110,9 @@ Categorized analysis of threats and implemented defenses:
 | Execution shape | Enforced property | Not established by this shape |
 | :--- | :--- | :--- |
 | **Decision-only hook / `check` / `decide`** | Policy decision and unsigned audit record; the host may honor the decision. | OS containment, credential isolation, or signed execution evidence. The Claude Code hook deliberately fails open on integration faults. |
-| **Git push broker** | One approved URL/OID transaction, one-use grant, isolated Git execution, remote lease, and optional signed receipt. | Credential isolation when the agent can read/write broker config, credentials, SSH configuration, or the broker process environment. |
+| **Git push broker** | Exact URL/OID transaction, one-use execution grant, isolated Git execution and remote lease. CLI receipts are unsigned and stored only with `--receipt`. | Credential isolation or human caller identity when the agent can read/write/use broker resources or invoke the credential-bearing CLI itself. |
 | **Guard-owned execution with `NoopSandbox`** | Policy decision, bounded process/output lifecycle, and execution records. | OS filesystem, network, syscall, or privilege containment. |
-| **Linux seccomp** | Restricted-mode syscall filtering; required rules fail closed. | Path-aware workspace writes in `WorkspaceWrite`; use Landlock or a stronger host sandbox for that property. |
+| **Linux seccomp** | Opt-in native BPF syscall filtering in restricted modes; required rules fail closed. `FullAccess` deliberately skips filtering. | Path-aware workspace writes, global read or credential isolation; use the appropriate filesystem/runtime boundary for those properties. |
 | **Linux Landlock (ABI v3+)** | Read-only or workspace-scoped filesystem writes according to `PolicyMode`. | Network restriction, global read restriction, PID namespace, or cgroup limits. |
 | **macOS Seatbelt** | Best-effort workspace writes and network denial when the runtime probe succeeds. | Global read restriction or a supported long-term Apple sandbox API. |
 | **Windows Low-IL Job Object** | Protected-location write denial, resource/process lifetime controls when the runtime probe succeeds. | Network restriction, global read restriction, or a precise workspace allowlist. |
@@ -102,9 +122,10 @@ Categorized analysis of threats and implemented defenses:
 
 ## 🔪 Known Sharp Edges (Operator Guidance)
 
-These are **not vulnerabilities** but configuration-dependent behaviors: the safe
-outcome depends on how you deploy and author policy. Each entry states the
-behavior, why it exists, and the recommended pattern.
+Some entries are configuration-dependent behavior; others are unresolved
+limitations. Each states the behavior and a deployment mitigation. Open risks,
+including hard-link aliases and Windows inherited handles, are not repairs or
+validation completed by this document.
 
 ### 1. The default build ships no OS-level syscall/network isolation
 Platform sandbox features (`seccomp`, `landlock`, `macos-sandbox`,
@@ -144,19 +165,21 @@ over-matches), but allow-by-substring can leak permission.
 
 ### 5. `check_destructive` is a warning, not a boundary
 The destructive-command list raises an `ask`, not a `deny`, and is a best-effort
-substring match that both over- and under-matches (`rm  -rf  /` with double
-spaces slips past the literal pattern). The hard protections are the mode gate
-and the workspace path checks.
+mix of literal substring patterns and parsed command-name checks. Literal
+patterns both over- and under-match; they do not model every command effect.
 - **Recommended**: do not treat the destructive warning as enforcement; rely on
-  `ReadOnly` / `WorkspaceWrite` + path confinement for guarantees.
+  the relevant decision checks and actual backend/deployment resource boundary.
+  Mode/path classification alone is not arbitrary-code confinement.
 
 ### 6. Shell classification is an intent gate, not arbitrary-code containment
-Restricted modes reject shell syntax, launchers, destinations, and executables
-they cannot classify; `ReadOnly` uses an explicit executable allowlist and
-unknown programs fail closed. Even a recognized binary can gain new flags,
-plugins, helpers, or implementation behavior that a command-line classifier
-does not model. Workspace path checks also cannot eliminate races created by a
-hostile concurrent process.
+The parser uses `tree-sitter-bash` for a bounded set of static syntax and argument
+shapes. Unix runners execute `sh -c`; Windows noop/Job Object runners execute
+`cmd.exe /C`, while a hook leaves execution dialect to its host. These are not
+equivalent interpreters. Restricted modes refuse known unsupported syntax and
+opaque launchers; `ReadOnly` uses an executable allowlist, but `WorkspaceWrite`
+does **not** refuse every unknown program. Even a recognized binary can use
+environment, plugins, helpers or configuration that the classifier does not
+model. Workspace path checks also cannot eliminate concurrent-process races.
 - **Recommended**: treat validator decisions as defense in depth and activate a
   platform sandbox when arbitrary code can run. Assert the selected backend and
   its capabilities at startup; do not describe `WorkspaceWrite` shell parsing
@@ -180,8 +203,17 @@ credential or helper the agent can access directly. `PATH`, `HOME`/SSH config,
 the dedicated broker Git config, `SSH_AUTH_SOCK`, signing keys and the broker
 binary are part of the host trusted computing base.
 - **Recommended**: keep those resources outside the agent-readable/writable
-  boundary, use a host-owned broker process, and follow the independent checks
+  and usable boundary, including authentication and container-management
+  sockets. Use a host-owned broker process, and follow the independent checks
   in [Credential isolation](../guides/operations/credential-isolation.md).
+
+The first strict deployment profile is **planned**, not yet accepted: one Linux
+host, an existing unprivileged container runtime, one normal repository, an
+authenticated HTTPS remote and an ordinary non-force branch push. All agent
+tools, file access, MCP servers and hooks must remain inside that boundary.
+Existing SSH/SCP and macOS/Windows APIs are not removed; they are outside this
+first deployment acceptance claim. `guard-verify doctor` reports local
+capabilities, not credential isolation or approving-principal identity.
 
 ### 9. Directory authority does not separate hard-linked aliases
 The capability-relative `WriteFile` executor prevents path/symlink traversal,

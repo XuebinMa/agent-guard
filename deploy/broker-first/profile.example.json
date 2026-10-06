@@ -1,0 +1,11 @@
+{
+  "schema": 1,
+  "host_root": "/srv/agent-guard-host",
+  "image": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+  "docker_binary": "/usr/bin/docker",
+  "broker_binary": "/opt/agent-guard/bin/agent-guard",
+  "agent_command": ["/usr/bin/python3", "/opt/agent/main.py"],
+  "destination": "https://example.invalid/team/repo.git",
+  "remote": "origin",
+  "branch": "main"
+}

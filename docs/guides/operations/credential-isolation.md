@@ -2,7 +2,7 @@
 
 `agent-guard push` is a boundary only if the agent cannot push on its own.
 
-The broker now treats the working repository as hostile input. It copies the
+The broker treats the working repository as hostile input. It copies the
 regular refs and primary object database into a temporary bare repository,
 loads no repository hooks or config there, and contacts the exact push URL the
 human approved. That closes the repository-to-broker code-execution path, but
@@ -15,7 +15,10 @@ config selected with `--git-config`, `AGENT_GUARD_BROKER_GIT_CONFIG`, or
 when present. Those resources are part of the trusted broker environment;
 nothing in this repository can prove that the agent cannot reach them.
 
-So: how to actually get it, and how to prove to yourself that you did.
+The first strict deployment profile below is **implemented, not yet accepted**.
+Existing broker unit/integration tests verify transaction and configuration
+properties; they do not yet prove that a complete agent container cannot use
+host credentials. The default same-user setup remains advisory.
 
 ## The default setup gives you none of it
 
@@ -35,33 +38,82 @@ containment would be the overclaim this project exists to avoid.
 
 ## The requirements
 
-All four must hold:
+All of these must hold:
 
-1. The push credential is somewhere the agent process cannot read.
+1. The agent cannot read, modify **or use** the push credential. An authentication
+   socket or a callable credential-bearing program can grant use without
+   exposing the credential bytes.
 2. The broker Git config is outside the repository and cannot be written by
-   the agent.
-3. The Git binary and host SSH configuration are trusted.
+   the agent; secret-bearing config is also unreadable to it.
+3. Broker binaries, `PATH`, `HOME`, helpers and host SSH configuration are
+   trusted and outside agent write authority.
 4. The broker uses its isolated execution path rather than a plain host-side
    `git push` in the agent-writable checkout.
+5. The agent cannot create/approve grants, call the privileged broker on its
+   own behalf, control the approving terminal, or reach the container manager.
+6. The **whole** agent runtime, file tools, MCP servers and hooks run under the
+   unprivileged boundary. A host-side handler with broader authority invalidates
+   it even if shell commands alone run in a container.
 
 Everything below is a way to satisfy that. Note what it rules out: same user,
 same session, no container is **not** a boundary, because a POSIX process can
 read its own user's files. No amount of configuration inside agent-guard
 changes that.
 
-## Deployment A — agent container, isolated host broker
+## Deployment A — Linux container / host broker reference, acceptance pending
 
-This is the preferred deployment when every prerequisite below is met.
+The first acceptance target is one Linux host, one existing container runtime,
+one normal repository, one authenticated HTTPS remote, and an ordinary
+non-force branch push. The [fixed native Linux Docker launcher](../../../deploy/broker-first/README.md)
+implements configuration checks and a host-terminal workflow. Authenticated
+container acceptance remains pending. This is a restricted **deployment promise**, not removal of existing
+SSH/SCP transports or macOS/Windows APIs. Those remain separately supported;
+they are not covered by this first strict profile's acceptance tests.
 
-Run the agent in a container with the repository bind-mounted, and give that
-container no way to authenticate to the remote:
+The reference profile runs the agent as an unprivileged container user, with only
+the development workspace and explicitly required resources exposed. Give it
+no way to authenticate to the protected remote:
 
 - do **not** forward the SSH agent socket (no `-v $SSH_AUTH_SOCK`, no
   `--mount` of it)
 - do **not** mount `~/.ssh`, `~/.gitconfig`, or `~/.config/gh`
 - do **not** pass `GITHUB_TOKEN`, `GH_TOKEN`, or any other token the remote
   would accept — an inherited environment is the most common accidental grant
-- set `GIT_TERMINAL_PROMPT=0` so a push fails instead of hanging on a prompt
+- do **not** mount broker config, grants, receipt storage, host home directories,
+  container-management sockets or host sensitive files/inodes
+- do **not** use privileged mode or expose host process namespaces; grant only
+  the runtime capabilities, devices and network access the workload needs
+- keep file tools, MCP servers and hook handlers inside the same boundary; do
+  not proxy agent requests through privileged host handlers
+- set `GIT_TERMINAL_PROMPT=0` to disable interactive prompts, **not** as an
+  authentication boundary; it does not remove already reachable credentials
+
+### Planned asset permissions
+
+"Use" includes invoking a helper, connecting to an authentication socket or
+calling a program that performs a privileged action. A different filesystem
+path alone does not remove that authority.
+
+| Asset | Agent read | Agent write | Agent use/call | Trusted host authority |
+| :--- | :--- | :--- | :--- | :--- |
+| Development checkout and commits | Yes | Yes, inside its dedicated volume | Develop/test only; data is untrusted | Broker reads and validates a copied snapshot; never executes repository hooks/config |
+| Remote-write credentials, tokens and accepted cookies | No | No | No | Trusted helper may use them for the scoped HTTPS destination |
+| SSH/authentication sockets | No | No | No | Host owns them; SSH is outside the first HTTPS profile |
+| Dedicated broker Git config | No secret-bearing contents | No | No helper invocation outside broker | Host creates/protects config and allowed scopes |
+| Host-selected policy | An exported read-only copy may be provided | No host-policy changes | Cannot select/replace host policy | Host chooses policy and verifies it before granting/executing |
+| Broker grant/approval store | No | No | Cannot issue, approve or consume authority on its own behalf | Host-only create/approve/consume |
+| Broker/Git/helper binaries, executable `PATH` and host `HOME` | Only explicitly exposed non-secret copies | No host executable/config changes | No credential-bearing host CLI, including `--yes` | Host selects trusted binaries/config and invokes broker |
+| Temporary broker repositories and receipt storage | No | No | No | Host owns snapshots and execution-stage records; exports copies deliberately |
+| Approving terminal and its input stream | No | No | Cannot supply approval responses | Human on trusted host terminal; strict launch validation requires independent acceptance |
+| Container runtime/management socket and host process control | No | No | No | Host launches/manages unprivileged runtime |
+| File tools, MCP servers and hook handlers | Only container-authorized data | Only container-authorized paths | No higher-authority host proxy | Host ensures every execution path stays in the same runtime boundary |
+
+Do not share writable hard-linked inodes with trusted host data. Use a dedicated
+development volume or copy-based staging; a path allowlist alone is not alias
+isolation. Newly added tool/runtime paths require this table and the acceptance
+checks to be reviewed again.
+
+### Trusted host configuration
 
 On the host, create the dedicated config outside the checkout:
 
@@ -129,18 +181,26 @@ its hooks, use its credential helpers, honour its URL rewrites, or pass its
 remote name to `git push`. The agent can continue writing code and commits,
 while the host broker decides which exact object and URL may leave.
 
+The current CLI's confirmation reads stdin; it does **not** establish a trusted
+TTY, a human principal, or that requestor and approver differ. `--yes` skips that
+confirmation. The planned strict host launch wrapper must validate its terminal
+and refuse agent-controlled/piped approval input before this profile can claim
+human-only authorization. The agent must not be able to invoke the
+credential-bearing host CLI; merely displaying a prompt does not prevent that.
+
 The strict 0.2.4 slice deliberately rejects linked worktrees, partial clones,
 object alternates, multiple push URLs and special Git transports. Convert to a
 normal checkout rather than weakening these checks.
 
-What the agent hits when it tries is a real authentication failure, not a
-policy message — which is the point. The hook's refusal becomes advice on top
-of a wall, rather than being the wall.
+The acceptance target is a real remote authentication/authorization refusal
+for an agent's direct mutation, alongside a successful authorized broker push.
+That has not yet been demonstrated for the complete container profile. The
+hook would then be advice in addition to that boundary, not the boundary itself.
 
 ## Deployment B — a hardware-backed key, one machine, no container
 
-When a container is not practical, a key that requires a physical touch is the
-only same-machine measure that does anything:
+When a container is not practical, a key that requires a physical touch can
+reduce unattended use, without establishing principal separation:
 
 ```bash
 ssh-keygen -t ed25519-sk -C "agent-guard broker"
@@ -156,12 +216,15 @@ a physical act — but the touch is not bound to the transaction you previewed,
 so touching for the push you meant also satisfies a push you did not. It is a
 real reduction, and it is not the property Deployment A gives you.
 
-If you can choose between the two, choose A.
+This is not a substitute for the planned profile's credential/use boundary.
 
 ## Verify it, do not assume it
 
-Configuration you have not tested is a belief. This check is one command and it
-separates the two states unambiguously.
+Configuration alone is not proof. A dry-run is a diagnostic, not the profile's
+acceptance gate: it performs no ref mutation and cannot by itself establish
+write authorization, caller identity, or absence of every credential route.
+Use disposable local repositories and synthetic authentication for security
+acceptance, never a production credential or third-party target.
 
 **From the agent's environment** — inside the container, or in the shell the
 agent runs in — attempt a push that changes nothing:
@@ -170,10 +233,10 @@ agent runs in — attempt a push that changes nothing:
 git push --dry-run origin HEAD:refs/heads/credential-isolation-probe
 ```
 
-`--dry-run` contacts the remote and authenticates but never updates a ref, so
-this is safe against a real repository. It creates nothing; confirm with
-`git ls-remote --heads origin credential-isolation-probe` if you want to see
-that for yourself.
+`--dry-run` contacts the remote but does not update a ref. It can still invoke
+repository hooks and credential helpers, and absence of a ref update is not
+absence of all side effects. Use this diagnostic only with a trusted disposable
+fixture and public dummy authentication data.
 
 **With no credential reachable**, plain Git in the agent environment fails
 before it can push:
@@ -182,7 +245,10 @@ before it can push:
 fatal: could not read Username for 'https://github.com': terminal prompts disabled
 ```
 
-or, over SSH, `Permission denied (publickey)`. That is the result you want.
+or, over SSH, `Permission denied (publickey)`. This is consistent with missing
+credentials, but a network failure or an anonymous remote is not proof of
+isolation. Confirm the same endpoint is reachable and accepts the trusted
+broker's independently observed mutation.
 
 **With a credential reachable**, git tells you exactly what it would have done:
 
@@ -191,13 +257,12 @@ To github.com:you/project.git
  * [new branch]      HEAD -> credential-isolation-probe
 ```
 
-If you see that from the agent's environment, **you do not have credential
-isolation**, whatever else you configured. Fix the environment before treating
-the broker as a boundary.
+This output alone does not prove the agent has authenticated write authority.
+If a direct mutation succeeds in the authenticated local fixture, the profile
+fails its boundary regardless of the hook's decision.
 
-Run the same command from wherever you intend to run `agent-guard push`, and
-expect the opposite result. A setup where both sides fail is not isolation
-either — it is a broker that cannot do its job.
+Test the positive broker path too. A setup where both sides fail might simply
+be an unreachable or unusable remote, not a demonstrated isolation boundary.
 
 Finally run the broker itself. It must show the push URL rather than merely the
 remote name. A repository `pre-push` hook or `remote.<name>.pushurl` is input to
@@ -206,6 +271,25 @@ claims are executable, not just prose: the
 [adversarial Broker boundary suite](../../../crates/agent-guard-broker/tests/security_boundary.rs)
 pins the push URL, repository-hook and config isolation, refusal receipts,
 protocol policy, and unsafe repository layouts.
+
+### Outstanding whole-runtime acceptance
+
+The [broker-first plan](../../plans/broker-first-development-plan.md) specifies
+I1–I8 for a synthetic authenticated HTTPS fixture and independent remote-ref
+observer: grantless execution has no helper/network activity; transaction and
+policy drift refuses; hostile repository data cannot execute broker-side code;
+scoped authentication and redirect refusal hold; an agent direct mutation is
+rejected while an approved broker mutation succeeds; all assets above are
+inaccessible through every tool path; receipts agree with consumed grants and
+observed refs; and agent/piped input cannot impersonate a trusted approver.
+These are **planned gates**, not properties already proved by the existing
+broker suites. The dedicated Linux job must not skip a missing runtime or
+silently downgrade to advisory/noop and report success. Missing local runtime
+capabilities are reported as unrun, not passed.
+
+`guard-verify doctor` reports capabilities available to its own process; it does
+not test this authority matrix, credential isolation or approving-principal
+identity.
 
 ## Operational cost
 
@@ -223,9 +307,12 @@ Even with Deployment A, be careful what you claim:
 - **The receipt is not proof of isolation.** It records what the broker
   witnessed. It cannot attest to how that process was launched, or to what else
   could reach the credential.
-- **An unsigned receipt is not evidence.** With no broker signing key
-  configured a receipt is marked `unsigned`: a truthful record, and not
-  something a third party can check.
+- **CLI receipts are unsigned, optional local records.** `agent-guard push`
+  supplies no signing key and persists a `PushReceipt` only with `--receipt`.
+  It creates one after entering execution, not for early policy refusal,
+  preview failure or cancellation. The broker library's optional signing API
+  does not configure a CLI signing key; SDK `ExecutionReceipt` verification is
+  a different path. An unsigned record is not third-party-verifiable evidence.
 - **A human still has to read the preview.** The broker refuses a transaction
   that moved after approval, but it cannot tell whether the change you approved
   is the change you wanted.
@@ -238,6 +325,9 @@ Even with Deployment A, be careful what you claim:
 - **The broker's `HOME` is trusted.** Host SSH may read `~/.ssh/config`; if
   the agent can edit it, directives such as `ProxyCommand` can execute code
   in the credential-bearing process.
+- **Same-user and doctor checks are not isolation.** Credential bytes need not
+  be visible for an authentication socket or privileged callable program to
+  authorize a push. Current stdin confirmation does not authenticate a human.
 - **Helper/header scoping is not universal authentication isolation.** Other
   trusted transport settings (client certificates, cookies, proxies or
   integrated authentication), SSH configuration and helper behavior remain

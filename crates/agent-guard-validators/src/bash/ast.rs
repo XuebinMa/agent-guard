@@ -150,6 +150,13 @@ pub(crate) fn parse_shell(command: &str) -> ShellParse {
         return ShellParse::TooComplex("shell input could not be parsed".to_string());
     };
 
+    if let Some(byte) = unquoted_control_byte(tree.root_node(), command) {
+        return ShellParse::TooComplex(format!(
+            "control character U+{byte:04X} outside literal text cannot be validated \
+             consistently with the shell"
+        ));
+    }
+
     let mut walk = Walk {
         commands: Vec::new(),
         rejection: None,
@@ -161,6 +168,47 @@ pub(crate) fn parse_shell(command: &str) -> ShellParse {
         Some(reason) => ShellParse::TooComplex(reason),
         None => ShellParse::Understood(walk.commands),
     }
+}
+
+/// Literal regions in which a raw control byte is data, not shell whitespace.
+const LITERAL_TEXT_KINDS: &[&str] = &[
+    "string",
+    "raw_string",
+    "ansi_c_string",
+    "translated_string",
+    "string_content",
+    "heredoc_body",
+    "heredoc_content",
+    "comment",
+];
+
+/// The grammar treats VT/FF/CR as whitespace while the executing shell can
+/// treat them as word bytes, changing whether a following `#` is a comment.
+/// Reject raw ASCII controls other than shell tab/newline outside literal
+/// regions instead of deriving a decision from that ambiguous parse.
+///
+/// A substitution starts a new executable region. An outer quote or heredoc
+/// cannot exempt its unquoted code; only literal nodes inside that region can.
+fn unquoted_control_byte(root: Node, src: &str) -> Option<u8> {
+    src.bytes().enumerate().find_map(|(index, byte)| {
+        if !byte.is_ascii_control() || matches!(byte, b'\n' | b'\t') {
+            return None;
+        }
+        let mut node = root.descendant_for_byte_range(index, index + 1);
+        while let Some(current) = node {
+            if matches!(
+                current.kind(),
+                "command_substitution" | "process_substitution"
+            ) {
+                break;
+            }
+            if LITERAL_TEXT_KINDS.contains(&current.kind()) {
+                return None;
+            }
+            node = current.parent();
+        }
+        Some(byte)
+    })
 }
 
 struct Walk {

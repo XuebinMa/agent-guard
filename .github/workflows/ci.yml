@@ -31,6 +31,25 @@ jobs:
       - name: Run Tests
         run: ./scripts/verify.sh rust
 
+  broker-authenticated-local:
+    name: Broker Authenticated Local Git
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@89b12181fb390509a0842a86cc55eeb8eb928c1d # stable
+      - name: Cache Rust
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+      - name: Build current broker CLI
+        run: cargo build -p agent-guard-cli --locked
+      - name: Test localhost authenticated Git over TLS
+        timeout-minutes: 5
+        run: |
+          AGENT_GUARD_TEST_CLI="$PWD/target/debug/agent-guard" \
+            python3 -m unittest discover -s tests/broker-first -v
+      # This tests host composition. Container isolation needs its own native
+      # Linux acceptance job; do not call this host suite I1–I8 completion.
+
   linux-seccomp-integration:
     name: Linux Seccomp Integration
     runs-on: ubuntu-latest

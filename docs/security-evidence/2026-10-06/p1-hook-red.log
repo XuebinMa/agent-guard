@@ -1,0 +1,65 @@
+   Compiling bytes v1.11.1
+   Compiling errno v0.3.14
+   Compiling futures-util v0.3.32
+   Compiling rand_chacha v0.3.1
+   Compiling form_urlencoded v1.2.2
+   Compiling utf8parse v0.2.2
+   Compiling colorchoice v1.0.5
+   Compiling anstyle-query v1.1.5
+   Compiling is_terminal_polyfill v1.70.2
+   Compiling strsim v0.11.1
+   Compiling heck v0.5.0
+   Compiling anstyle-parse v1.0.0
+   Compiling rustix v1.1.4
+   Compiling url v2.5.8
+   Compiling rand v0.8.6
+   Compiling clap_derive v4.6.0
+   Compiling anstream v1.0.0
+   Compiling clap_builder v4.6.0
+   Compiling tokio v1.51.0
+   Compiling http v1.4.0
+   Compiling agent-guard-core v0.2.7 (/Users/xuebinma/.codex/worktrees/broker-first/agent-guard/crates/agent-guard-core)
+   Compiling http-body v1.0.1
+   Compiling http-body-util v0.1.3
+   Compiling fs-set-times v0.20.3
+   Compiling tempfile v3.27.0
+   Compiling cap-primitives v4.0.3
+   Compiling cap-std v4.0.3
+   Compiling agent-guard-sandbox v0.2.7 (/Users/xuebinma/.codex/worktrees/broker-first/agent-guard/crates/agent-guard-sandbox)
+   Compiling agent-guard-validators v0.2.7 (/Users/xuebinma/.codex/worktrees/broker-first/agent-guard/crates/agent-guard-validators)
+   Compiling agent-guard-broker v0.2.7 (/Users/xuebinma/.codex/worktrees/broker-first/agent-guard/crates/agent-guard-broker)
+   Compiling clap v4.6.0
+   Compiling tokio-util v0.7.18
+   Compiling tower v0.5.3
+   Compiling tokio-rustls v0.26.4
+   Compiling tower-http v0.6.10
+   Compiling h2 v0.4.17
+   Compiling hyper v1.9.0
+   Compiling hyper-util v0.1.20
+   Compiling hyper-rustls v0.27.9
+   Compiling reqwest v0.13.3
+   Compiling agent-guard-sdk v0.2.7 (/Users/xuebinma/.codex/worktrees/broker-first/agent-guard/crates/agent-guard-sdk)
+   Compiling guard-hook v0.2.7 (/Users/xuebinma/.codex/worktrees/broker-first/agent-guard/crates/guard-hook)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 6.56s
+     Running tests/hook_e2e.rs (/private/tmp/agent-guard-broker-first-target/debug/deps/hook_e2e-363aca491d6f1c67)
+
+running 1 test
+test parser_boundary_refusals_reach_the_real_hook_without_unsafe_hints ... FAILED
+
+failures:
+
+---- parser_boundary_refusals_reach_the_real_hook_without_unsafe_hints stdout ----
+
+thread 'parser_boundary_refusals_reach_the_real_hook_without_unsafe_hints' (49380161) panicked at crates/guard-hook/tests/hook_e2e.rs:37:9:
+"ls \u{b}#;printf visible": {"type":"tool_call","timestamp":"2026-10-06T17:52:39.904491Z","request_id":"4013e7ec-fb54-4af0-8857-e0fbbc14d7af","session_id":null,"agent_id":"e2e-test","actor":null,"tool":"bash","payload_hash":"3b43e8d672cfcdf6d6ffb9305fe7f20cb15e46465c015cf5459a36fb58f1091b","decision":"allow","code":null,"message":null,"details":null,"policy_version":"52fe5b5b94ccd0ac6f31d3f91c1090ad11a67071e3836ae996365821e2694f2f","matched_rule":null}
+{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"allow","permissionDecisionReason":""}}
+
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    parser_boundary_refusals_reach_the_real_hook_without_unsafe_hints
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 12 filtered out; finished in 0.57s
+
+error: test failed, to rerun pass `-p guard-hook --test hook_e2e`

@@ -11,6 +11,107 @@ use tempfile::TempDir;
 
 const BIN: &str = env!("CARGO_BIN_EXE_guard-hook");
 
+/// Only the hook's JSON input/decision is exercised; it never executes these
+/// shell strings. The shipped preset is kept unchanged in this fixture.
+#[test]
+fn parser_boundary_refusals_reach_the_real_hook_without_unsafe_hints() {
+    let hook_output = |stdout: &str| {
+        stdout
+            .lines()
+            .find_map(|line| {
+                serde_json::from_str::<serde_json::Value>(line)
+                    .ok()?
+                    .get("hookSpecificOutput")
+                    .cloned()
+            })
+            .expect("hook JSON output, not an audit record")
+    };
+    let dir = TempDir::new().unwrap();
+    let policy = dir.path().join("outbound.yaml");
+    std::fs::write(
+        &policy,
+        include_str!("../../../presets/coding-agent-outbound.yaml"),
+    )
+    .expect("copy shipped preset");
+    for command in [
+        "ls \u{0b}#;printf visible",
+        "ls \u{0c}#;printf visible",
+        "ls \r#;printf visible",
+        "=printf visible",
+        "nice =printf visible",
+        "echo \"$(ls \r#;printf visible\n)\"",
+    ] {
+        let input = serde_json::json!({
+            "cwd": dir.path(),
+            "tool_name": "Bash",
+            "tool_input": { "command": command },
+        })
+        .to_string();
+        let (stdout, stderr, code) = run_hook(&policy, &input);
+        assert_eq!(code, 0, "{stderr}");
+        let output = hook_output(&stdout);
+        assert_eq!(
+            output["permissionDecision"], "deny",
+            "{command:?}: {stdout}"
+        );
+        assert!(
+            !output["permissionDecisionReason"]
+                .as_str()
+                .expect("reason")
+                .contains("agent-guard push --remote"),
+            "unrelated refusal has no push hint: {stdout}"
+        );
+    }
+    for command in [
+        "echo 'a\rb'",
+        "NAME=value echo safe",
+        "env NAME=value echo safe",
+    ] {
+        let input = serde_json::json!({
+            "cwd": dir.path(),
+            "tool_name": "Bash",
+            "tool_input": { "command": command },
+        })
+        .to_string();
+        let (stdout, stderr, code) = run_hook(&policy, &input);
+        assert_eq!(code, 0, "{stderr}");
+        assert_eq!(
+            hook_output(&stdout)["permissionDecision"],
+            "allow",
+            "{command:?}: {stdout}"
+        );
+    }
+    // The shipped preset intentionally allows ordinary unknown executables
+    // in WorkspaceWrite. Lock the literal-command defect under ReadOnly,
+    // without incorrectly claiming an equivalent WorkspaceWrite guarantee.
+    let readonly = dir.path().join("readonly.yaml");
+    std::fs::write(
+        &readonly,
+        "version: 1\ndefault_mode: read_only\naudit:\n  enabled: false\n",
+    )
+    .expect("write read-only fixture");
+    for (command, expected) in [
+        ("\"NAME=value\" echo safe", "deny"),
+        ("nice NAME=value echo safe", "deny"),
+        ("NAME=value echo safe", "allow"),
+        ("nice env NAME=value echo safe", "allow"),
+    ] {
+        let input = serde_json::json!({
+            "cwd": dir.path(),
+            "tool_name": "Bash",
+            "tool_input": { "command": command },
+        })
+        .to_string();
+        let (stdout, stderr, code) = run_hook(&readonly, &input);
+        assert_eq!(code, 0, "{stderr}");
+        assert_eq!(
+            hook_output(&stdout)["permissionDecision"],
+            expected,
+            "{command:?}: {stdout}"
+        );
+    }
+}
+
 fn write_policy(dir: &TempDir, audit_path: &str) -> std::path::PathBuf {
     let policy = format!(
         r#"

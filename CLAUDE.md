@@ -92,6 +92,20 @@ The broader SDK features remain maintained, but avoid new generic-agent,
 sandbox, DLP, framework-adapter, or control-plane expansion until that Git
 boundary is complete.
 
+## Accepted Product Scope — Persistent Project Memory
+
+The user accepted the broker-first scope and authorized its implementation on
+2026-10-06. Read the [accepted decision](docs/decisions/2026-10-06-broker-first-scope.md),
+[development plan](docs/plans/broker-first-development-plan.md), and
+[implementation checkpoint](docs/broker-first-progress.md) before continuing.
+
+Keep Shell in bounded security and compatibility maintenance, not universal
+program-effect analysis. Prove one Linux deployment with existing isolation
+mechanisms and no alternate credential-bearing path. Green classifier tests,
+receipts or sandbox capability reports are not proof of that deployment.
+Completing this milestone does not authorize horizontal expansion. Preserve
+existing user changes, immutable tags and the separate publication hold.
+
 ## Core Execution Pipeline
 
 The `Guard` struct in agent-guard-sdk orchestrates: **Check → Filter → Audit → Sandbox**

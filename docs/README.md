@@ -16,11 +16,13 @@ If you are arriving from GitHub or social posts, these are the two best entry po
 
 Current boundary note:
 
-- the short-term wedge now covers shell / terminal, file write, and outbound mutation HTTP
+- the product target is one exact, approved broker-executed Git push; existing shell / terminal, file and HTTP surfaces remain maintained
 - Bash still has the deepest validator path today; file and HTTP paths rely more heavily on policy matching
 - HTTP execution ownership distinguishes mutation methods at runtime, but policy matching is still primarily URL-centric
 - the SDK already contains signing, receipts, metrics, anomaly detection, and SIEM export beyond the narrow wedge
-- use `cargo run -p guard-verify -- doctor --format text` to verify the real host boundary on the machine you actually deploy
+- the default hook is fail-open and advisory; default SDK builds select the noop sandbox
+- use `cargo run -p guard-verify -- doctor --format text` to inspect sandbox capabilities; this does not prove credential or caller isolation
+- the [accepted scope decision](decisions/2026-10-06-broker-first-scope.md) and [active development plan](plans/broker-first-development-plan.md) define the bounded next milestone
 
 ---
 
@@ -45,6 +47,8 @@ If you are new to the repo, start with the active docs first and only drop into 
 - **I want to audit security posture** → [Threat Model](concepts/threat-model.md)
 - **I want to understand the testing approach** → [Testing Strategy](concepts/testing-strategy.md)
 - **I want to see what's shipped vs planned** → [Roadmap](../ROADMAP.md)
+- **I want the accepted project goals and development sequence** → [Broker-first Development Plan](plans/broker-first-development-plan.md)
+- **I want the fixed Linux host/container setup** → [Broker-first Reference](../deploy/broker-first/README.md) (native acceptance is a separate gate)
 - **I want to know what frameworks are actually supported** → [Framework Support Matrix](reference/framework-support-matrix.md)
 - **I want to compare platform gaps** → [Capability Parity Matrix](concepts/capability-parity.md)
 - **I want historical strategy or release context** → [Document Archive](archive/README.md)
@@ -108,6 +112,8 @@ For security researchers and auditors reviewing the system's defensive posture.
 
 - 🏹 **[Threat Model](concepts/threat-model.md)**: Formal asset analysis and attack surface matrix.
 - 🧱 **[Enforcement Layers (ADR)](concepts/enforcement-layers.md)**: Which layer is the security boundary in which deployment shape, and how bypass reports are triaged.
+- 🎯 **[Accepted Broker-first Scope](decisions/2026-10-06-broker-first-scope.md)**: Persistent product decision, finite Shell maintenance obligations, and explicit non-goals.
+- 🛠️ **[Broker-first Development Plan](plans/broker-first-development-plan.md)**: Task dependencies, deployment acceptance, evidence requirements, and release gates.
 - 🧪 **[Testing Strategy](concepts/testing-strategy.md)**: Why the test is the specification of the boundary, the layer map, and what "done" means before a change can merge.
 - 🗺️ **[Capability Parity Matrix](concepts/capability-parity.md)**: Feature alignment across Linux, macOS, and Windows.
 - 🔍 **[Security Audit Report](reference/security-audit.md)**: Release-era self-audit checkpoint, useful after the primary threat-model review.

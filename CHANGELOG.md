@@ -9,6 +9,34 @@ The `[Unreleased]` heading is rolled forward manually before each release; do no
 
 ## [Unreleased]
 
+### Security
+
+- Bounded follow-up review and red/green evidence:
+  [2026-10-06 report](docs/security-review-2026-10-06.md). This is unreleased
+  work; the immutable `v0.2.7` tag does not contain these fixes.
+- Restricted Shell validation refuses raw control bytes outside literal data,
+  including nested executable regions, rather than trusting grammar-only
+  whitespace/comment boundaries. Unsupported `=name` command words are refused;
+  assignment-looking literal executable words are no longer discarded from
+  AST-resolved argv. Permanent parser, real SDK and hook regressions retain
+  ordinary assignment, quoting and wrapper positive controls. This is bounded
+  defense in depth, not arbitrary-program containment.
+
+### Changed
+
+- Document the accepted broker-first scope, actual Shell/execution dialects,
+  optional unsigned CLI receipts, and independent parity/OS verification limits.
+  The existing `v0.2.7` tag is unchanged; this follow-up is not in that tag and
+  no repair version is advertised as published.
+
+### Added
+
+- Six localhost-only authenticated Git/TLS composition tests and a required
+  native Linux CI job using the newly built broker CLI. These are not a proof
+  of container isolation or completion of the planned I1–I8 deployment checks.
+- Three fixture-bind checks preserve loopback defaults and restrict the future
+  native container fixture to the observed private Docker bridge address.
+
 ## [0.2.7] - 2026-10-05
 
 ### Security

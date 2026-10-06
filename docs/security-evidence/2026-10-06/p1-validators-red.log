@@ -1,0 +1,45 @@
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.06s
+     Running tests/parser_boundary.rs (/private/tmp/agent-guard-broker-first-target/debug/deps/parser_boundary-b1361af4d68a7beb)
+
+running 5 tests
+test unquoted_control_bytes_cannot_create_a_grammar_only_comment ... FAILED
+test nested_executable_regions_do_not_inherit_outer_literal_exemptions ... FAILED
+test computed_command_words_are_not_empty_environment_assignments ... FAILED
+test literal_assignment_looking_command_words_are_never_discarded ... FAILED
+test literal_data_real_assignments_and_supported_wrappers_remain_allowed ... ok
+
+failures:
+
+---- unquoted_control_bytes_cannot_create_a_grammar_only_comment stdout ----
+
+thread 'unquoted_control_bytes_cannot_create_a_grammar_only_comment' (49370421) panicked at crates/agent-guard-validators/tests/parser_boundary.rs:13:9:
+"ls \u{b}#;printf visible"
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+---- nested_executable_regions_do_not_inherit_outer_literal_exemptions stdout ----
+
+thread 'nested_executable_regions_do_not_inherit_outer_literal_exemptions' (49370420) panicked at crates/agent-guard-validators/tests/parser_boundary.rs:25:13:
+"echo \"$(ls \u{b}#;printf visible\n)\""
+
+---- computed_command_words_are_not_empty_environment_assignments stdout ----
+
+thread 'computed_command_words_are_not_empty_environment_assignments' (49370417) panicked at crates/agent-guard-validators/tests/parser_boundary.rs:33:9:
+"=printf visible"
+
+---- literal_assignment_looking_command_words_are_never_discarded stdout ----
+
+thread 'literal_assignment_looking_command_words_are_never_discarded' (49370418) panicked at crates/agent-guard-validators/tests/parser_boundary.rs:57:9:
+assertion `left != right` failed: "\"NAME=value\" echo safe"
+  left: Allow
+ right: Allow
+
+
+failures:
+    computed_command_words_are_not_empty_environment_assignments
+    literal_assignment_looking_command_words_are_never_discarded
+    nested_executable_regions_do_not_inherit_outer_literal_exemptions
+    unquoted_control_bytes_cannot_create_a_grammar_only_comment
+
+test result: FAILED. 1 passed; 4 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+error: test failed, to rerun pass `-p agent-guard-validators --test parser_boundary`
