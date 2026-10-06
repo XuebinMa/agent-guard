@@ -10,6 +10,7 @@ import argparse
 from datetime import datetime, timezone
 import hashlib
 import json
+import math
 import os
 from pathlib import Path
 import platform
@@ -198,6 +199,46 @@ def measure(runner, argv, cwd, scratch, answer, interval):
     return result, {"wall_seconds": elapsed, **observed}
 
 
+def parse_copy_probe_report(stdout, expected_oid):
+    marker = b"AGENT_GUARD_COPY_BENCH_JSON="
+    lines = [line[len(marker):] for line in stdout.splitlines() if line.startswith(marker)]
+    if len(lines) != 1:
+        raise RuntimeError("copy probe must emit exactly one measurement report")
+    try:
+        report = json.loads(lines[0])
+        valid = (isinstance(report, dict) and type(report.get("schema")) is int
+                 and report["schema"] == 1 and report.get("local_oid") == expected_oid)
+        for key in ["copy_seconds", "capture_seconds"]:
+            value = report.get(key)
+            valid = valid and type(value) in {int, float} and math.isfinite(value) and value >= 0
+        for key in ["copy_data", "capture_held_files"]:
+            counts = report.get(key, {})
+            valid = valid and isinstance(counts, dict)
+            for field in ["logical_file_bytes", "allocated_file_bytes_estimate", "regular_files"]:
+                value = counts.get(field) if isinstance(counts, dict) else None
+                valid = valid and type(value) is int and value >= 0
+        valid = valid and report["copy_data"]["regular_files"] > 0
+        valid = (valid and report["capture_held_files"]["logical_file_bytes"]
+                 >= report["copy_data"]["logical_file_bytes"])
+    except (ValueError, TypeError, KeyError, AttributeError) as error:
+        raise RuntimeError("copy probe report is malformed") from error
+    if not valid:
+        raise RuntimeError("copy probe report is invalid or bound to a different candidate")
+    return report
+
+
+def measure_copy_probe(runner, executable, repo, config, oid):
+    previous_env = runner.env
+    runner.env = {**previous_env, "AGENT_GUARD_COPY_BENCH_REPOSITORY": str(repo),
+                  "AGENT_GUARD_COPY_BENCH_CONFIG": str(config)}
+    try:
+        result = runner.run([executable, "git::snapshot::cost::synthetic_copy_cost_probe",
+                             "--exact", "--ignored", "--nocapture", "--test-threads=1"], repo)
+        return parse_copy_probe_report(result.stdout, oid)
+    finally:
+        runner.env = previous_env
+
+
 def one_size(root, size, args, runner):
     case = root / f"size-{size}"
     case.mkdir()
@@ -236,6 +277,9 @@ def one_size(root, size, args, runner):
                 runner.git(trial, "--version")
                 baseline_names = sorted(path.name for path in scratch.iterdir())
                 baseline = footprint(scratch)
+                copy_probe = (measure_copy_probe(runner, args.copy_probe, repo,
+                                                root / "broker.gitconfig", oid)
+                              if args.copy_probe is not None else None)
                 refused, preview = measure(runner, argv, trial, scratch, b"n\n", args.sample_ms / 1000)
                 if refused.returncode != 1 or receipt.exists() or b"Not pushed." not in refused.stdout:
                     raise RuntimeError("preview cancellation did not stop before execution")
@@ -251,6 +295,8 @@ def one_size(root, size, args, runner):
                         or record.get("attempt", {}).get("outcome") != "pushed"
                         or record.get("witness", {}).get("kind") != "unsigned" or not record.get("grant_id")):
                     raise RuntimeError("independent local ref and broker receipt disagree")
+                if not (trial / "grants" / "spent" / (record["grant_id"] + ".json")).is_file():
+                    raise RuntimeError("receipt does not name an actually consumed benchmark grant")
                 leftovers = sorted(path.name for path in scratch.iterdir())
                 if leftovers != baseline_names:
                     raise RuntimeError(f"temporary file set changed after normal completion: {leftovers}")
@@ -261,6 +307,7 @@ def one_size(root, size, args, runner):
                            "approve_and_push_including_preview": execution,
                            "git_toolchain_baseline": {"file_names": baseline_names, **baseline},
                            "temporary_files_after_cli": {"file_names": leftovers, **remaining},
+                           "copy_probe": copy_probe,
                            "independent_ref_matches_receipt": True})
     return {"payload_mib": size, "payload_bytes": size * MIB, "payload_sha256": digest,
             "storage": "one repacked commit/tree/blob; synthetic pseudo-random bytes",
@@ -270,6 +317,7 @@ def one_size(root, size, args, runner):
 def parse_arguments(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--cli", required=True, type=Path, help="freshly built existing agent-guard binary")
+    parser.add_argument("--copy-probe", type=Path, help="optional freshly built broker unit-test executable; no production instrumentation")
     parser.add_argument("--sizes-mib", type=sizes_argument, default=[1, 8, 32])
     parser.add_argument("--iterations", type=bounded_integer(1, MAX_ITERATIONS), default=2)
     parser.add_argument("--sample-ms", type=bounded_integer(5, 100), default=10)
@@ -287,6 +335,10 @@ def main():
     args.cli = args.cli.resolve(strict=True)
     if not args.cli.is_file() or not os.access(args.cli, os.X_OK):
         raise RuntimeError("--cli must be an executable ordinary file")
+    if args.copy_probe is not None:
+        args.copy_probe = args.copy_probe.resolve(strict=True)
+        if not args.copy_probe.is_file() or not os.access(args.copy_probe, os.X_OK):
+            raise RuntimeError("--copy-probe must be a freshly built executable ordinary file")
     if not shutil.which("git", path=os.defpath):
         raise RuntimeError("Git is required on the controlled operating-system PATH")
     with tempfile.TemporaryDirectory(prefix="agent-guard-snapshot-benchmark-", dir=args.temp_parent) as path:
@@ -304,12 +356,14 @@ def main():
             raise RuntimeError(f"not enough scratch space for conservative {required}-byte test budget")
         runner = Runner(environment(root / "home", root / "scratch"), args.timeout_seconds)
         binary_digest = file_hash(args.cli)
+        copy_probe_digest = file_hash(args.copy_probe) if args.copy_probe is not None else None
         before = source_state(runner)
         info = os.statvfs(root)
         report = {
             "schema": 1, "at_utc": datetime.now(timezone.utc).isoformat(),
             "source_before": before, "binary_sha256": binary_digest,
             "benchmark_script_sha256": file_hash(Path(__file__)),
+            "copy_probe_sha256": copy_probe_digest,
             "cli_version": runner.run([args.cli, "--version"], root).stdout.decode().strip(),
             "git_version": runner.git(root, "--version").stdout.decode().strip(),
             "host": {"os": platform.platform(), "machine": platform.machine(),
@@ -323,6 +377,7 @@ def main():
                        "whole_run_deadline_seconds": MAX_RUN_SECONDS,
                        "cache_condition": "not flushed; generated/repacked just before measurement; system Git --version prewarms toolchain cache in each trial TMPDIR; no cold-cache claim",
                        "timing_scope": "whole CLI wall time, including validation/fsck/preview/local Git transport; not pure copy time",
+                       "copy_probe_scope": "optional prebuilt test-only probe: production copy functions directly, separately from full capture; runs before CLI timing and warms object cache; retained regular-file counts, not whole-CLI physical peak",
                        "footprint_scope": "observed regular-file maximum in per-trial broker TMPDIR only; sampling can miss short-lived files; no directory metadata or complete process/RSS peak",
                        "limitations": "one synthetic repacked blob/commit/tree; file transport, no authentication/TLS/container proof; sampler adds I/O; do not extrapolate to production"},
             "cases": [],
@@ -334,6 +389,8 @@ def main():
         report["source_changed_during_run"] = before != report["source_after"]
         if binary_digest != file_hash(args.cli):
             raise RuntimeError("CLI binary changed during measurement; discard this run")
+        if args.copy_probe is not None and copy_probe_digest != file_hash(args.copy_probe):
+            raise RuntimeError("copy probe executable changed during measurement; discard this run")
         print(json.dumps(report, indent=2))
     return 0
 

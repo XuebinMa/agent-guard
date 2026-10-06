@@ -1,0 +1,151 @@
+[1m[92m   Compiling[0m libc v0.2.184
+[1m[92m   Compiling[0m memchr v2.8.0
+[1m[92m   Compiling[0m smallvec v1.15.1
+[1m[92m   Compiling[0m rustix v1.1.4
+[1m[92m   Compiling[0m icu_normalizer v2.2.0
+[1m[92m   Compiling[0m zeroize v1.8.2
+[1m[92m   Compiling[0m curve25519-dalek v4.1.3
+[1m[92m   Compiling[0m aho-corasick v1.1.4
+[1m[92m   Compiling[0m idna_adapter v1.2.1
+[1m[92m   Compiling[0m linux-raw-sys v0.12.1
+[1m[92m   Compiling[0m getrandom v0.2.17
+[1m[92m   Compiling[0m getrandom v0.4.2
+[1m[92m   Compiling[0m rand_core v0.6.4
+[1m[92m   Compiling[0m percent-encoding v2.3.2
+[1m[92m   Compiling[0m rand_chacha v0.3.1
+[1m[92m   Compiling[0m regex-automata v0.4.14
+[1m[92m   Compiling[0m rand v0.8.6
+[1m[92m   Compiling[0m ed25519-dalek v2.2.0
+[1m[92m   Compiling[0m form_urlencoded v1.2.2
+[1m[92m   Compiling[0m uuid v1.23.0
+[1m[92m   Compiling[0m serde_json v1.0.149
+[1m[92m   Compiling[0m idna v1.1.0
+[1m[92m   Compiling[0m tempfile v3.27.0
+[1m[92m   Compiling[0m regex v1.12.3
+[1m[92m   Compiling[0m agent-guard-core v0.2.7 (/home/runner/work/agent-guard/agent-guard/crates/agent-guard-core)
+[1m[92m   Compiling[0m url v2.5.8
+[1m[92m   Compiling[0m agent-guard-broker v0.2.7 (/home/runner/work/agent-guard/agent-guard/crates/agent-guard-broker)
+[1m[92m    Finished[0m `test` profile [unoptimized + debuginfo] target(s) in 6.91s
+[1m[92m     Running[0m unittests src/lib.rs (target/debug/deps/agent_guard_broker-e58908fbf8c99e4b)
+
+running 14 tests
+test git::credentials::tests::authentication_scope_matches_authority_and_path_components ... ok
+test git::credentials::tests::https_helpers_do_not_change_other_transport_authority ... ok
+test git::snapshot::tests::packed_refs_copy_only_local_branch_names ... ok
+test git::validate::tests::non_ascii_and_control_characters_in_the_url_are_refused ... ok
+test git::validate::tests::target_values_are_restricted_to_unquoted_cli_atoms ... ok
+test git::validate::tests::transport_policy_is_closed_by_default ... ok
+test git::command::tests::every_sanitized_git_command_disables_http_redirects ... ok
+test git::validate::tests::trusted_config_cannot_override_redirect_refusal ... ok
+test git::command::tests::git_scopes_public_canary_helpers_and_preserves_the_repository_path ... ok
+test transaction::tests::a_full_object_id_for_the_exact_ref_is_returned ... ok
+test transaction::tests::a_remote_tip_that_is_not_an_object_id_is_refused ... ok
+test git::command::tests::sanitized_git_does_not_forward_a_scoped_header_to_a_redirect_target ... ok
+test git::validate::tests::trusted_config_requires_http_extra_header_to_be_url_scoped ... ok
+test git::validate::tests::trusted_config_requires_destination_scoped_helpers ... ok
+
+test result: ok. 14 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.06s
+
+[1m[92m     Running[0m tests/authorization_boundary.rs (target/debug/deps/authorization_boundary-8b211afd9d2d3503)
+
+running 5 tests
+test missing_record_is_refused_at_execution_without_remote_contact ... ok
+test inconsistent_record_is_refused_at_execution_without_remote_contact ... ok
+test expired_record_is_refused_at_execution_without_remote_contact ... ok
+test consumed_record_cannot_reenter_execution_or_contact_a_remote ... ok
+test valid_local_execution_updates_exactly_once_and_replay_is_refused ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.21s
+
+[1m[92m     Running[0m tests/drift.rs (target/debug/deps/drift-009b78ce115ca1df)
+
+running 5 tests
+test an_unchanged_repository_reports_no_drift ... ok
+test a_repointed_remote_is_drift ... ok
+test a_remote_advanced_by_someone_else_is_drift ... ok
+test a_further_local_commit_is_drift ... ok
+test drift_is_detected_even_when_the_update_kind_is_unchanged ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.30s
+
+[1m[92m     Running[0m tests/execute.rs (target/debug/deps/execute-b9efd770b94e59af)
+
+running 6 tests
+test a_non_fast_forward_is_refused_before_any_push ... ok
+test a_commit_made_after_approval_does_not_ride_along ... ok
+test a_grant_cannot_drive_two_pushes ... ok
+test a_remote_advanced_after_approval_is_refused ... ok
+test a_repository_pre_push_hook_is_not_executed_by_the_broker ... ok
+test an_approved_push_lands_exactly_that_object ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.30s
+
+[1m[92m     Running[0m tests/grant.rs (target/debug/deps/grant-ab44e7f46c7656b4)
+
+running 10 tests
+test a_grant_cannot_be_spent_twice ... ok
+test a_grant_id_cannot_escape_the_grant_directory ... ok
+test a_grant_authorizes_the_transaction_it_was_issued_for ... ok
+test a_grant_does_not_survive_a_policy_change ... ok
+test a_grant_does_not_authorize_a_different_transaction ... ok
+test an_issued_grant_is_not_world_readable ... ok
+test a_rejected_presentation_still_consumes_the_grant ... ok
+test an_expired_grant_is_refused_and_says_what_it_expired_against ... ok
+test grant_ids_with_separators_or_dot_names_are_refused ... ok
+test concurrent_spenders_produce_exactly_one_winner ... ok
+
+test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+[1m[92m     Running[0m tests/receipt.rs (target/debug/deps/receipt-c5835e61164e1b9d)
+
+running 4 tests
+test a_refused_push_is_recorded_with_its_reason ... ok
+test editing_the_outcome_breaks_the_signature ... ok
+test a_push_without_a_signing_key_still_produces_a_receipt ... ok
+test a_successful_push_is_witnessed_and_signed ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.19s
+
+[1m[92m     Running[0m tests/security_boundary.rs (target/debug/deps/security_boundary-37d4cf6a3c645a66)
+
+running 14 tests
+test changed_push_url_is_rejected_before_network_and_burns_the_grant ... ok
+test changing_the_push_url_after_approval_cannot_redirect_execution ... ok
+test a_git_refusal_keeps_the_spent_grant_without_running_the_source_hook ... ok
+test approved_push_url_is_the_only_remote_updated_and_receipted ... ok
+test linked_worktrees_fail_closed ... ok
+test local_remotes_are_rejected_without_an_explicit_test_opt_in ... ok
+test object_alternates_and_missing_remotes_fail_closed ... ok
+test repository_data_symlinks_fail_closed ... ok
+test preview_rejects_a_destination_outside_trusted_helper_scopes_before_connecting ... ok
+test partial_clone_and_promisor_repositories_fail_closed ... ok
+test trusted_config_rejects_symlinks_and_group_writable_files ... ok
+test trusted_config_is_narrow_and_must_live_outside_the_repository ... ok
+test repository_hooks_and_execution_config_are_not_loaded ... ok
+test repository_url_rewrites_do_not_change_the_approved_destination ... ok
+
+test result: ok. 14 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.45s
+
+[1m[92m     Running[0m tests/transaction.rs (target/debug/deps/transaction-a25ff90219a51672)
+
+running 11 tests
+test only_the_shapes_the_broker_performs_report_executable ... ok
+test an_empty_push_url_does_not_fall_back_to_the_fetch_url ... ok
+test a_suffix_matching_decoy_does_not_make_a_missing_branch_an_update ... ok
+test remote_oid_is_read_from_the_exact_branch_ref_not_a_suffix_match ... ok
+test an_unfetched_remote_object_is_undetermined_not_not_fast_forward ... ok
+test resolves_a_new_branch_as_a_create ... ok
+test resolves_an_already_pushed_branch_as_up_to_date ... ok
+test resolves_the_push_url_not_the_fetch_url ... ok
+test resolves_a_rewritten_history_as_not_fast_forward ... ok
+test resolves_the_commits_a_fast_forward_would_add ... ok
+test several_push_urls_fail_closed ... ok
+
+test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.29s
+
+[1m[92m   Doc-tests[0m agent_guard_broker
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+

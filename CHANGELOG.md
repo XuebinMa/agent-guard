@@ -34,15 +34,18 @@ The `[Unreleased]` heading is rolled forward manually before each release; do no
 - Six localhost-only authenticated Git/TLS composition tests and a required
   native Linux CI job using the newly built broker CLI. These are not a proof
   of container isolation or completion of the planned I1–I8 deployment checks.
-- Three fixture-bind checks preserve loopback defaults and restrict the future
+- Three fixture-bind checks preserve loopback defaults and restrict the
   native container fixture to the observed private Docker bridge address.
 - Fixed Linux Docker reference, required native authenticated-container CI
   acceptance driver, and five actual broker execution-authorization tests.
-  Native acceptance is pending until that new exact-head job passes; metadata
+  Native acceptance passed for the fixed synthetic Linux profile at `5f8e714`
+  (CI run `37524417236`, 21/21 success); metadata
   checks, host tests and automated PTY input are not human identity proof.
 - Reproducible bounded synthetic snapshot-cost driver and operational fault
-  guide. Recorded 1/8/32 MiB local fixtures are not pure-copy timings, true disk
-  peaks or representative production/user acceptance.
+  guide. Whole-CLI 1/8/32 MiB observations are not pure-copy timings, true disk
+  peaks or representative production/user acceptance. An optional Unix test-only
+  probe separately measures the existing copy functions and retained logical
+  bytes without adding production instrumentation or a public API.
 
 ## [0.2.7] - 2026-10-05
 

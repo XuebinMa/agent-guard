@@ -518,6 +518,10 @@ fn copy_regular_tree(
     Ok(())
 }
 
+#[cfg(all(test, unix))]
+#[path = "snapshot_cost.rs"]
+mod cost;
+
 #[cfg(test)]
 mod tests {
     use super::*;

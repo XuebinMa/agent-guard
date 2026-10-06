@@ -3,6 +3,7 @@
 import argparse
 import hashlib
 import importlib.util
+import json
 import os
 from pathlib import Path
 import subprocess
@@ -93,6 +94,39 @@ class BenchmarkTests(unittest.TestCase):
         self.assertTrue(recorded["dirty"])
         self.assertEqual(recorded["tracked_diff_sha256"], hashlib.sha256(diff).hexdigest())
         self.assertFalse(recorded["untracked_contents_in_diff_hash"])
+
+    def test_copy_probe_requires_one_bound_report_not_a_success_banner(self):
+        report = {"schema": 1, "local_oid": "a" * 40, "copy_seconds": 0.01,
+                  "capture_seconds": 0.02,
+                  "copy_data": {"logical_file_bytes": 123, "allocated_file_bytes_estimate": 4096,
+                                "regular_files": 3},
+                  "capture_held_files": {"logical_file_bytes": 234,
+                                         "allocated_file_bytes_estimate": 8192, "regular_files": 7}}
+        line = b"AGENT_GUARD_COPY_BENCH_JSON=" + json.dumps(report).encode() + b"\n"
+        self.assertEqual(benchmark.parse_copy_probe_report(line, "a" * 40), report)
+        for text in [b"test result: ok\n", line + line,
+                     line.replace(b'"schema": 1', b'"schema": 2'),
+                     line.replace(b'"copy_seconds": 0.01', b'"copy_seconds": NaN')]:
+            with self.subTest(text=text), self.assertRaises(RuntimeError):
+                benchmark.parse_copy_probe_report(text, "a" * 40)
+        with self.assertRaises(RuntimeError):
+            benchmark.parse_copy_probe_report(line, "b" * 40)
+
+    def test_copy_probe_is_opt_in_and_uses_the_existing_bounded_runner(self):
+        args = benchmark.parse_arguments(["--cli", "/fixture/agent-guard"])
+        self.assertIsNone(args.copy_probe)
+        args = benchmark.parse_arguments(["--cli", "/fixture/agent-guard", "--copy-probe", "/fixture/broker-tests"])
+        self.assertEqual(args.copy_probe, Path("/fixture/broker-tests"))
+        runner = benchmark.Runner(benchmark.environment(self.root, self.root), 5)
+        original = dict(runner.env)
+        with mock.patch.object(runner, "run", side_effect=RuntimeError("fixture fails")) as invoke:
+            with self.assertRaises(RuntimeError):
+                benchmark.measure_copy_probe(runner, args.copy_probe, self.root, self.root / "config", "a" * 40)
+        self.assertEqual(runner.env, original)
+        call = invoke.call_args
+        self.assertEqual(call.args[0][0], args.copy_probe)
+        self.assertIn("--ignored", call.args[0])
+        self.assertIn("--exact", call.args[0])
 
     @unittest.skipUnless(os.name == "posix", "benchmark explicitly supports Unix test hosts")
     def test_owned_subprocess_times_out_without_a_shell(self):

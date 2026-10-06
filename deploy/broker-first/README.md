@@ -1,8 +1,10 @@
 # Broker-first: one Linux Docker reference
 
-Status: the launcher and configuration tests are implemented. Native Linux
-container/HTTPS acceptance is a separate gate, **not proved by these unit
-tests**. Do not call a successful configuration check an isolation certificate.
+Status: the launcher and configuration tests are implemented. The fixed
+synthetic native Linux container/HTTPS workflow has
+[passed actual CI acceptance](../../docs/security-evidence/2026-10-06/native-linux/README.md)
+at head `5f8e714`; unit/configuration tests alone are **not isolation proof**.
+Do not call a successful configuration check an isolation certificate.
 This is the small P3 reference in the
 [development plan](../../docs/plans/broker-first-development-plan.md), not a new
 sandbox backend, daemon, RPC, or privileged agent tool.
@@ -180,11 +182,13 @@ command or access real credentials. `check` reports `configuration_check: passed
 not fall back to advisory execution. Partial initialization is left visible;
 inspect owned paths manually before recovery rather than reusing an old volume.
 
-Native Linux acceptance must still run the plan's authenticated HTTPS fixture,
+The required native Linux job runs the plan's authenticated HTTPS fixture,
 positive workspace write/build/commit and host-approved push, plus independent
 remote-state and denied credential/resource controls. A container unable to
 reach the service is not a passing credential-isolation result. Do not mark P4
-complete from these tests, or use Mac/Docker Desktop compilation as that proof.
+complete from these unit tests, or use Mac/Docker Desktop compilation as that
+proof. The actual passing run and its complementary I1–I8 broker suites are
+preserved in the evidence linked above; new heads require fresh CI.
 
 The fixed scratch/resource sizes are reference defaults, not measured capacity
 for a large repository. Workspace disk quotas, operational benchmarking,

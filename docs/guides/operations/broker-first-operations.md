@@ -209,14 +209,79 @@ Reproducibility bindings from the successful JSON report:
 
 This is a completed **synthetic size-stratified observation**, not pure copy
 time, a true temporary disk peak, an authentication/container test or acceptance
-of real large-repository operating cost. Exact pure-copy timing, robust physical
-peak accounting and representative user/repository evidence remain separate
+of real large-repository operating cost. Robust physical peak accounting and
+representative user/repository evidence remain separate
 work. Do not extrapolate from these three one-blob fixtures.
+
+### Direct copy-phase measurement (test-only)
+
+An optional [Rust test probe](../../../crates/agent-guard-broker/src/git/snapshot_cost.rs)
+now times the four existing copy functions directly, separately from complete
+`GitSnapshot::capture`. It is compiled only for Unix crate tests and has **no
+production instrumentation, networking or public API**. The opt-in performance
+test is ignored in the ordinary test suite because it needs the driver's owned
+fixture; this is not a skipped security acceptance test. The benchmark below
+explicitly invoked it six times successfully.
+
+Build both artifacts from the reviewed source tree:
+
+```bash
+cargo build -p agent-guard-cli --locked
+cargo test -p agent-guard-broker --lib --locked --no-run
+```
+
+Cargo prints the unit-test executable path, including its current hash. Supply
+that exact executable as `--copy-probe` to the benchmark command above; do not
+select an old test binary by a wildcard. The driver supplies only its temporary
+repository/empty private config, preserves its cleared environment and bounds
+the process using the same watchdog. Reports require one JSON marker, matching
+candidate OID, finite nonnegative timings and valid byte counts; a success
+banner or malformed report is not accepted. Both binaries are hashed before
+and after measurement.
+
+The timer includes object/ref filtering, metadata/race checks and copying; it
+excludes setup, config parsing, Git/fsck and network. For the immutable fixture,
+the copy functions create each selected file once and retain it, so the final
+**logical copy-data high-water** is exact for this phase. `st_blocks` is still
+only an allocation estimate; directory metadata, delayed/shared/compressed
+physical allocation and other processes are not measured. The full capture's
+held file count is a separate point-in-time count, not the whole CLI peak.
+The validated capture is dropped before the timed independent copy, avoiding
+two simultaneously retained snapshots in the probe. Capture runs before copy,
+and the probe runs before CLI timing, so caches are warm: do not compare these
+CLI times with the earlier no-probe run as an optimization result.
+
+The [raw copy report](../../security-evidence/2026-10-06/native-linux/copy-cost.json)
+started at **2026-10-06T22:23:48.987950Z** on the same Mac/APFS host. Source HEAD
+was `5f8e714` with these uncommitted additions; before/after state was identical
+(`source_changed_during_run: false`). The diff hash does not cover untracked
+contents. CLI SHA-256 was
+`f97a47cbd1a15fdb8788165536679afcc62881d6165bc4e44d2ee0e233786707`;
+test probe SHA-256 was
+`0112a03cd7cbb9139f61ea42be9b96deff2fa322b496058139780c81e50a8a9f`.
+The report retains its actual driver hash; later explanatory metadata/docs
+edits are not retroactively included in that run.
+
+| Synthetic payload | Copy phase, trials 1 / 2 (s) | Complete capture, trials 1 / 2 (s) | Retained copy data, logical / allocated estimate (bytes) | Complete held snapshot, logical (bytes) |
+| --- | ---: | ---: | ---: | ---: |
+| 1 MiB | 0.00114 / 0.00146 | 0.08255 / 0.07944 | 1,050,323 / 1,060,864 | 1,050,800 |
+| 8 MiB | 0.00499 / 0.00501 | 0.08456 / 0.08380 | 8,392,595 / 8,400,896 | 8,393,072 |
+| 32 MiB | 0.02462 / 0.02693 | 0.10640 / 0.10652 | 33,566,100 / 33,574,912 | 33,566,578 |
+
+All six reports matched the actual candidate. All six approved local pushes
+still independently matched refs/unsigned receipts and an actual spent-grant
+file; declined previews left no ref/receipt. An initial attempt failed because
+libtest prefixed the output marker: the emitter was corrected to use a separate
+line, without weakening the report parser. No timings from that failed attempt
+are adopted. These small warm one-blob cases are not production capacity or a
+true physical peak; representative workload/host and real-user pilot are pending.
 
 ## Remaining acceptance
 
 The [plan](../../plans/broker-first-development-plan.md) requires native
-container I1–I8 evidence and an actual user task. Those are separate from this
+container I1–I8 evidence and an actual user task. The fixed synthetic native
+profile now has [actual evidence](../../security-evidence/2026-10-06/native-linux/README.md);
+real user acceptance remains outstanding. Those are separate from this
 benchmark and guide. Representative operational capacity, deployment viability
 and genuine user feedback remain pending until measured/observed; do not invent
 positive feedback or mark P5/the entire plan complete from synthetic numbers.

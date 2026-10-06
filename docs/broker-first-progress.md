@@ -24,8 +24,9 @@ reviewer's patch are preserved. Version/publication choices remain separate;
 - P3 D1–D3: fixed native Linux Docker launcher implemented; 20 configuration,
   permission, terminal and local-data tests passed. Independent source review
   found missing inspect checks for Docker protection lists/restart/logging;
-  those are now locked by mutation fixtures. No real container run yet. Local
-  Docker client exists, but daemon is not running; it was not started/installed.
+  those are now locked by mutation fixtures. Real native Linux acceptance
+  passed in CI below. Local Mac Docker was not started/installed; that local
+  environment was not misreported as a native run.
 - P4: six localhost TLS/authenticated Git composition tests passed on the
   rebuilt managed-checkout CLI. They verify exact ref/receipt, pre-connection
   scope refusal, cancel/EOF, reachable unauthenticated refusal, bounded TLS
@@ -37,11 +38,16 @@ reviewer's patch are preserved. Version/publication choices remain separate;
   Docker has not run locally. Five new actual execution-API lifecycle tests
   pass without remote contact for missing/expired/inconsistent/consumed records,
   plus valid local-file push/replay. They complement the existing invariants;
-  real native I1–I8 combined acceptance remains pending the new CI head.
-- P5: bounded synthetic benchmark, 8 method tests and operator fault guide are
+  real native I1–I8 combined acceptance passed for `5f8e714` below.
+- P5: bounded synthetic benchmark, 10 method tests and operator fault guide are
   implemented. Completed 1/8/32 MiB × 2 local runs independently checked refs
   and unsigned receipts. The method and machine are in the operations guide;
-  no pure-copy, true-peak, cold-cache or large-production claim. Real user
+  whole-CLI timings alone are not copy/peak measurements. A test-only probe now
+  measured the real copy functions separately on the same 1/8/32 MiB fixtures,
+  plus exact held logical copy-data counts; six invocations passed with matching
+  candidate/refs/unsigned receipts/spent grants. Details and raw JSON are in
+  the operations guide. No true physical-peak, cold-cache or large-production
+  claim. Real user
   feedback and representative deployment operating capacity remain pending.
 - Release: held; no registry/advisory writes authorized by this record.
 
@@ -82,5 +88,44 @@ exit 0 (50 script tests, 77 scanned Markdown files), driver 10/10, broker
 authorization 5/5, broker all-target Clippy and workspace format check exit 0.
 These local driver tests do not start Docker. The new CI job must actually
 build the pinned synthetic image and execute the fixed deployment workflow.
+
+## Actual native milestone
+
+Head `5f8e714933049352950648ae5e08c30b9ce8fa91` completed
+[run 37524417236](https://github.com/XuebinMa/agent-guard/actions/runs/37524417236)
+with **21/21 actual job conclusions success**. This includes fresh cross-platform
+Rust, Python/Node/framework/parity, audit/deny and the required native Linux job.
+The checked-out PR test merge was `427cf1d13efbe06bed85bb51901e3ec0bd6624d2`,
+with parents baseline `e1a0a0a` and the exact PR head; main was not merged.
+
+Downloaded [native evidence and complementary logs](security-evidence/2026-10-06/native-linux/README.md)
+confirm `accepted: true`, complete cleanup, agent build/commit and verified TLS
+401 connectivity, refused direct push, inaccessible named host authority,
+strict pipe refusal, PTY cancellation/EOF and exact approved URL/OID/receipt/
+spent grant agreement. The same job ran 69 broker and 23 CLI tests, zero failures
+or ignores. P3/P4 now pass for this **fixed synthetic Linux deployment**;
+arbitrary images/host services, real user approval costs and production capacity
+are not covered. P5 remains partial, and publication remains held.
+
+P5 follow-up red/green: two new method tests first failed for the absent probe
+API, then all 10 passed. One ordinary held-file accounting test passed; the
+performance test is explicitly opt-in and ran six times through the bounded
+driver, not a hidden security-test skip. The first measurement invocation
+rejected libtest's prefixed report marker; the emitter was corrected and the
+next invocation completed. The successful report's source before/after state
+was identical (dirty additions at `5f8e714`, not a pristine released tree).
+No production copy/execution API was changed. A user question for the actual
+Linux host/task/representative repository pilot is pending; do not invent it.
+
+Frozen cost/evidence follow-up gates: `verify.sh full` exit 0, Rust summary
+1,138 passed / zero failed / three ignored summaries (two pre-existing plus
+the explicitly invoked opt-in cost probe), default Python 108 passed / one
+optional-framework skip, Node/plugin 14/14. The separate real LangChain Python
+leg passed 113/113 with no skip. Fresh binding parity matched all 70 cases;
+strict all-target workspace Clippy passed. Final docs passed 52 script tests,
+78 Markdown scans, workflow pins and source/published version consistency.
+Logs are `/private/tmp/agent-guard-broker-first-cost-{full,strictlint,python-framework,parity,docs}.log`.
+The measurement/docs additions require their own new PR-head CI; the earlier
+`5f8e714` matrix is not reused as a green result for an unpushed commit.
 
 Windows ambient handles and shared-inode hard-link limitations remain open.

@@ -14,8 +14,12 @@ rootful local Docker Engine. That Docker authority stays outside the agent. The
 runner must contain no production credentials, SSH agent or other agent workloads.
 Its Git, Docker, Python, TLS tools, fixed launcher, Dockerfile and built CLI belong
 to the trusted setup. Review the image inputs; this fixture does not scan an image
-for hidden secrets. Native Linux is not available on the development Mac, so these
-checks are **pending until the dedicated job actually passes**.
+for hidden secrets. Native Linux is not available on the development Mac; the
+dedicated job actually passed for head `5f8e714` in
+[run 37524417236](https://github.com/XuebinMa/agent-guard/actions/runs/37524417236).
+[Preserved evidence](../../../docs/security-evidence/2026-10-06/native-linux/README.md)
+includes the real container result and complementary broker/CLI logs, not
+substituted local metadata tests. Later heads need their own run.
 
 CI must supply an approved digest-pinned Ubuntu base, build this directory as the
 context, and retain the resulting exact local image ID. `BASE_IMAGE` deliberately

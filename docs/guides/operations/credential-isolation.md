@@ -15,10 +15,12 @@ config selected with `--git-config`, `AGENT_GUARD_BROKER_GIT_CONFIG`, or
 when present. Those resources are part of the trusted broker environment;
 nothing in this repository can prove that the agent cannot reach them.
 
-The first strict deployment profile below is **implemented, not yet accepted**.
-Existing broker unit/integration tests verify transaction and configuration
-properties; they do not yet prove that a complete agent container cannot use
-host credentials. The default same-user setup remains advisory.
+The first strict deployment profile below is implemented and has
+[passed the fixed synthetic native Linux acceptance](../../security-evidence/2026-10-06/native-linux/README.md)
+at head `5f8e714`. The real container workflow and complementary broker suites
+are separate from mere configuration tests. This does not certify arbitrary
+images, all host services or real-user workflows. The default same-user setup
+remains advisory.
 
 ## The default setup gives you none of it
 
@@ -60,13 +62,14 @@ same session, no container is **not** a boundary, because a POSIX process can
 read its own user's files. No amount of configuration inside agent-guard
 changes that.
 
-## Deployment A — Linux container / host broker reference, acceptance pending
+## Deployment A — accepted fixed Linux container / host broker reference
 
 The first acceptance target is one Linux host, one existing container runtime,
 one normal repository, one authenticated HTTPS remote, and an ordinary
 non-force branch push. The [fixed native Linux Docker launcher](../../../deploy/broker-first/README.md)
 implements configuration checks and a host-terminal workflow. Authenticated
-container acceptance remains pending. This is a restricted **deployment promise**, not removal of existing
+native acceptance passed for the fixed fixture and its I1–I8 coverage map. This
+is a restricted **deployment profile**, not removal of existing
 SSH/SCP transports or macOS/Windows APIs. Those remain separately supported;
 they are not covered by this first strict profile's acceptance tests.
 
@@ -88,7 +91,7 @@ no way to authenticate to the protected remote:
 - set `GIT_TERMINAL_PROMPT=0` to disable interactive prompts, **not** as an
   authentication boundary; it does not remove already reachable credentials
 
-### Planned asset permissions
+### Required asset permissions
 
 "Use" includes invoking a helper, connecting to an authentication socket or
 calling a program that performs a privileged action. A different filesystem
@@ -104,7 +107,7 @@ path alone does not remove that authority.
 | Broker grant/approval store | No | No | Cannot issue, approve or consume authority on its own behalf | Host-only create/approve/consume |
 | Broker/Git/helper binaries, executable `PATH` and host `HOME` | Only explicitly exposed non-secret copies | No host executable/config changes | No credential-bearing host CLI, including `--yes` | Host selects trusted binaries/config and invokes broker |
 | Temporary broker repositories and receipt storage | No | No | No | Host owns snapshots and execution-stage records; exports copies deliberately |
-| Approving terminal and its input stream | No | No | Cannot supply approval responses | Human on trusted host terminal; strict launch validation requires independent acceptance |
+| Approving terminal and its input stream | No | No | Cannot supply approval responses | Human on trusted host terminal; strict entry checks plus deployment/account separation, not TTY identity alone |
 | Container runtime/management socket and host process control | No | No | No | Host launches/manages unprivileged runtime |
 | File tools, MCP servers and hook handlers | Only container-authorized data | Only container-authorized paths | No higher-authority host proxy | Host ensures every execution path stays in the same runtime boundary |
 
@@ -178,14 +181,18 @@ network destination. Redirect tests use loopback and a public dummy header.
 You then run `agent-guard push` on the host, against the same repository, where
 your credential is. The repository supplies data only: the broker does not run
 its hooks, use its credential helpers, honour its URL rewrites, or pass its
-remote name to `git push`. The agent can continue writing code and commits,
-while the host broker decides which exact object and URL may leave.
+remote name to `git push`. The agent develops and commits inside its environment.
+In the strict profile, the host launcher stops that whole container before
+preview and execution, then the broker decides which exact object and URL may
+leave. Resume development explicitly afterward; do not let a second runtime
+keep writing the workspace.
 
 The current CLI's confirmation reads stdin; it does **not** establish a trusted
 TTY, a human principal, or that requestor and approver differ. `--yes` skips that
-confirmation. The planned strict host launch wrapper must validate its terminal
-and refuse agent-controlled/piped approval input before this profile can claim
-human-only authorization. The agent must not be able to invoke the
+confirmation. The implemented strict host launch wrapper validates its terminal
+and refuses piped input before stop or network; real PTY cancel/EOF/approve paths
+ran in native acceptance. That check does not authenticate a human principal.
+The agent must not be able to invoke the
 credential-bearing host CLI; merely displaying a prompt does not prevent that.
 
 The strict 0.2.4 slice deliberately rejects linked worktrees, partial clones,
@@ -194,8 +201,9 @@ normal checkout rather than weakening these checks.
 
 The acceptance target is a real remote authentication/authorization refusal
 for an agent's direct mutation, alongside a successful authorized broker push.
-That has not yet been demonstrated for the complete container profile. The
-hook would then be advice in addition to that boundary, not the boundary itself.
+That was demonstrated for the fixed native Linux fixture, not every possible
+container image or host setup. The hook is advice in addition to that protected
+deployment boundary, not the boundary itself.
 
 ## Deployment B — a hardware-backed key, one machine, no container
 
@@ -216,7 +224,7 @@ a physical act — but the touch is not bound to the transaction you previewed,
 so touching for the push you meant also satisfies a push you did not. It is a
 real reduction, and it is not the property Deployment A gives you.
 
-This is not a substitute for the planned profile's credential/use boundary.
+This is not a substitute for the fixed profile's credential/use boundary.
 
 ## Verify it, do not assume it
 
@@ -272,7 +280,7 @@ claims are executable, not just prose: the
 pins the push URL, repository-hook and config isolation, refusal receipts,
 protocol policy, and unsafe repository layouts.
 
-### Outstanding whole-runtime acceptance
+### Whole-runtime acceptance evidence and limits
 
 The [broker-first plan](../../plans/broker-first-development-plan.md) specifies
 I1–I8 for a synthetic authenticated HTTPS fixture and independent remote-ref
@@ -282,8 +290,12 @@ scoped authentication and redirect refusal hold; an agent direct mutation is
 rejected while an approved broker mutation succeeds; all assets above are
 inaccessible through every tool path; receipts agree with consumed grants and
 observed refs; and agent/piped input cannot impersonate a trusted approver.
-These are **planned gates**, not properties already proved by the existing
-broker suites. The dedicated Linux job must not skip a missing runtime or
+These gates ran at head `5f8e714`: the
+[native report and same-job broker/CLI logs](../../security-evidence/2026-10-06/native-linux/README.md)
+map their separate evidence to I1–I8. The fixed reviewed image contains only the
+synthetic agent workload; it is not a proof for every arbitrary tool path/image.
+New runtime paths require fresh review and acceptance. Real human workflow
+feedback remains P5 work. The dedicated Linux job must not skip a missing runtime or
 silently downgrade to advisory/noop and report success. Missing local runtime
 capabilities are reported as unrun, not passed.
 

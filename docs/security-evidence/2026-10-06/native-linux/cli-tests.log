@@ -1,0 +1,58 @@
+[1m[33mwarning[0m[1m: unused import: `SandboxOutput`[0m
+  [1m[94m--> [0mcrates/agent-guard-sandbox/src/linux.rs:11:65
+   [1m[94m|[0m
+[1m[94m11[0m [1m[94m|[0m     Sandbox, SandboxCapabilities, SandboxContext, SandboxError, SandboxOutput, SandboxResult,
+   [1m[94m|[0m                                                                 [1m[33m^^^^^^^^^^^^^[0m
+   [1m[94m|[0m
+   [1m[94m= [0m[1mnote[0m: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+[1m[33mwarning[0m: `agent-guard-sandbox` (lib) generated 1 warning (run `cargo fix --lib -p agent-guard-sandbox` to apply 1 suggestion)
+[1m[92m   Compiling[0m agent-guard-cli v0.2.7 (/home/runner/work/agent-guard/agent-guard/crates/agent-guard-cli)
+[1m[92m    Finished[0m `test` profile [unoptimized + debuginfo] target(s) in 0.94s
+[1m[92m     Running[0m unittests src/main.rs (target/debug/deps/agent_guard-c569f6d3f762152d)
+
+running 17 tests
+test preview::tests::a_fast_forward_surfaces_no_consequence ... ok
+test preview::tests::an_up_to_date_push_surfaces_no_consequence ... ok
+test preview::tests::a_large_but_ordinary_push_is_still_ordinary ... ok
+test preview::tests::creating_a_branch_surfaces_no_consequence ... ok
+test preview::tests::discarding_history_is_surfaced ... ok
+test preview::tests::an_update_that_could_not_be_determined_is_surfaced ... ok
+test preview::tests::preview_names_the_resolved_push_url_not_only_the_remote_alias ... ok
+test tests::an_explicit_missing_broker_config_fails_before_git ... ok
+test tests::deciding_unknown_request_exits_nonzero ... ok
+test tests::approve_flips_pending_to_approved_and_exits_zero ... ok
+test tests::deny_flips_pending_to_denied ... ok
+test tests::list_and_show_present_existing_requests ... ok
+test tests::deciding_twice_exits_nonzero ... ok
+test tests::push_accepts_the_explicit_broker_boundary_options ... ok
+test tests::the_default_policy_is_where_the_plugin_installs_it ... ok
+test tests::show_missing_request_exits_nonzero ... ok
+test tests::the_command_the_hook_prints_is_one_this_cli_accepts ... ok
+
+test result: ok. 17 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+[1m[92m     Running[0m tests/approval_display.rs (target/debug/deps/approval_display-0f98791eff95a1e9)
+
+running 2 tests
+test ordinary_ledger_text_is_printed_unchanged ... ok
+test list_and_show_escape_control_characters_from_the_ledger ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+[1m[92m     Running[0m tests/push_policy_revalidation.rs (target/debug/deps/push_policy_revalidation-f6b04f13e682a715)
+
+running 3 tests
+test a_policy_tightened_during_confirmation_refuses_the_push ... ok
+test a_policy_removed_during_confirmation_refuses_the_push ... ok
+test an_unchanged_policy_allows_the_confirmed_local_push ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.15s
+
+[1m[92m     Running[0m tests/remote_text_display.rs (target/debug/deps/remote_text_display-cdbae1bbeeba6167)
+
+running 1 test
+test a_refusal_from_the_remote_is_printed_without_its_control_characters ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.09s
+

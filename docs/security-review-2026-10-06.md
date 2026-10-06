@@ -125,9 +125,12 @@ orchestration tests include refusal ordering and inspect drift. Six
 independently observe remote refs and unsigned attempt records, including
 unauthenticated connectivity, scope refusal, cancellation and fixture cleanup.
 
-Neither those tests nor a successful configuration check establish native
-container isolation. P4's I1–I8 and real user acceptance remain incomplete until
-their dedicated native Linux evidence exists. Windows ambient handles and
+Neither those host tests nor a successful configuration check establish native
+container isolation. The dedicated job at head `5f8e714` now supplies
+[actual native evidence](security-evidence/2026-10-06/native-linux/README.md),
+plus 69 broker/23 CLI tests, zero failures or ignores; its 21-job matrix succeeded.
+P3/P4's fixed synthetic Linux I1–I8 workflow is accepted, not arbitrary images,
+all platforms or real user acceptance. Windows ambient handles and
 general shared-hard-link limitations remain open. Publication is still held;
 affected published-version ranges and any advisory updates require separate
 verification and the outstanding version/disclosure decision.
