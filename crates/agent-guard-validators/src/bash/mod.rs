@@ -23,17 +23,17 @@ mod wrappers;
 mod tests;
 
 pub use destructive::check_destructive;
-pub use git_push::{git_push_intents, GitPushDetection, GitPushIntent};
+pub use git_push::{git_push_intents, GitPushDetection, GitPushIntent, BROKER_PUSH_COMMAND};
 pub use paths::{validate_paths, validate_sed};
 pub use read_only::validate_read_only;
 pub use types::{CommandIntent, PermissionMode, ValidationResult};
 
 use ast::{parse_shell, ShellParse};
 use tokenize::{
-    contains_code_laundering_command, contains_command_substitution, contains_dynamic_command_word,
-    contains_env_split_string, contains_interpreter_with_inline_code,
-    contains_multiple_find_exec_actions, contains_opaque_interpreter_execution,
-    extract_first_command, reparsed_watch_commands,
+    contains_code_laundering_command, contains_command_rebinding, contains_command_substitution,
+    contains_dynamic_command_word, contains_env_split_string,
+    contains_interpreter_with_inline_code, contains_multiple_find_exec_actions,
+    contains_opaque_interpreter_execution, extract_first_command, reparsed_watch_commands,
 };
 use wrappers::{
     classify_command_launcher, command_name, unwrap_command_wrappers, LauncherDisposition,
@@ -167,8 +167,15 @@ pub fn validate_bash_command(
         if contains_dynamic_command_word(command) {
             return ValidationResult::Block {
                 reason:
-                    "A shell parameter expansion cannot be used as the command word in this mode"
+                    "A shell parameter expansion or pathname pattern cannot be used as the command word in this mode"
                         .to_string(),
+            };
+        }
+        if let Some(builtin) = contains_command_rebinding(command) {
+            return ValidationResult::Block {
+                reason: format!(
+                    "Builtin '{builtin}' changes which program a later command name runs and is not allowed in this mode"
+                ),
             };
         }
         // Parenthesized grouping used to be rejected outright, because the flat

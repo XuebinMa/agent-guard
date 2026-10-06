@@ -10,7 +10,9 @@
 //! imply the broker offers a route to the thing policy just stopped.
 
 use agent_guard_broker::validate_push_target;
-use agent_guard_validators::bash::{git_push_intents, GitPushDetection, GitPushIntent};
+use agent_guard_validators::bash::{
+    git_push_intents, GitPushDetection, GitPushIntent, BROKER_PUSH_COMMAND,
+};
 
 /// What to tell someone whose push was refused, if anything.
 ///
@@ -25,6 +27,12 @@ pub(crate) fn broker_hint(command: &str) -> Option<String> {
     // hint becomes misinformation.
     let intents = git_push_intents(command).ok()?;
     let intent = intents.first()?;
+
+    // The command already is the broker. What stopped it is the question of
+    // who is running it, and repeating the command answers nothing.
+    if intent.command == BROKER_PUSH_COMMAND {
+        return None;
+    }
 
     // An argv candidate is a command whose execution semantics were never
     // established — the outer program might not run git at all, or might run
@@ -194,6 +202,14 @@ mod tests {
             "an unverified candidate must not be handed a concrete command: {hint}"
         );
         assert!(hint.contains("was not established"), "{hint}");
+    }
+
+    /// The broker command is itself recognized as a push, so that an agent
+    /// running it reaches the same decision. Sending it to itself would read
+    /// as "run this again", which is the opposite of asking a human.
+    #[test]
+    fn the_broker_command_is_not_pointed_at_itself() {
+        assert!(broker_hint("agent-guard push --remote origin --branch main --yes").is_none());
     }
 
     #[test]

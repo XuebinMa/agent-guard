@@ -17,7 +17,7 @@
 - **Python binding** (`agent_guard`, PyO3 / abi3-py310).
 - **Node binding** (`@agent-guard/node`, napi-rs).
 
-Each surface evaluates the same policy and must produce the **same decision** for the **same inputs**. Drift between bindings is a security regression — a payload denied in one language must not be allowed in another. The `parity-e2e` CI job blocks merges whenever any of the 30 cross-language scenarios diverge.
+Each surface evaluates the same policy and must produce the **same decision** for the **same inputs**. Drift between bindings is a security regression — a payload denied in one language must not be allowed in another. The `parity-e2e` CI job blocks merges whenever any of the 52 cross-language scenarios diverge.
 
 This document is the human-readable map of what's covered. The machine truth lives in the `tests/cross-language-parity/` fixtures.
 
@@ -121,7 +121,7 @@ All exception classes carry the canonical attribute set: `policy_version`, `poli
 
 ## What the e2e suite covers
 
-30 scenarios (see `tests/cross-language-parity/fixtures/scenarios.json`):
+52 scenarios (see `tests/cross-language-parity/fixtures/scenarios.json`):
 
 1. `bash_allow_echo` — bash allow path → Execute
 2. `bash_destructive_rm` — `rm -rf /tmp/x` → deny / `PathOutsideWorkspace`
@@ -153,6 +153,14 @@ All exception classes carry the canonical attribute set: `policy_version`, `poli
 28. `bash_readonly_sed_attached_script_deny` — compact script-file options receive the same refusal
 29. `bash_readonly_decoded_env_name_is_data_allow` — an echo operand is not an environment assignment
 30. `bash_readonly_find_child_env_name_is_data_allow` — trailing find actions must not make the child echo's operand an environment assignment
+
+Scenarios 31–52 add negative and positive controls for canonical HTTP URLs,
+Host consistency and read-only methods, broker CLI push recognition, attached
+wrapper options, subcommand-specific Git options and helper re-enabling,
+repeated line continuations, and attached copy-option destinations. All runners
+only check/decide these inputs; they do not execute the commands or requests.
+Parity proves agreement, not correctness: the SDK security regressions also
+assert the expected deny/ask/allow outcomes independently.
 
 If you add an SDK feature that affects decisions, add a scenario that exercises it.
 

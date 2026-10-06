@@ -213,7 +213,9 @@ tools:
     # `method:` to a rule to scope it to e.g. POST/PUT/PATCH/DELETE.
     deny:
       # Cloud / link-local metadata endpoints (IMDS classic, SSRF chain).
-      - regex: "^https?://169\\.254\\.169\\.254"
+      # The whole link-local range: the classic endpoint is .169.254, and
+      # container credential endpoints sit elsewhere in it (ECS: .170.2).
+      - regex: "^https?://169\\.254\\."
       - regex: "^https?://metadata\\.google\\.internal"
       - regex: "^https?://metadata\\.azure\\.com"
 
@@ -221,7 +223,9 @@ tools:
       # need to call your local dev server, override this rule
       # explicitly — defaulting to safe.
       - regex: "^https?://localhost"
-      - regex: "^https?://127\\.0\\.0\\.1"
+      # All of 127.0.0.0/8 is loopback, as are the IPv6 `::1` and `::`.
+      - regex: "^https?://127\\."
+      - regex: "^https?://\\[::1?\\]"
       - regex: "^https?://0\\.0\\.0\\.0"
       - regex: "^https?://10\\."
       - regex: "^https?://172\\.(1[6-9]|2[0-9]|3[01])\\."

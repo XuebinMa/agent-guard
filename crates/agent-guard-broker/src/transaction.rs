@@ -189,6 +189,14 @@ fn resolve_remote_oid(
         return Ok(None);
     };
 
+    remote_tip_from_listing(&listing, &full_ref).map_err(|detail| GitError::Unexpected {
+        command: format!("ls-remote {remote_url} {full_ref}"),
+        detail,
+    })
+}
+
+/// The object id an `ls-remote` listing reports for exactly `full_ref`.
+fn remote_tip_from_listing(listing: &str, full_ref: &str) -> Result<Option<String>, String> {
     // `ls-remote` also matches on a `/`-boundary suffix, so another ref can
     // appear before the branch. Only an exact ref name describes the approved
     // branch's remote tip and the lease that will protect its update.
@@ -196,17 +204,25 @@ fn resolve_remote_oid(
         let mut fields = line.split_whitespace();
         let oid = fields.next();
         let name = fields.next();
-        if name == Some(full_ref.as_str()) {
-            let oid = oid.ok_or_else(|| GitError::Unexpected {
-                command: format!("ls-remote {remote_url} {full_ref}"),
-                detail: listing.clone(),
-            })?;
+        if let (Some(oid), true) = (oid, name == Some(full_ref)) {
+            // The remote wrote this value. It is printed in the preview and
+            // passed to local rev resolution, where `HEAD` or a ref name would
+            // resolve to something the remote never reported. The refusal
+            // does not repeat it, for the same reason.
+            if !is_object_id(oid) {
+                return Err("the remote reported a tip that is not a Git object id".to_string());
+            }
             return Ok(Some(oid.to_string()));
         }
     }
 
     // Any matches were only suffix matches of other refs, not this branch.
     Ok(None)
+}
+
+/// A full SHA-1 or SHA-256 object name, as `ls-remote` prints one.
+fn is_object_id(value: &str) -> bool {
+    matches!(value.len(), 40 | 64) && value.bytes().all(|byte| byte.is_ascii_hexdigit())
 }
 
 /// Whether this repository holds the object at all.
@@ -325,5 +341,49 @@ impl PushBroker {
     ) -> Result<Vec<Drift>, GitError> {
         let current = self.resolve_push_transaction(repo, &approved.remote, &approved.branch)?;
         Ok(current.drift_from(approved))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::remote_tip_from_listing;
+
+    const OID: &str = "0123456789abcdef0123456789abcdef01234567";
+
+    /// The remote chooses what `ls-remote` prints. Its tip is shown to the
+    /// approver and handed to `merge-base`, `rev-list` and the push lease, so
+    /// anything but a full object id is refused rather than shown or resolved.
+    #[test]
+    fn a_remote_tip_that_is_not_an_object_id_is_refused() {
+        for tip in [
+            "HEAD",
+            "main",
+            "0123456",
+            "\u{1b}[2K0123456789abcdef0123456789abcdef01234567",
+            "0123456789abcdef0123456789abcdef0123456g",
+            "0123456789abcdef0123456789abcdef012345678",
+        ] {
+            let listing = format!("{tip}\trefs/heads/main\n");
+            let error = remote_tip_from_listing(&listing, "refs/heads/main")
+                .expect_err("a tip that is not an object id must be refused");
+            assert!(
+                !error.chars().any(char::is_control),
+                "the refusal must not repeat the remote's bytes: {error:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_full_object_id_for_the_exact_ref_is_returned() {
+        let sha256 = "a".repeat(64);
+        for oid in [OID, sha256.as_str()] {
+            let listing = format!("{oid}\trefs/heads/feature/main\n{oid}\trefs/heads/main\n");
+            assert_eq!(
+                remote_tip_from_listing(&listing, "refs/heads/main"),
+                Ok(Some(oid.to_string()))
+            );
+        }
+        let decoy = format!("{OID}\trefs/heads/feature/main\n");
+        assert_eq!(remote_tip_from_listing(&decoy, "refs/heads/main"), Ok(None));
     }
 }

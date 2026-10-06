@@ -12,6 +12,51 @@ The `[Unreleased]` heading is rolled forward manually before each release; do no
 ## [0.2.7] - 2026-10-05
 
 ### Security
+Second-pass review; details and limits in the
+[review](docs/security-review-2026-10-05.md) (F23–F44).
+
+- Shell wrappers (`env`, `sudo`, `nice`, `timeout`, `xargs`, …): an option the
+  wrapper table does not name now makes the invocation opaque instead of being
+  skipped as a flag, which had let an abbreviated or unlisted value-taking
+  option hand its value to the gates as the command. Attached unknown options
+  also fail closed. `flock -c`, `coproc`,
+  `busybox`, `caffeinate` and four more launchers are handled.
+- A command word the shell computes is refused or resolved: backslash-newline
+  inside a word (including repeated continuations), a pathname pattern or
+  brace expansion as the command, `hash -p`,
+  `alias NAME=VALUE`, `enable -f`, `trap ACTION`, and `sh -h`/`-V`.
+- Git recognition: `--attr-source`/`--shallow-file` values no longer hide a
+  push; `agent-guard push` is itself an outbound push. Read-only Git
+  subcommands refuse `--output`, `grep -O`, `ls-remote --upload-pack`,
+  `--ext-diff`, `--textconv` and `--filters`, including one-letter prefixes and
+  paired negations that re-enable helpers. Harmless complete options such as
+  `diff --text` and `rev-list --filter` remain subcommand-specific exceptions.
+- HTTP: a request needs an absolute `http`/`https` URL; rules also match its
+  canonical spellings (case, numeric and IPv6-embedded IPv4, userinfo,
+  percent-encoded letters); a `Host` header must name the URL's host; read-only
+  allows only `GET`/`HEAD`/`OPTIONS`. The outbound preset covers `127.0.0.0/8`,
+  `[::1]` and `169.254.0.0/16`.
+- Path rules: a wildcard inside a file name matches (`.env*`,
+  `/var/log/app-*.log`); `deny_paths` ignore case on macOS and Windows and are
+  matched against the requested name as well as the resolved file.
+  **Behaviour change:** the pattern fix applies to `allow_paths` too.
+- Workspace-write confinement covers `unzip -d`, `rsync`/`scp`, `curl -o`,
+  `wget -O/-P`, `sort -o`, `git worktree add`/`clone`/`init`/`--output` and
+  `find -delete`/`-fprint`. Attached short-option values cannot swallow a copy
+  destination as another flag operand.
+- A policy whose signature fails no longer supplies the audit destination or
+  decides the input-content check; a failed reload is recorded as a failure.
+- Approval prompts, `agent-guard list`/`show`, the hook reason and Git error
+  text escape control, invisible and bidirectional characters. The broker
+  accepts only an object id as a remote tip.
+- Commands using the shared runner get null standard input. The macOS Seatbelt
+  profile grants workspace writes only in a mode that permits them
+  (here-documents therefore do not run in read-only mode on macOS). WriteFile
+  refuses a FIFO or device instead of waiting on it.
+- `tools.custom` rejects a repeated key and a key no custom tool id can equal.
+- Plugin installer writes the audit path as a JSON string; a Windows path no
+  longer produces a policy the hook cannot parse and therefore approves under.
+
 - Broker CLI confirmation now reloads the policy and refuses changed or unreadable
   policy files before issuing a push grant. Pending SDK approvals recheck the
   current subject's Deny Fuse and rate limit without counting the request twice.

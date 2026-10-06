@@ -49,8 +49,12 @@ mod macos_tests {
     }
 
     fn ctx() -> SandboxContext {
+        ctx_with_mode(PolicyMode::WorkspaceWrite)
+    }
+
+    fn ctx_with_mode(mode: PolicyMode) -> SandboxContext {
         SandboxContext {
-            mode: PolicyMode::ReadOnly,
+            mode,
             working_directory: workspace_dir(),
             timeout_ms: Some(5_000),
         }
@@ -228,6 +232,95 @@ mod macos_tests {
         assert_eq!(
             std::fs::read_to_string(&target).expect("read outside target"),
             "original"
+        );
+    }
+
+    /// Read-only is a statement about writes, and the workspace is where an
+    /// agent's writes land. The profile used to grant workspace writes in
+    /// every mode, so under read-only the OS layer stopped nothing the
+    /// classifier had missed.
+    #[test]
+    fn m5_read_only_mode_blocks_workspace_writes() {
+        let sandbox = SeatbeltSandbox;
+        if !seatbelt_available(&sandbox) {
+            return;
+        }
+        let temp = tempfile::tempdir().expect("isolated workspace");
+        let workspace = temp.path().canonicalize().expect("workspace");
+        let context = |mode| SandboxContext {
+            mode,
+            working_directory: workspace.clone(),
+            timeout_ms: Some(5_000),
+        };
+
+        for mode in [PolicyMode::ReadOnly, PolicyMode::Blocked] {
+            let target = workspace.join(format!("seatbelt_{mode:?}_write.txt"));
+            let cmd = format!("echo denied > {}", target.display());
+            let output = sandbox
+                .execute(&cmd, &context(mode.clone()))
+                .expect("Seatbelt execution");
+            assert_ne!(
+                output.exit_code, 0,
+                "{mode:?} must not write the workspace: {output:?}"
+            );
+            assert!(!target.exists(), "{mode:?} created a workspace file");
+        }
+
+        // Reading, and discarding output, still work.
+        let output = sandbox
+            .execute(
+                "ls / > /dev/null && echo readable",
+                &context(PolicyMode::ReadOnly),
+            )
+            .expect("Seatbelt execution");
+        assert_eq!(output.exit_code, 0, "{output:?}");
+        assert_eq!(output.stdout.trim(), "readable");
+    }
+
+    /// The cost of read-only meaning read-only, stated as a test so it is not
+    /// rediscovered: macOS `sh` (bash 3.2) writes a here-document to a
+    /// temporary file, and with no system temporary directory writable it
+    /// uses the working directory. That write is refused like any other, so
+    /// `cmd <<EOF` fails in read-only mode and leaves nothing behind. The same
+    /// command works in workspace-write mode.
+    #[test]
+    fn m6_read_only_refuses_the_here_document_temp_file_too() {
+        let sandbox = SeatbeltSandbox;
+        if !seatbelt_available(&sandbox) {
+            return;
+        }
+        let temp = tempfile::tempdir().expect("isolated workspace");
+        let workspace = temp.path().canonicalize().expect("workspace");
+        let context = |mode| SandboxContext {
+            mode,
+            working_directory: workspace.clone(),
+            timeout_ms: Some(5_000),
+        };
+        let command = "cat <<EOF\nheredoc-body\nEOF";
+        let listing = || {
+            let mut names: Vec<_> = std::fs::read_dir(&workspace)
+                .expect("list workspace")
+                .map(|entry| entry.expect("entry").file_name())
+                .collect();
+            names.sort();
+            names
+        };
+
+        let writable = sandbox
+            .execute(command, &context(PolicyMode::WorkspaceWrite))
+            .expect("Seatbelt execution");
+        assert_eq!(writable.exit_code, 0, "{writable:?}");
+        assert_eq!(writable.stdout.trim(), "heredoc-body");
+
+        let before = listing();
+        let read_only = sandbox
+            .execute(command, &context(PolicyMode::ReadOnly))
+            .expect("Seatbelt execution");
+        assert_ne!(read_only.exit_code, 0, "{read_only:?}");
+        assert_eq!(
+            before,
+            listing(),
+            "read-only left something in the workspace"
         );
     }
 }

@@ -240,8 +240,14 @@ impl Walk {
 /// Collect the argv of a `command` node: its name plus its argument words,
 /// skipping the redirections and assignment prefixes that the grammar models
 /// as separate children.
+///
+/// The shell deletes a backslash-newline pair before it reads words, so
+/// `tou\⏎ch` is the one word `touch`. The grammar reads the pair as blank
+/// space and yields two words. Two words with nothing else between them are
+/// therefore joined back into the word the shell would run.
 fn argv_of(node: Node, src: &str) -> Vec<String> {
-    let mut argv = Vec::new();
+    let mut argv: Vec<String> = Vec::new();
+    let mut previous_word_end = None;
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
         if !child.is_named() {
@@ -250,16 +256,47 @@ fn argv_of(node: Node, src: &str) -> Vec<String> {
         match child.kind() {
             // Redirections name files, not arguments; the path gate reads
             // them separately.
-            "file_redirect" | "heredoc_redirect" => continue,
+            "file_redirect" | "heredoc_redirect" |
             // `FOO=bar cmd` — the assignment is a prefix, not the command.
-            "variable_assignment" => continue,
+            "variable_assignment" => {
+                previous_word_end = None;
+                continue;
+            }
             _ => {}
         }
         if let Ok(text) = child.utf8_text(src.as_bytes()) {
-            argv.push(word_value(text));
+            let value = word_value(text);
+            let continues_previous = previous_word_end.is_some_and(|end| {
+                src.get(end..child.start_byte())
+                    .is_some_and(is_line_continuation_gap)
+            });
+            match argv.last_mut() {
+                Some(previous) if continues_previous => previous.push_str(&value),
+                _ => argv.push(value),
+            }
+            previous_word_end = Some(child.end_byte());
         }
     }
     argv
+}
+
+/// One or more continuations are deleted before shell word splitting. Any
+/// actual whitespace left in the gap must still separate the words.
+fn is_line_continuation_gap(mut gap: &str) -> bool {
+    if gap.is_empty() {
+        return false;
+    }
+    while !gap.is_empty() {
+        if let Some(rest) = gap
+            .strip_prefix("\\\n")
+            .or_else(|| gap.strip_prefix("\\\r\n"))
+        {
+            gap = rest;
+        } else {
+            return false;
+        }
+    }
+    true
 }
 
 /// One write to the shell environment that a later or child command can see.

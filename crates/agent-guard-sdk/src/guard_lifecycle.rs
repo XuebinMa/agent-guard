@@ -105,6 +105,7 @@ impl Guard {
         self.state.rcu(|current| {
             let mut new_state = (**current).clone();
             new_state.audit_sink = sink.clone();
+            new_state.audit_sink_named_by_host = true;
             new_state
         });
     }
@@ -157,6 +158,9 @@ impl Guard {
         policy_verification: PolicyVerification,
     ) -> Result<(), GuardInitError> {
         let new_version = engine.version().to_string();
+        let verification_error = policy_verification
+            .should_fail_closed()
+            .then(|| policy_verification.error.clone().unwrap_or_default());
         let base_state = match GuardState::new(Arc::new(engine), policy_verification) {
             Ok(state) => state,
             Err(error) => {
@@ -181,12 +185,42 @@ impl Guard {
             new_state.anomaly_detector = current.anomaly_detector.clone();
             new_state.signing_key = current.signing_key.clone();
             new_state.metrics = current.metrics.clone();
-            new_state.audit_sink = current.audit_sink.clone();
+            // The host's own sink survives a reload. The Guard's default is
+            // chosen again by the new state, except that an unverified
+            // replacement keeps recording where the current policy does.
+            if current.audit_sink_named_by_host || verification_error.is_some() {
+                new_state.audit_sink = current.audit_sink.clone();
+                new_state.audit_sink_named_by_host = current.audit_sink_named_by_host;
+            }
             new_state.execution_timeout_ms = current.execution_timeout_ms;
+            // An unverified replacement keeps the audit destination that was
+            // in force, so the refusals it causes land where the previous
+            // policy's records did.
+            if verification_error.is_some() {
+                new_state.audit_cfg = current.audit_cfg.clone();
+                new_state.audit_file_writer = current.audit_file_writer.clone();
+                new_state.siem_exporter = current.siem_exporter.clone();
+            }
             new_state
         });
 
-        let event = ReloadEvent::success(old_state.engine.version().to_string(), new_version);
+        // The snapshot was replaced either way; what it was replaced with
+        // differs. A policy that failed verification is recorded as a failed
+        // reload that names it, not as a successful one.
+        let old_version = old_state.engine.version().to_string();
+        let event = match verification_error {
+            Some(error) => ReloadEvent {
+                new_version: Some(new_version),
+                ..ReloadEvent::failure(
+                    old_version,
+                    format!(
+                        "policy signature verification failed ({error}); every call is denied \
+                         until a verified policy is loaded"
+                    ),
+                )
+            },
+            None => ReloadEvent::success(old_version, new_version),
+        };
         self.write_reload_audit(&event, &old_state);
 
         Ok(())

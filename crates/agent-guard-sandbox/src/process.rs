@@ -59,11 +59,17 @@ pub(crate) struct CapturedChild {
 /// before their policy is installed, so carrying ambient descriptors into the
 /// executed shell would bypass the claimed filesystem boundary.
 ///
+/// Standard input is the null device. The host's own input — the protocol
+/// stream, under a stdio server — is neither readable by the executed command
+/// nor consumable by it.
+///
 /// Multiple `pre_exec` callbacks are supported, so a backend may add its
 /// seccomp/Landlock setup after this callback.
 #[cfg(unix)]
 pub(crate) fn configure_process_group(command: &mut Command) {
     use std::os::unix::process::CommandExt;
+
+    command.stdin(std::process::Stdio::null());
 
     // SAFETY: this callback only invokes async-signal-safe system interfaces
     // and touches stack/captured scalar state. A failure aborts spawning
@@ -79,7 +85,9 @@ pub(crate) fn configure_process_group(command: &mut Command) {
 }
 
 #[cfg(not(unix))]
-pub(crate) fn configure_process_group(_command: &mut Command) {}
+pub(crate) fn configure_process_group(command: &mut Command) {
+    command.stdin(std::process::Stdio::null());
+}
 
 #[cfg(target_os = "linux")]
 fn mark_non_stdio_descriptors_close_on_exec() -> io::Result<()> {
@@ -680,6 +688,53 @@ mod tests {
         assert_eq!(
             std::fs::read_to_string(&sentinel).expect("read sentinel"),
             ""
+        );
+    }
+
+    #[test]
+    fn host_stdin_child_observer() {
+        if std::env::var_os("AGENT_GUARD_TEST_HOST_STDIN").is_none() {
+            return;
+        }
+        // `cat` copies whatever its standard input holds, then exits at EOF.
+        let output = wait_for_child(spawn("cat"), Some(5_000)).expect("capture cat");
+        println!("CHILD-READ:{}", output.stdout);
+    }
+
+    /// The host's standard input is the host's: under an MCP stdio server it
+    /// is the protocol stream. An executed command must not be able to read
+    /// from it or consume it.
+    #[test]
+    fn the_executed_command_does_not_read_the_hosts_standard_input() {
+        use std::io::Write;
+
+        let mut host = std::process::Command::new(std::env::current_exe().unwrap())
+            .args([
+                "--exact",
+                "process::tests::host_stdin_child_observer",
+                "--nocapture",
+            ])
+            .env("AGENT_GUARD_TEST_HOST_STDIN", "1")
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .expect("spawn host stand-in");
+        host.stdin
+            .take()
+            .expect("host stdin")
+            .write_all(b"host-only-marker\n")
+            .expect("write host stdin");
+        let output = host.wait_with_output().expect("host stand-in exits");
+        let stdout = String::from_utf8_lossy(&output.stdout);
+
+        assert!(
+            stdout.contains("CHILD-READ:"),
+            "the observer must have run: {stdout}"
+        );
+        assert!(
+            !stdout.contains("host-only-marker"),
+            "the executed command read the host's standard input: {stdout}"
         );
     }
 

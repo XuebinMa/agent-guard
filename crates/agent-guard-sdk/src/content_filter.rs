@@ -180,6 +180,16 @@ impl ContentCheckOutcome {
             labels: Vec::new(),
         }
     }
+
+    /// The policy's signature failed, so no input is forwarded on its say-so.
+    /// The label says why, since nothing was scanned.
+    pub(crate) fn unverified_policy() -> Self {
+        Self {
+            blocked: true,
+            masked_text: None,
+            labels: vec!["policy verification failed".to_string()],
+        }
+    }
 }
 
 /// Outcome of applying the top-level `input_content:` policy to host-supplied

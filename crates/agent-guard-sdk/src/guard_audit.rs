@@ -23,6 +23,14 @@ pub(crate) fn stdout_audit_sink() -> AuditSink {
     Arc::new(std::sync::Mutex::new(Box::new(std::io::stdout())))
 }
 
+/// Where a Guard built from a policy that failed verification records its
+/// refusals until the host names a sink. Not stdout: a host whose policy
+/// keeps audit off stdout because stdout is its protocol channel must not
+/// find JSON lines there on the day that policy is tampered with.
+pub(crate) fn stderr_audit_sink() -> AuditSink {
+    Arc::new(std::sync::Mutex::new(Box::new(std::io::stderr())))
+}
+
 /// Write one audit line to the sink. An unwritable sink must not panic or
 /// abort the decision path; the failure is surfaced via tracing and the
 /// SIEM export remains the durable channel.

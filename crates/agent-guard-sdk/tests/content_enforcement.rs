@@ -276,3 +276,45 @@ audit:
         "content finding must reach the configured local audit sink"
     );
 }
+
+/// A policy whose signature failed decides nothing. Every tool call is
+/// denied; the input check used to be the one entry point that still asked
+/// the unverified policy, so removing its `input_content` block let a prompt
+/// carrying a secret through.
+#[test]
+fn input_check_fails_closed_under_a_policy_whose_signature_failed() {
+    let key = ed25519_dalek::SigningKey::from_bytes(&[7u8; 32]);
+    let public_key = hex::encode(key.verifying_key().to_bytes());
+    let signature = agent_guard_sdk::sign_policy(INPUT_BLOCK_POLICY, &key);
+
+    let verified = Guard::from_signed_yaml(INPUT_BLOCK_POLICY, &public_key, &signature)
+        .expect("verified guard");
+    assert!(
+        verified
+            .check_content(SECRET_PROMPT, &Context::default())
+            .blocked
+    );
+    assert!(
+        !verified
+            .check_content("What is the capital of France?", &Context::default())
+            .blocked
+    );
+
+    for tampered in [
+        // The block removed, and the block downgraded.
+        "version: 1\ndefault_mode: workspace_write\n",
+        INPUT_WARN_POLICY,
+    ] {
+        let guard = Guard::from_signed_yaml(tampered, &public_key, &signature)
+            .expect("an unverified policy still constructs a Guard that denies");
+        guard.set_audit_sink(Box::new(std::io::sink()));
+        for text in [SECRET_PROMPT, "What is the capital of France?"] {
+            let outcome = guard.check_content(text, &Context::default());
+            assert!(
+                outcome.blocked,
+                "an unverified policy decided an input check: {outcome:?}"
+            );
+            assert!(outcome.masked_text.is_none());
+        }
+    }
+}

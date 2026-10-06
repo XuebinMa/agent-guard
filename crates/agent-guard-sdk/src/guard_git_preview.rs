@@ -7,7 +7,7 @@
 
 use std::path::{Path, PathBuf};
 
-use agent_guard_core::{Context, GuardDecision};
+use agent_guard_core::{display_safe, Context, GuardDecision};
 use agent_guard_validators::bash::{GitPushDetection, GitPushIntent};
 
 fn git_effective_working_directory(
@@ -132,8 +132,11 @@ fn summarize_intents(intents: &[GitPushIntent]) -> String {
 
     let mut sentence = format!("Approve {}", first.command);
 
+    // The remote and refspec are the agent's own words. They are restated so
+    // a person can decide, so they are escaped: raw, a carriage return or a
+    // bidirectional override would change the sentence being decided on.
     if let Some(remote) = &first.remote {
-        sentence.push_str(&format!(" to {remote}"));
+        sentence.push_str(&format!(" to {}", display_safe(remote)));
     } else {
         // The command names no remote, so git would use its configured
         // default. Saying which one that is would require reading the
@@ -144,7 +147,7 @@ fn summarize_intents(intents: &[GitPushIntent]) -> String {
 
     match first.refspecs.as_slice() {
         [] => sentence.push_str(", current branch"),
-        [one] => sentence.push_str(&format!(", {one}")),
+        [one] => sentence.push_str(&format!(", {}", display_safe(one))),
         many => sentence.push_str(&format!(", {} refspecs", many.len())),
     }
 

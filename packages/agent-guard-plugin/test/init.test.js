@@ -136,6 +136,28 @@ test('policyWithFileAudit leaves a non-stdout preset unchanged', () => {
   assert.equal(policyWithFileAudit(preset, '/whatever'), preset);
 });
 
+// A policy the hook cannot parse is a hook that approves everything: it fails
+// open by design. So the one value the installer writes into the policy has
+// to survive YAML's double-quoted escapes, where `\U` is an eight-digit
+// escape and a Windows home directory starts with exactly that.
+test('policyWithFileAudit writes a path YAML reads back unchanged', () => {
+  const preset = 'audit:\n  enabled: true\n  output: stdout\n';
+  for (const auditPath of [
+    'C:\\Users\\alice\\.claude\\agent-guard\\audit.jsonl',
+    '/home/a"b/.claude/agent-guard/audit.jsonl',
+    '/home/a$&b/$1/audit.jsonl',
+    '/home/tab\there/audit.jsonl',
+  ]) {
+    const out = policyWithFileAudit(preset, auditPath);
+    const line = out.split('\n').find((l) => l.includes('file_path:'));
+    assert.ok(line, `no file_path line for ${auditPath}`);
+    // A JSON string is a valid YAML double-quoted scalar with the same value.
+    const scalar = line.slice(line.indexOf('file_path:') + 'file_path:'.length).trim();
+    assert.equal(JSON.parse(scalar), auditPath);
+    assert.equal(out.split('\n').length, preset.split('\n').length + 1);
+  }
+});
+
 test('bundled policy asset stays byte-identical to the repo outbound preset (no drift)', () => {
   const bundled = path.join(__dirname, '..', 'assets', 'coding-agent-outbound.yaml');
   const source = path.join(__dirname, '..', '..', '..', 'presets', 'coding-agent-outbound.yaml');

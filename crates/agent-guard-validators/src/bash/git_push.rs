@@ -147,7 +147,10 @@ fn git_push_intents_at_depth(
         };
         for argument_index in 1..argv.len() {
             let candidate = command_name(&argv[argument_index]);
-            if !matches!(candidate, "git" | "git-push" | "git-send-pack") {
+            if !matches!(
+                candidate,
+                "git" | "git-push" | "git-send-pack" | "agent-guard"
+            ) {
                 continue;
             }
             let mut candidates = parse_git_push(&argv[argument_index..], inherited, depth);
@@ -309,6 +312,9 @@ fn parse_git_push(argv: &[String], inherited: &[ConfigEntry], depth: usize) -> V
         let intent = parse_send_pack_args(&argv[1..], Vec::new(), None, None);
         return vec![apply_push_config(intent, inherited)];
     }
+    if executable == "agent-guard" {
+        return parse_broker_push(&argv[1..]).into_iter().collect();
+    }
     if executable != "git" {
         return Vec::new();
     }
@@ -317,6 +323,7 @@ fn parse_git_push(argv: &[String], inherited: &[ConfigEntry], depth: usize) -> V
     let mut directory_changes = Vec::new();
     let mut git_dir = None;
     let mut work_tree = None;
+    let mut unmodeled_switch = false;
     let mut index = 1;
     while index < argv.len() {
         let token = argv[index].as_str();
@@ -367,7 +374,10 @@ fn parse_git_push(argv: &[String], inherited: &[ConfigEntry], depth: usize) -> V
             continue;
         }
 
-        if matches!(token, "-c" | "--config-env" | "--namespace") {
+        if matches!(
+            token,
+            "-c" | "--config-env" | "--namespace" | "--attr-source" | "--shallow-file"
+        ) {
             let Some(value) = argv.get(index + 1) else {
                 return Vec::new();
             };
@@ -409,12 +419,40 @@ fn parse_git_push(argv: &[String], inherited: &[ConfigEntry], depth: usize) -> V
         }
 
         if token.starts_with('-') {
-            // Remaining global switches are boolean. Unknown switches make Git
-            // fail, but skipping them keeps a later literal `push` visible.
+            // Known boolean switches are skipped. A switch this module does
+            // not know may be one a newer Git gives a separate value to, so
+            // the word after it is not necessarily the subcommand.
+            unmodeled_switch |= !is_boolean_global_switch(token);
             index += 1;
             continue;
         }
         break;
+    }
+
+    // `git --new-option VALUE push …`: reading VALUE as the subcommand would
+    // lose the push. Keep it as an unverified candidate instead.
+    if unmodeled_switch
+        && matches!(
+            argv.get(index + 1).map(String::as_str),
+            Some("push" | "send-pack")
+        )
+        && !matches!(
+            argv.get(index).map(String::as_str),
+            Some("push" | "send-pack")
+        )
+    {
+        let mut candidate = vec![argv[0].clone()];
+        candidate.extend_from_slice(&argv[index + 1..]);
+        return parse_git_push(&candidate, &config, depth)
+            .into_iter()
+            .map(|mut intent| {
+                intent.detection = GitPushDetection::EmbeddedArgv {
+                    outer_command: "git".to_string(),
+                    argument_index: index + 1,
+                };
+                intent
+            })
+            .collect();
     }
 
     match argv.get(index).map(String::as_str) {
@@ -435,6 +473,91 @@ fn parse_git_push(argv: &[String], inherited: &[ConfigEntry], depth: usize) -> V
         Some(subcommand) => expand_alias(argv, index, subcommand, &config, depth),
         None => Vec::new(),
     }
+}
+
+/// `GitPushIntent::command` for the broker's own `agent-guard push`.
+pub const BROKER_PUSH_COMMAND: &str = "agent-guard push";
+
+/// Recognize `agent-guard push`, which performs the push itself.
+///
+/// Its confirmation is skipped by `--yes` or answered by piped input, so a
+/// caller that can run it reaches the remote without the decision a plain
+/// `git push` would get. It is classified as the ordinary push it performs;
+/// the broker refuses every destructive shape.
+fn parse_broker_push(args: &[String]) -> Option<GitPushIntent> {
+    // The CLI's own default when `--remote` is absent.
+    let mut remote = "origin".to_string();
+    let mut branch = None;
+    let mut repo = None;
+    let mut is_push = false;
+    let mut iter = args.iter();
+    while let Some(token) = iter.next() {
+        let (name, attached) = match token.split_once('=') {
+            Some((name, value)) if name.starts_with("--") => (name, Some(value.to_string())),
+            _ => (token.as_str(), None),
+        };
+        match name {
+            "push" if !is_push => is_push = true,
+            "--ledger" | "--policy" | "--grants" | "--git-config" | "--receipt" | "--remote"
+            | "--branch" | "--repo" => {
+                let value = attached.or_else(|| iter.next().cloned());
+                match name {
+                    "--remote" => remote = value?,
+                    "--branch" => branch = value,
+                    "--repo" => repo = value,
+                    _ => {}
+                }
+            }
+            _ if name.starts_with('-') => {}
+            // Another subcommand (`list`, `approve`, …) is not a push.
+            _ if !is_push => return None,
+            _ => {}
+        }
+    }
+    is_push.then(|| GitPushIntent {
+        command: BROKER_PUSH_COMMAND,
+        directory_changes: repo.into_iter().collect(),
+        git_dir: None,
+        work_tree: None,
+        remote: Some(remote),
+        refspecs: branch.into_iter().collect(),
+        force: false,
+        force_with_lease: false,
+        force_if_includes: false,
+        mirror: false,
+        delete: false,
+        detection: GitPushDetection::ModeledExecution,
+    })
+}
+
+/// Git's global switches that take no value, as of Git 2.49. Value-taking
+/// ones are consumed where they are parsed; anything absent from both is
+/// treated as possibly value-taking.
+fn is_boolean_global_switch(token: &str) -> bool {
+    matches!(
+        token,
+        "-v" | "--version"
+            | "-h"
+            | "--help"
+            | "--html-path"
+            | "--man-path"
+            | "--info-path"
+            | "-p"
+            | "--paginate"
+            | "-P"
+            | "--no-pager"
+            | "--no-replace-objects"
+            | "--no-lazy-fetch"
+            | "--no-optional-locks"
+            | "--no-advice"
+            | "--bare"
+            | "--literal-pathspecs"
+            | "--glob-pathspecs"
+            | "--noglob-pathspecs"
+            | "--icase-pathspecs"
+    ) || token.starts_with("--list-cmds=")
+        || token.starts_with("--attr-source=")
+        || token.starts_with("--super-prefix=")
 }
 
 /// Follow a command-line alias (`git -c alias.p=push p`) to what it runs.

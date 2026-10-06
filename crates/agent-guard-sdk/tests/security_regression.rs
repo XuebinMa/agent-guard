@@ -118,12 +118,16 @@ fn assert_deny_with_code(d: &GuardDecision, expected: DecisionCode) {
 }
 
 fn invalid_signed_guard() -> Guard {
-    Guard::from_signed_yaml(
+    let guard = Guard::from_signed_yaml(
         "version: 1\ndefault_mode: full_access\naudit:\n  enabled: false\nanomaly:\n  enabled: false\n",
         "0000000000000000000000000000000000000000000000000000000000000001",
         "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
     )
-    .expect("a syntactically valid policy with an invalid signature still constructs a fail-closed guard")
+    .expect("a syntactically valid policy with an invalid signature still constructs a fail-closed guard");
+    // Its refusals are recorded whatever the unverified policy says; keep
+    // them out of the test output.
+    guard.set_audit_sink(Box::new(std::io::sink()));
+    guard
 }
 
 fn signed_policy_probe_input() -> GuardInput {
@@ -1256,4 +1260,1032 @@ fn sec36_sed_in_place_targets_are_confined_and_read_only_is_preserved() {
         ),
         GuardDecision::Allow
     ));
+}
+
+// ─── Second-pass review (2026-10-05) ────────────────────────────────────────
+
+fn bash_decision(g: &Guard, command: &str) -> GuardDecision {
+    let payload = serde_json::json!({ "command": command }).to_string();
+    g.check_tool(
+        Tool::Bash,
+        &payload,
+        ctx_workspace(std::path::Path::new("/workspace")),
+    )
+}
+
+fn assert_bash_asks(g: &Guard, command: &str) -> String {
+    match bash_decision(g, command) {
+        GuardDecision::AskUser { message, .. } => message,
+        other => panic!("shell payload must reach approval: `{command}`, got {other:?}"),
+    }
+}
+
+fn assert_bash_allowed(g: &Guard, command: &str) {
+    let decision = bash_decision(g, command);
+    assert!(
+        matches!(decision, GuardDecision::Allow),
+        "shell payload must stay allowed: `{command}`, got {decision:?}"
+    );
+}
+
+// ─── 41. A Git global option's value cannot hide the subcommand ────────────
+
+/// `--attr-source <tree>` and `--shallow-file <path>` take a separate value.
+/// Reading that value as the subcommand lost the push entirely, so a force
+/// push was allowed with no decision at all.
+#[test]
+fn sec41_git_global_option_values_cannot_hide_an_outbound_push() {
+    let g = Guard::from_yaml(DESTRUCTIVE_PUSH_POLICY).expect("guard init");
+    for command in [
+        "git --attr-source HEAD push --force origin main",
+        "git --shallow-file /dev/null push --force origin main",
+        "git --attr-source HEAD send-pack --force origin main",
+        // An option newer than this recognizer may take a value too.
+        "git --future-option value push --force origin main",
+    ] {
+        assert_bash_denied(&g, command);
+    }
+    for command in [
+        "git --attr-source HEAD push origin main",
+        "git --shallow-file /dev/null push origin main",
+        "git --attr-source=HEAD push origin main",
+    ] {
+        assert_bash_asks(&g, command);
+    }
+    for command in [
+        "git --attr-source HEAD status",
+        "git --attr-source HEAD log push",
+        "git --no-pager log push",
+    ] {
+        assert_bash_allowed(&g, command);
+    }
+}
+
+// ─── 42. The broker's own CLI is an outbound push ──────────────────────────
+
+/// `agent-guard push` performs the push itself, and `--yes` or piped input
+/// skips its confirmation. Unrecognized, it was a spelling of `git push` that
+/// no outbound rule matched — and the one the hook's own hint teaches.
+#[test]
+fn sec42_the_broker_cli_reaches_the_same_outbound_decision_as_git_push() {
+    let g = Guard::from_yaml(DESTRUCTIVE_PUSH_POLICY).expect("guard init");
+    for command in [
+        "agent-guard push --remote origin --branch main",
+        "agent-guard push --remote origin --branch main --yes",
+        "echo y | agent-guard push --remote=origin --branch=main",
+        "/usr/local/bin/agent-guard push --branch main --yes",
+        "agent-guard --ledger /workspace/approvals.jsonl push --branch main",
+        "env agent-guard push --branch main",
+        "unknown-wrapper agent-guard push --branch main --yes",
+    ] {
+        let prompt = assert_bash_asks(&g, command);
+        assert!(
+            prompt.contains("origin") && prompt.contains("main"),
+            "the prompt must name the destination: `{command}` -> {prompt}"
+        );
+    }
+    for command in ["agent-guard list", "agent-guard show req-1"] {
+        assert_bash_allowed(&g, command);
+    }
+}
+
+// ─── 43. Common download/extract/copy sinks are write targets ──────────────
+
+#[test]
+fn sec43_archive_sync_download_and_git_checkout_destinations_are_confined() {
+    let g = guard();
+    for command in [
+        "unzip archive.zip -d /outside/dir",
+        "unzip -d /outside/dir archive.zip",
+        "unzip -qd/outside/dir archive.zip",
+        "rsync -a src/ /outside/dir/",
+        "scp notes.txt /outside/notes.txt",
+        "git worktree add /outside/tree",
+        "git worktree add -b topic /outside/tree main",
+        "git -C sub worktree add ../../outside/tree",
+        "git clone https://example.invalid/r.git /outside/dir",
+        "git init /outside/dir",
+        "git log --output=/outside/log.txt",
+        "git -C /outside diff --output patch.diff",
+        "git archive -o /outside/tree.tar HEAD",
+        "git archive --output=/outside/tree.tar HEAD",
+        "curl -o /outside/file https://example.invalid/x",
+        "curl -sSLo /outside/file https://example.invalid/x",
+        "curl --output=/outside/file https://example.invalid/x",
+        "curl --output-dir /outside -O https://example.invalid/x",
+        "wget -O /outside/file https://example.invalid/x",
+        "wget --output-document=/outside/file https://example.invalid/x",
+        "wget -P /outside/dir https://example.invalid/x",
+        "sort -o /outside/file input.txt",
+        "sort --output=/outside/file input.txt",
+    ] {
+        assert_bash_denied(&g, command);
+    }
+    for command in [
+        "unzip archive.zip -d /workspace/dir",
+        "unzip archive.zip",
+        "rsync -a src/ /workspace/dir/",
+        "rsync -a src/ backup@host.invalid:dir/",
+        "git worktree add /workspace/tree",
+        "git worktree list",
+        "git log --output=/workspace/log.txt",
+        "git clone https://example.invalid/r.git",
+        "git clone https://example.invalid/r.git vendor/r",
+        "curl -o /workspace/file https://example.invalid/x",
+        "curl https://example.invalid/x",
+        "wget -O /workspace/file https://example.invalid/x",
+        "sort -o /workspace/file input.txt",
+        "sort -n input.txt",
+    ] {
+        assert_bash_allowed(&g, command);
+    }
+}
+
+// ─── 44. Agent-chosen text cannot rewrite the approval prompt ──────────────
+
+/// The remote and refspec come from the agent's command and are restated in
+/// the sentence a person approves. A carriage return, an escape sequence or a
+/// bidirectional override there changes what that person sees without
+/// changing what would run.
+#[test]
+fn sec44_control_and_bidi_characters_never_reach_the_approval_prompt() {
+    let g = Guard::from_yaml(DESTRUCTIVE_PUSH_POLICY).expect("guard init");
+    for command in [
+        "git push 'ssh://example.invalid/repo\u{1b}[2K\rorigin' main",
+        "git push 'ssh://example.invalid/repo\nApprove nothing' main",
+        "git push origin 'main\u{202e}niam'",
+        "git push origin 'main\u{200b}'",
+    ] {
+        let prompt = assert_bash_asks(&g, command);
+        assert!(
+            !prompt
+                .chars()
+                .any(|ch| ch.is_control() || matches!(ch, '\u{202e}' | '\u{200b}')),
+            "the prompt must show such characters, not emit them: {prompt:?}"
+        );
+        assert!(
+            prompt.contains("\\u{"),
+            "the character must stay visible as an escape: {prompt:?}"
+        );
+    }
+    let prompt = assert_bash_asks(&g, "git push origin 功能/登录");
+    assert!(prompt.contains("功能/登录"), "{prompt}");
+}
+
+// ─── 45. A URL's spelling cannot step around an HTTP deny rule ─────────────
+
+fn outbound_preset_guard() -> Guard {
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../presets/coding-agent-outbound.yaml");
+    let guard = Guard::from_yaml_file(path).expect("preset loads");
+    guard.set_audit_sink(Box::new(std::io::sink()));
+    guard
+}
+
+/// The decision for one request under the shipped preset. A fresh Guard per
+/// request, so the deny fuse cannot make a later refusal pass for the wrong
+/// reason.
+fn preset_http_decision(method: &str, url: &str) -> GuardDecision {
+    let payload = serde_json::json!({ "method": method, "url": url }).to_string();
+    outbound_preset_guard().check_tool(
+        Tool::HttpRequest,
+        &payload,
+        ctx_workspace(std::path::Path::new("/workspace")),
+    )
+}
+
+/// Rules match the URL as written, and a client connects to what it parses.
+/// Scheme and host case, numeric IPv4 forms, userinfo, an IPv4 address inside
+/// an IPv6 literal, backslashes and leading whitespace all parse to the
+/// destination a rule names while not matching the rule's text.
+#[test]
+fn sec45_url_spelling_cannot_bypass_an_http_deny_rule() {
+    for url in [
+        "HTTP://169.254.169.254/latest/meta-data/",
+        "http://2852039166/latest/meta-data/",
+        "http://0xA9FEA9FE/latest/meta-data/",
+        "http://0251.0376.0251.0376/latest/meta-data/",
+        "http://[::ffff:169.254.169.254]/latest/meta-data/",
+        "http://user@169.254.169.254/latest/meta-data/",
+        " http://169.254.169.254/latest/meta-data/",
+        "http://169.254.170.2/v2/credentials",
+        "http://LOCALHOST:8080/admin",
+        "http://127.1:8080/admin",
+        "http://2130706433:8080/admin",
+        "http://127.0.0.2:8080/admin",
+        "http://[::1]:8080/admin",
+        "http:\\\\localhost:8080\\admin",
+        "http://METADATA.google.internal/computeMetadata/v1/",
+        // Not an absolute HTTP URL: a client may still resolve it.
+        "localhost:8080/admin",
+        "//localhost:8080/admin",
+        "file:///etc/hostname",
+    ] {
+        for method in ["GET", "POST"] {
+            match preset_http_decision(method, url) {
+                GuardDecision::Deny { reason } => assert!(
+                    matches!(
+                        reason.code(),
+                        DecisionCode::DeniedByRule | DecisionCode::InvalidPayload
+                    ),
+                    "{method} {url:?} must be refused for what it is: {reason:?}"
+                ),
+                other => panic!("{method} {url:?} must be denied, got {other:?}"),
+            }
+        }
+    }
+    for url in [
+        "https://example.com/",
+        "https://EXAMPLE.com/Path?q=1",
+        "https://user@example.com/",
+        "https://[2606:2800:220:1:248:1893:25c8:1946]/",
+    ] {
+        let decision = preset_http_decision("GET", url);
+        assert!(
+            matches!(decision, GuardDecision::Allow),
+            "an ordinary public URL must stay allowed: {url:?}, got {decision:?}"
+        );
+    }
+}
+
+// ─── 46. Read-only HTTP permits reads, not every verb outside a short list ──
+
+#[test]
+fn sec46_read_only_http_allows_only_safe_methods() {
+    let g = readonly_guard();
+    let decide = |method: &str| {
+        let payload =
+            serde_json::json!({ "method": method, "url": "https://example.com/x" }).to_string();
+        g.check_tool(Tool::HttpRequest, &payload, Context::default())
+    };
+    for method in [
+        "POST",
+        "PUT",
+        "PATCH",
+        "DELETE",
+        "MKCOL",
+        "COPY",
+        "MOVE",
+        "PROPPATCH",
+        "LOCK",
+        "CONNECT",
+        "TRACE",
+        "mkcol",
+    ] {
+        assert_deny_with_code(&decide(method), DecisionCode::WriteInReadOnlyMode);
+    }
+    for method in ["GET", "HEAD", "OPTIONS", "get"] {
+        let decision = decide(method);
+        assert!(
+            matches!(decision, GuardDecision::Allow),
+            "{method} is a read and must stay allowed, got {decision:?}"
+        );
+    }
+}
+
+// ─── 47. The request's Host is the URL's host ──────────────────────────────
+
+/// A rule allows or denies the URL. A `Host` header naming somewhere else is
+/// delivered to the URL's address and routed by that name, so shared front
+/// ends serve a destination the rule never saw.
+#[test]
+fn sec47_a_host_header_cannot_name_a_destination_the_url_does_not() {
+    let g = Guard::from_yaml(
+        r#"
+version: 1
+default_mode: workspace_write
+tools:
+  http_request:
+    mode: blocked
+    allow:
+      - regex: "^https://api\\.allowed\\.example/"
+audit:
+  enabled: false
+anomaly:
+  enabled: false
+"#,
+    )
+    .expect("guard init");
+    let decide = |headers: serde_json::Value| {
+        let payload = serde_json::json!({
+            "method": "POST",
+            "url": "https://api.allowed.example/v1/items",
+            "headers": headers,
+            "body": "x"
+        })
+        .to_string();
+        g.check_tool(Tool::HttpRequest, &payload, Context::default())
+    };
+    for headers in [
+        serde_json::json!({ "Host": "tenant.other.example" }),
+        serde_json::json!({ "host": "tenant.other.example" }),
+        serde_json::json!({ "HOST": "api.allowed.example.other.example" }),
+    ] {
+        let decision = decide(headers.clone());
+        assert!(
+            matches!(decision, GuardDecision::Deny { .. }),
+            "{headers} must be denied, got {decision:?}"
+        );
+    }
+    for headers in [
+        serde_json::json!({}),
+        serde_json::json!({ "Content-Type": "application/json" }),
+        serde_json::json!({ "Host": "api.allowed.example" }),
+        serde_json::json!({ "Host": "API.allowed.example:443" }),
+    ] {
+        let decision = decide(headers.clone());
+        assert!(
+            matches!(decision, GuardDecision::Allow),
+            "{headers} must stay allowed, got {decision:?}"
+        );
+    }
+}
+
+// ─── 48. A wildcard inside a file name still matches ───────────────────────
+
+fn file_decision(g: &Guard, tool: Tool, workspace: &std::path::Path, path: &str) -> GuardDecision {
+    let payload = serde_json::json!({ "path": path, "content": "x" }).to_string();
+    g.check_tool(tool, &payload, ctx_workspace(workspace))
+}
+
+/// Only the directory part of a pattern is resolved against the workspace.
+/// The literal text before the first wildcard used to be resolved whole, so
+/// `.env*` became `<workspace>/.env/*` and `/var/log/app-*.log` became
+/// `/var/log/app-/*.log`: rules that parse, load, and match nothing.
+#[test]
+fn sec48_a_wildcard_inside_a_file_name_is_not_turned_into_a_directory() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let workspace = temp.path().canonicalize().expect("workspace");
+    let outside = workspace.join("outside");
+    let policy = format!(
+        r#"
+version: 1
+default_mode: full_access
+tools:
+  read_file:
+    deny_paths:
+      - ".env*"
+      - "secrets/key*"
+      - "{outside}/app-*.log"
+  write_file:
+    allow_paths:
+      - "notes-*.md"
+      - "docs/**"
+audit:
+  enabled: false
+anomaly:
+  enabled: false
+"#,
+        outside = outside.display()
+    );
+    let g = Guard::from_yaml(&policy).expect("guard init");
+
+    for path in [
+        ".env".to_string(),
+        ".env.local".to_string(),
+        "secrets/key.pem".to_string(),
+        format!("{}/app-2026.log", outside.display()),
+    ] {
+        let decision = file_decision(&g, Tool::ReadFile, &workspace, &path);
+        assert!(
+            matches!(decision, GuardDecision::Deny { .. }),
+            "{path} matches a deny_paths rule and must be denied, got {decision:?}"
+        );
+    }
+    for path in ["src/main.rs", "secrets/readme.txt", "env.txt"] {
+        let decision = file_decision(&g, Tool::ReadFile, &workspace, path);
+        assert!(
+            matches!(decision, GuardDecision::Allow),
+            "{path} matches no deny_paths rule, got {decision:?}"
+        );
+    }
+
+    let allowed = file_decision(&g, Tool::WriteFile, &workspace, "notes-today.md");
+    assert!(matches!(allowed, GuardDecision::Allow), "{allowed:?}");
+    let allowed = file_decision(&g, Tool::WriteFile, &workspace, "docs/guide.md");
+    assert!(matches!(allowed, GuardDecision::Allow), "{allowed:?}");
+    let refused = file_decision(&g, Tool::WriteFile, &workspace, "other.md");
+    assert_deny_with_code(&refused, DecisionCode::NotInAllowList);
+}
+
+// ─── 49. Letter case cannot rename a denied file ───────────────────────────
+
+/// On macOS and Windows `.NPMRC` and `.npmrc` are one file. An existing file
+/// resolves to its stored spelling, but a file that does not exist yet keeps
+/// the spelling it was asked for — and creating it is the point of a write.
+#[test]
+fn sec49_deny_paths_ignore_case_where_the_filesystem_does() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let workspace = temp.path().canonicalize().expect("workspace");
+    let g = Guard::from_yaml(
+        r#"
+version: 1
+default_mode: workspace_write
+tools:
+  write_file:
+    deny_paths:
+      - "**/.npmrc"
+      - "**/.ssh/**"
+audit:
+  enabled: false
+anomaly:
+  enabled: false
+"#,
+    )
+    .expect("guard init");
+
+    for path in [".npmrc", ".ssh/config"] {
+        let decision = file_decision(&g, Tool::WriteFile, &workspace, path);
+        assert!(
+            matches!(decision, GuardDecision::Deny { .. }),
+            "{path}: {decision:?}"
+        );
+    }
+    for path in [".NPMRC", ".Npmrc", ".SSH/config", "sub/.NpmRc"] {
+        let decision = file_decision(&g, Tool::WriteFile, &workspace, path);
+        if cfg!(any(target_os = "macos", windows)) {
+            assert!(
+                matches!(decision, GuardDecision::Deny { .. }),
+                "{path} names a denied file on this platform, got {decision:?}"
+            );
+        } else {
+            assert!(
+                matches!(decision, GuardDecision::Allow),
+                "{path} is a different file on a case-sensitive platform, got {decision:?}"
+            );
+        }
+    }
+    let decision = file_decision(&g, Tool::WriteFile, &workspace, "README.md");
+    assert!(matches!(decision, GuardDecision::Allow), "{decision:?}");
+}
+
+// ─── 50. A policy whose signature failed configures nothing ────────────────
+
+#[derive(Clone, Default)]
+struct CapturedAudit(std::sync::Arc<std::sync::Mutex<Vec<u8>>>);
+
+impl CapturedAudit {
+    fn text(&self) -> String {
+        String::from_utf8_lossy(&self.0.lock().expect("audit buffer")).into_owned()
+    }
+}
+
+impl std::io::Write for CapturedAudit {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        self.0.lock().expect("audit buffer").extend_from_slice(buf);
+        Ok(buf.len())
+    }
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
+}
+
+/// A Guard given a policy it cannot verify denies every call. The policy's
+/// `audit` block was still applied: it could create and append to a file of
+/// its choosing, send every record to a webhook of its choosing, or switch
+/// recording off for the refusals that follow. Tampering with the policy is
+/// what a signature is there to catch, so it must not also get to decide
+/// where the evidence goes.
+#[test]
+fn sec50_an_unverified_policy_cannot_choose_or_silence_the_audit_trail() {
+    let key = ed25519_dalek::SigningKey::from_bytes(&[7u8; 32]);
+    let public_key = hex::encode(key.verifying_key().to_bytes());
+    let verified =
+        "version: 1\ndefault_mode: read_only\naudit:\n  enabled: true\n  output: stdout\n";
+    let signature = agent_guard_sdk::sign_policy(verified, &key);
+
+    // Construction: the unverified policy names a file and a local webhook.
+    let temp = tempfile::tempdir().expect("tempdir");
+    let chosen_file = temp.path().join("chosen-by-unverified-policy.jsonl");
+    let listener = std::net::TcpListener::bind(("127.0.0.1", 0)).expect("loopback listener");
+    listener.set_nonblocking(true).expect("nonblocking");
+    let tampered = format!(
+        "version: 1\ndefault_mode: full_access\naudit:\n  enabled: true\n  output: file\n  \
+         file_path: '{}'\n  webhook_url: 'http://{}/hook'\n",
+        chosen_file.display(),
+        listener.local_addr().expect("address")
+    );
+    let guard = Guard::from_signed_yaml(&tampered, &public_key, &signature)
+        .expect("an unverified policy still constructs a Guard that denies");
+    let captured = CapturedAudit::default();
+    guard.set_audit_sink(Box::new(captured.clone()));
+    assert_deny_with_code(
+        &guard.check(&signed_policy_probe_input()),
+        DecisionCode::PolicyVerificationFailed,
+    );
+    std::thread::sleep(std::time::Duration::from_millis(300));
+    drop(guard);
+    assert!(
+        !chosen_file.exists(),
+        "the unverified policy chose where a file was created"
+    );
+    assert!(
+        listener.accept().is_err(),
+        "the unverified policy chose where audit records were sent"
+    );
+    assert!(
+        captured.text().contains("POLICY_VERIFICATION_FAILED"),
+        "the refusal must be recorded at the host's own sink: {}",
+        captured.text()
+    );
+
+    // Reload: a verified Guard is handed an unverified policy that turns
+    // recording off.
+    let guard = Guard::from_signed_yaml(verified, &public_key, &signature).expect("verified guard");
+    let captured = CapturedAudit::default();
+    guard.set_audit_sink(Box::new(captured.clone()));
+    guard
+        .reload_from_signed_yaml(
+            "version: 1\ndefault_mode: full_access\naudit:\n  enabled: false\n",
+            &public_key,
+            &signature,
+        )
+        .expect("the unverified policy is installed as a Guard that denies");
+    assert_deny_with_code(
+        &guard.check(&signed_policy_probe_input()),
+        DecisionCode::PolicyVerificationFailed,
+    );
+    let recorded = captured.text();
+    assert!(
+        recorded.contains("POLICY_VERIFICATION_FAILED"),
+        "refusals after the reload must still be recorded: {recorded}"
+    );
+    assert!(
+        recorded.contains(r#""type":"policy_reload","#)
+            && recorded.contains(r#""status":"failure""#),
+        "a reload that failed verification is not a successful reload: {recorded}"
+    );
+    assert!(!recorded.contains(r#""status":"success""#), "{recorded}");
+}
+
+// ─── 51. A read-only Git subcommand's own options cannot write or execute ──
+
+/// `log`, `diff`, `show`, `grep` and `ls-remote` read. Their options do not
+/// all read: `--output` writes a file, `grep -O` opens matches in a program it
+/// is given, and `ls-remote --upload-pack` names the program to run for a
+/// local repository. Allowing the subcommand allowed these with it.
+#[test]
+fn sec51_read_only_git_subcommands_cannot_write_or_execute_through_options() {
+    let g = readonly_guard();
+    for command in [
+        "git log --output=/workspace/out.txt",
+        "git diff --output=out.txt",
+        "git show --output out.txt HEAD",
+        "git -C /workspace/repo diff-tree --output=out.txt HEAD",
+        "git grep -Oless pattern",
+        "git grep -O pattern",
+        "git grep --open-files-in-pager=less pattern",
+        "git grep --open pattern",
+        "git grep -nOless pattern",
+        "git ls-remote -qu helper /workspace/repo",
+        "git ls-remote --upload-pack=helper /workspace/repo",
+        "git ls-remote --upload=helper /workspace/repo",
+        "git ls-remote --exec=helper /workspace/repo",
+        "git ls-remote -u helper /workspace/repo",
+        "git log --ext-diff -p",
+        "git show --ext HEAD",
+        "git cat-file --filters HEAD:file",
+        "git cat-file --textconv HEAD:file",
+    ] {
+        assert_bash_denied(&g, command);
+    }
+    for command in [
+        "git log --oneline -5",
+        "git log -p --stat",
+        "git diff --stat HEAD~1",
+        "git diff -O orderfile",
+        "git show HEAD:README.md",
+        "git grep -n --or -e alpha -e beta",
+        "git grep --only-matching pattern",
+        "git grep --text pattern",
+        "git diff --text HEAD~1",
+        "git rev-list --filter=blob:none HEAD",
+        "git ls-remote origin",
+        "git cat-file -p HEAD",
+        "git status --short",
+        "git blame -L 1,5 file",
+    ] {
+        assert_bash_allowed(&g, command);
+    }
+}
+
+// ─── 52. A wrapper's unknown option cannot move the command word ───────────
+
+/// `env`, `sudo`, `nice`, `timeout` and the other modeled wrappers are
+/// unwrapped so the command they run is checked. An option the table did not
+/// know was skipped as a flag with no value. When it does take one — an
+/// abbreviated long option (`--uns` is `--unset`), or one missing from the
+/// table — that value was read as the command and the real command was never
+/// looked at.
+#[test]
+fn sec52_wrapper_options_the_table_does_not_know_fail_closed() {
+    let read_only = readonly_guard();
+    for command in [
+        "env --uns cat touch marker",
+        "sudo --prom cat touch marker",
+        "time --out cat touch marker",
+        "xargs --process-slot-var cat touch marker",
+        "env -P cat touch marker",
+        "env - touch marker",
+    ] {
+        assert_bash_denied(&read_only, command);
+    }
+
+    let g = guard();
+    for command in [
+        // The inline-code gate.
+        "env --uns x sh -c 'echo hi'",
+        "nice --adj 5 sh -c 'echo hi'",
+        // The write-target gate.
+        "nice --adj 5 touch /outside/marker",
+        "timeout --sig TERM 5 touch /outside/marker",
+        "stdbuf --out 0 touch /outside/marker",
+        "env --uns x touch /outside/marker",
+        "unshare -R /mnt touch /outside/marker",
+        // `flock FILE -c STRING` hands STRING to a shell.
+        "flock lockfile -c 'touch /outside/marker'",
+        "flock lockfile --command 'touch /outside/marker'",
+        // `coproc COMMAND` runs COMMAND.
+        "coproc touch /outside/marker",
+    ] {
+        assert_bash_denied(&g, command);
+    }
+
+    for command in [
+        "env FOO=1 cat file",
+        "env -i PATH=/usr/bin cat file",
+        "env -u HOME cat file",
+        "env --unset=HOME cat file",
+        "timeout 5 cat file",
+        "timeout -s TERM --preserve-status 5 cat file",
+        "nice -n 10 cat file",
+        "nice -10 cat file",
+        "nohup cat file",
+        "time -p cat file",
+        "stdbuf -oL cat file",
+        "command -v git",
+        "xargs -0 -n 1 cat",
+        "flock lockfile cat file",
+    ] {
+        assert_bash_allowed(&g, command);
+    }
+}
+
+// ─── 53. A command word the shell computes is not a command word we know ───
+
+#[test]
+fn sec53_line_continuations_globs_and_rebinding_cannot_rename_a_command() {
+    let g = guard();
+    for command in [
+        // Backslash-newline is removed by the shell: this is `touch`.
+        "tou\\\nch /outside/marker",
+        // A glob as the command word runs whatever it matches.
+        "/usr/bin/t* /outside/marker",
+        "./scr?pt /outside/marker",
+        // `hash -p` makes a later `ls` run another program.
+        "hash -p /usr/bin/touch ls; ls /outside/marker",
+        // `find … -delete` writes to what it walks; `-fprint FILE` to FILE.
+        "find /outside/dir -name '*.tmp' -delete",
+        "find . -fprint /outside/list.txt",
+    ] {
+        assert_bash_denied(&g, command);
+    }
+    for command in [
+        "echo a\\\n  b",
+        "ls *.rs",
+        "find . -name '*.tmp' -delete",
+        "find /outside/dir -name '*.rs'",
+        "hash -r",
+    ] {
+        assert_bash_allowed(&g, command);
+    }
+}
+
+// ─── 54. A denied name is denied through a symlink too ─────────────────────
+
+/// A path is resolved before it is matched, so a rule matched what a name
+/// points at and not the name. `.env` linked to `envs/dev.cfg` was readable
+/// as `.env`, under the shipped preset as well. Both spellings are matched.
+#[cfg(unix)]
+#[test]
+fn sec54_deny_paths_match_the_requested_name_and_what_it_resolves_to() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let workspace = temp.path().canonicalize().expect("workspace");
+    for directory in ["envs", "store", "plain", "sub"] {
+        std::fs::create_dir(workspace.join(directory)).expect("directory");
+    }
+    std::fs::write(workspace.join("envs/dev.cfg"), "x").expect("file");
+    std::fs::write(workspace.join("store/key.pem"), "x").expect("file");
+    std::fs::write(workspace.join("plain/key.pem"), "x").expect("file");
+    std::fs::write(workspace.join("sub/.env"), "x").expect("file");
+    std::fs::write(workspace.join("notes.txt"), "x").expect("file");
+    std::os::unix::fs::symlink("envs/dev.cfg", workspace.join(".env")).expect("symlink");
+    std::os::unix::fs::symlink("store", workspace.join("vault")).expect("symlink");
+    std::os::unix::fs::symlink("sub/.env", workspace.join("alias.txt")).expect("symlink");
+
+    let g = Guard::from_yaml(
+        r#"
+version: 1
+default_mode: workspace_write
+tools:
+  read_file:
+    deny_paths:
+      - "**/.env"
+      - "vault*"
+      - "plain*"
+audit:
+  enabled: false
+anomaly:
+  enabled: false
+"#,
+    )
+    .expect("guard init");
+
+    for path in [
+        ".env",
+        "sub/.env",
+        // Reaches a denied file under another name.
+        "alias.txt",
+        "vault/key.pem",
+        "plain/key.pem",
+    ] {
+        let decision = file_decision(&g, Tool::ReadFile, &workspace, path);
+        assert!(
+            matches!(decision, GuardDecision::Deny { .. }),
+            "{path} is named by, or resolves to, a denied path: {decision:?}"
+        );
+    }
+    let decision = file_decision(&g, Tool::ReadFile, &workspace, "notes.txt");
+    assert!(matches!(decision, GuardDecision::Allow), "{decision:?}");
+}
+
+// ─── 55. Canonical URL matching strengthens rules, not allow-lists ─────────
+
+#[test]
+fn sec55_percent_encoded_paths_match_and_allow_rules_keep_their_spelling() {
+    let deny = Guard::from_yaml(
+        r#"
+version: 1
+default_mode: workspace_write
+tools:
+  http_request:
+    deny:
+      - regex: "^https://api\\.example\\.com/admin"
+audit:
+  enabled: false
+anomaly:
+  enabled: false
+"#,
+    )
+    .expect("guard init");
+    let decide = |g: &Guard, url: &str| {
+        let payload = serde_json::json!({ "method": "GET", "url": url }).to_string();
+        g.check_tool(Tool::HttpRequest, &payload, Context::default())
+    };
+    // `%61` is `a`: a server decodes it, so the rule must see `/admin`.
+    for url in [
+        "https://api.example.com/admin/users",
+        "https://api.example.com/%61dmin/users",
+        "https://api.example.com/a%64min/users",
+        "https://api.example.com/%2e/admin",
+    ] {
+        assert_deny_with_code(&decide(&deny, url), DecisionCode::DeniedByRule);
+    }
+    // An encoded `%` is a literal percent sign, not a second layer to peel.
+    for url in [
+        "https://api.example.com/%2561dmin/users",
+        "https://api.example.com/public",
+    ] {
+        let decision = decide(&deny, url);
+        assert!(
+            matches!(decision, GuardDecision::Allow),
+            "{url}: {decision:?}"
+        );
+    }
+
+    // An allow rule written with a default port, or anchored on a bare
+    // origin, names the same destination as the canonical spelling without
+    // matching its text. That is not a reason to refuse.
+    let allow = Guard::from_yaml(
+        r#"
+version: 1
+default_mode: workspace_write
+tools:
+  http_request:
+    mode: blocked
+    allow:
+      - prefix: "https://api.allowed.example:443/"
+      - regex: "^https://exact\\.allowed\\.example$"
+      - prefix: "https://plain.allowed.example/"
+audit:
+  enabled: false
+anomaly:
+  enabled: false
+"#,
+    )
+    .expect("guard init");
+    for url in [
+        "https://api.allowed.example:443/v1/items",
+        "https://exact.allowed.example",
+        "https://plain.allowed.example/v1/items",
+    ] {
+        let decision = decide(&allow, url);
+        assert!(
+            matches!(decision, GuardDecision::Allow),
+            "{url}: {decision:?}"
+        );
+    }
+    // Userinfo is the one spelling that changes the destination a prefix
+    // names, so its absence from the allow-list still refuses.
+    for url in [
+        "https://plain.allowed.example@other.example/",
+        "https://other.example/",
+    ] {
+        let decision = decide(&allow, url);
+        assert!(
+            matches!(decision, GuardDecision::Deny { .. }),
+            "{url}: {decision:?}"
+        );
+    }
+}
+
+// ─── 56. Recovering to a verified policy restores its audit destination ────
+
+const SEC56_CHILD: &str = "AGENT_GUARD_SEC56_CHILD";
+
+/// Child half: a Guard that starts from an unverified policy, is reloaded
+/// with the verified one (audit to stdout), then decides one call.
+#[test]
+fn sec56_child_recovers_from_an_unverified_policy() {
+    if std::env::var_os(SEC56_CHILD).is_none() {
+        return;
+    }
+    let key = ed25519_dalek::SigningKey::from_bytes(&[7u8; 32]);
+    let public_key = hex::encode(key.verifying_key().to_bytes());
+    let verified = "version: 1\ndefault_mode: workspace_write\naudit:\n  enabled: true\n  output: stdout\nanomaly:\n  enabled: false\n";
+    let signature = agent_guard_sdk::sign_policy(verified, &key);
+    let guard = Guard::from_signed_yaml("version: 1\n", &public_key, &signature)
+        .expect("unverified policy constructs a Guard that denies");
+    guard
+        .reload_from_signed_yaml(verified, &public_key, &signature)
+        .expect("verified reload");
+    let decision = guard.check(&signed_policy_probe_input());
+    assert!(matches!(decision, GuardDecision::Allow), "{decision:?}");
+}
+
+/// While its policy is unverified a Guard records to standard error, so that
+/// a tampered policy cannot put JSON lines into a host's stdout protocol. That
+/// choice must end when a verified policy that asks for stdout is loaded.
+#[test]
+fn sec56_a_verified_reload_does_not_keep_the_unverified_audit_sink() {
+    let output = std::process::Command::new(std::env::current_exe().expect("test binary"))
+        .args([
+            "--exact",
+            "sec56_child_recovers_from_an_unverified_policy",
+            "--nocapture",
+        ])
+        .env(SEC56_CHILD, "1")
+        .output()
+        .expect("child test runs");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let decision_record = r#""type":"tool_call""#;
+    assert!(
+        stdout.contains(decision_record),
+        "the verified policy's stdout audit must be honoured.\nstdout: {stdout}\nstderr: {stderr}"
+    );
+    assert!(
+        !stderr.contains(decision_record),
+        "decisions under the verified policy went to stderr: {stderr}"
+    );
+}
+
+// ─── 57. More ways a command is not the word in front of it ────────────────
+
+#[test]
+fn sec57_brace_words_traps_shell_flags_and_known_launchers_fail_closed() {
+    let g = guard();
+    for command in [
+        // Brace expansion happens before the command is looked up.
+        "{touch,/outside/marker}",
+        "tou{c,}h /outside/marker",
+        // `trap` keeps its first argument as shell code for later.
+        "trap 'touch /outside/marker' EXIT",
+        // For a shell, `-h` and `-V` are `set` options, not help and version:
+        // the shell goes on to run its standard input.
+        "echo 'touch /outside/marker' | sh -h",
+        "echo 'touch /outside/marker' | sh -V",
+        "echo 'touch /outside/marker' | bash -h",
+        // Programs whose job is to run their arguments.
+        "busybox touch /outside/marker",
+        "toybox touch /outside/marker",
+        "caffeinate -i touch /outside/marker",
+        "arch -arm64 touch /outside/marker",
+        "script -q /dev/null touch /outside/marker",
+        "chroot /outside touch marker",
+    ] {
+        assert_bash_denied(&g, command);
+    }
+    for command in [
+        "trap - EXIT",
+        "trap '' INT",
+        "bash --version",
+        "python3 -V",
+        "busybox cat file",
+        "caffeinate -i cat file",
+        "echo {a,b}",
+        "[ -f file ]",
+    ] {
+        assert_bash_allowed(&g, command);
+    }
+}
+
+// Decision-only locks for residuals found while independently reviewing F23/F26/F27/F32.
+#[test]
+fn sec58_attached_unknown_wrapper_options_do_not_hide_executable_syntax() {
+    for g in [guard(), readonly_guard()] {
+        for command in [
+            "env --split='sh -c true' cat",
+            "env --spl='sh -c true' cat",
+            "env --split-s='sh -c true' cat",
+            "nice env --split='sh -c true' cat",
+            "env --unknown-option=public cat",
+        ] {
+            assert_bash_denied(&g, command);
+        }
+        assert_bash_allowed(&g, "env --unset=KEY cat file");
+    }
+}
+
+#[test]
+fn sec59_git_option_exemptions_depend_on_the_subcommand() {
+    let g = readonly_guard();
+    for command in [
+        "git cat-file --text HEAD:file",
+        "git cat-file --filter HEAD:file",
+        "git cat-file --textconv HEAD:file",
+        "git cat-file --filters HEAD:file",
+    ] {
+        assert_bash_denied(&g, command);
+    }
+    for command in [
+        "git diff --text HEAD",
+        "git rev-list --filter=blob:none HEAD",
+        "git cat-file -p HEAD:file",
+    ] {
+        assert_bash_allowed(&g, command);
+    }
+}
+
+#[test]
+fn sec60_repeated_line_continuations_preserve_command_identity() {
+    let g = guard();
+    for command in [
+        "tou\\\n\\\nch /outside/marker",
+        "g\\\n\\\nit push --force origin main",
+    ] {
+        assert_bash_denied(&g, command);
+    }
+    assert_bash_allowed(&readonly_guard(), "ec\\\n\\\nho safe");
+}
+
+#[test]
+fn sec61_attached_copy_option_values_do_not_consume_the_destination() {
+    let g = guard();
+    for command in [
+        "rsync source -Ttempf /outside/dest",
+        "rsync source -Ttempt /outside/dest",
+        "rsync source '-f- publicf' /outside/dest",
+    ] {
+        assert_bash_denied(&g, command);
+    }
+    for command in [
+        "rsync source -Ttempf dest",
+        "rsync -T tempf source dest",
+        "scp -P 2200 source dest",
+    ] {
+        assert_bash_allowed(&g, command);
+    }
+}
+
+#[test]
+fn sec62_read_only_git_option_prefixes_cannot_reenable_helpers() {
+    let g = readonly_guard();
+    let unexpected: Vec<_> = [
+        "git cat-file --t HEAD:file",
+        "git cat-file --no-no-textconv HEAD:file",
+        "git cat-file --no-no-text HEAD:file",
+        "git diff --no-no-ext-diff HEAD",
+    ]
+    .into_iter()
+    .filter_map(|command| {
+        let decision = bash_decision(&g, command);
+        (!matches!(decision, GuardDecision::Deny { .. })).then_some((command, decision))
+    })
+    .collect();
+    assert!(
+        unexpected.is_empty(),
+        "unsafe option decisions: {unexpected:?}"
+    );
+    assert_bash_allowed(&g, "git diff --no-textconv --no-ext-diff HEAD");
 }

@@ -135,6 +135,7 @@ dependencies = [
  "serde_json",
  "tree-sitter",
  "tree-sitter-bash",
+ "url",
 ]
 
 [[package]]

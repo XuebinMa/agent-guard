@@ -163,3 +163,25 @@ fn outbound_preset_denies_secret_in_http_body() {
         other => panic!("expected deny, got {other:?}"),
     }
 }
+
+/// The plugin installer writes the audit path into this preset as a JSON
+/// string. That holds only while the policy parser reads a JSON string back
+/// as the same value — a Windows path's backslashes included. A path the
+/// parser rejects is a policy the hook cannot load, and that hook fails open.
+#[test]
+fn outbound_preset_accepts_a_json_encoded_audit_path() {
+    let preset = std::fs::read_to_string(preset_path()).expect("preset is readable");
+    assert!(preset.contains("  output: stdout\n"));
+    for path in [
+        r"C:\Users\alice\.claude\agent-guard\audit.jsonl",
+        "/home/a\"b/.claude/agent-guard/audit.jsonl",
+    ] {
+        let encoded = serde_json::to_string(path).expect("JSON string");
+        let installed = preset.replace(
+            "  output: stdout\n",
+            &format!("  output: file\n  file_path: {encoded}\n"),
+        );
+        let engine = PolicyEngine::from_yaml_str(&installed).expect("installed policy parses");
+        assert_eq!(engine.audit_config().file_path.as_deref(), Some(path));
+    }
+}

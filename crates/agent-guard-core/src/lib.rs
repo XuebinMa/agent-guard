@@ -1,6 +1,7 @@
 pub mod attestation;
 pub mod audit;
 pub mod decision;
+pub mod display;
 pub mod file_paths;
 pub mod payload;
 pub mod policy;
@@ -15,6 +16,7 @@ pub use audit::{
     ContentFindingEvent, ExecutionEvent, ReloadEvent, ReloadStatus, SandboxFailureEvent,
 };
 pub use decision::{DecisionCode, DecisionReason, GuardDecision, RuntimeDecision};
+pub use display::display_safe;
 pub use policy::{
     AnomalyConfig, AuditConfig, ContentDetector, ContentMode, ContentPolicy, DenyFuseConfig,
     PolicyEngine, PolicyError, PolicyMode, RateLimitConfig, MAX_RETAINED_ANOMALY_OBSERVATIONS,

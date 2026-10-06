@@ -165,7 +165,13 @@ fn check_command_segment(parts: &[String]) -> Option<ValidationResult> {
             "verify-tag",
         ];
         if READ_ONLY_GIT_SUBCOMMANDS.contains(&subcommand) {
-            return None;
+            return git_option_that_writes_or_executes(parts).map(|option| {
+                ValidationResult::Block {
+                    reason: format!(
+                        "Git option '{option}' writes a file or runs a program and is not allowed in read-only mode"
+                    ),
+                }
+            });
         }
         return Some(ValidationResult::Block {
             reason: format!(
@@ -265,10 +271,70 @@ fn is_interpreter_metadata_query(command: &str, arguments: &[String]) -> bool {
         "zsh", "ksh", "dash", "fish",
     ];
     INTERPRETERS.contains(&command)
-        && !arguments.is_empty()
-        && arguments
-            .iter()
-            .all(|argument| matches!(argument.as_str(), "--version" | "-V" | "--help" | "-h"))
+        && super::tokenize::is_interpreter_information_query(command, arguments)
+}
+
+/// The first option of a read-only Git subcommand that makes it something
+/// else: one that writes a file, or names or enables a program to run.
+///
+/// * `--output[=]<file>` (the diff family) writes the output to a file.
+/// * `-O[<pager>]` / `--open-files-in-pager` (`grep`) opens matches in a
+///   program. `diff -O<orderfile>` only reads, so the short form is `grep`'s.
+/// * `-u` / `--upload-pack` / `--exec` (`ls-remote`) name the program run for
+///   the repository.
+/// * `--ext-diff`, `--textconv` and `--filters` turn on programs the
+///   repository's configuration names where they are otherwise off.
+///
+/// Git accepts any unambiguous prefix of a long option, so prefixes count.
+/// Everything after the subcommand is scanned: an operand that looks like one
+/// of these is refused too, which costs a rare false refusal and no bypass.
+fn git_option_that_writes_or_executes(parts: &[String]) -> Option<&str> {
+    const LONG: &[&str] = &[
+        "output",
+        "open-files-in-pager",
+        "upload-pack",
+        "exec",
+        "ext-diff",
+        "textconv",
+        "filters",
+    ];
+    let subcommand_at = parts
+        .iter()
+        .position(|part| Some(part.as_str()) == git_subcommand(parts))?;
+    let subcommand = parts[subcommand_at].as_str();
+    parts[subcommand_at + 1..]
+        .iter()
+        .map(String::as_str)
+        .take_while(|argument| *argument != "--")
+        .find(|argument| {
+            if let Some(name) = argument.strip_prefix("--") {
+                let mut name = name.split_once('=').map_or(name, |(name, _)| name);
+                // Git's option parser accepts paired negations as enabling
+                // options again. A single `--no-` disables the helper.
+                while let Some(enabled) = name.strip_prefix("no-no-") {
+                    name = enabled;
+                }
+                // These complete options only override the dangerous prefix
+                // in subcommands that actually define them. In cat-file they
+                // are abbreviations for textconv / filters instead.
+                let is_plain_text =
+                    name == "text" && matches!(subcommand, "diff" | "log" | "show" | "grep");
+                let is_object_filter = name == "filter" && subcommand == "rev-list";
+                if is_plain_text || is_object_filter {
+                    return false;
+                }
+                // Even one letter can be unambiguous for a particular
+                // subcommand (cat-file --t enables textconv).
+                return !name.is_empty() && LONG.iter().any(|option| option.starts_with(name));
+            }
+            // Short options bundle, so `-nO<pager>` carries `-O` too.
+            let bundles = |flag| argument.starts_with('-') && argument.contains(flag);
+            match subcommand {
+                "grep" => bundles('O'),
+                "ls-remote" => bundles('u'),
+                _ => false,
+            }
+        })
 }
 
 /// Resolve a Git subcommand without mistaking a global option operand for the

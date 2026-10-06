@@ -47,6 +47,10 @@ hex.workspace = true
 fs2 = "0.4.3"
 reqwest = { workspace = true, features = ["json", "rustls", "blocking"] }
 
+# `O_NONBLOCK` for WriteFile opens, so a FIFO cannot hold the host thread.
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
 [dev-dependencies]
 criterion.workspace = true
 rand.workspace = true

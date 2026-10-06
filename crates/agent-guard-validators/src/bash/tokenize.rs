@@ -416,8 +416,6 @@ pub(crate) fn contains_interpreter_with_inline_code(command: &str) -> Option<(St
 /// that program, so it cannot prove the interpreter respects filesystem
 /// policy. Explicit information-only queries remain allowed.
 pub(crate) fn contains_opaque_interpreter_execution(command: &str) -> Option<String> {
-    const INFORMATION_ONLY_FLAGS: &[&str] = &["--version", "-V", "--help", "-h"];
-
     find_in_commands(command, |argv| {
         let rest = unwrap_command_wrappers(argv);
         let first = command_name(rest.first()?.as_str());
@@ -425,9 +423,7 @@ pub(crate) fn contains_opaque_interpreter_execution(command: &str) -> Option<Str
             return None;
         }
 
-        let is_information_only =
-            rest.len() == 2 && INFORMATION_ONLY_FLAGS.contains(&rest[1].as_str());
-        if is_information_only {
+        if rest.len() == 2 && is_interpreter_information_query(first, &rest[1..]) {
             None
         } else {
             Some(first.to_string())
@@ -438,11 +434,57 @@ pub(crate) fn contains_opaque_interpreter_execution(command: &str) -> Option<Str
 /// Detect a parameter-expanded command word (`$CMD`, `${CMD}`, `"${CMD}"`).
 /// The expansion result is not available to the validator and may name any
 /// executable, so restricted modes must fail closed.
+///
+/// A pathname pattern is the same problem: `/usr/bin/t*` runs whatever it
+/// matches. So is a brace expansion: `tou{c,}h` is `touch`. `[` and `[[` are
+/// the test commands, not patterns.
 pub(crate) fn contains_dynamic_command_word(command: &str) -> bool {
     any_command(command, |argv| {
-        unwrap_command_wrappers(argv)
-            .first()
-            .is_some_and(|token| token.contains('$'))
+        unwrap_command_wrappers(argv).first().is_some_and(|token| {
+            token.contains('$')
+                || super::paths::has_brace_expansion(token)
+                || (!matches!(token.as_str(), "[" | "[[") && token.contains(['*', '?', '[']))
+        })
+    })
+}
+
+/// Whether an interpreter invocation only prints its version or help.
+///
+/// For a shell, only the long spellings do. `sh -h` and `sh -V` are `set`
+/// options (hash-all; vi mode in dash), after which the shell reads and runs
+/// its standard input like any other invocation.
+pub(crate) fn is_interpreter_information_query<S: AsRef<str>>(
+    interpreter: &str,
+    arguments: &[S],
+) -> bool {
+    const SHELLS: &[&str] = &["sh", "bash", "zsh", "ksh", "dash", "fish"];
+    let short_spellings_count = !SHELLS.contains(&interpreter);
+    !arguments.is_empty()
+        && arguments.iter().all(|argument| match argument.as_ref() {
+            "--version" | "--help" => true,
+            "-V" | "-h" => short_spellings_count,
+            _ => false,
+        })
+}
+
+/// Detect a builtin that changes which program a later command name runs:
+/// `hash -p PATH NAME`, `alias NAME=VALUE` (expanded by `sh` in POSIX mode
+/// even when non-interactive) and `enable -f FILE NAME`. Every gate reads
+/// command names, so a name that no longer means itself defeats all of them.
+pub(crate) fn contains_command_rebinding(command: &str) -> Option<&'static str> {
+    find_in_commands(command, |argv| {
+        let rest = unwrap_command_wrappers(argv);
+        let short_flag = |flag: char| {
+            rest[1..]
+                .iter()
+                .any(|arg| arg.starts_with('-') && !arg.starts_with("--") && arg.contains(flag))
+        };
+        match command_name(rest.first()?.as_str()) {
+            "hash" if short_flag('p') => Some("hash -p"),
+            "enable" if short_flag('f') => Some("enable -f"),
+            "alias" if rest[1..].iter().any(|arg| arg.contains('=')) => Some("alias"),
+            _ => None,
+        }
     })
 }
 
@@ -490,6 +532,15 @@ pub(crate) fn contains_code_laundering_command(command: &str) -> Option<&'static
     find_in_commands(command, |argv| {
         let rest = unwrap_command_wrappers(argv);
         let first = command_name(rest.first()?.as_str());
+        // `trap ACTION SIGNAL…` keeps ACTION as shell code to run later.
+        // `trap - SIG` and `trap '' SIG` reset or ignore; `-l`/`-p` only list.
+        if first == "trap" {
+            return rest[1..]
+                .iter()
+                .find(|arg| !(arg.starts_with('-') && arg.len() > 1))
+                .filter(|action| !matches!(action.as_str(), "" | "-"))
+                .map(|_| "trap");
+        }
         CODE_LAUNDERING_COMMANDS
             .iter()
             .copied()

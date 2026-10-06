@@ -183,7 +183,7 @@ fn may_expand_to_parent_component(candidate: &str) -> bool {
 
 /// `{a,b}` or `{x..y}`. Quoted braces are already unquoted in the target, so
 /// a literal `{a,b}` filename is refused too; that over-match is deliberate.
-fn has_brace_expansion(candidate: &str) -> bool {
+pub(super) fn has_brace_expansion(candidate: &str) -> bool {
     let mut rest = candidate;
     while let Some(open) = rest.find('{') {
         let after = &rest[open + 1..];
@@ -485,6 +485,18 @@ fn write_targets_for_segment(segment: &[String]) -> Vec<(String, TargetKind)> {
             }
         }
         "tar" => targets.extend(tar_write_targets(args)),
+        "unzip" => targets.extend(option_values(args, &['d'], &[])),
+        "sort" => targets.extend(option_values(args, &['o'], &["output"])),
+        "curl" => targets.extend(option_values(args, &['o'], &["output", "output-dir"])),
+        "wget" => targets.extend(option_values(
+            args,
+            &['O', 'P'],
+            &["output-document", "directory-prefix"],
+        )),
+        "rsync" => targets.extend(last_local_operand(args, RSYNC_VALUE_OPTIONS)),
+        "scp" => targets.extend(last_local_operand(args, SCP_VALUE_OPTIONS)),
+        "git" => targets.extend(git_checkout_destinations(args)),
+        "find" => targets.extend(find_write_targets(args)),
         _ => {}
     }
 
@@ -534,6 +546,278 @@ fn target_directory_flag(args: &[&String]) -> Option<String> {
         }
     }
     None
+}
+
+/// Values of the named options in the spellings `-x VALUE`, `-xVALUE`, a short
+/// bundle ending in `x` followed by VALUE, `--long VALUE` and `--long=VALUE`.
+///
+/// The first matching letter in a bundle is taken as the option, so an earlier
+/// letter's attached value can be misread as a destination. That over-matches
+/// toward refusal, never toward a missed sink.
+fn option_values(args: &[&String], short: &[char], long: &[&str]) -> Vec<String> {
+    let mut values = Vec::new();
+    let mut iter = args.iter();
+    while let Some(arg) = iter.next() {
+        let token = arg.as_str();
+        if token == "--" {
+            break;
+        }
+        let attached = if let Some(name) = token.strip_prefix("--") {
+            match name.split_once('=') {
+                Some((name, value)) if long.contains(&name) => Some(value),
+                None if long.contains(&name) => Some(""),
+                _ => continue,
+            }
+        } else if let Some(bundle) = token.strip_prefix('-') {
+            match bundle.char_indices().find(|(_, flag)| short.contains(flag)) {
+                Some((at, flag)) => Some(&bundle[at + flag.len_utf8()..]),
+                None => continue,
+            }
+        } else {
+            continue;
+        };
+        match attached {
+            Some("") => values.extend(iter.next().map(|value| value.to_string())),
+            Some(value) => values.push(value.to_string()),
+            None => {}
+        }
+    }
+    values
+}
+
+/// Options of `rsync` / `scp` that take a separate value, so that value is not
+/// mistaken for the trailing destination operand.
+const RSYNC_VALUE_OPTIONS: (&[char], &[&str]) = (
+    &['e', 'f', 'B', 'T', 'M'],
+    &[
+        "rsh",
+        "exclude",
+        "exclude-from",
+        "include",
+        "include-from",
+        "filter",
+        "files-from",
+        "log-file",
+        "log-file-format",
+        "password-file",
+        "port",
+        "block-size",
+        "temp-dir",
+        "partial-dir",
+        "backup-dir",
+        "suffix",
+        "compare-dest",
+        "copy-dest",
+        "link-dest",
+        "max-size",
+        "min-size",
+        "bwlimit",
+        "timeout",
+        "contimeout",
+        "chmod",
+        "chown",
+        "out-format",
+        "rsync-path",
+        "remote-option",
+        "write-batch",
+        "only-write-batch",
+        "read-batch",
+    ],
+);
+const SCP_VALUE_OPTIONS: (&[char], &[&str]) =
+    (&['c', 'D', 'F', 'i', 'J', 'l', 'o', 'P', 'S', 'X'], &[]);
+
+/// The destination of a copy whose last operand is where it writes, unless
+/// that operand names a remote host (`host:path`, `scheme://…`).
+fn last_local_operand(args: &[&String], value_options: (&[char], &[&str])) -> Option<String> {
+    let (short, long) = value_options;
+    let mut operands = Vec::new();
+    let mut options_done = false;
+    let mut iter = args.iter();
+    while let Some(arg) = iter.next() {
+        let token = arg.as_str();
+        if options_done || !token.starts_with('-') || token == "-" {
+            operands.push(token);
+        } else if token == "--" {
+            options_done = true;
+        } else if let Some(name) = token.strip_prefix("--") {
+            if long.contains(&name) {
+                iter.next();
+            }
+        } else {
+            // The first value-taking flag ends a short bundle. Any remaining
+            // characters are its attached value, not more flags: `-Ttempf`
+            // must not interpret the value's final `f` as another option and
+            // consume the destination that follows it.
+            let mut flags = token.chars().skip(1).peekable();
+            while let Some(flag) = flags.next() {
+                if short.contains(&flag) {
+                    if flags.peek().is_none() {
+                        iter.next();
+                    }
+                    break;
+                }
+            }
+        }
+    }
+    let destination = operands.last()?;
+    let remote = destination.contains("://")
+        || destination
+            .split_once(':')
+            .is_some_and(|(host, _)| !host.contains('/'));
+    (!remote).then(|| destination.to_string())
+}
+
+/// Where `git worktree add`, `git clone` and `git init` create a checkout, and
+/// the file a subcommand writes its `--output` to,
+/// resolved against any `git -C <dir>` given before the subcommand.
+///
+/// Other subcommands also write under `-C`; this covers the ones whose own
+/// operand names a new directory.
+fn git_checkout_destinations(args: &[&String]) -> Vec<String> {
+    let mut base: Option<PathBuf> = None;
+    let mut index = 0;
+    while let Some(token) = args.get(index).map(|arg| arg.as_str()) {
+        if token == "-C" {
+            let Some(directory) = args.get(index + 1) else {
+                return Vec::new();
+            };
+            base = Some(base.map_or_else(|| PathBuf::from(directory), |b| b.join(directory)));
+            index += 2;
+        } else if matches!(
+            token,
+            "-c" | "--git-dir"
+                | "--work-tree"
+                | "--namespace"
+                | "--config-env"
+                | "--attr-source"
+                | "--shallow-file"
+        ) {
+            index += 2;
+        } else if token.starts_with('-') {
+            index += 1;
+        } else {
+            break;
+        }
+    }
+
+    let under_base = |path: String| match &base {
+        Some(base) if !Path::new(&path).is_absolute() => {
+            base.join(path).to_string_lossy().into_owned()
+        }
+        _ => path,
+    };
+    // `--output <file>` (log, diff, show, …) writes that file.
+    let output_files = |args| option_values(args, &[], &["output"]);
+
+    let rest = &args[index.min(args.len())..];
+    let (value_short, value_long, operand, rest): (&[char], &[&str], usize, _) =
+        match rest.first().map(|arg| arg.as_str()) {
+            Some("worktree") if rest.get(1).is_some_and(|arg| arg.as_str() == "add") => {
+                (&['b', 'B'], &["reason"], 0, &rest[2..])
+            }
+            Some("clone") => (
+                &['b', 'o', 'u', 'j', 'c'],
+                &[
+                    "branch",
+                    "origin",
+                    "upload-pack",
+                    "reference",
+                    "reference-if-able",
+                    "depth",
+                    "shallow-since",
+                    "shallow-exclude",
+                    "jobs",
+                    "filter",
+                    "config",
+                    "template",
+                    "server-option",
+                    "bundle-uri",
+                    "revision",
+                ],
+                1,
+                &rest[1..],
+            ),
+            Some("init") => (
+                &['b'],
+                &["template", "initial-branch", "object-format", "ref-format"],
+                0,
+                &rest[1..],
+            ),
+            // `git archive -o FILE` is the short form of its `--output`.
+            Some("archive") => {
+                return option_values(rest, &['o'], &["output"])
+                    .into_iter()
+                    .map(under_base)
+                    .collect()
+            }
+            _ => return output_files(rest).into_iter().map(under_base).collect(),
+        };
+
+    let mut destinations = option_values(rest, &[], &["separate-git-dir"]);
+    let mut operands = Vec::new();
+    let mut iter = rest.iter();
+    while let Some(arg) = iter.next() {
+        let token = arg.as_str();
+        if !token.starts_with('-') {
+            operands.push(token);
+        } else if token == "--separate-git-dir"
+            || token
+                .strip_prefix("--")
+                .is_some_and(|name| value_long.contains(&name))
+            || (!token.starts_with("--")
+                && token
+                    .chars()
+                    .last()
+                    .is_some_and(|flag| value_short.contains(&flag)))
+        {
+            iter.next();
+        }
+    }
+    // With no directory operand the checkout lands in the `-C` directory.
+    destinations.push(operands.get(operand).map_or(".", |path| path).to_string());
+
+    destinations.into_iter().map(under_base).collect()
+}
+
+/// What a `find` invocation writes: the starting points it walks when it has
+/// `-delete`, and the file named after `-fprint`, `-fprint0`, `-fprintf` or
+/// `-fls`. `find -exec` is unwrapped to its child before this is reached.
+fn find_write_targets(args: &[&String]) -> Vec<String> {
+    let mut targets = Vec::new();
+    let mut iter = args.iter().map(|arg| arg.as_str()).peekable();
+    // Leading options, then starting points up to the first expression word.
+    let mut roots = Vec::new();
+    while let Some(token) = iter.peek().copied() {
+        if matches!(token, "-H" | "-L" | "-P") || token.starts_with("-O") {
+            iter.next();
+        } else if token == "-D" {
+            iter.next();
+            iter.next();
+        } else if token.starts_with('-') || matches!(token, "(" | "!" | ",") {
+            break;
+        } else {
+            roots.push(token.to_string());
+            iter.next();
+        }
+    }
+    let mut deletes = false;
+    while let Some(token) = iter.next() {
+        match token {
+            "-delete" => deletes = true,
+            "-fprint" | "-fprint0" | "-fprintf" | "-fls" => {
+                targets.extend(iter.next().map(str::to_string));
+            }
+            _ => {}
+        }
+    }
+    if deletes {
+        if roots.is_empty() {
+            roots.push(".".to_string());
+        }
+        targets.extend(roots);
+    }
+    targets
 }
 
 /// Extract paths that `tar` writes: the archive for create/append/update modes,
@@ -715,4 +999,67 @@ fn read_targets_for_segment(segment: &[String]) -> Vec<String> {
     }
 
     targets
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn copy_destination(args: &[&str], options: (&[char], &[&str])) -> Option<String> {
+        let owned: Vec<String> = args.iter().map(|value| (*value).to_string()).collect();
+        let borrowed: Vec<&String> = owned.iter().collect();
+        last_local_operand(&borrowed, options)
+    }
+
+    #[test]
+    fn attached_short_copy_option_values_do_not_consume_the_destination() {
+        for args in [
+            &["source", "-Ttempf", "/outside/destination"][..],
+            &["source", "-aTtempf", "/outside/destination"][..],
+            &["source", "-ersyncf", "/outside/destination"][..],
+        ] {
+            assert_eq!(
+                copy_destination(args, RSYNC_VALUE_OPTIONS).as_deref(),
+                Some("/outside/destination"),
+                "the attached option value swallowed the destination: {args:?}"
+            );
+        }
+        for args in [
+            &["source", "-Fconfigi", "/outside/destination"][..],
+            &["source", "-voUser=personP", "/outside/destination"][..],
+        ] {
+            assert_eq!(
+                copy_destination(args, SCP_VALUE_OPTIONS).as_deref(),
+                Some("/outside/destination"),
+                "the attached option value swallowed the destination: {args:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn separate_short_copy_option_values_and_remote_destinations_still_parse() {
+        for args in [
+            &["source", "-T", "tempf", "/workspace/destination"][..],
+            &["source", "-aT", "tempf", "/workspace/destination"][..],
+            &["source", "--temp-dir", "tempf", "/workspace/destination"][..],
+        ] {
+            assert_eq!(
+                copy_destination(args, RSYNC_VALUE_OPTIONS).as_deref(),
+                Some("/workspace/destination")
+            );
+        }
+        assert_eq!(
+            copy_destination(
+                &["source", "-vF", "configi", "/workspace/destination"],
+                SCP_VALUE_OPTIONS
+            )
+            .as_deref(),
+            Some("/workspace/destination")
+        );
+        assert!(copy_destination(
+            &["source", "-Ttempf", "backup@host.invalid:destination"],
+            RSYNC_VALUE_OPTIONS
+        )
+        .is_none());
+    }
 }

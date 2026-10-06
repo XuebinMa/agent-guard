@@ -119,6 +119,11 @@ fn execute_workspace_write(
     } else {
         options.truncate(true);
     }
+    #[cfg(unix)]
+    {
+        use cap_std::fs::OpenOptionsExt;
+        options.custom_flags(OPEN_WITHOUT_WAITING);
+    }
 
     // Tests use this seam to deterministically replace a validated ancestor.
     // Production passes a no-op. The actual open remains relative to the
@@ -131,7 +136,28 @@ fn execute_workspace_write(
                 "failed to open workspace file for write: {error}"
             ))
         })?;
+    require_regular_file(file.metadata().map(|metadata| metadata.is_file()))?;
     write_file_content(file, &request.content)
+}
+
+/// Opening a FIFO for writing waits for a reader, on the host's thread and
+/// with no deadline. With this flag the open returns at once; the type check
+/// after it then sees what was opened, not what a path named a moment ago.
+#[cfg(unix)]
+const OPEN_WITHOUT_WAITING: i32 = libc::O_NONBLOCK;
+
+/// WriteFile writes files. A FIFO, device or socket an agent placed in its
+/// workspace is something else reached through a file name.
+fn require_regular_file(is_file: std::io::Result<bool>) -> Result<(), SandboxError> {
+    match is_file {
+        Ok(true) => Ok(()),
+        Ok(false) => Err(SandboxError::ExecutionFailed(
+            "refusing to write: the target is not a regular file".to_string(),
+        )),
+        Err(error) => Err(SandboxError::ExecutionFailed(format!(
+            "failed to inspect the opened file: {error}"
+        ))),
+    }
 }
 
 fn execute_unrestricted_write(
@@ -150,11 +176,17 @@ fn execute_unrestricted_write(
     } else {
         options.truncate(true);
     }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.custom_flags(OPEN_WITHOUT_WAITING);
+    }
 
     pre_open();
     let file = options.open(&resolved_path).map_err(|error| {
         SandboxError::ExecutionFailed(format!("failed to open file for write: {error}"))
     })?;
+    require_regular_file(file.metadata().map(|metadata| metadata.is_file()))?;
     write_file_content(file, &request.content)
 }
 
@@ -486,31 +518,15 @@ pub(crate) fn is_ipv6_unique_local(ip: &Ipv6Addr) -> bool {
 /// `Some(0.0.0.0)`, which round-trips into the unspecified branch correctly,
 /// and on `::1` is unreachable here because the top-level `is_loopback()`
 /// check catches it before the IPv6 branch runs.
+///
+/// 6to4 (`2002::/16`, RFC 3056) is covered as well: `2002:AABB:CCDD::/48`
+/// carries `AA.BB.CC.DD`. Closes 2026-06-01 MEDIUM.
+///
+/// The extraction itself lives with the URL canonicalisation in the
+/// validators, so the decision and the executor cannot disagree about which
+/// IPv6 literals name an IPv4 endpoint.
 pub(crate) fn ipv6_extract_embedded_ipv4(v6: &Ipv6Addr) -> Option<Ipv4Addr> {
-    if let Some(v4) = v6.to_ipv4() {
-        return Some(v4);
-    }
-    let segments = v6.segments();
-    if segments[0] == 0x0064 && segments[1] == 0xff9b && segments[2..6].iter().all(|&s| s == 0) {
-        return Some(Ipv4Addr::new(
-            (segments[6] >> 8) as u8,
-            (segments[6] & 0xff) as u8,
-            (segments[7] >> 8) as u8,
-            (segments[7] & 0xff) as u8,
-        ));
-    }
-    // 6to4 (`2002::/16`, RFC 3056): the embedded IPv4 is the two segments after
-    // the `2002` prefix, so `2002:AABB:CCDD::/48` carries `AA.BB.CC.DD`.
-    // Closes 2026-06-01 MEDIUM (embedded-private 6to4 SSRF gap).
-    if segments[0] == 0x2002 {
-        return Some(Ipv4Addr::new(
-            (segments[1] >> 8) as u8,
-            (segments[1] & 0xff) as u8,
-            (segments[2] >> 8) as u8,
-            (segments[2] & 0xff) as u8,
-        ));
-    }
-    None
+    agent_guard_validators::http::embedded_ipv4(v6)
 }
 
 /// Resolve a URL's host once at policy time and return a host/address pair
@@ -1028,6 +1044,8 @@ mod tests {
     };
     use agent_guard_core::DecisionCode;
     use agent_guard_sandbox::SandboxError;
+    #[cfg(unix)]
+    use std::os::unix::fs::OpenOptionsExt;
 
     #[test]
     fn bash_extract_malformed_json_is_invalid_payload() {
@@ -1068,6 +1086,133 @@ mod tests {
             matches!(err, SandboxError::InvalidPayload { .. }),
             "got {err:?}"
         );
+    }
+
+    /// A FIFO is a file an agent can create in its own workspace. Opening one
+    /// for writing waits for a reader that never has to come, on the host's
+    /// thread and with no deadline, so only a regular file is written.
+    #[cfg(unix)]
+    #[test]
+    fn write_file_refuses_a_fifo_instead_of_waiting_on_it() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let workspace = temp.path().canonicalize().expect("workspace");
+        let fifo = workspace.join("pipe");
+        let c_path = std::ffi::CString::new(fifo.to_str().expect("UTF-8 path")).expect("path");
+        // SAFETY: `c_path` is a valid NUL-terminated path inside the tempdir.
+        assert_eq!(unsafe { libc::mkfifo(c_path.as_ptr(), 0o600) }, 0);
+
+        for unrestricted in [false, true] {
+            let (sender, receiver) = std::sync::mpsc::channel();
+            let workspace = workspace.clone();
+            let payload = serde_json::json!({
+                "path": if unrestricted { fifo.to_str().unwrap() } else { "pipe" },
+                "content": "x"
+            })
+            .to_string();
+            let writer = std::thread::spawn(move || {
+                let scope = if unrestricted {
+                    WriteFileScope::Unrestricted
+                } else {
+                    WriteFileScope::Workspace(&workspace)
+                };
+                let _ = sender.send(execute_write_file(&payload, scope).map(|_| ()));
+            });
+            let outcome = receiver.recv_timeout(std::time::Duration::from_secs(2));
+            // Attach a reader so a blocked writer always ends and the test
+            // reports the failure rather than hanging on it.
+            let reader = std::fs::OpenOptions::new()
+                .read(true)
+                .custom_flags(libc::O_NONBLOCK)
+                .open(&fifo)
+                .expect("open fifo reader");
+            writer.join().expect("writer thread");
+            drop(reader);
+
+            let error = outcome
+                .expect("the write must return instead of waiting for a reader")
+                .expect_err("a FIFO is not a file to write");
+            assert!(
+                matches!(error, SandboxError::ExecutionFailed(_)),
+                "got {error:?}"
+            );
+        }
+    }
+
+    /// A reader makes the FIFO open succeed even with O_NONBLOCK. This locks
+    /// the opened-file type check itself, rather than only the no-reader open
+    /// error: neither write scope may send bytes to the pipe.
+    #[cfg(unix)]
+    #[test]
+    fn write_file_refuses_a_connected_fifo_without_writing_bytes() {
+        use std::io::Read;
+
+        let temp = tempfile::tempdir().expect("tempdir");
+        let workspace = temp.path().canonicalize().expect("workspace");
+        let fifo = workspace.join("pipe");
+        let c_path = std::ffi::CString::new(fifo.to_str().expect("UTF-8 path")).expect("path");
+        // SAFETY: `c_path` is a valid NUL-terminated path inside the tempdir.
+        assert_eq!(unsafe { libc::mkfifo(c_path.as_ptr(), 0o600) }, 0);
+
+        for unrestricted in [false, true] {
+            for append in [false, true] {
+                let mut reader = std::fs::OpenOptions::new()
+                    .read(true)
+                    .custom_flags(libc::O_NONBLOCK)
+                    .open(&fifo)
+                    .expect("connect nonblocking fifo reader before the write");
+                let (sender, receiver) = std::sync::mpsc::channel();
+                let workspace = workspace.clone();
+                let payload = serde_json::json!({
+                    "path": if unrestricted { fifo.to_str().unwrap() } else { "pipe" },
+                    "content": "fixture-marker",
+                    "append": append
+                })
+                .to_string();
+                let writer = std::thread::spawn(move || {
+                    let scope = if unrestricted {
+                        WriteFileScope::Unrestricted
+                    } else {
+                        WriteFileScope::Workspace(&workspace)
+                    };
+                    let _ = sender.send(execute_write_file(&payload, scope).map(|_| ()));
+                });
+                let outcome = receiver
+                    .recv_timeout(std::time::Duration::from_secs(2))
+                    .expect("the connected FIFO write must return promptly");
+                writer.join().expect("writer thread");
+
+                let mut bytes = [0_u8; 32];
+                match reader.read(&mut bytes) {
+                    Ok(count) => assert_eq!(count, 0, "the refused write sent bytes to the FIFO"),
+                    Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {}
+                    Err(error) => panic!("read the nonblocking FIFO: {error}"),
+                }
+                let error = outcome.expect_err("a connected FIFO is not a regular file");
+                match error {
+                    SandboxError::ExecutionFailed(message) => assert_eq!(
+                        message,
+                        "refusing to write: the target is not a regular file"
+                    ),
+                    other => panic!("expected an opened-file type refusal, got {other:?}"),
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn workspace_write_still_creates_appends_and_truncates_regular_files() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let workspace = temp.path().canonicalize().expect("workspace");
+        let write = |content: &str, append: bool| {
+            let payload =
+                serde_json::json!({ "path": "notes.txt", "content": content, "append": append })
+                    .to_string();
+            execute_write_file(&payload, WriteFileScope::Workspace(&workspace)).expect("write");
+            std::fs::read_to_string(workspace.join("notes.txt")).expect("read back")
+        };
+        assert_eq!(write("one", false), "one");
+        assert_eq!(write("-two", true), "one-two");
+        assert_eq!(write("three", false), "three");
     }
 
     #[test]

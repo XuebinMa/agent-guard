@@ -98,3 +98,47 @@ user changes or repeat unchanged successful gates.
   own exact-head CI must pass; read the current head/run from GitHub rather than
   treating `38c95f6`'s checks as proof for the new commit. Registry publication
   and public advisory mutation still await explicit authority/actual availability.
+
+## Second-pass continuation — 2026-10-05
+
+The version-preparation head `e6340c965210abfd780b09b17b2b71368368525d`
+passed [CI run 37263652407](https://github.com/XuebinMa/agent-guard/actions/runs/37263652407):
+all 19 jobs succeeded. It remains the remote PR head as this section is prepared;
+those checks do **not** validate the subsequent local changes.
+
+The [second-pass report](security-review-2026-10-05.md) records F23–F40 and
+R3–R9. Its initial local tree passed the full verification script independently
+in a temporary snapshot. Additional decision-only negative tests then exposed
+four residuals; F41–F44 close them, with five SDK locks (`sec58`–`sec62`) and
+positive controls. All 73 SDK security regressions now pass. The connected
+FIFO type check and all seven macOS sandbox integrations also pass; separate
+temporary workspaces remove parallel interference in the latter.
+
+Second-pass release notes are folded into the **unpublished** 0.2.7 section;
+published markers remain 0.2.6. Shared fixtures now contain 52 decision-only
+Rust/Python/Node scenarios. Their comparator is a required new-head CI job,
+not a substitute for the SDK's expected-decision assertions. The OS-network
+parity probe now uses bounded loopback traffic rather than a public endpoint.
+
+- [x] Complete working-tree full verification (exit 0): Rust 1,115 passed,
+  0 failed, 2 ignored across 51 result groups; Python 113 passed with real
+  LangChain 1.6.6; Node and plugin suites passed. Strict all-target Clippy
+  also passed. After the fixture-only loopback edit, all five OS capability
+  parity tests passed; updated docs/version gates passed (206 Markdown files).
+  Logs: `/tmp/agent-guard-second-pass-final-full.log`,
+  `/tmp/agent-guard-second-pass-strict-lint.log`,
+  `/tmp/agent-guard-second-pass-loopback-parity.log`,
+  `/tmp/agent-guard-second-pass-final-docs.log`.
+- [x] Prepare the reviewed tree, tests and this record as one normal follow-up
+  commit for #170. Only a confirmed fast-forward remote update counts as
+  delivery; never force-push over another contributor's updates.
+- [ ] Verify the new exact PR head's complete cross-platform CI, including all
+  52 parity cases and supply-chain gates. Fetch current GitHub state rather
+  than relying on the prior version-preparation run.
+- [ ] Merge/publication remains a separate authority gate. Do not work around a
+  rejected authorization route. No new tag, registry publication or public
+  GHSA mutation has occurred in this continuation.
+
+Known open limitations R1–R9 remain open; their documentation is not a repair.
+The existing GHSA correction keeps its original three-issue scope rather than
+claiming it covers every second-pass finding.
