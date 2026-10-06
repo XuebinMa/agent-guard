@@ -311,5 +311,41 @@
     "tool": "bash",
     "payload": {"command": "git diff --no-textconv --no-ext-diff HEAD"},
     "context": {"trust_level": "untrusted", "working_directory": "/workspace"}
+  },
+  {
+    "name": "read_legacy_grant_subtree_allow",
+    "tool": "read_file",
+    "payload": {"path": "/r7-parity/src/main.rs"},
+    "context": {"trust_level": "trusted", "working_directory": "/r7-parity"}
+  },
+  {
+    "name": "read_legacy_grant_sibling_deny",
+    "tool": "read_file",
+    "payload": {"path": "/r7-parity/src-old/main.rs"},
+    "context": {"trust_level": "trusted", "working_directory": "/r7-parity"}
+  },
+  {
+    "name": "write_legacy_escape_subtree_allow",
+    "tool": "write_file",
+    "payload": {"path": "/r7-parity/external/public.txt", "content": "public fixture"},
+    "context": {"trust_level": "trusted", "working_directory": "/r7-parity/workspace"}
+  },
+  {
+    "name": "write_legacy_escape_sibling_deny",
+    "tool": "write_file",
+    "payload": {"path": "/r7-parity/external-sibling/public.txt", "content": "public fixture"},
+    "context": {"trust_level": "trusted", "working_directory": "/r7-parity/workspace"}
+  },
+  {
+    "name": "read_corrected_deny_partial_component_deny",
+    "tool": "read_file",
+    "payload": {"path": "/workspace/.env.local"},
+    "context": {"trust_level": "trusted", "working_directory": "/workspace"}
+  },
+  {
+    "name": "read_corrected_deny_unmatched_file_allow",
+    "tool": "read_file",
+    "payload": {"path": "/workspace/env.txt"},
+    "context": {"trust_level": "trusted", "working_directory": "/workspace"}
   }
 ]

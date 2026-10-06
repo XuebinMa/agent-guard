@@ -9,7 +9,10 @@ use sha2::{Digest, Sha256};
 use thiserror::Error;
 
 use crate::decision::{DecisionCode, DecisionReason, GuardDecision};
-use crate::file_paths::{requested_tool_path, resolve_path_glob_pattern, resolve_tool_path};
+use crate::file_paths::{
+    requested_tool_path, resolve_granted_path_glob_pattern, resolve_path_glob_pattern,
+    resolve_tool_path,
+};
 use crate::payload::{extract_bash_command, extract_http_request, extract_path, ExtractedPayload};
 use crate::types::{Context, Tool, TrustLevel};
 
@@ -865,7 +868,11 @@ impl PolicyEngine {
                         .unwrap_or_default();
                     let escapes = |candidate: &str| {
                         escape_globs.iter().any(|pat| {
-                            path_glob_matches(pat, candidate, context.working_directory.as_deref())
+                            granted_path_glob_matches(
+                                pat,
+                                candidate,
+                                context.working_directory.as_deref(),
+                            )
                         })
                     };
 
@@ -1000,7 +1007,7 @@ impl PolicyEngine {
 
             if !tp.allow_paths.is_empty() {
                 let in_allowlist = tp.allow_paths.iter().any(|p| {
-                    path_glob_matches(p, match_value, context.working_directory.as_deref())
+                    granted_path_glob_matches(p, match_value, context.working_directory.as_deref())
                 });
                 if !in_allowlist {
                     let reason = DecisionReason::new(
@@ -1229,8 +1236,8 @@ fn pattern_display(rule: &CompiledRulePattern) -> String {
     }
 }
 
-fn path_glob_matches(pattern: &str, path: &str, working_directory: Option<&Path>) -> bool {
-    let resolved_pattern = resolve_path_glob_pattern(pattern, working_directory);
+fn granted_path_glob_matches(pattern: &str, path: &str, working_directory: Option<&Path>) -> bool {
+    let resolved_pattern = resolve_granted_path_glob_pattern(pattern, working_directory);
     if let Ok(glob) = glob::Pattern::new(&resolved_pattern) {
         glob.matches(path)
     } else {

@@ -76,6 +76,33 @@ pub fn resolve_path_glob_pattern(pattern: &str, working_directory: Option<&Path>
     }
 }
 
+/// Preserve the pre-0.2.7 interpretation of permission-granting patterns.
+/// Correcting partial-component deny globs must not silently authorize sibling
+/// names via `allow_paths` or waive their bound via `workspace_escape_paths`.
+pub(crate) fn resolve_granted_path_glob_pattern(
+    pattern: &str,
+    working_directory: Option<&Path>,
+) -> String {
+    let Some(split_index) = pattern.find(['*', '?', '[']) else {
+        return resolve_path_glob_pattern(pattern, working_directory);
+    };
+
+    let (prefix, suffix) = pattern.split_at(split_index);
+    if prefix.is_empty() {
+        return pattern.to_string();
+    }
+
+    let resolved_prefix = resolve_tool_path(prefix, working_directory)
+        .map(|path| path.to_string_lossy().into_owned())
+        .unwrap_or_else(|_| prefix.to_string());
+
+    if resolved_prefix.ends_with(std::path::MAIN_SEPARATOR) {
+        format!("{resolved_prefix}{suffix}")
+    } else {
+        format!("{resolved_prefix}{}{suffix}", std::path::MAIN_SEPARATOR)
+    }
+}
+
 fn resolve_with_existing_ancestor(
     path: &Path,
     workspace_bound: Option<&Path>,

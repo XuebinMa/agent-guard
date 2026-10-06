@@ -1660,7 +1660,11 @@ anomaly:
         );
     }
 
-    let allowed = file_decision(&g, Tool::WriteFile, &workspace, "notes-today.md");
+    // Deny globs are corrected, but grants retain their old interpretation:
+    // `notes-*.md` still names `notes-/*.md`, not a new sibling-file grant.
+    let refused = file_decision(&g, Tool::WriteFile, &workspace, "notes-today.md");
+    assert_deny_with_code(&refused, DecisionCode::NotInAllowList);
+    let allowed = file_decision(&g, Tool::WriteFile, &workspace, "notes-/today.md");
     assert!(matches!(allowed, GuardDecision::Allow), "{allowed:?}");
     let allowed = file_decision(&g, Tool::WriteFile, &workspace, "docs/guide.md");
     assert!(matches!(allowed, GuardDecision::Allow), "{allowed:?}");
@@ -2288,4 +2292,86 @@ fn sec62_read_only_git_option_prefixes_cannot_reenable_helpers() {
         "unsafe option decisions: {unexpected:?}"
     );
     assert_bash_allowed(&g, "git diff --no-textconv --no-ext-diff HEAD");
+}
+
+// R7 / PR #170: correcting deny patterns must not silently widen grants.
+#[test]
+fn sec63_allow_path_glob_correction_does_not_authorize_sibling_names() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let workspace = temp.path().canonicalize().expect("workspace");
+    std::fs::create_dir_all(workspace.join("src")).expect("original subtree");
+    std::fs::create_dir_all(workspace.join("src-old")).expect("sibling subtree");
+    std::fs::create_dir_all(workspace.join("src1")).expect("sibling name");
+
+    for (pattern, granted, rejected) in [
+        ("src*", "src/main.rs", "src-old/main.rs"),
+        ("src?", "src/1", "src1"),
+        ("src[12]", "src/1", "src1"),
+        ("src/**", "src/main.rs", "src-old/main.rs"),
+    ] {
+        let policy = serde_json::json!({
+            "version": 1,
+            "default_mode": "workspace_write",
+            "tools": { "read_file": { "allow_paths": [pattern] } },
+            "audit": { "enabled": false },
+            "anomaly": { "enabled": false }
+        })
+        .to_string();
+        let g = Guard::from_yaml(&policy).expect("guard init");
+
+        let decision = file_decision(&g, Tool::ReadFile, &workspace, granted);
+        assert!(
+            matches!(decision, GuardDecision::Allow),
+            "{pattern} must retain its existing subtree grant for {granted}: {decision:?}"
+        );
+        let decision = file_decision(&g, Tool::ReadFile, &workspace, rejected);
+        assert_deny_with_code(&decision, DecisionCode::NotInAllowList);
+    }
+}
+
+#[test]
+fn sec64_workspace_escape_glob_correction_does_not_waive_sibling_bounds() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let root = temp.path().canonicalize().expect("canonical fixture root");
+    let workspace = root.join("workspace");
+    let external = root.join("external");
+    let sibling = root.join("external-sibling");
+    std::fs::create_dir_all(&workspace).expect("workspace");
+    std::fs::create_dir_all(&external).expect("original external subtree");
+    std::fs::create_dir_all(&sibling).expect("external sibling subtree");
+
+    for pattern in [
+        format!("{}*", external.display()),
+        format!("{}/**", external.display()),
+    ] {
+        let policy = serde_json::json!({
+            "version": 1,
+            "default_mode": "workspace_write",
+            "tools": { "read_file": { "workspace_escape_paths": [pattern] } },
+            "audit": { "enabled": false },
+            "anomaly": { "enabled": false }
+        })
+        .to_string();
+        let g = Guard::from_yaml(&policy).expect("guard init");
+
+        let granted = external.join("public.txt");
+        let decision = file_decision(
+            &g,
+            Tool::ReadFile,
+            &workspace,
+            granted.to_str().expect("fixture path"),
+        );
+        assert!(
+            matches!(decision, GuardDecision::Allow),
+            "{pattern} must retain its existing external subtree grant: {decision:?}"
+        );
+        let rejected = sibling.join("public.txt");
+        let decision = file_decision(
+            &g,
+            Tool::ReadFile,
+            &workspace,
+            rejected.to_str().expect("fixture path"),
+        );
+        assert_deny_with_code(&decision, DecisionCode::PathTraversal);
+    }
 }
