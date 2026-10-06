@@ -127,5 +127,8 @@ strict all-target workspace Clippy passed. Final docs passed 52 script tests,
 Logs are `/private/tmp/agent-guard-broker-first-cost-{full,strictlint,python-framework,parity,docs}.log`.
 The measurement/docs additions require their own new PR-head CI; the earlier
 `5f8e714` matrix is not reused as a green result for an unpushed commit.
+Original CI log trailing blank lines failed staged `git diff --check`; the logs
+are preserved byte-for-byte as Base64 with decoded hashes, like the original
+partial-patch evidence. No whitespace gate was disabled or data discarded.
 
 Windows ambient handles and shared-inode hard-link limitations remain open.

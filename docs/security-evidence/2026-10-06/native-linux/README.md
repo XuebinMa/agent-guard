@@ -19,10 +19,17 @@ authentication values, private TLS key, raw headers or terminal transcript):
 | File | SHA-256 |
 | --- | --- |
 | [native.json](native.json) | `aeaef58e856b20447795acc4a88d65e45508f453d5205eff879a30897d6c250c` |
-| [broker-tests.log](broker-tests.log) | `921431a336f18d3855c5cc75fc6e1e8e151ddfd0fd673056c521b65e7ccacdc8` |
-| [cli-tests.log](cli-tests.log) | `9bc22274550c753721e4c02306d85854149fcae455f2030fb5b7bbee5d082a5c` |
+| [broker-tests.log.b64](broker-tests.log.b64), decoded bytes | `921431a336f18d3855c5cc75fc6e1e8e151ddfd0fd673056c521b65e7ccacdc8` |
+| [cli-tests.log.b64](cli-tests.log.b64), decoded bytes | `9bc22274550c753721e4c02306d85854149fcae455f2030fb5b7bbee5d082a5c` |
 | [image.id](image.id) | `94a645f2ac4b39a0c060c475b2b177e6f87f2958838f3fe1fa233e476341f938` |
 | [ci-conclusions.json](ci-conclusions.json) | `437594ee9a675336cba68533f36b5d0d47ae54a61aeea1a7dc1222b588ef3052` |
+
+The raw logs end in blank lines, which fail the repository's Git whitespace
+gate when added directly. They are stored losslessly as Base64 instead of
+changing their evidence bytes or relaxing that gate. For example, decode to
+stdout with `base64 --decode < broker-tests.log.b64`; do not execute log text.
+The listed log hashes bind the decoded bytes. The original downloadable CI
+artifact remains the source, including its trailing newlines.
 
 The later [copy-cost.json](copy-cost.json) is **local performance evidence**, not
 part of that CI artifact or isolation proof. SHA-256:
