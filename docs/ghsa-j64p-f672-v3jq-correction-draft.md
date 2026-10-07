@@ -1,10 +1,13 @@
-# GHSA-j64p-f672-v3jq correction draft
+# GHSA-j64p-f672-v3jq verified correction record
 
-This is a draft for the existing public advisory, not a new advisory, CVE
-assignment, or announcement that 0.2.8 is already available. Verify the actual
-registry release before naming 0.2.8 as a patched version. The immutable 0.2.7
-source tag contains the sed repair but its release was cancelled; it is not
-an available registry remedy. New parser findings remain outside this advisory.
+The reviewed draft was applied to the existing public advisory at
+`2026-10-07T02:42:05Z`, after 0.2.8 registry/install verification. A fresh API
+read confirmed the five package ranges below, original ID/summary/critical
+severity/CWEs and `cve_id: null`. This is not a new advisory or CVE assignment.
+The immutable 0.2.7 source tag contains the sed repair but its publication was
+cancelled; it is not an available registry remedy. New parser findings remain
+outside this advisory. See [verified delivery](release-028-delivery.md) and
+the [public advisory](https://github.com/XuebinMa/agent-guard/security/advisories/GHSA-j64p-f672-v3jq).
 
 ## Metadata to preserve and correct
 
@@ -13,18 +16,18 @@ Do not rewrite its scope to cover all 22 findings in the defensive review.
 
 | Ecosystem | Package | Correct affected range | Patched version |
 | --- | --- | --- | --- |
-| rust | agent-guard-validators | `<= 0.2.6` | none until release verification; then `0.2.8` |
-| rust | agent-guard-sdk | `<= 0.2.6` | none until release verification; then `0.2.8` |
-| rust | guard-hook | `<= 0.2.6` | none until release verification; then `0.2.8` |
-| npm | agent-guard-plugin | `<= 0.2.6` | none until release verification; then `0.2.8` |
-| pip | agent-guard-python | `<= 0.2.6` | none until release verification; then `0.2.8` |
+| rust | agent-guard-validators | `<= 0.2.6` | `0.2.8` |
+| rust | agent-guard-sdk | `<= 0.2.6` | `0.2.8` |
+| rust | guard-hook | `<= 0.2.6` | `0.2.8` |
+| npm | agent-guard-plugin | `<= 0.2.6` | `0.2.8` |
+| pip | agent-guard-python | `<= 0.2.6` | `0.2.8` |
 
 The Python wheel embeds the SDK/validator implementation. The Node binding is
 not published to npm; do not add it as a published vulnerable package. The
 CLI's SDK dependency is covered transitively in Rust lockfiles; do not flag
 unrelated core/offline verifier crates without evidence.
 
-## Corrected public description before a repair release is available
+## Historical description drafted before a repair release was available
 
 Three independent Bash validation gaps in Agent Guard 0.2.5 and earlier could
 let a tool call evade controls in the shipped restricted policy when it ran
@@ -60,9 +63,9 @@ published remedy. Until a verified repair release is available,
 disable the Bash tool or use independently configured OS confinement of the
 intended workspace. Upgrading only to 0.2.6 does not close the complete sed issue.
 
-## Description delta only after release verification
+## Published final paragraph after release verification
 
-Replace the preceding final paragraph with:
+The preceding historical final paragraph was replaced with:
 
 > Version 0.2.8 completes the reproduced sed destination checks with bounded
 > parsing, conservative refusal of unmodeled scripts/options and permanent
@@ -72,7 +75,7 @@ Replace the preceding final paragraph with:
 > sandbox. The hook remains advisory, and this fix does not make it a hostile
 > agent containment boundary.
 
-At that point set all five packages' patched version to `0.2.8`, retaining
-`<= 0.2.6` as affected. Check the repository advisory API response after writing;
-do not infer a CVE assignment or ecosystem notification propagation from a
-successful update alone.
+All five packages now name patched version `0.2.8`, retaining `<= 0.2.6` as
+affected. The repository advisory API response and fresh read were both
+checked. A successful correction is not evidence of a CVE assignment or
+ecosystem notification propagation.

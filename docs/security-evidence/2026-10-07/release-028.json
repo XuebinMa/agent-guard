@@ -1,0 +1,176 @@
+{
+  "observed_at_utc": "2026-10-07T02:44:00Z",
+  "version": "0.2.8",
+  "source_commit": "8cde12a509e8533bc6bbd1612b8012534c7d96a1",
+  "pr": {
+    "number": 171,
+    "head": "74c3b9254843d0511e829a8b739b689d3ce8b457",
+    "ci_run": 37560792606,
+    "completed_success_jobs": 21
+  },
+  "main_ci": {
+    "run": 37561177566,
+    "completed_success_jobs": 21,
+    "native_artifact": 11456852116,
+    "native_report_sha256": "b67749826bceb51cd864dd8c8cb8db13453f3be6931605b9a923c7b3b0990f9b",
+    "broker_test_log_sha256": "b61048d66c75832019a86d2fad530f44ecf3c3e272e75eed76171ab1efae7618",
+    "cli_test_log_sha256": "0d6f448441652eb7c8f8ae7348bd90d0f6c8e3d006f8db8e973508dde9aabaae",
+    "accepted": true,
+    "cleanup_complete": true
+  },
+  "release_run": 37561573886,
+  "release_conclusion": "success",
+  "rust_crates": [
+    {
+      "crate": "agent-guard-core",
+      "version": "0.2.8",
+      "checksum": "4ecca32cf56d07c7006d66b5714af801825184544ae64160ed6dadadc2746b4b"
+    },
+    {
+      "crate": "agent-guard-validators",
+      "version": "0.2.8",
+      "checksum": "d4cf1eb966f81cf2f4a97ba99a75fd09ef92ccacd0ee0b02e3a27010258e4fe1"
+    },
+    {
+      "crate": "agent-guard-sandbox",
+      "version": "0.2.8",
+      "checksum": "3145ab4b7206d8d1f31c9c9a52b97124e92799fdbb0bd30c39f08babd43c81bd"
+    },
+    {
+      "crate": "agent-guard-sdk",
+      "version": "0.2.8",
+      "checksum": "299696f0ad1db17b58eb57672da063f9ddee878e78b748043ec5fea3f4a74fbf"
+    },
+    {
+      "crate": "agent-guard-broker",
+      "version": "0.2.8",
+      "checksum": "9b06cb3934273346ff089f36bcb0ba2c1ab2057ff6499749c0877b67f0c0a07c"
+    },
+    {
+      "crate": "agent-guard-cli",
+      "version": "0.2.8",
+      "checksum": "2a029338df1a5341c1e10dc1a67b2a4f2a0df218d1f2a41debfe316292d07854"
+    },
+    {
+      "crate": "guard-hook",
+      "version": "0.2.8",
+      "checksum": "2d917bc7b58c98be74ee01029ff5fcb0e54640f9cecf632bae0c1312c0e7d91c"
+    },
+    {
+      "crate": "guard-verify",
+      "version": "0.2.8",
+      "checksum": "a3943efe58b8ac3479a16565a27b40bd9675aac664c115228a7b0308dc7c6ad4"
+    }
+  ],
+  "python_wheels": [
+    {
+      "wheel": "agent_guard_python-0.2.8-cp310-abi3-macosx_10_12_x86_64.whl",
+      "sha256": "be9d223fcd43d9889063d8c80f59ad2dc3f2354a8e9349418c9d50e3142a597a",
+      "native": "agent_guard/_agent_guard.abi3.so",
+      "tags": [
+        "cp310-abi3-macosx_10_12_x86_64"
+      ]
+    },
+    {
+      "wheel": "agent_guard_python-0.2.8-cp310-abi3-macosx_11_0_arm64.whl",
+      "sha256": "5a3f960a44cfa214daf6c86c10e06a16c470a61713219f84dd6d1a0ef269aade",
+      "native": "agent_guard/_agent_guard.abi3.so",
+      "tags": [
+        "cp310-abi3-macosx_11_0_arm64"
+      ]
+    },
+    {
+      "wheel": "agent_guard_python-0.2.8-cp310-abi3-manylinux_2_17_aarch64.manylinux2014_aarch64.whl",
+      "sha256": "a812980c12cf3cd39399fa8467833cf43e648d43c5d2b9d73db323a7751cf5b2",
+      "native": "agent_guard/_agent_guard.abi3.so",
+      "tags": [
+        "cp310-abi3-manylinux_2_17_aarch64",
+        "cp310-abi3-manylinux2014_aarch64"
+      ]
+    },
+    {
+      "wheel": "agent_guard_python-0.2.8-cp310-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl",
+      "sha256": "bfb3b62b28b96283ab3eb913b5e46ad476f723761c178da41f13150452ba3b16",
+      "native": "agent_guard/_agent_guard.abi3.so",
+      "tags": [
+        "cp310-abi3-manylinux_2_17_x86_64",
+        "cp310-abi3-manylinux2014_x86_64"
+      ]
+    },
+    {
+      "wheel": "agent_guard_python-0.2.8-cp310-abi3-win_amd64.whl",
+      "sha256": "aef14e3cc5513a84ab542e656e7af5b0c6ce74a0df47685364469245cedfc012",
+      "native": "agent_guard/_agent_guard.pyd",
+      "tags": [
+        "cp310-abi3-win_amd64"
+      ]
+    }
+  ],
+  "npm": {
+    "npm": "agent-guard-plugin",
+    "version": "0.2.8",
+    "integrity": "sha512-LdjCZKM95D+iY6PTD+V+NuTgxPeyWNnoAJKIUsw2fF+GdYzo8mwF4Vx3wkBgDhTarXWxGqWVLXO4+P7pbOaRxw==",
+    "dependencies": {},
+    "attestations": {
+      "url": "https://registry.npmjs.org/-/npm/v1/attestations/agent-guard-plugin@0.2.8",
+      "provenance": {
+        "predicateType": "https://slsa.dev/provenance/v1"
+      }
+    },
+    "signature_verification": "npm audit signatures passed separately"
+  },
+  "installed_rust": {
+    "packages": [
+      "guard-hook",
+      "agent-guard-cli"
+    ],
+    "locked": true,
+    "isolated_prefix": true,
+    "version_checks": "0.2.8",
+    "decision_only_smoke": {
+      "positive_allow": 1,
+      "negative_deny": 2
+    }
+  },
+  "installed_python": {
+    "package": "agent-guard-python",
+    "version": "0.2.8",
+    "platform": "macOS arm64",
+    "isolated_venv": true,
+    "decision_only_smoke": {
+      "positive_allow": 1,
+      "negative_deny": 2
+    }
+  },
+  "npm_verification": {
+    "command": "npm audit signatures",
+    "npm_version": "11.8.0",
+    "verified_registry_signatures": 1,
+    "verified_attestations": 1,
+    "install_scripts_disabled": true,
+    "statement_commit": "8cde12a509e8533bc6bbd1612b8012534c7d96a1",
+    "statement_ref": "refs/tags/v0.2.8",
+    "statement_workflow": ".github/workflows/release.yml",
+    "statement_subject_integrity_matched": true
+  },
+  "github_release": {
+    "url": "https://github.com/XuebinMa/agent-guard/releases/tag/v0.2.8",
+    "published_at_utc": "2026-10-07T02:42:06Z",
+    "draft": false,
+    "prerelease": false
+  },
+  "ghsa": {
+    "id": "GHSA-j64p-f672-v3jq",
+    "updated_at_utc": "2026-10-07T02:42:05Z",
+    "affected_range": "<= 0.2.6",
+    "patched_version": "0.2.8",
+    "package_count": 5,
+    "cve_id": null,
+    "scope": "original three Bash findings only"
+  },
+  "limits": [
+    "Fixed synthetic native Linux acceptance, not arbitrary-host containment",
+    "Real maintainer task and representative capacity feedback pending",
+    "Windows ambient handles and general shared hard links remain open"
+  ]
+}

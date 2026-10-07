@@ -9,7 +9,7 @@
 ## 📣 Release Status
 
 - **Source version** → `v0.2.8`
-- **Latest published release** → [`v0.2.6`](https://github.com/XuebinMa/agent-guard/releases/tag/v0.2.6) — crates.io, PyPI, npm
+- **Latest published release** → [`v0.2.8`](https://github.com/XuebinMa/agent-guard/releases/tag/v0.2.8) — crates.io, PyPI, npm
 - **Community Thread** → [GitHub Discussions #1](https://github.com/XuebinMa/agent-guard/discussions/1)
 
 If you are arriving from GitHub or social posts, these are the two best entry points before you dive deeper into the docs.
