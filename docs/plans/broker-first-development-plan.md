@@ -285,6 +285,13 @@ python3 tests/cross-language-parity/compare.py
 
 ### 当前发布暂缓与版本待决
 
+The historical hold below was resolved by the direct user instruction on
+2026-10-06 (Pacific time): self-use first, stop the old run and publish a
+successor. Run `37424509488` is now cancelled; `v0.2.7` is still immutable.
+Use the [0.2.8 delivery checkpoint](../release-028-delivery.md) for current
+authorization/gates, and the [self-pilot record](broker-first-self-pilot.md)
+for P5. The old snapshot is retained below rather than treated as current.
+
 - `v0.2.7` 已固定在 `e1a0a0a5fd956186e67e9c235451cbfa2fb4b260`，不得移动。
 - 注册表无 0.2.7 是交付记录中 `2026-10-06T10:45:10Z` 的快照，不当作实时事实。
 - 是否停止旧发布并使用后继版本，仍按已有待答问题处理；不预填 0.2.8，

@@ -4,7 +4,7 @@
 > Your agent writes code and runs tests freely; agent-guard makes the outbound
 > intent visible and gives the host a decision before code leaves the machine.
 
-[![Version](https://img.shields.io/badge/Version-0.2.7-blue.svg)]()
+[![Version](https://img.shields.io/badge/Version-0.2.8-blue.svg)]()
 [![Focus](https://img.shields.io/badge/Focus-Outbound%20Control-green.svg)]()
 [![License](https://img.shields.io/badge/License-MIT-yellow.svg)]()
 [![MSRV](https://img.shields.io/badge/MSRV-1.79-orange.svg)]()
@@ -139,7 +139,7 @@ checkout with `npm ci --prefix crates/agent-guard-node && npm run build
 
 ## Release Status
 
-- **Source version**: `v0.2.7`
+- **Source version**: `v0.2.8`
 - **Latest published release**: [`v0.2.6`](https://github.com/XuebinMa/agent-guard/releases/tag/v0.2.6) — crates.io, PyPI, npm
 - **Announcement**: [GitHub Discussions #1](https://github.com/XuebinMa/agent-guard/discussions/1)
 
@@ -271,7 +271,9 @@ host-controlled setup and approval without a new daemon or RPC. Its configuratio
 tests are not isolation proof: native authenticated container acceptance is a
 separate required gate. The [accepted plan](docs/plans/broker-first-development-plan.md)
 keeps Shell in bounded maintenance and credential isolation as the next product
-milestone; it does not change the publication hold.
+milestone. The maintainer will pilot it first; the separate
+[0.2.8 delivery checkpoint](docs/release-028-delivery.md) records the cancelled
+old publication and successor gates, not a claim that a new release is available.
 
 ---
 

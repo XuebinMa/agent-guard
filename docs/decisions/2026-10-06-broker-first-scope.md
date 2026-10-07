@@ -106,6 +106,15 @@ facts. Keep `v0.2.7` immutable and honor its current publication hold. Consult
 fresh repository, CI and registry state before any later delivery action; do not
 turn this dated decision into an assumption of current availability.
 
+### Subsequent direct user decision
+
+Later on 2026-10-06 (Pacific time), the user chose self-use first, stopped the
+old publication and authorized a successor: "只能是自己先试用；停止旧发布、改发后继版本。"
+The [0.2.8 delivery checkpoint](../release-028-delivery.md) now records that
+decision and remaining protected gates. The [self-pilot checklist](../plans/broker-first-self-pilot.md)
+is still pending real task/host/feedback, not fulfilled by CI. This does not
+change the product scope or move `v0.2.7`.
+
 ## Research basis
 
 These sources support the architecture, not a certification of Agent Guard:

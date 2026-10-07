@@ -233,7 +233,7 @@ to [the tag-triggered workflow](.github/workflows/release.yml), not cargo-releas
 `publish = false` and `push = false`; do not use cargo-release alone to update
 Python, Node, plugin and documentation markers.
 
-- All ten workspace crates share one version (matches the `version = "=0.2.7"` inter-crate pin in `Cargo.toml`).
+- All ten workspace crates share one version (matches the `version = "=0.2.8"` inter-crate pin in `Cargo.toml`).
 - The workflow publishes eight public Rust crates in dependency order using
   `cargo publish --locked`, Python wheels as `agent-guard-python`, and the npm
   installer as `agent-guard-plugin`. The Python/Node Cargo binding crates have

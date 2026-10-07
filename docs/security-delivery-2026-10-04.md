@@ -48,10 +48,14 @@ user changes or repeat unchanged successful gates.
 
 ## Current facts
 
-- PR: [#170](https://github.com/XuebinMa/agent-guard/pull/170), still draft.
-  Integration head: `38c95f6ffda83f9dabd7a6c89138aaa35da5e50f`, a direct child of
-  the original `fd2c391`. Its original 19 green checks apply only to `fd2c391`.
-- Latest published version: 0.2.6. Repair-release source preparation: 0.2.7.
+- PR [#170](https://github.com/XuebinMa/agent-guard/pull/170) subsequently merged
+  at `e1a0a0a5fd956186e67e9c235451cbfa2fb4b260`. Its final PR/main matrices
+  passed; those historical checks do not validate a successor preparation.
+- The user has now chosen self-use first and a successor. Old release
+  `37424509488` is confirmed cancelled; immutable `v0.2.7` stays at `e1a0a0a`.
+  Source preparation is 0.2.8 in PR #171, published markers remain 0.2.6.
+  [The successor delivery checkpoint](release-028-delivery.md) owns the new
+  gates and evidence; no registry availability is inferred from a source bump.
 - GHSA: [GHSA-j64p-f672-v3jq](https://github.com/XuebinMa/agent-guard/security/advisories/GHSA-j64p-f672-v3jq)
   is public/critical, presently says `<= 0.2.5` affected and 0.2.6 patched for
   validators, SDK, guard-hook and the npm plugin. The sed portion is incomplete

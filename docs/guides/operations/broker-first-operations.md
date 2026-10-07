@@ -9,8 +9,9 @@ Configuration checks, host composition tests, native container acceptance, a
 real user workflow, and publication are different milestones. Their actual
 status belongs in the [implementation checkpoint](../../broker-first-progress.md).
 Do not infer complete I1–I8 acceptance, user approval or a released fix from this
-guide. The existing `v0.2.7` tag/publication hold and pending version choice are
-unchanged.
+guide. The user chose self-use first and cancelled the old release; `v0.2.7`
+remains immutable. Successor `0.2.8` preparation and real self-pilot completion
+are separate; see the [delivery checkpoint](../../release-028-delivery.md).
 
 ## One complete workflow
 
@@ -53,6 +54,20 @@ proxy. TTY checks do not authenticate a human against another process with the
 same host permissions; account/process/terminal separation remains a prerequisite.
 Do not add `--yes` or pipe an agent-supplied answer into the strict workflow.
 Neither `doctor` nor a receipt proves that separation.
+
+## Maintainer self-pilot
+
+The first actual user is the maintainer. This is a valid pilot, not evidence
+of demand from other users. Use the [self-pilot checklist and record](../../plans/broker-first-self-pilot.md)
+to record one real development task, a declined preview, a separately approved
+transaction and the observed approval/deployment cost. A CI PTY or benchmark
+confirmation is not the maintainer's feedback.
+
+The strict deployment requires a native Linux Docker host. A trial of the CLI
+on macOS can evaluate preview wording and ordinary local workflow, but cannot
+complete the Linux deployment or capacity acceptance. Do not install another
+runtime, move a real repository or supply Git credentials merely to fill this
+record without the operator choosing that setup.
 
 ## Failure and recovery guide
 

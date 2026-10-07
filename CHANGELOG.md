@@ -9,11 +9,18 @@ The `[Unreleased]` heading is rolled forward manually before each release; do no
 
 ## [Unreleased]
 
+## [0.2.8] - 2026-10-06
+
+Release preparation only: registry publication has not yet been verified.
+This successor includes all security and compatibility changes documented below
+under the **unpublished** `0.2.7` source tag, plus this bounded follow-up.
+The cancelled `0.2.7` release and its immutable tag are not overwritten.
+
 ### Security
 
 - Bounded follow-up review and red/green evidence:
-  [2026-10-06 report](docs/security-review-2026-10-06.md). This is unreleased
-  work; the immutable `v0.2.7` tag does not contain these fixes.
+  [2026-10-06 report](docs/security-review-2026-10-06.md). These fixes are in
+  the `0.2.8` preparation; the immutable `v0.2.7` tag does not contain them.
 - Restricted Shell validation refuses raw control bytes outside literal data,
   including nested executable regions, rather than trusting grammar-only
   whitespace/comment boundaries. Unsupported `=name` command words are refused;
@@ -27,13 +34,13 @@ The `[Unreleased]` heading is rolled forward manually before each release; do no
 - Document the accepted broker-first scope, actual Shell/execution dialects,
   optional unsigned CLI receipts, and independent parity/OS verification limits.
   The existing `v0.2.7` tag is unchanged; this follow-up is not in that tag and
-  no repair version is advertised as published.
+  no repair version is advertised as published until registry verification.
 
 ### Added
 
-- Six localhost-only authenticated Git/TLS composition tests and a required
-  native Linux CI job using the newly built broker CLI. These are not a proof
-  of container isolation or completion of the planned I1–I8 deployment checks.
+- Six localhost-only authenticated Git/TLS composition tests using the newly
+  built broker CLI. These host tests alone are not container-isolation proof;
+  the separate required native Linux job exercises the fixed deployment below.
 - Three fixture-bind checks preserve loopback defaults and restrict the
   native container fixture to the observed private Docker bridge address.
 - Fixed Linux Docker reference, required native authenticated-container CI
@@ -48,6 +55,10 @@ The `[Unreleased]` heading is rolled forward manually before each release; do no
   bytes without adding production instrumentation or a public API.
 
 ## [0.2.7] - 2026-10-05
+
+Unpublished source tag only. Its registry workflow was cancelled before Rust,
+PyPI and npm publication. Keep this historical source record; install the
+successor `0.2.8` only after its publication is independently verified.
 
 ### Security
 Second-pass review; details and limits in the

@@ -132,3 +132,18 @@ are preserved byte-for-byte as Base64 with decoded hashes, like the original
 partial-patch evidence. No whitespace gate was disabled or data discarded.
 
 Windows ambient handles and shared-inode hard-link limitations remain open.
+
+## Successor decision — 2026-10-06 (Pacific time)
+
+The direct user instruction is: "只能是自己先试用；停止旧发布、改发后继版本。"
+The first real pilot will therefore be the maintainer's own task, not invented
+external feedback. Host/task/representative size and actual feedback are still
+unrecorded; [the pilot checklist](plans/broker-first-self-pilot.md) preserves
+these remaining acceptance items.
+
+Old run `37424509488` is confirmed completed/cancelled: Rust publication,
+PyPI upload and npm publication are cancelled. The `v0.2.7` tag is preserved.
+Source markers move to `0.2.8`, published markers stay at `0.2.6`; only a new
+exact-head verification may authorize delivery. Current successor steps and
+evidence are tracked in [the 0.2.8 delivery checkpoint](release-028-delivery.md).
+This resolves the earlier pending version choice, not P5 user/capacity feedback.

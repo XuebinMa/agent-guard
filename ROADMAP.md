@@ -26,8 +26,9 @@ one credential-isolated, broker-executed Git push deployment.
 Shell parsing remains maintained, but building a universal Shell safety
 classifier is not a product objective. New hard-boundary work goes to exact
 transactions, protected credentials/configuration, and deployment acceptance.
-This decision does not change the publication hold in the
-[security delivery record](docs/security-delivery-2026-10-04.md).
+That scope decision alone did not authorize publication. The user's subsequent
+self-use/successor decision and current protected release gates are in the
+[0.2.8 delivery checkpoint](docs/release-028-delivery.md).
 
 ## Where the boundary is today
 
