@@ -1,0 +1,22 @@
+   Compiling agent-guard-validators v0.2.7 (/Users/xuebinma/.codex/worktrees/broker-first/agent-guard/crates/agent-guard-validators)
+   Compiling agent-guard-sdk v0.2.7 (/Users/xuebinma/.codex/worktrees/broker-first/agent-guard/crates/agent-guard-sdk)
+   Compiling guard-hook v0.2.7 (/Users/xuebinma/.codex/worktrees/broker-first/agent-guard/crates/guard-hook)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 1.39s
+     Running tests/hook_e2e.rs (/private/tmp/agent-guard-broker-first-target/debug/deps/hook_e2e-363aca491d6f1c67)
+
+running 13 tests
+test kill_switch_short_circuits_to_allow ... ok
+test unmappable_tool_silently_approves ... ok
+test send_pack_enters_outbound_approval_at_the_real_hook ... ok
+test an_unrelated_denial_carries_no_broker_hint ... ok
+test audit_jsonl_receives_decision_record ... ok
+test a_refused_push_tells_the_reader_about_the_broker ... ok
+test asks_on_git_push ... ok
+test allows_safe_bash_command ... ok
+test denies_sudo_command ... ok
+test destructive_validator_warning_remains_ask_without_a_stronger_policy_decision ... ok
+test modeled_launcher_preserves_policy_and_safe_local_work_at_the_real_hook ... ok
+test embedded_argv_candidate_preserves_policy_strength_at_the_real_hook ... ok
+test parser_boundary_refusals_reach_the_real_hook_without_unsafe_hints ... ok
+
+test result: ok. 13 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.72s

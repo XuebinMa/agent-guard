@@ -9,7 +9,56 @@ The `[Unreleased]` heading is rolled forward manually before each release; do no
 
 ## [Unreleased]
 
+## [0.2.8] - 2026-10-06
+
+Release preparation only: registry publication has not yet been verified.
+This successor includes all security and compatibility changes documented below
+under the **unpublished** `0.2.7` source tag, plus this bounded follow-up.
+The cancelled `0.2.7` release and its immutable tag are not overwritten.
+
+### Security
+
+- Bounded follow-up review and red/green evidence:
+  [2026-10-06 report](docs/security-review-2026-10-06.md). These fixes are in
+  the `0.2.8` preparation; the immutable `v0.2.7` tag does not contain them.
+- Restricted Shell validation refuses raw control bytes outside literal data,
+  including nested executable regions, rather than trusting grammar-only
+  whitespace/comment boundaries. Unsupported `=name` command words are refused;
+  assignment-looking literal executable words are no longer discarded from
+  AST-resolved argv. Permanent parser, real SDK and hook regressions retain
+  ordinary assignment, quoting and wrapper positive controls. This is bounded
+  defense in depth, not arbitrary-program containment.
+
+### Changed
+
+- Document the accepted broker-first scope, actual Shell/execution dialects,
+  optional unsigned CLI receipts, and independent parity/OS verification limits.
+  The existing `v0.2.7` tag is unchanged; this follow-up is not in that tag and
+  no repair version is advertised as published until registry verification.
+
+### Added
+
+- Six localhost-only authenticated Git/TLS composition tests using the newly
+  built broker CLI. These host tests alone are not container-isolation proof;
+  the separate required native Linux job exercises the fixed deployment below.
+- Three fixture-bind checks preserve loopback defaults and restrict the
+  native container fixture to the observed private Docker bridge address.
+- Fixed Linux Docker reference, required native authenticated-container CI
+  acceptance driver, and five actual broker execution-authorization tests.
+  Native acceptance passed for the fixed synthetic Linux profile at `5f8e714`
+  (CI run `37524417236`, 21/21 success); metadata
+  checks, host tests and automated PTY input are not human identity proof.
+- Reproducible bounded synthetic snapshot-cost driver and operational fault
+  guide. Whole-CLI 1/8/32 MiB observations are not pure-copy timings, true disk
+  peaks or representative production/user acceptance. An optional Unix test-only
+  probe separately measures the existing copy functions and retained logical
+  bytes without adding production instrumentation or a public API.
+
 ## [0.2.7] - 2026-10-05
+
+Unpublished source tag only. Its registry workflow was cancelled before Rust,
+PyPI and npm publication. Keep this historical source record; install the
+successor `0.2.8` only after its publication is independently verified.
 
 ### Security
 Second-pass review; details and limits in the

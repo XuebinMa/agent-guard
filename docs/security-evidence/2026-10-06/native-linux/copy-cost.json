@@ -1,0 +1,418 @@
+{
+  "schema": 1,
+  "at_utc": "2026-10-06T22:23:48.987950+00:00",
+  "source_before": {
+    "head": "5f8e714933049352950648ae5e08c30b9ce8fa91",
+    "dirty": true,
+    "status_porcelain": [
+      " M CHANGELOG.md",
+      " M crates/agent-guard-broker/src/git/snapshot.rs",
+      " M deploy/broker-first/README.md",
+      " M docs/broker-first-progress.md",
+      " M docs/guides/operations/broker-first-operations.md",
+      " M docs/guides/operations/credential-isolation.md",
+      " M docs/plans/broker-first-development-plan.md",
+      " M docs/security-review-2026-10-06.md",
+      " M scripts/benchmark-broker-first.py",
+      " M scripts/tests/test_benchmark_broker_first.py",
+      " M tests/broker-first/native/README.md",
+      "?? crates/agent-guard-broker/src/git/snapshot_cost.rs",
+      "?? docs/security-evidence/2026-10-06/native-linux/",
+      ""
+    ],
+    "tracked_diff_sha256": "11b1ed982271ba64cd63396a1f89ea53458becf64cdbae8566477fed020eb974",
+    "untracked_contents_in_diff_hash": false
+  },
+  "binary_sha256": "f97a47cbd1a15fdb8788165536679afcc62881d6165bc4e44d2ee0e233786707",
+  "benchmark_script_sha256": "6863950e64cc7c55ff834f93ad3325f124e9d77384b5bb8727a9cdaa367c0d89",
+  "copy_probe_sha256": "0112a03cd7cbb9139f61ea42be9b96deff2fa322b496058139780c81e50a8a9f",
+  "cli_version": "agent-guard 0.2.7",
+  "git_version": "git version 2.50.1 (Apple Git-155)",
+  "host": {
+    "os": "macOS-26.6.2-arm64-arm-64bit-Mach-O",
+    "machine": "arm64",
+    "processor": "arm",
+    "logical_cpu_count": 12,
+    "hardware_description": "Mac15,6 Apple M3 Pro 18 GiB RAM; concurrent CI preparation possible",
+    "python": "3.14.2",
+    "filesystem_description": "APFS Data volume under /private/tmp; cache not flushed",
+    "scratch_device": 16777233,
+    "filesystem_block_bytes": 4096,
+    "free_bytes_before": 165218983936
+  },
+  "method": {
+    "seed": 20261006,
+    "iterations": 2,
+    "sample_ms": 10,
+    "subprocess_timeout_seconds": 60,
+    "whole_run_deadline_seconds": 600,
+    "cache_condition": "not flushed; generated/repacked just before measurement; system Git --version prewarms toolchain cache in each trial TMPDIR; no cold-cache claim",
+    "timing_scope": "whole CLI wall time, including validation/fsck/preview/local Git transport; not pure copy time",
+    "footprint_scope": "observed regular-file maximum in per-trial broker TMPDIR only; sampling can miss short-lived files; no directory metadata or complete process/RSS peak",
+    "limitations": "one synthetic repacked blob/commit/tree; file transport, no authentication/TLS/container proof; sampler adds I/O; do not extrapolate to production"
+  },
+  "cases": [
+    {
+      "payload_mib": 1,
+      "payload_bytes": 1048576,
+      "payload_sha256": "35c8ce2a8daa4fe30c4e7b7e58ef48e91f0ecd109a2b8968f51eca6b954e6e08",
+      "storage": "one repacked commit/tree/blob; synthetic pseudo-random bytes",
+      "primary_objects": {
+        "logical_file_bytes": 1050400,
+        "allocated_file_bytes_estimate": 1064960
+      },
+      "local_oid": "2fdd64f22d39cdb26d96c47055fb8e5e858e0104",
+      "trials": [
+        {
+          "iteration": 1,
+          "preview_cancel": {
+            "wall_seconds": 0.12806141702458262,
+            "sampled_maximum": {
+              "logical_file_bytes": 1050800,
+              "allocated_file_bytes_estimate": 1073152
+            },
+            "samples": 9,
+            "sampling_errors": [],
+            "is_true_peak": false
+          },
+          "approve_and_push_including_preview": {
+            "wall_seconds": 0.3124049170874059,
+            "sampled_maximum": {
+              "logical_file_bytes": 1050800,
+              "allocated_file_bytes_estimate": 1073152
+            },
+            "samples": 22,
+            "sampling_errors": [],
+            "is_true_peak": false
+          },
+          "git_toolchain_baseline": {
+            "file_names": [],
+            "logical_file_bytes": 0,
+            "allocated_file_bytes_estimate": 0
+          },
+          "temporary_files_after_cli": {
+            "file_names": [],
+            "logical_file_bytes": 0,
+            "allocated_file_bytes_estimate": 0
+          },
+          "copy_probe": {
+            "capture_held_files": {
+              "allocated_file_bytes_estimate": 1073152,
+              "logical_file_bytes": 1050800,
+              "regular_files": 7
+            },
+            "capture_seconds": 0.082545583,
+            "copy_data": {
+              "allocated_file_bytes_estimate": 1060864,
+              "logical_file_bytes": 1050323,
+              "regular_files": 3
+            },
+            "copy_seconds": 0.001140834,
+            "local_oid": "2fdd64f22d39cdb26d96c47055fb8e5e858e0104",
+            "schema": 1
+          },
+          "independent_ref_matches_receipt": true
+        },
+        {
+          "iteration": 2,
+          "preview_cancel": {
+            "wall_seconds": 0.12949866615235806,
+            "sampled_maximum": {
+              "logical_file_bytes": 1050800,
+              "allocated_file_bytes_estimate": 1073152
+            },
+            "samples": 9,
+            "sampling_errors": [],
+            "is_true_peak": false
+          },
+          "approve_and_push_including_preview": {
+            "wall_seconds": 0.3069912916980684,
+            "sampled_maximum": {
+              "logical_file_bytes": 1050800,
+              "allocated_file_bytes_estimate": 1073152
+            },
+            "samples": 21,
+            "sampling_errors": [],
+            "is_true_peak": false
+          },
+          "git_toolchain_baseline": {
+            "file_names": [],
+            "logical_file_bytes": 0,
+            "allocated_file_bytes_estimate": 0
+          },
+          "temporary_files_after_cli": {
+            "file_names": [],
+            "logical_file_bytes": 0,
+            "allocated_file_bytes_estimate": 0
+          },
+          "copy_probe": {
+            "capture_held_files": {
+              "allocated_file_bytes_estimate": 1073152,
+              "logical_file_bytes": 1050800,
+              "regular_files": 7
+            },
+            "capture_seconds": 0.079440958,
+            "copy_data": {
+              "allocated_file_bytes_estimate": 1060864,
+              "logical_file_bytes": 1050323,
+              "regular_files": 3
+            },
+            "copy_seconds": 0.001461417,
+            "local_oid": "2fdd64f22d39cdb26d96c47055fb8e5e858e0104",
+            "schema": 1
+          },
+          "independent_ref_matches_receipt": true
+        }
+      ]
+    },
+    {
+      "payload_mib": 8,
+      "payload_bytes": 8388608,
+      "payload_sha256": "0c6c0d8f399df5fb21c5c05c1b0305a29e6d8af814c492567056af454d8c6428",
+      "storage": "one repacked commit/tree/blob; synthetic pseudo-random bytes",
+      "primary_objects": {
+        "logical_file_bytes": 8392672,
+        "allocated_file_bytes_estimate": 8404992
+      },
+      "local_oid": "ee49c8b2204f6a9ebf32616a57a0888c4160f682",
+      "trials": [
+        {
+          "iteration": 1,
+          "preview_cancel": {
+            "wall_seconds": 0.12901770789176226,
+            "sampled_maximum": {
+              "logical_file_bytes": 8393072,
+              "allocated_file_bytes_estimate": 8413184
+            },
+            "samples": 10,
+            "sampling_errors": [],
+            "is_true_peak": false
+          },
+          "approve_and_push_including_preview": {
+            "wall_seconds": 0.4645991250872612,
+            "sampled_maximum": {
+              "logical_file_bytes": 8393072,
+              "allocated_file_bytes_estimate": 8413184
+            },
+            "samples": 33,
+            "sampling_errors": [],
+            "is_true_peak": false
+          },
+          "git_toolchain_baseline": {
+            "file_names": [],
+            "logical_file_bytes": 0,
+            "allocated_file_bytes_estimate": 0
+          },
+          "temporary_files_after_cli": {
+            "file_names": [],
+            "logical_file_bytes": 0,
+            "allocated_file_bytes_estimate": 0
+          },
+          "copy_probe": {
+            "capture_held_files": {
+              "allocated_file_bytes_estimate": 8413184,
+              "logical_file_bytes": 8393072,
+              "regular_files": 7
+            },
+            "capture_seconds": 0.08455925,
+            "copy_data": {
+              "allocated_file_bytes_estimate": 8400896,
+              "logical_file_bytes": 8392595,
+              "regular_files": 3
+            },
+            "copy_seconds": 0.00498975,
+            "local_oid": "ee49c8b2204f6a9ebf32616a57a0888c4160f682",
+            "schema": 1
+          },
+          "independent_ref_matches_receipt": true
+        },
+        {
+          "iteration": 2,
+          "preview_cancel": {
+            "wall_seconds": 0.13100675027817488,
+            "sampled_maximum": {
+              "logical_file_bytes": 8393072,
+              "allocated_file_bytes_estimate": 8413184
+            },
+            "samples": 10,
+            "sampling_errors": [],
+            "is_true_peak": false
+          },
+          "approve_and_push_including_preview": {
+            "wall_seconds": 0.45479991706088185,
+            "sampled_maximum": {
+              "logical_file_bytes": 8393072,
+              "allocated_file_bytes_estimate": 8413184
+            },
+            "samples": 31,
+            "sampling_errors": [],
+            "is_true_peak": false
+          },
+          "git_toolchain_baseline": {
+            "file_names": [],
+            "logical_file_bytes": 0,
+            "allocated_file_bytes_estimate": 0
+          },
+          "temporary_files_after_cli": {
+            "file_names": [],
+            "logical_file_bytes": 0,
+            "allocated_file_bytes_estimate": 0
+          },
+          "copy_probe": {
+            "capture_held_files": {
+              "allocated_file_bytes_estimate": 8413184,
+              "logical_file_bytes": 8393072,
+              "regular_files": 7
+            },
+            "capture_seconds": 0.08379625,
+            "copy_data": {
+              "allocated_file_bytes_estimate": 8400896,
+              "logical_file_bytes": 8392595,
+              "regular_files": 3
+            },
+            "copy_seconds": 0.005014791,
+            "local_oid": "ee49c8b2204f6a9ebf32616a57a0888c4160f682",
+            "schema": 1
+          },
+          "independent_ref_matches_receipt": true
+        }
+      ]
+    },
+    {
+      "payload_mib": 32,
+      "payload_bytes": 33554432,
+      "payload_sha256": "fe977ffdf0dd243b9e481f4a0680346ed1884c60fb5d64504883c70130dcd767",
+      "storage": "one repacked commit/tree/blob; synthetic pseudo-random bytes",
+      "primary_objects": {
+        "logical_file_bytes": 33566177,
+        "allocated_file_bytes_estimate": 33579008
+      },
+      "local_oid": "6dabfcffaa865d4baa57adc208651d85c687b144",
+      "trials": [
+        {
+          "iteration": 1,
+          "preview_cancel": {
+            "wall_seconds": 0.14974974980577826,
+            "sampled_maximum": {
+              "logical_file_bytes": 33566578,
+              "allocated_file_bytes_estimate": 33587200
+            },
+            "samples": 10,
+            "sampling_errors": [],
+            "is_true_peak": false
+          },
+          "approve_and_push_including_preview": {
+            "wall_seconds": 0.98312908411026,
+            "sampled_maximum": {
+              "logical_file_bytes": 33566578,
+              "allocated_file_bytes_estimate": 33587200
+            },
+            "samples": 66,
+            "sampling_errors": [],
+            "is_true_peak": false
+          },
+          "git_toolchain_baseline": {
+            "file_names": [],
+            "logical_file_bytes": 0,
+            "allocated_file_bytes_estimate": 0
+          },
+          "temporary_files_after_cli": {
+            "file_names": [],
+            "logical_file_bytes": 0,
+            "allocated_file_bytes_estimate": 0
+          },
+          "copy_probe": {
+            "capture_held_files": {
+              "allocated_file_bytes_estimate": 33587200,
+              "logical_file_bytes": 33566578,
+              "regular_files": 7
+            },
+            "capture_seconds": 0.106400041,
+            "copy_data": {
+              "allocated_file_bytes_estimate": 33574912,
+              "logical_file_bytes": 33566100,
+              "regular_files": 3
+            },
+            "copy_seconds": 0.024622042,
+            "local_oid": "6dabfcffaa865d4baa57adc208651d85c687b144",
+            "schema": 1
+          },
+          "independent_ref_matches_receipt": true
+        },
+        {
+          "iteration": 2,
+          "preview_cancel": {
+            "wall_seconds": 0.1654218747280538,
+            "sampled_maximum": {
+              "logical_file_bytes": 33566578,
+              "allocated_file_bytes_estimate": 33587200
+            },
+            "samples": 12,
+            "sampling_errors": [],
+            "is_true_peak": false
+          },
+          "approve_and_push_including_preview": {
+            "wall_seconds": 0.9594692080281675,
+            "sampled_maximum": {
+              "logical_file_bytes": 33566578,
+              "allocated_file_bytes_estimate": 33587200
+            },
+            "samples": 64,
+            "sampling_errors": [],
+            "is_true_peak": false
+          },
+          "git_toolchain_baseline": {
+            "file_names": [],
+            "logical_file_bytes": 0,
+            "allocated_file_bytes_estimate": 0
+          },
+          "temporary_files_after_cli": {
+            "file_names": [],
+            "logical_file_bytes": 0,
+            "allocated_file_bytes_estimate": 0
+          },
+          "copy_probe": {
+            "capture_held_files": {
+              "allocated_file_bytes_estimate": 33587200,
+              "logical_file_bytes": 33566578,
+              "regular_files": 7
+            },
+            "capture_seconds": 0.106518333,
+            "copy_data": {
+              "allocated_file_bytes_estimate": 33574912,
+              "logical_file_bytes": 33566100,
+              "regular_files": 3
+            },
+            "copy_seconds": 0.026928042,
+            "local_oid": "6dabfcffaa865d4baa57adc208651d85c687b144",
+            "schema": 1
+          },
+          "independent_ref_matches_receipt": true
+        }
+      ]
+    }
+  ],
+  "source_after": {
+    "head": "5f8e714933049352950648ae5e08c30b9ce8fa91",
+    "dirty": true,
+    "status_porcelain": [
+      " M CHANGELOG.md",
+      " M crates/agent-guard-broker/src/git/snapshot.rs",
+      " M deploy/broker-first/README.md",
+      " M docs/broker-first-progress.md",
+      " M docs/guides/operations/broker-first-operations.md",
+      " M docs/guides/operations/credential-isolation.md",
+      " M docs/plans/broker-first-development-plan.md",
+      " M docs/security-review-2026-10-06.md",
+      " M scripts/benchmark-broker-first.py",
+      " M scripts/tests/test_benchmark_broker_first.py",
+      " M tests/broker-first/native/README.md",
+      "?? crates/agent-guard-broker/src/git/snapshot_cost.rs",
+      "?? docs/security-evidence/2026-10-06/native-linux/",
+      ""
+    ],
+    "tracked_diff_sha256": "11b1ed982271ba64cd63396a1f89ea53458becf64cdbae8566477fed020eb974",
+    "untracked_contents_in_diff_hash": false
+  },
+  "source_changed_during_run": false
+}

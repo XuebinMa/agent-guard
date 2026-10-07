@@ -2,8 +2,10 @@
 //!
 //! ## The order is the security property
 //!
-//! Resolve once in a broker-owned Git snapshot, spend the grant against that
-//! transaction, then push that same transaction from that same snapshot. The
+//! Claim and validate the one-use grant before inspecting the repository or
+//! contacting a remote. Capture a broker-owned Git snapshot, reject local
+//! destination/OID drift, then query and validate the approved remote state.
+//! Push the same approved transaction from that same snapshot. The
 //! source is the approved object id, the destination is the approved push URL,
 //! and a lease pins the remote object the human saw.
 

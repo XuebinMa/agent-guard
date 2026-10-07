@@ -32,9 +32,14 @@ So the default order of work is inverted from a typical library:
    boundary moves back.
 
 This is already how the repo is maintained — `security_regression.rs` names the
-PR that closed each attack class, and `release_gate.rs` encodes four invariants
-as `GATE 1..4`. This document makes that practice explicit so it is followed by
-default rather than rediscovered per change.
+PR or review that added each regression, and `release_gate.rs` encodes five
+invariants as `GATE 1..5`. This document makes that practice explicit so it is
+followed by default rather than rediscovered per change.
+
+A passing finite corpus does not prove a universal shell classifier or a
+complete deployment boundary. Claims must identify the supported grammar,
+backend/mode, principal and resource tested. The focused product acceptance is
+broker-controlled remote mutation, not interpreting all arbitrary programs.
 
 ## Principles
 
@@ -73,12 +78,12 @@ default rather than rediscovered per change.
 | **Gate** | [`agent-guard-sdk/tests/release_gate.rs`](../../crates/agent-guard-sdk/tests/release_gate.rs) | A release-blocking invariant still holds | A new property that must *never* regress |
 | **Security regression** | [`agent-guard-sdk/tests/security_regression.rs`](../../crates/agent-guard-sdk/tests/security_regression.rs) | A specific attack class stays closed | Every time you close a bypass (cite the PR) |
 | **Stress** | `agent-guard-sdk/tests/stress_*.rs` | Behaviour holds under concurrency / resource pressure | Changes to shared state, locking, the deny fuse, async audit |
-| **Sandbox per-OS** | `agent-guard-sandbox/tests/{seccomp,macos,windows_job}_integration.rs` | The real OS isolation actually blocks | Any change to a sandbox backend (run on that OS, with that feature) |
+| **Sandbox per-OS** | `agent-guard-sandbox/tests/{seccomp,landlock,macos,windows_job}_integration.rs` | Documented OS resource restrictions on that host/feature; examine skips and positive controls | Any change to a sandbox backend (run on that OS, with that feature) |
 | **Cross-language parity** | [`tests/cross-language-parity/`](../../tests/cross-language-parity/) | Rust ≡ Python ≡ Node for the same input | Any change to decision shape, codes, or adapter mode semantics |
-| **Python binding** | `agent-guard-python/tests/*.py` (pytest) | The PyO3 surface and adapters behave | Changes to the Python API, stubs, or langchain/openai adapters |
+| **Python binding / real frameworks** | `agent-guard-python/tests/*.py` (pytest), CI framework matrix | The PyO3 surface and adapters behave; supported-series and latest LangChain legs install the real framework | Changes to the Python API, stubs, or langchain/openai adapters |
 | **Node binding** | `agent-guard-node/test*.js`, `packages/agent-guard-plugin/test/` (node:test) | The napi-rs surface and adapters behave | Changes to the Node API or adapters |
 | **Bench (non-blocking)** | `*/benches/*.rs` (criterion) | Performance trend visibility | Performance-sensitive changes to the hot path |
-| **Supply-chain & docs** | CI: `cargo-deny`, `cargo-audit`, SBOM, `npm audit`; `scripts/check_docs.py` | No shipped vuln; docs don't drift from reality | Dependency changes; any docs edit |
+| **Supply-chain & docs** | CI: `cargo-deny`, `cargo-audit`, SBOM, production `npm audit`; `scripts/check_docs.py` | Known dependency advisories/policy and detectable documentation drift; not absence of all vulnerabilities | Dependency changes; any docs edit |
 
 Unit tests live next to the code; integration tests live in `tests/`. Security
 regression cases go in the one suite named above so the attack surface is
@@ -88,7 +93,7 @@ auditable in a single file. These three rules come straight from
 ### The gate tests
 
 [`release_gate.rs`](../../crates/agent-guard-sdk/tests/release_gate.rs) is the
-spine of the whole strategy. Today it locks four invariants:
+spine of the existing SDK strategy. Today it locks five invariants:
 
 - **GATE 1 — Fail-closed robustness.** A sandbox that errors on `execute()`
   must surface a hard `Err`, never a silent allow. Tested with a `FailingSandbox`
@@ -98,14 +103,30 @@ spine of the whole strategy. Today it locks four invariants:
   the diagnosis agree on the selected backend, and the selection is *truthful*:
   when no real isolation is compiled in, the backend reports `"none"` rather
   than claiming syscall filtering it does not provide.
-- **GATE 3 — Negative security boundary.** A write outside the workspace (e.g.
-  to `/etc`) must not succeed — manifested as an `Err`, a `Denied` outcome, or a
-  non-zero exit code from the OS sandbox. The test skips cleanly when no real
-  sandbox is active so it never produces a false green.
+- **GATE 3 — Negative SDK execution path.** An attempted outside-workspace
+  write must not succeed through `Guard::execute`. The current test accepts an
+  SDK denial/error or a non-zero child exit, and returns early when no real
+  backend is active. It therefore does **not** independently prove OS
+  filesystem isolation: policy can stop the child, the target can already be
+  unwritable, and a skipped backend is not evidence of containment.
 - **GATE 4 — Receipt integrity.** When a signing key is supplied, the
   tool-call → execution → signed `ExecutionReceipt` chain verifies end to end.
   Receipts are opt-in and require an explicit key; they are not emitted
-  automatically for every call.
+  automatically for every call. This test does not verify CLI `PushReceipt`
+  signing or credential isolation.
+- **GATE 5 — By-name backend truthfulness.** Unknown backend names fail;
+  known unavailable backends resolve truthfully to none/fallback rather than
+  reporting isolation they cannot provide. The seccomp feature enables native
+  BPF on Linux; an unavailable/no-feature path must not pretend it did so.
+
+An OS containment acceptance test must directly invoke the backend against a
+temporary target that a positive unsandboxed control can change. Inspect both
+exit status and the resulting file/ref. A noop backend, skipped runtime probe,
+ordinary permission error or SDK rejection cannot substitute for that proof.
+Linux seccomp is opt-in native BPF, but is path-agnostic and deliberately skips
+filtering in `FullAccess`; test restricted-mode syscall promises rather than
+assuming a workspace or credential boundary. Landlock is a separate
+filesystem capability, not a credential-read or network policy.
 
 When you add an invariant that belongs to the release boundary, add it here as
 the next `GATE`, with a doc comment that states the property in one sentence.
@@ -150,20 +171,21 @@ rules and [Adapter Contract](adapter-contract.md) for adapter mode semantics.
 **Changing a decision shape or code**
 1. Add/adjust the parity scenario first.
 2. Change all three runners and the core type in the same PR.
-3. Keep `parity-e2e` green locally is not possible without the bindings built —
-   see the local-vs-CI note below — so lean on the per-language tests locally
-   and let CI run the full comparator.
+3. Rebuild all bindings from the same tree and run the standalone comparator
+   locally as well as in CI. Per-language tests alone do not establish parity;
+   see the setup note below.
 
 **Touching a sandbox backend**
 1. Add or extend the per-OS integration test
-   (`seccomp_integration.rs` / `macos_integration.rs` /
+   (`seccomp_integration.rs` / `landlock_integration.rs` / `macos_integration.rs` /
    `windows_job_integration.rs`). These only mean anything on the matching OS
    with the matching feature flag.
-2. Re-check `GATE 2` and `GATE 3` assumptions: if you change which backend is
+2. Re-check `GATE 2`, `GATE 3` and `GATE 5` assumptions: if you change which backend is
    selected or what it blocks, the gates must still pass and stay truthful.
-3. Never relabel a prototype/fallback backend as full isolation — the docs
-   linter and the gate both enforce that the Linux baseline is described as the
-   prototype wrapper it currently is, not shipped seccomp-bpf enforcement.
+3. State the real feature and mode. The default build uses noop; Linux seccomp
+   with its feature enabled installs native BPF in restricted modes, while
+   `FullAccess` skips filtering. Neither syscall filtering nor backend diagnosis
+   establishes credential isolation. Do not call a fallback active isolation.
 
 **Performance-sensitive change to the hot path**
 1. Run the relevant criterion bench (`policy_check`, `runtime_decision`,
@@ -181,16 +203,33 @@ the signal, but it is deliberately **not** the whole CI bar.
 | :--- | :---: | :---: |
 | Rust workspace + lint + docs | ✅ | ✅ |
 | Python / Node bindings | ✅ | ✅ |
-| Per-OS sandbox integration (seccomp/Seatbelt/JobObject) | ❌ (needs that OS + feature flag) | ✅ (matrix runners) |
-| Cross-language `parity-e2e` comparator | ❌ (needs all bindings built) | ✅ |
+| Per-OS sandbox integration (seccomp/Landlock/Seatbelt/JobObject) | Matching-host tests may run; `full` does not run the cross-OS matrix | ✅ (matrix runners; inspect skips) |
+| Cross-language `parity-e2e` comparator | ❌ in `full`; independently runnable after rebuilding all bindings | ✅ |
+| Authenticated local Git/TLS host composition | ❌ in `full`; independently runnable with newly built CLI | ✅ (required dedicated job; not container isolation) |
+| Broker-first native container acceptance | ❌ unless explicitly run on a supported native Linux Docker host | ✅ (required dedicated job; I1–I8 map combines real deployment with broker suites) |
 | `cargo-deny` / `cargo-audit` / SBOM / `npm audit` | ❌ | ✅ |
 | Criterion benches | ❌ | ✅ (non-blocking) |
 
 The consequence: a green `verify.sh full` is *necessary but not sufficient*.
-The per-OS sandbox jobs and the parity comparator can only fail in CI, so do not
-treat a clean local run as a guarantee that a sandbox or cross-language change is
-done. The canonical, complete mandatory bar is the CI job list in
-`CONTRIBUTING.md`.
+Per-OS tests on other operating systems need those hosts; the parity comparator
+can run locally. Do not treat `full` as including every check or a clean local
+run as proof of all sandbox/credential boundaries. The current CI matrix and
+mandatory checks are documented in `CONTRIBUTING.md` and
+[the workflow](../../.github/workflows/ci.yml).
+
+For local parity, follow the workflow's `parity-e2e` setup: use a persistent
+Python venv with `maturin develop --features extension-module`, rebuild the Node
+addon, and invoke the comparator using that venv's Python from the repository
+root:
+
+```bash
+.venv/bin/python tests/cross-language-parity/compare.py
+```
+
+The Rust runner is built/run by the comparator. `verify.sh python` removes its
+throwaway venv afterward, so it does not leave the required Python module
+available for this independent command. A comparator using stale installed
+bindings is not verification of the current tree.
 
 Narrower local paths when you only changed one surface:
 
@@ -207,8 +246,32 @@ exactly as CI does:
 
 ```bash
 cargo test -p agent-guard-sandbox --features seccomp --test seccomp_integration -- --nocapture   # Linux
+cargo test -p agent-guard-sandbox --features landlock --test landlock_integration -- --nocapture # Linux, compatible kernel
 cargo test -p agent-guard-sandbox --features macos-sandbox --test macos_integration -- --nocapture # macOS
 ```
+
+## Planned broker-first deployment acceptance
+
+The [broker-first plan](../plans/broker-first-development-plan.md) defines a
+first Linux container/host-broker profile. This document does **not establish
+that its I1–I8 gates have passed**. Existing broker tests are necessary transaction
+regressions, not a complete demonstration that every agent tool cannot reach
+host credentials.
+
+Acceptance uses temporary local repositories, public dummy authentication,
+an authenticated loopback HTTPS endpoint and an independent remote-ref
+observer. Pair a refused direct agent mutation with an approved broker mutation;
+both paths failing proves neither isolation nor usability. Verify all runtime
+paths, mounts, environment, authentication sockets, broker assets and approval
+input—not just shell commands. A dedicated Linux container job must fail if its
+required runtime/capabilities are missing instead of skipping or downgrading to
+advisory/noop. Missing local prerequisites are recorded as **unrun**.
+
+Current CLI confirmation is stdin-based, CLI push receipts are unsigned and
+optional on disk, and `doctor` reports capabilities—not credential isolation or
+an authenticated human approver. Strict profile acceptance must test the host
+launch boundary separately. No new daemon, general interpreter or API-wide
+transport restriction is needed to establish this first deployment contract.
 
 ## Definition of done
 
@@ -225,7 +288,10 @@ A behaviour change is done when:
 - [ ] If it touches a sandbox backend, the per-OS integration test was run on
       that OS with that feature.
 - [ ] `./scripts/verify.sh full` is green locally, and you understand which CI
-      jobs your change still has to clear that local cannot.
+      jobs it does not include. Run standalone parity for cross-language changes
+      and inspect the exact head's required cross-platform CI conclusions.
+- [ ] Deployment claims have their independent positive/negative controls;
+      skipped/unavailable/noop paths are not recorded as isolation passing.
 
 ## Anti-patterns
 
@@ -244,9 +310,9 @@ A behaviour change is done when:
 - **Landing a parity change in one language.** Green per-language tests with a
   divergent comparator is still a regression. The contract is the scenario set,
   not the individual binding.
-- **Claiming isolation the platform does not provide.** The Linux baseline is a
-  prototype/fallback wrapper today; describing it as production-grade syscall
-  filtering fails both the docs linter and `GATE 2`.
+- **Claiming isolation the platform does not provide.** Native opt-in BPF is
+  not a complete path/credential boundary; a default noop run, `FullAccess`
+  bypass, skipped test or diagnosis report cannot prove enforced isolation.
 
 ## See also
 
@@ -255,5 +321,3 @@ A behaviour change is done when:
   security boundary in each deployment shape.
 - [Cross-Language Parity](cross-language-parity.md) · [Adapter Contract](adapter-contract.md)
 - [`CONTRIBUTING.md`](../../CONTRIBUTING.md) — the operational verify + PR + green-CI loop.
-</content>
-</invoke>

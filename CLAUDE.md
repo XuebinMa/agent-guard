@@ -12,7 +12,7 @@ remain supported, but new product work should not expand them horizontally. The
 target broker boundary is: an agent may write and test freely; agent-guard
 decides and executes which exact Git change may leave the machine.
 Plumbing-level `git send-pack` is part of that same outbound boundary, not a
-separate feature surface. Current source version: 0.2.7.
+separate feature surface. Current source version: 0.2.8.
 
 ## Build & Test Commands
 
@@ -91,6 +91,22 @@ guard-hook                ← Claude Code PreToolUse hook adapter (bin: guard-ho
 The broader SDK features remain maintained, but avoid new generic-agent,
 sandbox, DLP, framework-adapter, or control-plane expansion until that Git
 boundary is complete.
+
+## Accepted Product Scope — Persistent Project Memory
+
+The user accepted the broker-first scope and authorized its implementation on
+2026-10-06. Read the [accepted decision](docs/decisions/2026-10-06-broker-first-scope.md),
+[development plan](docs/plans/broker-first-development-plan.md), and
+[implementation checkpoint](docs/broker-first-progress.md) before continuing.
+
+Keep Shell in bounded security and compatibility maintenance, not universal
+program-effect analysis. Prove one Linux deployment with existing isolation
+mechanisms and no alternate credential-bearing path. Green classifier tests,
+receipts or sandbox capability reports are not proof of that deployment.
+Completing this milestone does not authorize horizontal expansion. Preserve
+existing user changes, immutable tags and the separate publication gates.
+The subsequent user chose self-use first and a 0.2.8 successor; current release
+authority and remaining gates are in [the delivery checkpoint](docs/release-028-delivery.md).
 
 ## Core Execution Pipeline
 

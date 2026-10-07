@@ -4,7 +4,7 @@ version = 4
 
 [[package]]
 name = "agent-guard-broker"
-version = "0.2.7"
+version = "0.2.8"
 dependencies = [
  "agent-guard-core",
  "chrono",
@@ -21,7 +21,7 @@ dependencies = [
 
 [[package]]
 name = "agent-guard-cli"
-version = "0.2.7"
+version = "0.2.8"
 dependencies = [
  "agent-guard-broker",
  "agent-guard-sdk",
@@ -33,7 +33,7 @@ dependencies = [
 
 [[package]]
 name = "agent-guard-core"
-version = "0.2.7"
+version = "0.2.8"
 dependencies = [
  "chrono",
  "criterion",
@@ -55,7 +55,7 @@ dependencies = [
 
 [[package]]
 name = "agent-guard-node"
-version = "0.2.7"
+version = "0.2.8"
 dependencies = [
  "agent-guard-sdk",
  "ed25519-dalek",
@@ -69,7 +69,7 @@ dependencies = [
 
 [[package]]
 name = "agent-guard-python"
-version = "0.2.7"
+version = "0.2.8"
 dependencies = [
  "agent-guard-sdk",
  "ed25519-dalek",
@@ -81,7 +81,7 @@ dependencies = [
 
 [[package]]
 name = "agent-guard-sandbox"
-version = "0.2.7"
+version = "0.2.8"
 dependencies = [
  "agent-guard-core",
  "landlock",
@@ -97,7 +97,7 @@ dependencies = [
 
 [[package]]
 name = "agent-guard-sdk"
-version = "0.2.7"
+version = "0.2.8"
 dependencies = [
  "agent-guard-core",
  "agent-guard-sandbox",
@@ -127,7 +127,7 @@ dependencies = [
 
 [[package]]
 name = "agent-guard-validators"
-version = "0.2.7"
+version = "0.2.8"
 dependencies = [
  "agent-guard-core",
  "glob",
@@ -1027,7 +1027,7 @@ checksum = "0cc23270f6e1808e30a928bdc84dea0b9b4136a8bc82338574f23baf47bbd280"
 
 [[package]]
 name = "guard-hook"
-version = "0.2.7"
+version = "0.2.8"
 dependencies = [
  "agent-guard-broker",
  "agent-guard-core",
@@ -1042,7 +1042,7 @@ dependencies = [
 
 [[package]]
 name = "guard-verify"
-version = "0.2.7"
+version = "0.2.8"
 dependencies = [
  "agent-guard-core",
  "agent-guard-sdk",

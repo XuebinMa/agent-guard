@@ -86,7 +86,7 @@ The latest published package is `0.2.6`:
 python -m pip install agent-guard-python==0.2.6
 ```
 
-To test the current `0.2.7` source, install it from a repository checkout
+To test the current `0.2.8` source, install it from a repository checkout
 (requires Python and a Rust toolchain):
 
 ```bash

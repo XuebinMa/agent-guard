@@ -1,0 +1,34 @@
+   Compiling agent-guard-control-review v0.0.0 (/private/tmp/agent-guard-control-review.kX4xay)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.83s
+     Running unittests src/lib.rs (target/debug/deps/agent_guard_control_review-f0f33f319557da02)
+
+running 5 tests
+test tests::unquoted_control_bytes_are_not_trusted_grammar_whitespace ... ok
+test tests::zsh_computed_command_is_not_an_empty_assignment ... ok
+test tests::genuine_literal_data_and_normal_separators_still_parse ... ok
+test tests::quote_parent_does_not_make_nested_executable_text_literal ... FAILED
+test tests::literal_assignment_looking_command_is_not_a_shell_assignment ... FAILED
+
+failures:
+
+---- tests::quote_parent_does_not_make_nested_executable_text_literal stdout ----
+
+thread 'tests::quote_parent_does_not_make_nested_executable_text_literal' (48939960) panicked at src/lib.rs:34:13:
+nested executable text must not inherit a literal-string exemption
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+---- tests::literal_assignment_looking_command_is_not_a_shell_assignment stdout ----
+
+thread 'tests::literal_assignment_looking_command_is_not_a_shell_assignment' (48939959) panicked at src/lib.rs:57:13:
+assertion `left != right` failed: literal command words must not be discarded
+  left: Allow
+ right: Allow
+
+
+failures:
+    tests::literal_assignment_looking_command_is_not_a_shell_assignment
+    tests::quote_parent_does_not_make_nested_executable_text_literal
+
+test result: FAILED. 3 passed; 2 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+error: test failed, to rerun pass `--lib`

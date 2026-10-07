@@ -1,7 +1,9 @@
 # Roadmap
 
-This is the current, living forward-looking view for `agent-guard` as of
-**0.2.0**. It distills the historical phase designs under
+This is the living forward-looking view for `agent-guard`, with the product
+scope reaffirmed on **2026-10-06**. The 0.2.0 shipped section below is a
+historical baseline, not a claim that later work is absent. This file distills
+the historical phase designs under
 [`docs/archive/`](docs/archive/README.md) and the current code into one place
 that separates *shipped* from *partial* from *planned*.
 
@@ -13,6 +15,20 @@ Two ground rules keep it honest:
   follows the code.** The wedge claims stay narrow and truthful, the same as the
   rest of the docs. For the shipped detail behind each line, see
   [`CHANGELOG.md`](CHANGELOG.md).
+
+## Accepted focus and active plan
+
+The [accepted broker-first decision](docs/decisions/2026-10-06-broker-first-scope.md)
+is the durable project memory. The [detailed development plan](docs/plans/broker-first-development-plan.md)
+separates finite safety-maintenance closure from the next product milestone:
+one credential-isolated, broker-executed Git push deployment.
+
+Shell parsing remains maintained, but building a universal Shell safety
+classifier is not a product objective. New hard-boundary work goes to exact
+transactions, protected credentials/configuration, and deployment acceptance.
+That scope decision alone did not authorize publication. The user's subsequent
+self-use/successor decision and current protected release gates are in the
+[0.2.8 delivery checkpoint](docs/release-028-delivery.md).
 
 ## Where the boundary is today
 
@@ -75,17 +91,19 @@ per-surface, per-language reality.
 
 These exist but are explicitly incomplete — do not describe them as finished.
 
-- **Linux sandbox is a prototype/fallback wrapper.** The default build reports
-  `"none"`; real isolation requires opting into the `seccomp` (or `landlock`)
-  feature, and even then the Linux baseline is not a shipped production
-  syscall-filtering enforcement path.
+- **Linux isolation is opt-in and capability-specific.** The default build
+  reports `"none"`. The `seccomp` feature enables native BPF filtering and
+  rejects setup failures; `FullAccess` explicitly skips that filtering.
+  Filesystem path restrictions and whole-agent credential isolation require
+  their own deployment controls; a compiled filter is not proof of either.
 - **Windows AppContainer is experimental / opt-in.** Job Object is the default.
 - **File and HTTP validators are thinner than bash.**
 - **Content layer is off-by-default and spike-grade.** Behind the `content`
   feature it scans `write_file` content, `http_request` body, and input text
   (`Guard::check_content`); the detector set is named-patterns + entropy and
   regex + Luhn — not a DLP engine.
-- **Python adapters are beta** — no CI framework-version matrix yet.
+- **Python adapters remain beta** — CI now includes real-framework version
+  matrix legs; that coverage is not a production-readiness certification.
 - **The Claude Code plugin gates built-in tools** (`Bash`, `Write`, `Edit`,
   `WebFetch`); MCP tools (`mcp__*`) currently pass through ungated (upstream
   limitation).
@@ -94,8 +112,8 @@ These exist but are explicitly incomplete — do not describe them as finished.
 - **Shell argv does not prove arbitrary program semantics.** Dedicated parsers
   unwrap supported launcher forms, while conservative embedded-Git detection
   may reject bare words used as data and still cannot prove what an unknown
-  program will execute. The credential-isolated broker is the class-level
-  boundary.
+  program will execute. The target boundary is broker-owned execution backed
+  by credential/configuration isolation that the deployment actually enforces.
 - **The local approval ledger is not authenticated.** Request binding and
   execution-time policy revalidation close accidental/stale approval errors;
   adversarial isolation still requires a separate broker process.
@@ -130,6 +148,10 @@ maintenance-only: new generic agent frameworks, more policy categories, DLP
 detectors, TPM/remote attestation, OTLP, additional sandbox backends, and broad
 multi-agent governance. Security fixes and dependency maintenance remain in
 scope; new horizontal features do not.
+
+After that milestone, Shell remains maintenance-only by default. Additional
+horizontal product work requires a new explicit product decision rather than
+being unlocked automatically by a release.
 
 ## Known debt
 

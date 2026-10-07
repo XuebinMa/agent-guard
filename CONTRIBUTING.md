@@ -56,18 +56,54 @@ The single canonical entrypoint:
 ./scripts/verify.sh full
 ```
 
-This builds and tests the Rust workspace (with the PyO3 extension-module trap excluded), runs lint + format checks, builds and tests the Python binding through a temporary venv + maturin, builds and tests the Node binding, runs the docs link checker, and runs the cross-language parity comparator.
+This builds and tests the Rust workspace (with the PyO3 extension-module trap
+excluded), runs lint + format checks, builds and tests the Python binding through
+a temporary venv + maturin, builds and tests the Node binding/plugin, and runs
+the docs/version gates. It does **not** run the cross-language parity comparator
+or reproduce the complete cross-platform CI matrix.
 
 Narrower paths when you only changed one surface:
 
 ```bash
-./scripts/verify.sh rust       # Rust workspace + lint
+./scripts/verify.sh rust       # Rust workspace build + tests (no lint)
+./scripts/verify.sh lint       # rustfmt --check + clippy -D warnings
 ./scripts/verify.sh python     # PyO3 binding via maturin develop in a tmp venv
 ./scripts/verify.sh node       # napi-rs binding + Node tests
 ./scripts/verify.sh docs       # markdown link checker + content gates
 ```
 
-CI reproduces each of these, plus the Linux/macOS/Windows sandbox-integration jobs and the cross-language e2e job. **All mandatory checks must be green before merge.** The mandatory bar is 18 jobs: Rust workspace, lint, three sandbox-OS integrations, two Node version matrices, Python, two Python framework-matrix legs, two seccomp-forwarded binding legs (Python + Node), docs, parity-e2e, cargo-deny, cargo-audit, SBOM, plus the bench-artifact (non-blocking).
+Cross-language parity is independently runnable locally after all bindings have
+been rebuilt from the same tree. Follow the
+[`parity-e2e` job](.github/workflows/ci.yml) to create a persistent venv, install
+the Python module with `maturin develop --features extension-module`, build the
+Node addon, then run from the repository root:
+
+```bash
+.venv/bin/python tests/cross-language-parity/compare.py
+```
+
+The comparator builds/runs the Rust runner. `verify.sh python` deletes its
+temporary venv, so that path alone does not leave a module for the comparator.
+Do not validate a new Rust tree against stale Python/Node bindings.
+
+CI reproduces the local surfaces plus Linux seccomp/Landlock, macOS Seatbelt and
+Windows Job Object integrations, real Python framework matrices and standalone
+parity. **All mandatory checks must be green on the exact PR head before
+merge.** The workflow includes Rust workspace, lint, four
+sandbox integration jobs, two Node version-matrix legs, Python, two real Python
+framework legs, two seccomp-forwarded binding legs (Python + Node), docs,
+parity-e2e, cargo-deny, cargo-audit, SBOM, the authenticated local Git fixture,
+strict native Linux container acceptance and the non-blocking bench artifact.
+The host composition fixture alone cannot establish container isolation.
+The workflow is the operational source for this list; skips/unavailable
+backends are not evidence that an OS isolation property passed.
+
+For security delivery, also run strict all-target lint separately; `full` uses
+Clippy without `--all-targets`:
+
+```bash
+cargo clippy --workspace --exclude agent-guard-python --all-features --all-targets -- -D warnings
+```
 
 ## Branch + PR workflow
 
@@ -148,6 +184,30 @@ The full philosophy, layer map, and definition of done is in [Testing Strategy](
 - Integration tests live in `crates/<crate>/tests/`.
 - Security regression cases go in `crates/agent-guard-sdk/tests/security_regression.rs` — patterns we've explicitly chosen to defend against.
 - Don't mock the database or the policy engine — run against the real one.
+- Preserve GATE 1–5 in `release_gate.rs`. GATE 3 can pass on an SDK refusal or
+  return early without an active backend; it is not independent OS proof. Test
+  resource containment by invoking the real backend directly with temporary,
+  initially writable targets and an unsandboxed positive control.
+- State shell scope accurately: the static grammar is Bash, Unix runners use
+  `sh -c`, Windows noop/Job Object runners use `cmd.exe /C`, and hooks leave
+  execution to the host. A finite regression corpus does not prove arbitrary
+  program effects or all shell dialects. Default noop execution has no OS
+  containment; same-user hooks are advisory. Neither separates credentials.
+- Linux seccomp is opt-in native BPF in restricted modes; `FullAccess` skips
+  its filter. It is not path-aware or a secret-read boundary. Keep known parser
+  defects fixed or safely refused; do not claim `WorkspaceWrite` rejects every
+  unknown executable.
+
+The first strict broker/container profile remains planned. Its complete-runtime
+and authenticated local-fixture gates are defined in the
+[broker-first plan](docs/plans/broker-first-development-plan.md), with asset
+permissions in [Credential isolation](docs/guides/operations/credential-isolation.md).
+Those acceptance gates must cover file tools, MCP, hooks and approval input,
+not just shell. A missing required Linux runtime must fail the dedicated gate,
+not silently select advisory/noop. This narrows the first deployment claim
+without expanding the API or removing existing platforms/transports. Current
+CLI stdin confirmation, optional unsigned push receipts and `doctor` capability
+reports are not proof of a trusted human or credential separation.
 
 ## Subagent / multi-agent workflow
 
@@ -173,7 +233,7 @@ to [the tag-triggered workflow](.github/workflows/release.yml), not cargo-releas
 `publish = false` and `push = false`; do not use cargo-release alone to update
 Python, Node, plugin and documentation markers.
 
-- All ten workspace crates share one version (matches the `version = "=0.2.7"` inter-crate pin in `Cargo.toml`).
+- All ten workspace crates share one version (matches the `version = "=0.2.8"` inter-crate pin in `Cargo.toml`).
 - The workflow publishes eight public Rust crates in dependency order using
   `cargo publish --locked`, Python wheels as `agent-guard-python`, and the npm
   installer as `agent-guard-plugin`. The Python/Node Cargo binding crates have

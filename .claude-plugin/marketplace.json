@@ -12,7 +12,7 @@
       "name": "agent-guard",
       "source": "./",
       "description": "Gate git push, package publication, non-local HTTP mutations, and destructive shell commands before they happen through a decision-only Claude Code PreToolUse hook backed by a YAML policy. Local-first: no cloud, no telemetry.",
-      "version": "0.2.7",
+      "version": "0.2.8",
       "author": {
         "name": "Xuebin Ma",
         "url": "https://github.com/XuebinMa"

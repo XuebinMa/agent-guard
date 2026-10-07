@@ -517,16 +517,16 @@ pub(crate) fn command_name(token: &str) -> &str {
     token.rsplit(['/', '\\']).next().unwrap_or(token)
 }
 
-/// `NAME=value` shell variable-assignment prefix (e.g. `FOO=bar cmd`, or the
-/// assignments `env` passes through). Mirrors the bash assignment grammar:
-/// the run of bytes before the first `=` must be `[A-Za-z0-9_]` only.
+/// Assignment operands of the explicitly modeled env/sudo programs. Shell
+/// assignment prefixes have already been removed by their AST node identity;
+/// a command word with this spelling must not be dropped merely for having `=`.
 fn is_env_assignment(token: &str) -> bool {
-    token.contains('=')
-        && token
-            .as_bytes()
-            .iter()
-            .take_while(|&&b| b != b'=')
-            .all(|&b| b.is_ascii_alphanumeric() || b == b'_')
+    token.split_once('=').is_some_and(|(name, _)| {
+        !name.is_empty()
+            && name
+                .bytes()
+                .all(|byte| byte.is_ascii_alphanumeric() || byte == b'_')
+    })
 }
 
 /// Skip one wrapper's own options and leading operands, returning the number
@@ -596,6 +596,16 @@ fn skip_wrapper_tokens<S: AsRef<str>>(args: &[S], wrapper: &CommandWrapper) -> O
     // Leading positional operands (e.g. timeout's DURATION).
     for _ in 0..wrapper.leading_operands {
         if idx < args.len() {
+            idx += 1;
+        }
+    }
+    // These programs, unlike nice/timeout/command, consume assignment
+    // operands before the child argv. Quoting does not change env's grammar.
+    if matches!(wrapper.name, "env" | "sudo") {
+        while args
+            .get(idx)
+            .is_some_and(|token| is_env_assignment(token.as_ref()))
+        {
             idx += 1;
         }
     }
@@ -849,24 +859,6 @@ fn specialized_launcher_layer<S: AsRef<str>>(
     }
 }
 
-fn strip_command_prefixes<S: AsRef<str>>(mut tokens: &[S]) -> (&[S], bool) {
-    let original_len = tokens.len();
-    loop {
-        while tokens
-            .first()
-            .is_some_and(|token| is_env_assignment(token.as_ref()))
-        {
-            tokens = &tokens[1..];
-        }
-        if tokens.first().is_some_and(|token| token.as_ref() == "!") {
-            tokens = &tokens[1..];
-            continue;
-        }
-        break;
-    }
-    (tokens, tokens.len() != original_len)
-}
-
 fn launcher_layer<S: AsRef<str>>(tokens: &[S]) -> LauncherLayer<'_, S> {
     let Some(first) = tokens.first().map(|token| command_name(token.as_ref())) else {
         return LauncherLayer::NotLauncher;
@@ -924,10 +916,6 @@ fn resolve_command_layers<S: AsRef<str>>(tokens: &[S]) -> CommandLayerResolution
     let mut slice = tokens;
     let mut removed_any = false;
     loop {
-        let (stripped, removed_prefix) = strip_command_prefixes(slice);
-        slice = stripped;
-        removed_any |= removed_prefix;
-
         match launcher_layer(slice) {
             LauncherLayer::Child(child) => {
                 removed_any = true;
@@ -965,8 +953,9 @@ fn resolve_command_layers<S: AsRef<str>>(tokens: &[S]) -> CommandLayerResolution
     }
 }
 
-/// Strip leading assignments and modeled command-wrapper layers so the
-/// returned slice starts at the resolved command word. A listed opaque layer,
+/// Strip modeled wrappers from AST-resolved argv. The AST already excludes
+/// shell assignment and negation syntax; ordinary words must not be guessed
+/// to be those prefixes. A listed opaque layer,
 /// an existing-process mode, or a no-child invocation stops resolution.
 pub(crate) fn unwrap_command_wrappers<S: AsRef<str>>(tokens: &[S]) -> &[S] {
     resolve_command_layers(tokens).argv
@@ -996,7 +985,6 @@ pub(crate) fn classify_command_launcher<S: AsRef<str>>(tokens: &[S]) -> Launcher
 pub(crate) fn leads_with_target_hiding_spawner<S: AsRef<str>>(tokens: &[S]) -> bool {
     let mut slice = tokens;
     loop {
-        slice = strip_command_prefixes(slice).0;
         let Some(first) = slice.first().map(|token| command_name(token.as_ref())) else {
             return false;
         };
@@ -1023,7 +1011,6 @@ pub(crate) fn leads_with_target_hiding_spawner<S: AsRef<str>>(tokens: &[S]) -> b
 pub(crate) fn has_multiple_find_exec_actions<S: AsRef<str>>(tokens: &[S]) -> bool {
     let mut slice = tokens;
     loop {
-        slice = strip_command_prefixes(slice).0;
         let Some(first) = slice.first().map(|token| command_name(token.as_ref())) else {
             return false;
         };
@@ -1048,7 +1035,6 @@ pub(crate) fn has_multiple_find_exec_actions<S: AsRef<str>>(tokens: &[S]) -> boo
 pub(crate) fn has_env_split_string<S: AsRef<str>>(tokens: &[S]) -> bool {
     let mut slice = tokens;
     loop {
-        slice = strip_command_prefixes(slice).0;
         let Some(first) = slice.first().map(|token| command_name(token.as_ref())) else {
             return false;
         };
@@ -1080,7 +1066,6 @@ pub(crate) fn has_env_split_string<S: AsRef<str>>(tokens: &[S]) -> bool {
 pub(crate) fn reparsed_watch_command<S: AsRef<str>>(tokens: &[S]) -> Option<String> {
     let mut slice = tokens;
     loop {
-        slice = strip_command_prefixes(slice).0;
         let first = slice.first().map(|token| command_name(token.as_ref()))?;
         let LauncherLayer::Child(inner) = launcher_layer(slice) else {
             return None;

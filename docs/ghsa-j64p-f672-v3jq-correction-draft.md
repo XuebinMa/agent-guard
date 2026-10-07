@@ -1,8 +1,10 @@
 # GHSA-j64p-f672-v3jq correction draft
 
 This is a draft for the existing public advisory, not a new advisory, CVE
-assignment, or announcement that 0.2.7 is already available. Verify the actual
-registry release before naming 0.2.7 as a patched version.
+assignment, or announcement that 0.2.8 is already available. Verify the actual
+registry release before naming 0.2.8 as a patched version. The immutable 0.2.7
+source tag contains the sed repair but its release was cancelled; it is not
+an available registry remedy. New parser findings remain outside this advisory.
 
 ## Metadata to preserve and correct
 
@@ -11,11 +13,11 @@ Do not rewrite its scope to cover all 22 findings in the defensive review.
 
 | Ecosystem | Package | Correct affected range | Patched version |
 | --- | --- | --- | --- |
-| rust | agent-guard-validators | `<= 0.2.6` | none until release verification; then `0.2.7` |
-| rust | agent-guard-sdk | `<= 0.2.6` | none until release verification; then `0.2.7` |
-| rust | guard-hook | `<= 0.2.6` | none until release verification; then `0.2.7` |
-| npm | agent-guard-plugin | `<= 0.2.6` | none until release verification; then `0.2.7` |
-| pip | agent-guard-python | `<= 0.2.6` | none until release verification; then `0.2.7` |
+| rust | agent-guard-validators | `<= 0.2.6` | none until release verification; then `0.2.8` |
+| rust | agent-guard-sdk | `<= 0.2.6` | none until release verification; then `0.2.8` |
+| rust | guard-hook | `<= 0.2.6` | none until release verification; then `0.2.8` |
+| npm | agent-guard-plugin | `<= 0.2.6` | none until release verification; then `0.2.8` |
+| pip | agent-guard-python | `<= 0.2.6` | none until release verification; then `0.2.8` |
 
 The Python wheel embeds the SDK/validator implementation. The Node binding is
 not published to npm; do not add it as a published vulnerable package. The
@@ -49,10 +51,12 @@ invocation evaluated under an affected restricted policy. This does not by
 itself escape a correctly configured OS sandbox. The noop sandbox and default
 advisory hook are not kernel containment boundaries.
 
-The follow-up fix is under review in [PR #170](https://github.com/XuebinMa/agent-guard/pull/170)
-with bounded sed parsing, conservative handling of unmodeled scripts/options,
-and permanent negative and positive local regressions. Version 0.2.7 is planned
-but is not yet a published remedy. Until a verified repair release is available,
+The sed follow-up was merged in [PR #170](https://github.com/XuebinMa/agent-guard/pull/170)
+with bounded parsing, conservative handling of unmodeled scripts/options,
+and permanent negative and positive local regressions. Its 0.2.7 registry
+release was cancelled. The successor 0.2.8 is being prepared in
+[PR #171](https://github.com/XuebinMa/agent-guard/pull/171) but is not yet a
+published remedy. Until a verified repair release is available,
 disable the Bash tool or use independently configured OS confinement of the
 intended workspace. Upgrading only to 0.2.6 does not close the complete sed issue.
 
@@ -60,15 +64,15 @@ intended workspace. Upgrading only to 0.2.6 does not close the complete sed issu
 
 Replace the preceding final paragraph with:
 
-> Version 0.2.7 completes the reproduced sed destination checks with bounded
+> Version 0.2.8 completes the reproduced sed destination checks with bounded
 > parsing, conservative refusal of unmodeled scripts/options and permanent
 > negative/positive local regressions. Upgrade the affected Agent Guard
-> components to 0.2.7 or later. If upgrading is not possible, disable the Bash
+> components to 0.2.8 or later. If upgrading is not possible, disable the Bash
 > tool or independently confine it to the intended workspace with a real OS
 > sandbox. The hook remains advisory, and this fix does not make it a hostile
 > agent containment boundary.
 
-At that point set all five packages' patched version to `0.2.7`, retaining
+At that point set all five packages' patched version to `0.2.8`, retaining
 `<= 0.2.6` as affected. Check the repository advisory API response after writing;
 do not infer a CVE assignment or ecosystem notification propagation from a
 successful update alone.

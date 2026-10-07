@@ -2,7 +2,7 @@
 
 | Field | Details |
 | :--- | :--- |
-| **Status** | 🟡 Preview (v0.2.7) |
+| **Status** | 🟡 Preview (v0.2.8) |
 | **Audience** | Claude Code users who want the agent-guard outbound gate installed as a plugin |
 | **Version** | 0.1 |
 | **Last Reviewed** | 2026-10-04 |
@@ -65,8 +65,8 @@ binaries produces the documented fail-open version warning.
 Then install both matching binaries (the marketplace plugin **fails open** until the hook is present):
 
 ```bash
-cargo install guard-hook --version 0.2.7 --locked --force
-cargo install agent-guard-cli --version 0.2.7 --locked --force
+cargo install guard-hook --version 0.2.8 --locked --force
+cargo install agent-guard-cli --version 0.2.8 --locked --force
 ```
 
 `cargo install` drops `guard-hook` into `~/.cargo/bin`, which the plugin's wrapper finds automatically.

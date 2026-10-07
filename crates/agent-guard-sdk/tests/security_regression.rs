@@ -2375,3 +2375,99 @@ fn sec64_workspace_escape_glob_correction_does_not_waive_sibling_bounds() {
         assert_deny_with_code(&decision, DecisionCode::PathTraversal);
     }
 }
+
+// ─── 65–68. Bounded front-end fixes from broker-first P1 (2026-10-06) ────
+
+/// Parse/decision fixtures only: none of these command strings is executed.
+/// Each request uses a fresh shipped preset so its deny fuse cannot hide a
+/// missing parser refusal. These lock the declared restricted-mode contract,
+/// not arbitrary-program containment or credential isolation.
+#[test]
+fn sec65_control_bytes_cannot_hide_command_positions() {
+    for byte in ['\u{0b}', '\u{0c}', '\r'] {
+        for hidden in [
+            "printf visible",
+            "git push --force origin main",
+            "git push origin main",
+        ] {
+            assert_bash_denied(&outbound_preset_guard(), &format!("ls {byte}#;{hidden}"));
+        }
+    }
+    for input in [
+        "echo 'a\rb'",
+        "echo a\necho b",
+        "ls\t-la",
+        "echo safe # literal\rcomment",
+    ] {
+        assert_bash_allowed(&outbound_preset_guard(), input);
+    }
+}
+
+#[test]
+fn sec66_computed_command_words_cannot_disappear_as_assignments() {
+    for input in [
+        "=printf visible",
+        "nice =printf visible",
+        "env =printf visible",
+        "=git push --force origin main",
+    ] {
+        assert_bash_denied(&outbound_preset_guard(), input);
+    }
+    for input in [
+        "NAME=value echo safe",
+        "env NAME=value echo safe",
+        "nice env NAME=value echo safe",
+    ] {
+        assert_bash_allowed(&outbound_preset_guard(), input);
+    }
+    for input in [
+        "NAME=value git push origin main",
+        "nice env NAME=value git push origin main",
+    ] {
+        assert_bash_asks(&outbound_preset_guard(), input);
+    }
+}
+
+/// The SDK already refuses these substitutions independently. The lower
+/// parser_boundary test must still fail without the parser repair: this is a
+/// front-end defense-in-depth defect, not evidence of an SDK execution bypass.
+#[test]
+fn sec67_nested_executable_regions_still_enter_real_guard_refusal() {
+    for byte in ['\u{0b}', '\u{0c}', '\r'] {
+        for input in [
+            format!("echo \"$(ls {byte}#;printf visible\n)\""),
+            format!("echo \"`ls {byte}#;printf visible\n`\""),
+            format!("cat <<EOF\n$(ls {byte}#;printf visible\n)\nEOF"),
+        ] {
+            assert_bash_denied(&outbound_preset_guard(), &input);
+        }
+    }
+    for input in ["echo 'a\rb'", "cat <<'EOF'\nline\r\nEOF"] {
+        assert_bash_allowed(&outbound_preset_guard(), input);
+    }
+}
+
+#[test]
+fn sec68_readonly_literal_assignment_looking_executables_are_not_skipped() {
+    for input in [
+        "\"NAME=value\" echo safe",
+        "nice NAME=value echo safe",
+        "timeout 1 NAME=value echo safe",
+        "command NAME=value echo safe",
+    ] {
+        assert_bash_denied(&readonly_guard(), input);
+    }
+    for input in [
+        "NAME=value echo safe",
+        "env NAME=value echo safe",
+        "nice env NAME=value echo safe",
+    ] {
+        assert_bash_allowed(&readonly_guard(), input);
+    }
+    // WorkspaceWrite does not claim arbitrary executable containment. The
+    // existing embedded Git intent check must nevertheless keep its deny.
+    assert_bash_denied(
+        &outbound_preset_guard(),
+        "\"NAME=value\" git push --force origin main",
+    );
+}

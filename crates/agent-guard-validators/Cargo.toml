@@ -16,7 +16,7 @@ description = "Bash and path validators for agent-guard"
 content = ["dep:regex"]
 
 [dependencies]
-agent-guard-core = { path = "../agent-guard-core", version = "=0.2.7" }
+agent-guard-core = { path = "../agent-guard-core", version = "=0.2.8" }
 glob.workspace = true
 url = "2.5"
 serde.workspace = true

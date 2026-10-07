@@ -347,5 +347,77 @@
     "tool": "read_file",
     "payload": {"path": "/workspace/env.txt"},
     "context": {"trust_level": "trusted", "working_directory": "/workspace"}
+  },
+  {
+    "name": "bash_unquoted_vertical_tab_false_comment_deny",
+    "tool": "bash",
+    "payload": {"command": "ls \u000b#;printf visible"},
+    "context": {"trust_level": "trusted", "working_directory": "/workspace"}
+  },
+  {
+    "name": "bash_unquoted_form_feed_false_comment_deny",
+    "tool": "bash",
+    "payload": {"command": "ls \u000c#;printf visible"},
+    "context": {"trust_level": "trusted", "working_directory": "/workspace"}
+  },
+  {
+    "name": "bash_unquoted_carriage_return_false_comment_deny",
+    "tool": "bash",
+    "payload": {"command": "ls \r#;printf visible"},
+    "context": {"trust_level": "trusted", "working_directory": "/workspace"}
+  },
+  {
+    "name": "bash_nested_executable_false_comment_deny",
+    "tool": "bash",
+    "payload": {"command": "echo \"$(ls \r#;printf visible\n)\""},
+    "context": {"trust_level": "trusted", "working_directory": "/workspace"}
+  },
+  {
+    "name": "bash_computed_command_not_empty_assignment_deny",
+    "tool": "bash",
+    "payload": {"command": "=printf visible"},
+    "context": {"trust_level": "trusted", "working_directory": "/workspace"}
+  },
+  {
+    "name": "bash_wrapped_computed_command_deny",
+    "tool": "bash",
+    "payload": {"command": "nice =printf visible"},
+    "context": {"trust_level": "trusted", "working_directory": "/workspace"}
+  },
+  {
+    "name": "bash_literal_assignment_looking_command_readonly_deny",
+    "tool": "bash",
+    "payload": {"command": "\"NAME=value\" echo safe"},
+    "context": {"trust_level": "untrusted", "working_directory": "/workspace"}
+  },
+  {
+    "name": "bash_wrapped_assignment_looking_command_readonly_deny",
+    "tool": "bash",
+    "payload": {"command": "nice NAME=value echo safe"},
+    "context": {"trust_level": "untrusted", "working_directory": "/workspace"}
+  },
+  {
+    "name": "bash_real_assignment_prefix_readonly_allow",
+    "tool": "bash",
+    "payload": {"command": "NAME=value echo safe"},
+    "context": {"trust_level": "untrusted", "working_directory": "/workspace"}
+  },
+  {
+    "name": "bash_env_assignment_wrapper_readonly_allow",
+    "tool": "bash",
+    "payload": {"command": "nice env NAME=value echo safe"},
+    "context": {"trust_level": "untrusted", "working_directory": "/workspace"}
+  },
+  {
+    "name": "bash_quoted_carriage_return_data_allow",
+    "tool": "bash",
+    "payload": {"command": "echo 'a\rb'"},
+    "context": {"trust_level": "trusted", "working_directory": "/workspace"}
+  },
+  {
+    "name": "bash_literal_heredoc_carriage_return_data_allow",
+    "tool": "bash",
+    "payload": {"command": "cat <<'EOF'\nline\r\nEOF"},
+    "context": {"trust_level": "trusted", "working_directory": "/workspace"}
   }
 ]
