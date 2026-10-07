@@ -5,8 +5,9 @@ Baseline: `e1a0a0a5fd956186e67e9c235451cbfa2fb4b260`.
 On 2026-10-06 the user authorized implementation of the accepted broker-first
 development plan and continuation after normal usage-limit recovery. Work is in
 this independent managed checkout; the original dirty checkout and the other
-reviewer's patch are preserved. Version/publication choices remain separate;
-`v0.2.7` must not move and its release remains held.
+reviewer's patch are preserved. The historical release hold recorded below
+was resolved by the direct successor decision; see the final delivery below.
+`v0.2.7` must not move and its publication is cancelled.
 
 - P1 S1–S3: implemented locally. Original partial patch, five diagnostics and
   historical logs are preserved under `docs/security-evidence/2026-10-06/`.
@@ -49,7 +50,8 @@ reviewer's patch are preserved. Version/publication choices remain separate;
   the operations guide. No true physical-peak, cold-cache or large-production
   claim. Real user
   feedback and representative deployment operating capacity remain pending.
-- Release: held; no registry/advisory writes authorized by this record.
+- Release: this implementation record alone did not authorize publication;
+  the subsequent direct decision and verified delivery are recorded below.
 
 ## Verification checkpoint
 
@@ -147,3 +149,18 @@ Source markers move to `0.2.8`, published markers stay at `0.2.6`; only a new
 exact-head verification may authorize delivery. Current successor steps and
 evidence are tracked in [the 0.2.8 delivery checkpoint](release-028-delivery.md).
 This resolves the earlier pending version choice, not P5 user/capacity feedback.
+
+## Verified successor delivery — 2026-10-07 UTC
+
+PR #171 was normally merged as `8cde12a509e8533bc6bbd1612b8012534c7d96a1`.
+Both the final PR head and main push CI passed all 21 jobs; main's native
+Linux artifact independently reports accepted/cleanup complete with broker
+0.2.8. The new immutable tag points to that main commit, not a branch commit.
+Release `37561573886` completed successfully through normal protected
+environment approvals. Eight Rust crates, five wheel platforms and npm 0.2.8
+were independently checked; isolated locked Rust installation and Python
+decision checks passed, and npm signature/provenance verification passed.
+The original three-issue GHSA correction is public, including the affected
+Python package. Evidence is in [the delivery record](release-028-delivery.md).
+P5 real maintainer feedback/capacity, Windows handles and general hard links
+remain pending; publication does not close them.

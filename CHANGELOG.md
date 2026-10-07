@@ -11,7 +11,9 @@ The `[Unreleased]` heading is rolled forward manually before each release; do no
 
 ## [0.2.8] - 2026-10-06
 
-Release preparation only: registry publication has not yet been verified.
+Published and independently verified on 2026-10-07 UTC: eight Rust crates,
+five Python wheel platforms and the npm plugin. Delivery and installation
+evidence: [0.2.8 record](docs/release-028-delivery.md).
 This successor includes all security and compatibility changes documented below
 under the **unpublished** `0.2.7` source tag, plus this bounded follow-up.
 The cancelled `0.2.7` release and its immutable tag are not overwritten.
@@ -20,7 +22,7 @@ The cancelled `0.2.7` release and its immutable tag are not overwritten.
 
 - Bounded follow-up review and red/green evidence:
   [2026-10-06 report](docs/security-review-2026-10-06.md). These fixes are in
-  the `0.2.8` preparation; the immutable `v0.2.7` tag does not contain them.
+  `0.2.8`; the immutable `v0.2.7` tag does not contain them.
 - Restricted Shell validation refuses raw control bytes outside literal data,
   including nested executable regions, rather than trusting grammar-only
   whitespace/comment boundaries. Unsupported `=name` command words are refused;
@@ -34,7 +36,7 @@ The cancelled `0.2.7` release and its immutable tag are not overwritten.
 - Document the accepted broker-first scope, actual Shell/execution dialects,
   optional unsigned CLI receipts, and independent parity/OS verification limits.
   The existing `v0.2.7` tag is unchanged; this follow-up is not in that tag and
-  no repair version is advertised as published until registry verification.
+  registry/install verification preceded the public 0.2.8 remedy statement.
 
 ### Added
 
@@ -58,7 +60,7 @@ The cancelled `0.2.7` release and its immutable tag are not overwritten.
 
 Unpublished source tag only. Its registry workflow was cancelled before Rust,
 PyPI and npm publication. Keep this historical source record; install the
-successor `0.2.8` only after its publication is independently verified.
+published and independently verified successor `0.2.8` instead.
 
 ### Security
 Second-pass review; details and limits in the
