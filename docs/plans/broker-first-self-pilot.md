@@ -1,9 +1,41 @@
 # Broker-first: maintainer self-pilot
 
-Status: **chosen, not yet performed**. The user chose to be the first actual
-user on 2026-10-06 (Pacific time). This record is not CI acceptance, external
-customer evidence or publication authorization beyond the separate
+Status: **partial**. The user chose self-use first on 2026-10-06 (Pacific time)
+and completed a human-operated macOS CLI-only rehearsal on 2026-10-09.
+A useful development-task pilot, native Linux maintainer trial and representative
+operating-capacity measurements remain pending. This record is not CI acceptance,
+external customer evidence or publication authorization beyond the separate
 [successor decision](../release-028-delivery.md).
+
+## Completed macOS CLI-only rehearsal — 2026-10-09
+
+The maintainer used a real Mac terminal to inspect a fresh preview, personally
+decline with `n`, then inspect the same intended effect again and approve with
+`y`. This was a harmless synthetic commit, not a useful project-development task.
+The owned authenticated HTTPS fixture listened only on loopback; no real
+credentials or external remote were used. The local helper reused the
+[existing authenticated Git fixture](../../tests/broker-first/local_git_service.py),
+not a new deployment backend.
+
+| Observation | Maintainer result |
+| --- | --- |
+| CLI | `agent-guard 0.2.8`; source checkout `ca1a92baa1699a07d9c02074b5c7255f469d10ed` |
+| Binary SHA-256 | `14d54d3d9572d5f0d773fede42da27c80a0c980c78c2dc6d96106bbc64bc34a9` |
+| Intended destination | `https://127.0.0.1:55856/repo.git`, branch `main` |
+| Candidate OID | `86dbad15e65f792778d160c325b6e2e9fadc0272` |
+| Declined preview | Independent remote refs unchanged; no execution receipt, grant record or receive-pack request |
+| Approved preview | Exact remote refs, unsigned receipt and consumed grant agreed |
+| Cleanup | Helper reported cleanup complete; subsequent filesystem check confirmed the temporary run directory was absent |
+| Preview clarity and approval burden | Maintainer feedback: “清楚知道，没觉得繁琐” |
+
+The [sanitized summary](../security-evidence/2026-10-09/mac-cli-summary.json)
+is preserved verbatim from the local run, not a signed proof. Its SHA-256 is
+`6a60532f8eca380d7fc80725fa5007a6d0d28f1c86276ace75b4a19c43666bcd`.
+The synthetic repositories/config/keys were removed after the run. This is
+positive feedback for this particular preview and confirmation flow, not proof
+of recurring task usefulness, Linux credential isolation or representative
+capacity. P5 is not complete; the remaining trial and capacity criteria below
+still apply.
 
 ## Keep the first trial small
 
@@ -56,7 +88,7 @@ Use the [fault guide](../guides/operations/broker-first-operations.md#failure-an
 for failures; keep only owned trial state, reconcile outcomes and never bulk
 delete a home/workspace or force-push to make a trial pass.
 
-## Fill after the actual trial
+## Fill after the native Linux real-task trial
 
 | Observation | Maintainer result |
 | --- | --- |
