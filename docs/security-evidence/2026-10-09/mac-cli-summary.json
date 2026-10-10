@@ -1,0 +1,18 @@
+{
+  "started_at": "2026-10-10T03:06:22.065350+00:00",
+  "scope": "macOS local synthetic CLI demonstration; not Linux/P5 acceptance",
+  "binary_version": "0.2.8",
+  "binary_sha256": "14d54d3d9572d5f0d773fede42da27c80a0c980c78c2dc6d96106bbc64bc34a9",
+  "cancel_verified": true,
+  "approval_verified": true,
+  "cleanup_complete": true,
+  "approval": {
+    "remote_url": "https://127.0.0.1:55856/repo.git",
+    "branch": "main",
+    "local_oid": "86dbad15e65f792778d160c325b6e2e9fadc0272",
+    "grant_id": "0df9a1f3-639a-4943-92b9-c7f302dcda8d",
+    "receipt_unsigned": true,
+    "grant_spent": true
+  },
+  "status": "complete"
+}

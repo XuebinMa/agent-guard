@@ -1,0 +1,28 @@
+{
+  "started_at": "2026-10-10T04:59:21.552071+00:00",
+  "scope": "macOS reviewed Agent Guard docs task with synthetic local authentication; not Linux isolation or full P5 acceptance",
+  "binary_version": "0.2.8",
+  "binary_sha256": "14d54d3d9572d5f0d773fede42da27c80a0c980c78c2dc6d96106bbc64bc34a9",
+  "branch": "codex/self-pilot-docs",
+  "baseline_oid": "ca1a92baa1699a07d9c02074b5c7255f469d10ed",
+  "candidate_oid": "1dabbc607549a932c019aa28e1a96711644c6d1b",
+  "changed_files": [
+    "docs/plans/broker-first-self-pilot.md",
+    "docs/security-evidence/2026-10-09/mac-cli-summary.json"
+  ],
+  "cancel_verified": true,
+  "approval_verified": true,
+  "cleanup_complete": true,
+  "original_project_checkout_retained": true,
+  "approval": {
+    "remote_url": "https://127.0.0.1:57277/repo.git",
+    "branch": "codex/self-pilot-docs",
+    "local_oid": "1dabbc607549a932c019aa28e1a96711644c6d1b",
+    "remote_oid": "ca1a92baa1699a07d9c02074b5c7255f469d10ed",
+    "kind": "fast_forward",
+    "grant_id": "5b84fdbf-cf38-4819-85f4-45491b23bba8",
+    "receipt_unsigned": true,
+    "grant_spent": true
+  },
+  "status": "complete"
+}

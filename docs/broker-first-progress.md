@@ -164,3 +164,22 @@ The original three-issue GHSA correction is public, including the affected
 Python package. Evidence is in [the delivery record](release-028-delivery.md).
 P5 real maintainer feedback/capacity, Windows handles and general hard links
 remain pending; publication does not close them.
+
+## Maintainer macOS self-pilot — 2026-10-09 (Pacific time)
+
+The maintainer personally cancelled then approved fresh previews in two local
+CLI trials: a synthetic new-branch rehearsal and a small actual project
+documentation commit with a normal fast-forward. Both reused the existing
+authenticated HTTPS loopback fixture with synthetic credentials; no GitHub
+push occurred. The helpers checked refs, unsigned receipts and consumed grants,
+reported cleanup, and subsequent read-only checks confirmed disposable runs
+were absent. The actual documentation commit remains retained locally.
+
+Human feedback was “清楚知道，没觉得繁琐” for the synthetic trial and “仍然清楚、不繁琐”
+for the project-task exercise. The [updated self-pilot record](plans/broker-first-self-pilot.md)
+links verbatim sanitized summaries and separately records the second feedback.
+This is bounded positive evidence for preview clarity and approval burden.
+Task usefulness was not separately confirmed; native Linux maintainer use,
+representative repository/host capacity and full physical peaks remain pending.
+P5 stays partial. No additional release, advisory change or scheduled task is
+authorized or created by recording these results.
