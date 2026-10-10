@@ -205,3 +205,184 @@ fn missing_bundle_version_and_chain_identity_fail_closed() {
     let report = verify_bundle(&without_chain, &signer);
     assert!(reasons(&report).contains(&chain_level("chain_id_mismatch")));
 }
+
+/// The 39 names of the corpus README's "Entry fields" subsection, transcribed
+/// from the README rather than read from `schema.rs`, so an edit to either
+/// list shows up here as a disagreement.
+const PUBLISHED_FIELDS: [&str; 39] = [
+    "adapter",
+    "agent",
+    "authority",
+    "authorized_params_hash",
+    "body_state",
+    "c14n",
+    "call_id",
+    "capture",
+    "chain_id",
+    "context",
+    "detail",
+    "disposition",
+    "duration_ms",
+    "error_code",
+    "event",
+    "granted",
+    "hash",
+    "invoked_params_hash",
+    "mode",
+    "node",
+    "params_hash_reason",
+    "params_salt",
+    "parent",
+    "pending_at_kill",
+    "policy",
+    "prev_hash",
+    "reason",
+    "reasons",
+    "receipt",
+    "requested",
+    "revoked",
+    "scope",
+    "seq",
+    "strikes",
+    "target",
+    "task",
+    "tool",
+    "ts",
+    "v",
+];
+
+const UNLISTED_FIELD: &str = "x_unlisted";
+
+/// Where the verifier must position a failure about `bundle`'s entry `index`.
+fn placed_on(bundle: &Value, index: usize, reason: &str) -> test_support::Placed {
+    let entry = &bundle["entries"][index];
+    at(
+        reason,
+        entry["seq"].as_i64().expect("seq"),
+        entry["node"].as_str().expect("node"),
+    )
+}
+
+fn entry_count(bundle: &Value) -> usize {
+    bundle["entries"].as_array().expect("entries").len()
+}
+
+/// The controls every sweep below is measured against: re-sealing changes
+/// nothing by itself, on either version, so a failure in a sweep belongs to
+/// the one field that sweep added.
+#[test]
+fn the_unmutated_bundle_is_accepted_resealed_on_both_versions() {
+    let (v2, signer) = published("valid_bundle_v2");
+    let report = report_after(v2, &signer);
+    assert!(report.accepted, "v2 failures: {:?}", report.failures);
+    assert!(report.failures.is_empty());
+
+    let (mut v1, signer) = published("valid_bundle_v2");
+    as_v1(&mut v1);
+    let report = report_after(v1, &signer);
+    assert!(report.accepted, "v1 failures: {:?}", report.failures);
+    assert!(report.failures.is_empty());
+}
+
+/// Every v2-only name, on every entry of a v1 chain, is refused once, on that
+/// entry, and for no other reason.
+#[test]
+fn each_v2_only_field_on_each_v1_entry_is_the_only_failure_and_sits_on_that_entry() {
+    let (base, signer) = published("valid_bundle_v2");
+
+    for field in V2_ONLY_FIELDS {
+        for index in 0..entry_count(&base) {
+            let mut bundle = base.clone();
+            as_v1(&mut bundle);
+            bundle["entries"][index][field] = Value::from("x");
+            let expected = vec![placed_on(&bundle, index, "v2_field_on_v1")];
+
+            let report = report_after(bundle, &signer);
+            assert!(!report.accepted, "{field} on entry {index} was accepted");
+            assert_eq!(reasons(&report), expected, "{field} on entry {index}");
+        }
+    }
+}
+
+/// A field outside the published list is refused once, on the entry carrying
+/// it, on a v2 chain and on a v1 chain alike, and for no other reason.
+#[test]
+fn an_unlisted_field_on_each_entry_is_the_only_failure_and_sits_on_that_entry() {
+    let (base, signer) = published("valid_bundle_v2");
+
+    for declare_v1 in [false, true] {
+        for index in 0..entry_count(&base) {
+            let mut bundle = base.clone();
+            if declare_v1 {
+                as_v1(&mut bundle);
+            }
+            bundle["entries"][index][UNLISTED_FIELD] = Value::from(1);
+            let expected = vec![placed_on(&bundle, index, "unknown_ledger_fields")];
+
+            let report = report_after(bundle, &signer);
+            assert!(
+                !report.accepted,
+                "v1={declare_v1} entry {index} was accepted"
+            );
+            assert_eq!(reasons(&report), expected, "v1={declare_v1} entry {index}");
+        }
+    }
+}
+
+/// The two rules are independent: one entry breaking both reports both, and
+/// neither hides the other.
+#[test]
+fn a_v1_entry_with_an_unlisted_field_and_a_v2_only_field_reports_exactly_both() {
+    let (mut bundle, signer) = published("valid_bundle_v2");
+    as_v1(&mut bundle);
+    bundle["entries"][2][UNLISTED_FIELD] = Value::from(1);
+    bundle["entries"][2]["receipt"] = Value::from("x");
+    let expected = vec![
+        placed_on(&bundle, 2, "unknown_ledger_fields"),
+        placed_on(&bundle, 2, "v2_field_on_v1"),
+    ];
+
+    let report = report_after(bundle, &signer);
+    assert!(!report.accepted);
+    assert_eq!(reasons(&report), expected);
+}
+
+/// The allow-list is the published one in both directions: no published name
+/// is ever reported as unknown. A placeholder value may fail that field's own
+/// shape rule, which is a different reason and not this test's subject.
+#[test]
+fn no_published_field_name_is_reported_as_unknown() {
+    let (base, signer) = published("valid_bundle_v2");
+
+    for field in PUBLISHED_FIELDS {
+        let mut bundle = base.clone();
+        let entry = bundle["entries"][2].as_object_mut().expect("entry object");
+        entry
+            .entry(field.to_string())
+            .or_insert_with(|| Value::from("x"));
+
+        let report = report_after(bundle, &signer);
+        assert!(
+            reasons(&report)
+                .iter()
+                .all(|(reason, _, _)| reason != "unknown_ledger_fields"),
+            "{field}: {:?}",
+            report.failures
+        );
+    }
+}
+
+/// The transcription above is the README's: the twelve v2-only names are
+/// among the 39, and the remainder is the 27-name v1 form.
+#[test]
+fn the_transcribed_field_lists_have_the_published_sizes() {
+    assert!(V2_ONLY_FIELDS
+        .iter()
+        .all(|field| PUBLISHED_FIELDS.contains(field)));
+    let v1_form = PUBLISHED_FIELDS
+        .iter()
+        .filter(|field| !V2_ONLY_FIELDS.contains(field))
+        .count();
+    assert_eq!(v1_form, 27);
+    assert!(!PUBLISHED_FIELDS.contains(&UNLISTED_FIELD));
+}

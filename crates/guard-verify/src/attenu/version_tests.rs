@@ -176,3 +176,24 @@ fn entries_declaring_another_version_are_reported_at_the_first_one() {
         vec![at("mixed_entry_versions", 3, "vectors:n0")]
     );
 }
+
+/// rafaelasor's answer on a2aproject/A2A#1575 (2026-09-27): when the root and
+/// a later entry both disagree, the result is the same two failures as the
+/// root alone, both on the root. The later entry adds no third.
+#[test]
+fn a_root_and_a_later_entry_both_disagreeing_report_the_same_two_on_the_root() {
+    let (mut bundle, signer) = published("valid_bundle_v2");
+    bundle["entries"][0]["v"] = Value::from(1);
+    bundle["entries"][4]["v"] = Value::from(3);
+    reseal(&mut bundle, &signer);
+
+    let report = verify_bundle(&bundle, &signer);
+    assert!(!report.accepted);
+    assert_eq!(
+        reasons(&report),
+        vec![
+            at("mixed_entry_versions", 0, "vectors:n0"),
+            at("root_version_mismatch", 0, "vectors:n0"),
+        ]
+    );
+}
