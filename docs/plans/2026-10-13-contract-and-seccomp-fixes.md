@@ -67,6 +67,21 @@ the still-unpublished corpus, not an implementation failure or a score.
 See the [completion report](../security-review-2026-10-13.md) for red/green
 evidence, compatibility costs and remaining limits.
 
+## Newly discovered CI dependency gate
+
+The first final-head run (`ea4b315`, `38514768978`) passed the dedicated
+Linux seccomp tests but failed both dependency-security checks. The unchanged
+baseline lockfile includes five advisories against `quinn-proto` 0.11.15;
+the minimum patch covering all five is 0.11.18. Apply only that precise
+lockfile update and its required random-number dependency closure, then
+re-run local and hosted gates. Do not suppress advisories.
+
+`cargo-deny` separately rejects unmaintained `unsafe-libyaml` 0.2.11 through
+`serde_yaml`. RUSTSEC-2024-0449 has no patched version; a parser migration is
+a distinct, security-sensitive policy compatibility change, not a lockfile
+patch. Separate user authorization has been requested. Keep the existing
+gate intact and this PR unmerged if that blocker remains; do not call it green.
+
 ## Environment and evidence rules
 
 macOS can execute the offline Attenu verifier and portable seccomp-rule tests.

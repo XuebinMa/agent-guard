@@ -29,6 +29,10 @@ The `[Unreleased]` heading is rolled forward manually before each release; do no
   error transport. Native failure regressions cover required-name failures,
   real kernel filter/privilege-setup rejection, no-execution markers and
   bounded parallel execution. FullAccess still intentionally skips filtering.
+- Update the lockfile's `quinn-proto` to 0.11.18 and its required dependency
+  closure for RUSTSEC-2026-0338/0339/0340/0341/0342. The separately reported
+  unmaintained `unsafe-libyaml` dependency has no patched release and remains
+  a dependency-gate blocker; no advisory ignore was added.
 
 ### Changed
 

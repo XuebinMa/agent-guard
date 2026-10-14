@@ -3,7 +3,8 @@
 Baseline: `a5140da0c1a8367d8879af48b3e51de8e83cfd06` (main, including
 test-only PR #174). The red-test checkpoint is `bff29f3`. The implementation
 is isolated on `codex/security-contracts-161`; no primary-checkout changes,
-tags, release markers or dependencies were changed. Exact final-head hosted
+tags or release markers were changed. A minimal dependency-security follow-up
+from the first hosted CI is described separately below. Exact final-head hosted
 CI belongs in the review PR, separately from the local results below.
 
 The [plan](plans/2026-10-13-contract-and-seccomp-fixes.md) scopes this as
@@ -152,9 +153,40 @@ Local raw log SHA-256 fingerprints (temporary logs are not a permanent store):
 | Final Linux strict lint | `c80c4ba186ea79224875c8f7b5ea95a858ed7605ec8cdb23ddea7f2cf57343c8` |
 | Final Linux no-feature | `075a07449095132643dd60beee83baa32a5f361cba1712e6a2a466b1ac52d0ae` |
 | Full local gate | `bf5b5dec82c7433a1677ccdbca723e3a80e6a715c036c1733bbae19cdc4b195a` |
+| Full local gate after precise dependency patch | `4fcbae8e9fba9cf412f014a17a509a9e747dd0fb0d72da1efe5d99d7de95703f` |
 | Fresh binding parity | `48ccf19230aeed32b8e835f88e00dad541cc15cc87fc7dba98be297731521118` |
 
 ## Contract provenance and what remains open
+
+### Hosted CI uncovered two independent dependency gates
+
+The first hosted run, `38514768978` on `ea4b315`, completed with **19 success
+and 2 failure** conclusions. All ten Linux-specific unit tests and fourteen
+seccomp integration tests actually ran and passed, but `cargo-audit` and
+`cargo-deny` **failed**. The
+unchanged baseline lockfile contains `quinn-proto` 0.11.15, affected by
+RUSTSEC-2026-0338/0339/0340/0341/0342. The minimum release covering all five
+is 0.11.18, per the published
+[RustSec fix range](https://rustsec.org/advisories/RUSTSEC-2026-0340.html).
+The follow-up updates that exact version and its required random-number
+dependency closure only; no unrelated packages are refreshed. These are
+upstream denial-of-service advisories, not demonstrated attacks against this
+project. A lockfile graph alone does not prove HTTP/3 runtime reachability.
+After that lockfile update, the full local gate, strict all-target lint and
+70-case fresh-binding parity were rerun successfully. A new exact-head hosted
+run is still required; neither the previous 19 successes nor a passing local
+test suite can override a failed dependency gate.
+
+Independently, `cargo-deny` rejects `unsafe-libyaml` 0.2.11 via `serde_yaml`
+under [RUSTSEC-2024-0449](https://rustsec.org/advisories/RUSTSEC-2024-0449.html).
+That advisory was issued on 2026-10-12, reports an unmaintained dependency,
+and has **no patched version**. It is not a demonstrated new memory-safety
+exploit in this project. No ignore entry or gate relaxation was added.
+Migrating the core policy YAML parser needs its own compatibility/security
+review and has been referred for separate user authorization. Until resolved,
+the PR must not be represented as all-green or ready to merge.
+
+### Pending contract and platform coverage
 
 The verifier was implemented against the public
 [contract at b62b3fa](https://github.com/attenu-io/attenu-guard/blob/b62b3fa38feebc071ae384992e6c383c1e645ea7/tests/vectors/README.md)
