@@ -21,6 +21,25 @@ use std::os::unix::process::ExitStatusExt;
 #[cfg(all(target_os = "linux", feature = "seccomp"))]
 use std::process::Command;
 
+#[cfg(all(test, target_os = "linux", feature = "seccomp"))]
+#[path = "linux/native_tests.rs"]
+mod native_tests;
+
+#[cfg(all(target_os = "linux", feature = "seccomp"))]
+#[derive(Clone, Copy, Default)]
+struct SetupOptions {
+    #[cfg(test)]
+    fault: Option<SetupFault>,
+}
+
+#[cfg(all(test, target_os = "linux", feature = "seccomp"))]
+#[derive(Clone, Copy)]
+enum SetupFault {
+    MissingSyscall,
+    InvalidFilter,
+    NoNewPrivileges,
+}
+
 /// Linux seccomp-bpf sandbox.
 ///
 /// With the `seccomp` feature enabled, this loads a native Seccomp-BPF filter
@@ -236,6 +255,15 @@ fn execute_compat_shell(command: &str, context: &SandboxContext) -> SandboxResul
 
 #[cfg(all(target_os = "linux", feature = "seccomp"))]
 fn execute_with_native_seccomp(command: &str, context: &SandboxContext) -> SandboxResult {
+    execute_with_native_seccomp_options(command, context, SetupOptions::default())
+}
+
+#[cfg(all(target_os = "linux", feature = "seccomp"))]
+fn execute_with_native_seccomp_options(
+    command: &str,
+    context: &SandboxContext,
+    options: SetupOptions,
+) -> SandboxResult {
     if matches!(context.mode, PolicyMode::FullAccess) {
         return execute_compat_shell(command, context);
     }
@@ -252,6 +280,21 @@ fn execute_with_native_seccomp(command: &str, context: &SandboxContext) -> Sandb
 
     unsafe {
         child.pre_exec(move || {
+            #[cfg(test)]
+            if let Some(fault) = options.fault {
+                let error = match fault {
+                    SetupFault::MissingSyscall => {
+                        "failed to resolve required seccomp syscall 'connect': injected failure"
+                    }
+                    SetupFault::InvalidFilter => "failed to install seccomp BPF: injected failure",
+                    SetupFault::NoNewPrivileges => "failed to set no_new_privs: injected failure",
+                };
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::PermissionDenied,
+                    error,
+                ));
+            }
+            let _ = options;
             apply_seccomp_rules(&mode)
                 .map_err(|e| std::io::Error::new(std::io::ErrorKind::PermissionDenied, e))
         });

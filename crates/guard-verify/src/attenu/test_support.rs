@@ -28,6 +28,37 @@ pub fn published(name: &str) -> (Value, Signer) {
     (case.bundle, case.signer)
 }
 
+/// Derive the v1 ledger vocabulary, then let the caller re-seal the result.
+/// The public README excludes both twelve fields and the `outcome` event
+/// from v1. Removing outcomes changes the sequence positions of later entries.
+pub fn as_v1(bundle: &mut Value) {
+    bundle["v"] = Value::from(1);
+    bundle["anchor"]["v"] = Value::from(1);
+    let entries = bundle["entries"].as_array_mut().expect("entries");
+    entries.retain(|entry| entry["event"] != "outcome");
+    for (index, entry) in entries.iter_mut().enumerate() {
+        entry["v"] = Value::from(1);
+        entry["seq"] = Value::from(index);
+        let object = entry.as_object_mut().expect("entry object");
+        for field in [
+            "adapter",
+            "authorized_params_hash",
+            "body_state",
+            "call_id",
+            "capture",
+            "duration_ms",
+            "error_code",
+            "invoked_params_hash",
+            "params_hash_reason",
+            "params_salt",
+            "pending_at_kill",
+            "receipt",
+        ] {
+            object.remove(field);
+        }
+    }
+}
+
 /// Recompute every entry hash and re-sign the anchor over the new head.
 pub fn reseal(bundle: &mut Value, signer: &Signer) {
     let mut prev = GENESIS_PREV.to_string();

@@ -213,6 +213,8 @@ fn entry_str(entry: &Value, key: &str) -> Option<String> {
 }
 
 #[cfg(test)]
+mod bundle_shape_tests;
+#[cfg(test)]
 mod contract_tests;
 #[cfg(test)]
 mod schema_tests;

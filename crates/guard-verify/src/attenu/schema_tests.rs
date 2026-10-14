@@ -4,7 +4,7 @@
 //! verifier rejected a signed shape it does not understand, not merely that
 //! the original integrity seal no longer matched.
 
-use super::test_support::{at, chain_level, published, reasons, reseal};
+use super::test_support::{as_v1, at, chain_level, published, reasons, reseal};
 use super::*;
 use serde_json::json;
 
@@ -22,18 +22,6 @@ const V2_ONLY_FIELDS: [&str; 12] = [
     "pending_at_kill",
     "receipt",
 ];
-
-fn as_v1(bundle: &mut Value) {
-    bundle["v"] = Value::from(1);
-    bundle["anchor"]["v"] = Value::from(1);
-    for entry in bundle["entries"].as_array_mut().expect("entries") {
-        entry["v"] = Value::from(1);
-        let object = entry.as_object_mut().expect("entry object");
-        for field in V2_ONLY_FIELDS {
-            object.remove(field);
-        }
-    }
-}
 
 fn report_after(mut bundle: Value, signer: &Signer) -> BundleReport {
     reseal(&mut bundle, signer);
@@ -56,6 +44,40 @@ fn an_unknown_event_is_not_reported_as_a_verified_no_op() {
 
     let report = report_after(bundle, &signer);
     assert!(reasons(&report).contains(&at("unknown_ledger_event", 7, "vectors:n1")));
+}
+
+#[test]
+fn absent_and_nonstring_events_fail_at_the_entry_on_both_versions() {
+    for declare_v1 in [false, true] {
+        for malformed in [
+            None,
+            Some(json!(null)),
+            Some(json!(7)),
+            Some(json!(true)),
+            Some(json!([])),
+            Some(json!({})),
+        ] {
+            let (mut bundle, signer) = published("valid_bundle_v2");
+            if declare_v1 {
+                as_v1(&mut bundle);
+            }
+            let index = entry_count(&bundle) - 2;
+            let entry = bundle["entries"][index].as_object_mut().expect("entry");
+            match malformed {
+                Some(value) => {
+                    entry.insert("event".to_string(), value);
+                }
+                None => {
+                    entry.remove("event");
+                }
+            }
+            let expected = vec![placed_on(&bundle, index, "unknown_ledger_event")];
+
+            let report = report_after(bundle, &signer);
+            assert!(!report.accepted, "v1={declare_v1}");
+            assert_eq!(reasons(&report), expected, "v1={declare_v1}");
+        }
+    }
 }
 
 #[test]
@@ -190,6 +212,45 @@ fn malformed_authority_shapes_fail_closed_instead_of_becoming_empty() {
     }
 }
 
+/// Exact JSON types matter: a numeric string is not a TTL and an object is
+/// not a scope list, at either the root or the delegation that grants it.
+/// Keep the complete downstream failures visible instead of merely checking
+/// that the malformed authority produced some rejection.
+#[test]
+fn string_ttl_and_object_scopes_fail_closed_at_root_and_spawn() {
+    for declare_v1 in [false, true] {
+        for (field, malformed) in [("ttl", json!("900")), ("scopes", json!({"crm.read": true}))] {
+            for (index, member) in [(0, "authority"), (1, "granted")] {
+                let (mut bundle, signer) = published("valid_bundle_v2");
+                if declare_v1 {
+                    as_v1(&mut bundle);
+                }
+                bundle["entries"][index][member][field] = malformed.clone();
+                let expected = if index == 0 {
+                    vec![
+                        at("containment", 2, "vectors:n0"),
+                        at("monotonicity", 1, "vectors:n1"),
+                        at("unreadable_authority", 0, "vectors:n0"),
+                    ]
+                } else {
+                    vec![
+                        at("containment", if declare_v1 { 3 } else { 4 }, "vectors:n1"),
+                        at("unreadable_granted", 1, "vectors:n1"),
+                    ]
+                };
+
+                let report = report_after(bundle, &signer);
+                assert!(!report.accepted, "v1={declare_v1} {member}.{field}");
+                assert_eq!(
+                    reasons(&report),
+                    expected,
+                    "v1={declare_v1} {member}.{field}"
+                );
+            }
+        }
+    }
+}
+
 #[test]
 fn missing_bundle_version_and_chain_identity_fail_closed() {
     let (mut without_version, signer) = published("valid_bundle_v2");
@@ -284,38 +345,43 @@ fn the_unmutated_bundle_is_accepted_resealed_on_both_versions() {
     assert!(report.failures.is_empty());
 }
 
-/// Every v2-only name, on every entry of a v1 chain, is refused once, on that
-/// entry, and for no other reason.
+/// Every v2-only name, on all seven entries of the v1 baseline (12 × 7), is
+/// refused once, on that entry, and for no other reason.
 #[test]
 fn each_v2_only_field_on_each_v1_entry_is_the_only_failure_and_sits_on_that_entry() {
-    let (base, signer) = published("valid_bundle_v2");
+    let (mut base, signer) = published("valid_bundle_v2");
+    as_v1(&mut base);
+    let mut mutations_checked = 0;
 
     for field in V2_ONLY_FIELDS {
         for index in 0..entry_count(&base) {
             let mut bundle = base.clone();
-            as_v1(&mut bundle);
             bundle["entries"][index][field] = Value::from("x");
             let expected = vec![placed_on(&bundle, index, "v2_field_on_v1")];
 
             let report = report_after(bundle, &signer);
             assert!(!report.accepted, "{field} on entry {index} was accepted");
             assert_eq!(reasons(&report), expected, "{field} on entry {index}");
+            mutations_checked += 1;
         }
     }
+    assert_eq!(mutations_checked, 84);
 }
 
 /// A field outside the published list is refused once, on the entry carrying
-/// it, on a v2 chain and on a v1 chain alike, and for no other reason.
+/// it, on a v2 chain and on a v1 chain alike (9 + 7), and for no other reason.
 #[test]
 fn an_unlisted_field_on_each_entry_is_the_only_failure_and_sits_on_that_entry() {
     let (base, signer) = published("valid_bundle_v2");
+    let mut mutations_checked = 0;
 
     for declare_v1 in [false, true] {
-        for index in 0..entry_count(&base) {
-            let mut bundle = base.clone();
-            if declare_v1 {
-                as_v1(&mut bundle);
-            }
+        let mut versioned = base.clone();
+        if declare_v1 {
+            as_v1(&mut versioned);
+        }
+        for index in 0..entry_count(&versioned) {
+            let mut bundle = versioned.clone();
             bundle["entries"][index][UNLISTED_FIELD] = Value::from(1);
             let expected = vec![placed_on(&bundle, index, "unknown_ledger_fields")];
 
@@ -325,8 +391,10 @@ fn an_unlisted_field_on_each_entry_is_the_only_failure_and_sits_on_that_entry() 
                 "v1={declare_v1} entry {index} was accepted"
             );
             assert_eq!(reasons(&report), expected, "v1={declare_v1} entry {index}");
+            mutations_checked += 1;
         }
     }
+    assert_eq!(mutations_checked, 16);
 }
 
 /// The two rules are independent: one entry breaking both reports both, and
