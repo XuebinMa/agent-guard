@@ -35,7 +35,7 @@ pub fn check_chain_ids(bundle: &Value, entries: &[Value], failures: &mut Vec<Fai
             failures.push(Failure::at(entry, "chain_id_mismatch"));
         }
     }
-    if names_another(bundle.get("anchor")) {
+    if names_another(bundle.get("anchor").filter(|anchor| !anchor.is_null())) {
         failures.push(Failure::chain_level("chain_id_mismatch"));
     }
 }

@@ -32,7 +32,7 @@ pub fn check_versions(
     }
     let version = declared?;
 
-    let anchor = bundle.get("anchor");
+    let anchor = bundle.get("anchor").filter(|anchor| !anchor.is_null());
     let anchor_version = anchor
         .and_then(|anchor| anchor.get("v"))
         .and_then(Value::as_i64);
