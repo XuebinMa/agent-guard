@@ -1,7 +1,7 @@
 //! Linux seccomp integration tests.
 //!
 //! These tests require:
-//!   - Linux kernel with seccomp support (3.5+)
+//!   - Linux kernel with seccomp and memfd support (3.17+)
 //!   - `libseccomp` C library installed
 //!   - Feature flag: `cargo test --features agent-guard-sandbox/seccomp`
 //!
@@ -9,7 +9,7 @@
 //! On macOS / Windows they are compiled out entirely.
 //!
 //! Run with:
-//!   cargo test -p agent-guard-sandbox --features seccomp -- seccomp_integration
+//!   cargo test -p agent-guard-sandbox --features seccomp --test seccomp_integration
 
 #[cfg(all(target_os = "linux", feature = "seccomp"))]
 mod seccomp_tests {
@@ -221,6 +221,36 @@ mod seccomp_tests {
             Err(e) => panic!("expected Ok, got Err: {e}"),
         }
         let _ = std::fs::remove_file(&target);
+    }
+
+    #[test]
+    fn c3_compiled_filter_preserves_mode_specific_write_permissions() {
+        let directory = tempfile::tempdir().expect("private write-control directory");
+        let target = directory.path().join("target");
+        let control = std::process::Command::new("sh")
+            .args(["-c", "printf control > target"])
+            .current_dir(directory.path())
+            .status()
+            .expect("run unsandboxed positive write control");
+        assert!(control.success());
+        assert_eq!(std::fs::read(&target).unwrap(), b"control");
+
+        let sandbox = SeccompSandbox::strict();
+        let mut context = ctx(PolicyMode::ReadOnly);
+        context.working_directory = directory.path().to_path_buf();
+        match sandbox.execute("printf forbidden > target", &context) {
+            Ok(output) => assert_ne!(output.exit_code, 0),
+            Err(SandboxError::KilledByFilter { .. }) => {}
+            Err(error) => panic!("expected actual write denial, not setup failure: {error}"),
+        }
+        assert_eq!(std::fs::read(&target).unwrap(), b"control");
+
+        context.mode = PolicyMode::WorkspaceWrite;
+        let output = sandbox
+            .execute("printf allowed > target", &context)
+            .expect("workspace-write filter must still allow the same write");
+        assert_eq!(output.exit_code, 0);
+        assert_eq!(std::fs::read(&target).unwrap(), b"allowed");
     }
 
     #[test]

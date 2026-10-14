@@ -149,7 +149,8 @@ pub(super) fn check_envelopes(
     let mut states = vec![EntryWitness::ProcessAsserted; entries.len()];
 
     let Some(envelopes) = bundle.get("envelopes").and_then(Value::as_array) else {
-        // No array at all: every bundle written before this contract existed.
+        // Absent/null: every bundle written before this contract existed.
+        // Other container types are rejected before the envelope pass runs.
         return EnvelopeReport {
             states,
             canonical: Vec::new(),
@@ -234,6 +235,7 @@ fn judge(
                 .and_then(|subject| subject.get("seq"))
                 .and_then(Value::as_i64),
             node: None,
+            entry_index: None,
         }),
     };
 

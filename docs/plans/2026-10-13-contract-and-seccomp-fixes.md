@@ -29,20 +29,20 @@ The promised v1.5 corpus is not an available acceptance result.
 
 - [x] P0: inspect current main, dirty checkouts and explicit authorization;
   create an isolated implementation branch without overwriting other work.
-- [ ] P1: reproduce acceptance of a re-sealed v1 `outcome`, then make the event
+- [x] P1: reproduce acceptance of a re-sealed v1 `outcome`, then make the event
   vocabulary chain-version-aware. Preserve valid v2 outcomes. Build truly
   legal v1 fixtures; removing outcomes requires sequence/hash/anchor repair.
   Keep exact reason/seq/node assertions and positive controls. Field sweeps
   must count the resulting fixtures, not retain the old 108/18 by weakening
   assertions. Add root/spawn wrong-wire-type regression controls without
   changing the already-strict authority parser.
-- [ ] P2: first reproduce malformed bundle-container acceptance/diagnostic
+- [x] P2: first reproduce malformed bundle-container acceptance/diagnostic
   gaps. Reject a non-object bundle, wrong-type entries/envelopes/anchor with
   chain-level `invalid_bundle` once per invalid member, without continuing
   semantic checks. Preserve documented absent/null semantics. Non-object
   entries retain chain-level `invalid_ledger_entry`, with an optional physical
   entry index for diagnostics; do not encode an index into the reason token.
-- [ ] P3: preserve the existing required-syscall fail-closed behavior. Prepare
+- [x] P3: preserve the existing required-syscall fail-closed behavior. Prepare
   names/rules and allocating diagnostics before fork; the child installation
   path must avoid allocation/locking. Preserve detailed parent-side setup
   errors and distinguish installation errors from ordinary exec failures.
@@ -57,6 +57,15 @@ The promised v1.5 corpus is not an available acceptance result.
   both the frozen baseline and repaired verifier. Report measured first-run
   and repaired results without inventing a score. Prepare any reply only
   after real results; posting remains separately authorized.
+
+P4 local acceptance is complete: full macOS gate, strict all-target lint,
+fresh Rust/Python/Node parity (70 cases), Linux VM seccomp unit (21), native
+integration (14), no-feature unit (12) and strict native lint all passed.
+The exact final-head hosted CI remains a separate review gate, to be recorded
+in the PR rather than borrowing an older green result. P5 is conditional on
+the still-unpublished corpus, not an implementation failure or a score.
+See the [completion report](../security-review-2026-10-13.md) for red/green
+evidence, compatibility costs and remaining limits.
 
 ## Environment and evidence rules
 

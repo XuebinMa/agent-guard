@@ -21,7 +21,8 @@ With the `seccomp` feature enabled, read-only executions now install a syscall f
 
 ## Requirements
 
-- Linux kernel 3.5+
+- Linux kernel 3.17+ with seccomp and `memfd_create` available. A host policy
+  that denies the private export memfd causes `FilterSetup`, not a fallback.
 - `libseccomp` development headers if building with the `seccomp` feature:
   - Ubuntu/Debian: `sudo apt-get install libseccomp-dev`
   - Fedora/RHEL: `sudo dnf install libseccomp-devel`
@@ -35,6 +36,21 @@ agent-guard-sandbox = { version = "0.2", features = ["seccomp"] }
 ```
 
 ## Current Behavior
+
+Required syscall names, rule construction and BPF export are prepared in the
+parent before spawning. The child installs the immutable program with
+`PR_SET_NO_NEW_PRIVS` and `PR_SET_SECCOMP`; no libseccomp calls, allocation,
+formatting or logging are performed by this installation callback after fork.
+The private BPF export uses an anonymous memfd, not a repository-controlled
+path. This preparation requirement tightens the former Linux 3.5 claim.
+
+A close-on-exec report pipe preserves the installation stage and errno so a
+filter setup error is returned as `FilterSetup`; ordinary spawn/exec errors
+remain `ExecutionFailed`. Missing required rules are never skipped. The
+native failure regressions and mode-specific positive/negative controls are
+in `crates/agent-guard-sandbox/src/linux/native_tests.rs` and
+`crates/agent-guard-sandbox/tests/seccomp_integration.rs`. They must run on
+Linux with the `seccomp` feature, not as zero-test macOS builds.
 
 | Constructor | Current behavior |
 |---|---|

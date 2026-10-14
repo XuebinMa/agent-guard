@@ -9,6 +9,37 @@ The `[Unreleased]` heading is rolled forward manually before each release; do no
 
 ## [Unreleased]
 
+### Security
+
+- Bounded contract/seccomp maintenance, independent implementation provenance,
+  red/green evidence and compatibility limits:
+  [2026-10-13 report](docs/security-review-2026-10-13.md).
+- Attenu v1 ledgers reject the v2-only `outcome` event, even if all v2-only
+  fields have been removed. Legal v1 fixtures now remove outcomes, repair
+  sequence numbers and re-seal the chain. Exact field-rule sweeps remain in
+  place over the resulting seven-entry v1 ledger (84 v2-field mutations and
+  16 unknown-field mutations across the v1/v2 controls).
+- The offline Attenu verifier rejects wrong-type bundle containers with
+  `invalid_bundle` before making ledger or witness claims. It no longer
+  projects a malformed `envelopes` container into an absent one. Documented
+  missing/null semantics and valid ledger controls are retained.
+- Linux/seccomp prepares the complete required filter before fork and installs
+  only preallocated BPF in the child. Setup failures preserve their stage and
+  errno as `FilterSetup`, rather than losing custom diagnostics in Unix spawn
+  error transport. Native failure regressions cover required-name failures,
+  real kernel filter/privilege-setup rejection, no-execution markers and
+  bounded parallel execution. FullAccess still intentionally skips filtering.
+
+### Changed
+
+- `invalid_ledger_entry` diagnostics optionally include a zero-based
+  `entry_index` for malformed non-object records. Stable reason tokens and
+  null `seq`/`node` positioning are unchanged; ordinary failures retain their
+  previous JSON shape.
+- Seccomp BPF preparation requires Linux 3.17+ and an available
+  `memfd_create`; older kernels or policies that deny the export memfd fail
+  closed. No newer libseccomp memory-export API or new dependency is required.
+
 ## [0.2.8] - 2026-10-06
 
 Published and independently verified on 2026-10-07 UTC: eight Rust crates,

@@ -100,9 +100,9 @@ pub fn check_entry_schemas(
     schema_version: Option<i64>,
     failures: &mut Vec<Failure>,
 ) {
-    for entry in entries {
+    for (index, entry) in entries.iter().enumerate() {
         let Some(object) = entry.as_object() else {
-            failures.push(Failure::at(entry, "invalid_ledger_entry"));
+            failures.push(Failure::indexed(index, "invalid_ledger_entry"));
             continue;
         };
 
@@ -114,7 +114,10 @@ pub fn check_entry_schemas(
         }
 
         let event = object.get("event").and_then(Value::as_str);
-        if !event.is_some_and(|event| KNOWN_EVENTS.contains(&event)) {
+        if !event.is_some_and(|event| {
+            KNOWN_EVENTS.contains(&event)
+                && (schema_version != Some(version::V1) || event != "outcome")
+        }) {
             failures.push(Failure::at(entry, "unknown_ledger_event"));
             continue;
         }

@@ -110,6 +110,7 @@ jobs:
   linux-seccomp-integration:
     name: Linux Seccomp Integration
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - name: Install Linux sandbox deps
@@ -119,7 +120,9 @@ jobs:
       - name: Cache Rust
         uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
       - name: Run seccomp integration tests
-        run: cargo test -p agent-guard-sandbox --features seccomp --test seccomp_integration -- --nocapture
+        run: |
+          cargo test -p agent-guard-sandbox --features seccomp --lib linux:: -- --nocapture
+          cargo test -p agent-guard-sandbox --features seccomp --test seccomp_integration -- --nocapture
 
   linux-landlock-integration:
     name: Linux Landlock Integration
