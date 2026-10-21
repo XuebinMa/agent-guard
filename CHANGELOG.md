@@ -9,6 +9,18 @@ The `[Unreleased]` heading is rolled forward manually before each release; do no
 
 ## [Unreleased]
 
+### Fixed
+
+- Attenu corpus scoring compares the published `reason`/`seq`/`node` triple
+  instead of complete local diagnostics. Optional `entry_index` no longer
+  makes a correctly rejected non-object entry miss its required failure or
+  appear again as an additional failure. Bundle and envelope scoring share
+  the rule; verifier decisions and diagnostic JSON are unchanged.
+- Pin the unmodified `bundle_vectors_v1.5` corpus (29 cases, SHA-256
+  `1663000a67f38fcd54ff4856b39583b17ffec342f13f8d0921e2de0bc2bc25c5`),
+  updating provenance and the whole-corpus regression. Its two invalid-entry
+  rows exposed the scorer mismatch that the older v1.4/20 fixture did not.
+
 ## [0.2.9] - 2026-10-21
 
 Release preparation only: **not published**. The latest independently verified

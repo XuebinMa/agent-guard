@@ -3,8 +3,9 @@
 //!
 //! The token names are the corpus README's (`unsupported_version`,
 //! `anchor_version_mismatch`, `root_version_mismatch`,
-//! `mixed_entry_versions`). No row in `bundle_vectors_v1.4` exercises them:
-//! every published bundle is a consistent `schema_version=2` chain.
+//! `mixed_entry_versions`). When these checks were added, every row in
+//! `bundle_vectors_v1.4` was a consistent `schema_version=2` chain. Revision
+//! v1.5 adds published v1 chains; independent version mutations remain tested.
 
 use super::{entry_str, Failure};
 use serde_json::Value;

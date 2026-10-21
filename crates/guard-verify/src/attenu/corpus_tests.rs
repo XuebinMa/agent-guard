@@ -58,7 +58,10 @@ fn a_required_indexed_diagnostic_is_not_also_additional() {
         assert!(additional
             .iter()
             .all(|failure| failure.reason != "invalid_ledger_entry"));
-        assert!(!additional.is_empty(), "genuinely additional findings remain");
+        assert!(
+            !additional.is_empty(),
+            "genuinely additional findings remain"
+        );
     }
 }
 
@@ -73,7 +76,7 @@ fn each_published_failure_member_must_match_exactly() {
         .unwrap();
     assert!(placed.seq.is_some() && placed.node.is_some());
     for use_placed in [false, true] {
-        for member in ["reason", "seq", "node"] {
+        for member in ["reason", "seq", "node", "different_seq", "different_node"] {
             let mut case = malformed_case();
             if use_placed {
                 case.bundle = bundle.clone();
@@ -84,6 +87,8 @@ fn each_published_failure_member_must_match_exactly() {
             match member {
                 "reason" => required.reason.push_str("_not_the_required_reason"),
                 "seq" => required.seq = if use_placed { None } else { Some(7) },
+                "different_seq" => required.seq = Some(7_777),
+                "different_node" => required.node = Some("vectors:other".to_string()),
                 "node" => {
                     required.node = if use_placed {
                         None
@@ -107,6 +112,7 @@ fn diagnostic_equality_remains_strict_outside_corpus_scoring() {
     let indexed = Failure::indexed(7, "invalid_ledger_entry");
     let unindexed = Failure::chain_level("invalid_ledger_entry");
     assert_ne!(indexed, unindexed);
+    assert_ne!(indexed, Failure::indexed(8, "invalid_ledger_entry"));
     assert_eq!(serde_json::to_value(indexed).unwrap()["entry_index"], 7);
 }
 
