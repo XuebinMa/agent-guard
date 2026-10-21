@@ -39,22 +39,24 @@ Primary references:
 - [x] Add finite negative tests and observe baseline failures for explicit
   input/alias/anchor/node/depth limits and unsupported tags. Do not execute
   command-shaped strings or resolve includes/properties.
-- [ ] Replace both production YAML call sites; remove `serde_yaml` and
+- [x] Replace both production YAML call sites; remove `serde_yaml` and
   `unsafe-libyaml` completely. Keep public errors and schema validations.
   Avoid type-driven scalar coercion broadening authorization.
-- [ ] Enforce one document, strict YAML 1.2 boolean spellings, duplicate errors,
+- [x] Enforce one document, only the true/false boolean family, duplicate errors,
   no merges or unsupported tags, no include/property/robotics extensions,
   no source snippets, and bounded parsing/replay. Preserve ordinary finite
   aliases and original lexical `!!binary` string values (do not decode them).
-- [ ] Bound string input and file reads at 1 MiB, structural depth at 64,
+- [x] Bound string input and file reads at 1 MiB, structural depth at 64,
   aliases/anchors at 64 each, nodes/events at 16,384/32,768, replayed events
   at 8,192 and alias replay depth at 16. Keep raw input hashing/signing.
-- [ ] Refresh only the known required `quinn-proto` security patch to 0.11.18
+- [x] Refresh only the known required `quinn-proto` security patch to 0.11.18
   (and its necessary closure), also present in #175. It is an independent
   existing audit blocker, not a reason to refresh all dependencies.
-- [ ] Run targeted tests, full verification, strict all-target lint, fresh
-  three-language parity, and actual audit/deny checks. Submit a separate PR
-  and inspect its own exact-head cross-platform/MSRV CI conclusions.
+- [x] Run targeted tests, full verification, strict all-target lint and fresh
+  three-language parity on the completed local tree.
+- [ ] Submit a separate PR and inspect its own exact-head audit/deny,
+  cross-platform and MSRV CI conclusions. Record these in the PR body so
+  recording the final head does not create another commit/CI cycle.
 
 ## Acceptance and exclusions
 
@@ -65,11 +67,44 @@ semantic validation; its new test distinguishes an earlier structural-budget
 error, not a previously allowed authorization. The other failing controls
 directly demonstrate acceptance beyond the proposed limits/unknown tags.
 
+The candidate parser initially exposed a distinct-key collision when generic
+values collected different YAML keys into the same string key. A separate
+failing regression preceded the recursive collector fix; both YAML-node and
+final-string duplicates are now rejected before a value can be overwritten.
+This was caught during migration, not a new claim about a released exploit.
+
+Compatibility is characterized, not universal YAML equivalence: all ASCII case
+variants of true/false are now booleans (the old parser supported six spellings).
+Typed string fields reject unquoted numbers/booleans rather than accepting
+implicit string coercion. The [user-facing profile](../concepts/policy-yaml.md)
+records these changes and the finite limits. Quotes are the remedy for literal
+string data; editing a signed file requires signing the new original bytes.
+
 All existing valid shipped policies and decision/signature invariants must
 pass; newly rejected extensions/oversized inputs must be documented. No
 advisory ignores, last-wins duplicate handling, hidden security-test skips or
 weaker reload behavior. Record red tests separately from production changes.
 Public `PolicyError` categories stay; parser-specific wording can change.
+
+## Local verification checkpoint
+
+Final `./scripts/verify.sh full` exited 0 on macOS with Homebrew Rust/Cargo
+1.94.1. Rust summaries: 1,188 passed, zero failed, three existing ignored
+entries (opt-in copy-cost probe, isolated-child-only proxy probe and an
+audit performance smoke); Python 108 passed / one optional framework skip;
+Node adapter/framework/native/type checks and 14 plugin tests passed.
+The 43 migration tests are 20 compatibility + 12 limits + 4 scalar typing +
+7 SDK lifecycle tests, with no skips. Strict all-target clippy, rustfmt,
+52 script tests, 83-document checks and version/action-pin checks passed.
+Freshly built Rust/Python/Node bindings matched in all 70 parity scenarios.
+
+The Node dev-tool tree still emits six audit warnings; `npm audit --omit=dev`
+for the binding reports zero. The dependency-free plugin has no lockfile, so
+`npm audit` cannot independently assess it (`ENOLOCK`); no lockfile or dev
+dependency refresh was fabricated for this migration. Linux/seccomp, Windows,
+native-container and Rust 1.89 execution are CI gates, not local macOS claims.
+Neither local green checks nor a previous PR substitutes for the new head's
+actual cargo-audit/cargo-deny conclusions.
 
 This PR does not include #175's Attenu/seccomp changes, bump the release,
 rewrite installed user policies, replace the broker deployment, or repair

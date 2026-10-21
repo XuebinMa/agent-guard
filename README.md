@@ -7,7 +7,7 @@
 [![Version](https://img.shields.io/badge/Version-0.2.8-blue.svg)]()
 [![Focus](https://img.shields.io/badge/Focus-Outbound%20Control-green.svg)]()
 [![License](https://img.shields.io/badge/License-MIT-yellow.svg)]()
-[![MSRV](https://img.shields.io/badge/MSRV-1.79-orange.svg)]()
+[![MSRV](https://img.shields.io/badge/MSRV-1.89-orange.svg)]()
 
 ## What it looks like
 

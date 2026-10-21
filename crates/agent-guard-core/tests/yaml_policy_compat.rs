@@ -244,7 +244,7 @@ fn quoted_scalar_lookalikes_stay_string_rules() {
 }
 
 #[test]
-fn only_yaml_1_2_boolean_spellings_are_valid_boolean_configuration() {
+fn yaml_1_2_boolean_spellings_and_non_boolean_rejections_are_preserved() {
     for (scalar, expected) in [
         ("true", true),
         ("True", true),

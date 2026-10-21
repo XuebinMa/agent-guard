@@ -100,7 +100,12 @@ fn deep_invalid_rule_data_is_stopped_by_a_structural_limit() {
     );
     let error = PolicyEngine::from_yaml_str(&yaml).expect_err("invalid nested rule");
     let message = error.to_string().to_ascii_lowercase();
-    assert!(message.contains("depth") || message.contains("nesting"), "{message}");
+    assert!(
+        message.contains("depth")
+            || message.contains("nesting")
+            || message.contains("recursion limit"),
+        "{message}"
+    );
 }
 
 #[test]
@@ -108,4 +113,52 @@ fn errors_do_not_add_source_line_snippets_to_existing_diagnostics() {
     let yaml = "# SYNTHETIC_UNRELATED_COMMENT\nversion: 1\ntools: {baash: {}}\n";
     let error = PolicyEngine::from_yaml_str(yaml).expect_err("unknown tool");
     assert!(!error.to_string().contains("SYNTHETIC_UNRELATED_COMMENT"));
+}
+
+#[test]
+fn distinct_yaml_keys_cannot_collide_after_conversion_to_string_keys() {
+    for yaml in [
+        "version: 1\ntools:\n  custom:\n    42: {deny: [canary]}\n    '42': {}\n",
+        "version: 1\n!!binary tools: {bash: {deny: [canary]}}\ntools: {}\n",
+        "version: 1\ntools:\n  bash:\n    deny:\n      - {!!binary prefix: canary, prefix: ordinary}\n",
+    ] {
+        assert!(
+            PolicyEngine::from_yaml_str(yaml).is_err(),
+            "normalized key collision replaced a protection: {yaml}"
+        );
+    }
+}
+
+#[test]
+fn merge_keys_and_recursive_aliases_are_not_policy_extensions() {
+    for yaml in [
+        "version: 1\ntools:\n  bash:\n    <<: {deny: [canary]}\n",
+        "version: 1\ntools:\n  bash: &recursive\n    deny: [*recursive]\n",
+    ] {
+        assert!(PolicyEngine::from_yaml_str(yaml).is_err(), "{yaml}");
+    }
+}
+
+fn replay_policy(copies: usize) -> String {
+    let mut yaml =
+        String::from("version: 1\ntools:\n  custom:\n    original: &rules\n      deny:\n");
+    for _ in 0..256 {
+        yaml.push_str("        - canary\n");
+    }
+    for index in 0..copies {
+        yaml.push_str(&format!("    copy{index}: *rules\n"));
+    }
+    yaml
+}
+
+#[test]
+fn replay_work_is_bounded_below_the_alias_count_limit() {
+    PolicyEngine::from_yaml_str(&replay_policy(2)).expect("small finite replay");
+    let yaml = replay_policy(40);
+    assert!(yaml.len() < MAX_BYTES);
+    let error = PolicyEngine::from_yaml_str(&yaml).expect_err("bounded replay work");
+    assert!(
+        error.to_string().to_lowercase().contains("replay"),
+        "{error}"
+    );
 }

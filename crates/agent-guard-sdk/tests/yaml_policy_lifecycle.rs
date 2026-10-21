@@ -210,3 +210,61 @@ fn policy_hash_and_signature_remain_bound_to_original_yaml_bytes() {
         );
     }
 }
+
+#[test]
+fn signed_policy_files_enforce_the_input_limit_without_replacing_the_snapshot() {
+    let directory = tempfile::tempdir().expect("signed fixture directory");
+    let policy_path = directory.path().join("policy.yaml");
+    let public_key_path = directory.path().join("public-key.hex");
+    let signature_path = directory.path().join("signature.hex");
+    let (key, public_key, signature) = signing_fixture();
+    std::fs::write(&policy_path, POLICY).expect("write signed control policy");
+    std::fs::write(&public_key_path, public_key).expect("write public fixture key");
+    std::fs::write(&signature_path, signature).expect("write fixture signature");
+
+    let guard = Guard::from_signed_yaml_file(&policy_path, &public_key_path, &signature_path)
+        .expect("exact-byte signed policy file loads");
+    let original_hash = raw_hash(POLICY);
+    assert_original_policy(&guard, &original_hash);
+    assert_eq!(
+        guard.policy_verification().status,
+        PolicyVerificationStatus::Verified
+    );
+
+    // A synthetic comment takes an otherwise valid policy over one MiB.
+    // Sign those exact bytes so the size check, not a bad signature, rejects it.
+    // Do not include this large document in assertion messages or error output.
+    let oversized = format!("{POLICY}# {}\n", "x".repeat(1024 * 1024));
+    std::fs::write(&policy_path, &oversized).expect("write oversized policy fixture");
+    std::fs::write(&signature_path, sign_policy(&oversized, &key))
+        .expect("write oversized fixture signature");
+    assert!(
+        Guard::from_signed_yaml_file(&policy_path, &public_key_path, &signature_path).is_err(),
+        "a signed policy file over one MiB must not construct a Guard"
+    );
+    assert!(
+        guard
+            .reload_from_signed_yaml_file(&policy_path, &public_key_path, &signature_path)
+            .is_err(),
+        "a signed policy file over one MiB must not replace the active snapshot"
+    );
+    assert_original_policy(&guard, &original_hash);
+    assert_eq!(
+        guard.policy_verification().status,
+        PolicyVerificationStatus::Verified
+    );
+
+    let restored = format!("# restored fixture\r\n{}", POLICY.replace('\n', "\r\n"));
+    std::fs::write(&policy_path, &restored).expect("restore a bounded policy file");
+    std::fs::write(&signature_path, sign_policy(&restored, &key))
+        .expect("write restored fixture signature");
+    guard
+        .reload_from_signed_yaml_file(&policy_path, &public_key_path, &signature_path)
+        .expect("a later bounded, correctly signed policy reloads normally");
+    assert_ne!(guard.policy_hash(), original_hash);
+    assert_original_policy(&guard, &raw_hash(&restored));
+    assert_eq!(
+        guard.policy_verification().status,
+        PolicyVerificationStatus::Verified
+    );
+}

@@ -16,6 +16,8 @@ use crate::file_paths::{
 use crate::payload::{extract_bash_command, extract_http_request, extract_path, ExtractedPayload};
 use crate::types::{Context, Tool, TrustLevel};
 
+mod yaml;
+
 // ── M3.1: Context-aware Condition ─────────────────────────────────────────────
 
 const CONDITION_WHITELIST: &[&str] = &[
@@ -369,10 +371,10 @@ impl<'de> serde::Deserialize<'de> for RulePattern {
         D: serde::Deserializer<'de>,
     {
         use serde::de::Error;
-        let value = serde_yaml::Value::deserialize(deserializer)?;
+        let value = serde_json::Value::deserialize(deserializer)?;
         if let Some(s) = value.as_str() {
             Ok(RulePattern::Plain(s.to_string()))
-        } else if value.is_mapping() {
+        } else if value.is_object() {
             RulePatternMap::deserialize(value)
                 .map(RulePattern::Map)
                 .map_err(|e| D::Error::custom(e.to_string()))
@@ -747,10 +749,18 @@ pub struct PolicyEngine {
     hash: String,
 }
 
+/// Read policy source with the same byte bound used by policy parsing.
+///
+/// The original bytes are not normalized or reserialized. Hosts verifying
+/// detached signatures can use this instead of an unbounded file read.
+/// This function reads source only; callers must still parse/verify it.
+pub fn read_yaml_source(path: impl AsRef<Path>) -> Result<String, PolicyError> {
+    yaml::read_file(path.as_ref())
+}
+
 impl PolicyEngine {
     pub fn from_yaml_str(yaml: &str) -> Result<Self, PolicyError> {
-        let policy: PolicyFile =
-            serde_yaml::from_str(yaml).map_err(|e| PolicyError::ParseError(e.to_string()))?;
+        let policy = yaml::parse(yaml)?;
         if policy.version != 1 {
             return Err(PolicyError::UnsupportedVersion(policy.version));
         }
@@ -774,8 +784,7 @@ impl PolicyEngine {
     }
 
     pub fn from_yaml_file(path: impl AsRef<Path>) -> Result<Self, PolicyError> {
-        let content =
-            std::fs::read_to_string(path).map_err(|e| PolicyError::IoError(e.to_string()))?;
+        let content = read_yaml_source(path)?;
         Self::from_yaml_str(&content)
     }
 
