@@ -21,6 +21,13 @@ use crate::policy_signing::{
 
 pub(crate) const DEFAULT_EXECUTION_TIMEOUT_MS: u64 = 5 * 60 * 1_000;
 
+fn read_signed_policy_source(path: impl AsRef<Path>) -> Result<String, GuardInitError> {
+    agent_guard_core::policy::read_yaml_source(path).map_err(|error| match error {
+        agent_guard_core::PolicyError::IoError(message) => GuardInitError::SigningKeyLoad(message),
+        error => GuardInitError::Policy(error),
+    })
+}
+
 impl Guard {
     /// Create a Guard from an already-parsed PolicyEngine.
     pub fn new(engine: PolicyEngine) -> Result<Self, GuardInitError> {
@@ -57,8 +64,7 @@ impl Guard {
         public_key_path: impl AsRef<Path>,
         signature_path: impl AsRef<Path>,
     ) -> Result<Self, GuardInitError> {
-        let yaml = std::fs::read_to_string(policy_path)
-            .map_err(|error| GuardInitError::SigningKeyLoad(error.to_string()))?;
+        let yaml = read_signed_policy_source(policy_path)?;
         let public_key_hex =
             load_public_key_file(public_key_path).map_err(GuardInitError::SigningKeyLoad)?;
         let signature_hex =
@@ -269,8 +275,7 @@ impl Guard {
         public_key_path: impl AsRef<Path>,
         signature_path: impl AsRef<Path>,
     ) -> Result<(), GuardInitError> {
-        let yaml = std::fs::read_to_string(policy_path)
-            .map_err(|error| GuardInitError::SigningKeyLoad(error.to_string()))?;
+        let yaml = read_signed_policy_source(policy_path)?;
         let public_key_hex =
             load_public_key_file(public_key_path).map_err(GuardInitError::SigningKeyLoad)?;
         let signature_hex =

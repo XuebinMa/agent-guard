@@ -116,6 +116,7 @@ For security researchers and auditors reviewing the system's defensive posture.
 - 🎯 **[Accepted Broker-first Scope](decisions/2026-10-06-broker-first-scope.md)**: Persistent product decision, finite Shell maintenance obligations, and explicit non-goals.
 - 🛠️ **[Broker-first Development Plan](plans/broker-first-development-plan.md)**: Task dependencies, deployment acceptance, evidence requirements, and release gates.
 - 🧪 **[Testing Strategy](concepts/testing-strategy.md)**: Why the test is the specification of the boundary, the layer map, and what "done" means before a change can merge.
+- 📄 **[Policy YAML Profile](concepts/policy-yaml.md)**: Parser migration, supported scalar types, finite limits, compatibility changes and executable regression contracts (unreleased).
 - 🗺️ **[Capability Parity Matrix](concepts/capability-parity.md)**: Feature alignment across Linux, macOS, and Windows.
 - 🔍 **[Security Audit Report](reference/security-audit.md)**: Release-era self-audit checkpoint, useful after the primary threat-model review.
 - 🌐 **[Cross-Language Parity](concepts/cross-language-parity.md)**: API and decision identity across Rust / Python / Node bindings.

@@ -9,6 +9,35 @@ The `[Unreleased]` heading is rolled forward manually before each release; do no
 
 ## [Unreleased]
 
+### Security
+
+- Replace the unmaintained `serde_yaml` / `unsafe-libyaml` policy parser chain
+  ([RUSTSEC-2024-0449](https://rustsec.org/advisories/RUSTSEC-2024-0449.html))
+  with deserialize-only `serde-saphyr` 2.0.0. One bounded policy profile rejects
+  duplicate keys (including collisions after string conversion), merges,
+  unsupported tags and excessive input/alias replay. Signed file loading uses
+  the same bounded source reader and retains original-byte verification.
+  See the [profile and migration contract](docs/concepts/policy-yaml.md).
+- Update locked `quinn-proto` to 0.11.18 and its required dependency closure;
+  no advisory exceptions or unrelated dependency refresh.
+- Address the first migration CI run's six existing TLS advisories with exact
+  patches: `rustls` 0.23.46, `rustls-webpki` 0.103.16 and
+  `webpki-root-certs` 1.0.10. Keep certificate verification enabled and the
+  dependency audit gates unchanged.
+
+### Changed
+
+- Source builds now require Rust 1.89 (previously declared 1.79). An exact
+  1.89.0 CI job tests the policy core; the existing current-stable workspace,
+  bindings and per-OS jobs remain in place.
+- Policy YAML is limited to 1 MiB, one document and finite structural/alias
+  budgets. String-valued fields must use quotes around numeric/boolean-looking
+  data; implicit scalar-to-string coercion is no longer supported. Boolean
+  fields accept any ASCII case of `true`/`false` (including newly accepted
+  `tRuE`/`fAlSe`), not YAML 1.1 `yes`/`no`/`on`/`off` or quoted booleans.
+  Existing shipped policies remain unchanged; error categories remain stable
+  but parser-specific wording may differ. This change is not yet released.
+
 ## [0.2.8] - 2026-10-06
 
 Published and independently verified on 2026-10-07 UTC: eight Rust crates,

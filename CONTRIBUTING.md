@@ -15,7 +15,7 @@ This document is the 30-minute onboarding for that. Read it once, then keep [`RE
 
 | Tool | Minimum | Why |
 | :--- | :--- | :--- |
-| Rust | **1.79** (MSRV) | Workspace policy, declared in `Cargo.toml`. |
+| Rust | **1.89** (MSRV) | Workspace policy, declared in `Cargo.toml`; exact-version policy-core CI. |
 | Node.js | 20 or 22 | Native bindings + adapter tests; matrixed in CI. |
 | Python | 3.10+ (CI uses 3.12) | PyO3 bindings via `maturin` (abi3-py310). |
 | `libseccomp-dev` | latest | Linux sandbox tests; `apt-get install` on Debian/Ubuntu. |
