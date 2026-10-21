@@ -9,6 +9,13 @@ The `[Unreleased]` heading is rolled forward manually before each release; do no
 
 ## [Unreleased]
 
+## [0.2.9] - 2026-10-21
+
+Release preparation only: **not published**. The latest independently verified
+published release remains `0.2.8`. Do not use registry-install commands pinned
+to `0.2.9` until publication and independent download/installation checks pass.
+See the [preparation and remaining gates](docs/release-029-preparation.md).
+
 ### Security
 
 - Bounded contract/seccomp maintenance, independent implementation provenance,
