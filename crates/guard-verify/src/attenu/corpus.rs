@@ -285,3 +285,7 @@ fn score_envelope_case(case: &EnvelopeVectorCase) -> EnvelopeCaseScore {
         report,
     }
 }
+
+#[cfg(test)]
+#[path = "corpus_tests.rs"]
+mod tests;

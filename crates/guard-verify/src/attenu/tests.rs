@@ -13,9 +13,9 @@ fn attenu_corpus_fixture_bytes_are_pinned() {
     let digest = Sha256::digest(CORPUS.as_bytes());
     assert_eq!(
         hex::encode(digest),
-        "58d3546d67b1bafd8c96e0a01ae80b4b722f46af3459f19ee2b0ef34893da00d"
+        "1663000a67f38fcd54ff4856b39583b17ffec342f13f8d0921e2de0bc2bc25c5"
     );
-    assert_eq!(CORPUS.len(), 175_552);
+    assert_eq!(CORPUS.len(), 242_534);
 }
 
 /// `version` is the compatibility contract and never moves; `revision` moves
@@ -24,7 +24,7 @@ fn attenu_corpus_fixture_bytes_are_pinned() {
 fn attenu_corpus_version_is_the_one_we_implement() {
     let file = corpus();
     assert_eq!(file.version, "bundle_vectors_v1");
-    assert_eq!(file.revision.as_deref(), Some("bundle_vectors_v1.4"));
+    assert_eq!(file.revision.as_deref(), Some("bundle_vectors_v1.5"));
 }
 
 /// Every case scores: acceptance matches, and each required failure appears
@@ -32,7 +32,7 @@ fn attenu_corpus_version_is_the_one_we_implement() {
 #[test]
 fn attenu_bundle_corpus_scores_conformant() {
     let file = corpus();
-    assert_eq!(file.cases.len(), 20);
+    assert_eq!(file.cases.len(), 29);
 
     let scores = score_corpus(&file);
     let failed: Vec<String> = scores

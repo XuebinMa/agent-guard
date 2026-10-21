@@ -4708,9 +4708,1890 @@
         "kid": "bundle-interop-v1",
         "secret_hex": "617474656e752d67756172642d62756e646c652d766563746f72732d76312d66697865642d736563726574"
       }
+    },
+    {
+      "bundle": {
+        "anchor": {
+          "c14n": "JCS",
+          "chain_id": "vectors",
+          "head": "9602fc773ce2a27ca088bcf982f7343a0029c4150e3a54ba783cd2036681ee06",
+          "kid": "bundle-interop-v1",
+          "seq": 6,
+          "sig": "bd8a4bcea3f233bcca1805002b0cc707853c5a895adecd1dfbb2854f04127453",
+          "ts": 0,
+          "v": 1,
+          "verified": true
+        },
+        "c14n": "JCS",
+        "chain_id": "vectors",
+        "entries": [
+          {
+            "agent": "orchestrator",
+            "authority": {
+              "constraints": [
+                {
+                  "key": "max_rows",
+                  "max": 100000
+                }
+              ],
+              "scopes": [
+                "crm.*",
+                "mail.send"
+              ],
+              "ttl": 3600
+            },
+            "c14n": "JCS",
+            "chain_id": "vectors",
+            "event": "root",
+            "hash": "8337190f491e32de9373759bc92667cc526a3a13196f934591f8dfb6605152ae",
+            "node": "vectors:n0",
+            "prev_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+            "seq": 0,
+            "ts": 1,
+            "v": 1
+          },
+          {
+            "agent": "summarizer",
+            "c14n": "JCS",
+            "chain_id": "vectors",
+            "event": "spawn",
+            "granted": {
+              "constraints": [
+                {
+                  "key": "max_rows",
+                  "max": 5000
+                }
+              ],
+              "scopes": [
+                "crm.read"
+              ],
+              "ttl": 900
+            },
+            "hash": "ef17b94119ce50f235465237f9203261f0596c082af742d325d160c03ca0fbbd",
+            "node": "vectors:n1",
+            "parent": "vectors:n0",
+            "prev_hash": "8337190f491e32de9373759bc92667cc526a3a13196f934591f8dfb6605152ae",
+            "requested": {
+              "constraints": [
+                {
+                  "key": "max_rows",
+                  "max": 5000
+                }
+              ],
+              "scopes": [
+                "crm.read"
+              ],
+              "ttl": 900
+            },
+            "seq": 1,
+            "task": "summarize Q3 pipeline",
+            "ts": 2,
+            "v": 1
+          },
+          {
+            "c14n": "JCS",
+            "chain_id": "vectors",
+            "context": {},
+            "event": "allow",
+            "hash": "f9d59c5fed57f82f05b414317d0c44371ea2f495f63de78b0a8c433595e7a040",
+            "node": "vectors:n0",
+            "prev_hash": "ef17b94119ce50f235465237f9203261f0596c082af742d325d160c03ca0fbbd",
+            "scope": "mail.send",
+            "seq": 2,
+            "tool": "mail.send",
+            "ts": 3,
+            "v": 1
+          },
+          {
+            "c14n": "JCS",
+            "chain_id": "vectors",
+            "context": {
+              "rows": 120
+            },
+            "event": "allow",
+            "hash": "d0eeb94c3d359ad1445942633db517f85dbbefda08bbbba280c76d0e5080ef30",
+            "node": "vectors:n1",
+            "prev_hash": "f9d59c5fed57f82f05b414317d0c44371ea2f495f63de78b0a8c433595e7a040",
+            "scope": "crm.read",
+            "seq": 3,
+            "tool": "crm.read",
+            "ts": 4,
+            "v": 1
+          },
+          {
+            "c14n": "JCS",
+            "chain_id": "vectors",
+            "context": {
+              "rows": 120
+            },
+            "disposition": "out_of_authority",
+            "event": "deny",
+            "hash": "428b6058e71d671f7b07f2a7bfecc4911ea6a86956726e7f443cf5365d14439a",
+            "node": "vectors:n1",
+            "prev_hash": "d0eeb94c3d359ad1445942633db517f85dbbefda08bbbba280c76d0e5080ef30",
+            "reason": "scope_not_granted",
+            "reasons": [
+              {
+                "code": "scope_not_granted",
+                "constraint": null,
+                "limit": null,
+                "message": "scope 'crm.export' not covered by held scopes ['crm.read']",
+                "requested": "crm.export"
+              }
+            ],
+            "scope": "crm.export",
+            "seq": 4,
+            "tool": "crm.export",
+            "ts": 5,
+            "v": 1
+          },
+          {
+            "agent": "summarizer",
+            "c14n": "JCS",
+            "chain_id": "vectors",
+            "event": "done",
+            "hash": "69070ce278a9406821a7a84025f28a60f3a47dc2f7688ea53365eda334135781",
+            "node": "vectors:n1",
+            "prev_hash": "428b6058e71d671f7b07f2a7bfecc4911ea6a86956726e7f443cf5365d14439a",
+            "seq": 5,
+            "ts": 6,
+            "v": 1
+          },
+          {
+            "agent": "orchestrator",
+            "c14n": "JCS",
+            "chain_id": "vectors",
+            "event": "done",
+            "hash": "9602fc773ce2a27ca088bcf982f7343a0029c4150e3a54ba783cd2036681ee06",
+            "node": "vectors:n0",
+            "prev_hash": "69070ce278a9406821a7a84025f28a60f3a47dc2f7688ea53365eda334135781",
+            "seq": 6,
+            "ts": 7,
+            "v": 1
+          }
+        ],
+        "note": "offline-verifiable: attenu_guard.evidence.verify_bundle(bundle, signer)",
+        "redaction": {
+          "ok": true,
+          "violations": []
+        },
+        "v": 1
+      },
+      "description": "The run of valid_bundle_v2 written as a schema_version=1 chain: the same orchestrator, the same strictly narrower summarizer, the same two authorized calls and the same over-reach denied, both nodes finalized. v1 has no execution binding, so there is no `outcome` entry and no call_id, capture, adapter or argument commitment on any allow; seven entries, seq 0..6, each carrying only canonical v1 field names. Every check MUST pass. It is the base for the v1 rows below, and it is the case a verifier that converts v2 bundles to v1 by stripping fields needs: `outcome` is not a v1 event, so a v1 chain that keeps its outcome entries is not this bundle (see reject_outcome_event_on_v1).",
+      "expect": "accept",
+      "expect_failures": [],
+      "name": "valid_bundle_v1",
+      "signer": {
+        "alg": "HS256",
+        "kid": "bundle-interop-v1",
+        "secret_hex": "617474656e752d67756172642d62756e646c652d766563746f72732d76312d66697865642d736563726574"
+      }
+    },
+    {
+      "bundle": {
+        "anchor": {
+          "c14n": "JCS",
+          "chain_id": "vectors",
+          "head": "0b6172447473ddddb20d3b4c56c5e6499b0ae1f4a56f3e0b324f3ba5ed1f7f62",
+          "kid": "bundle-interop-v1",
+          "seq": 8,
+          "sig": "6737513ef82150c396f4c9eb0197733fa7b2f11d599c92364e718a0dacf7a083",
+          "ts": 0,
+          "v": 2,
+          "verified": true
+        },
+        "c14n": "JCS",
+        "chain_id": "vectors",
+        "entries": [
+          {
+            "agent": "orchestrator",
+            "authority": {
+              "constraints": [
+                {
+                  "key": "max_rows",
+                  "max": 100000
+                }
+              ],
+              "scopes": [
+                "crm.*",
+                "mail.send"
+              ],
+              "ttl": 3600
+            },
+            "c14n": "JCS",
+            "chain_id": "vectors",
+            "event": "root",
+            "hash": "fba88ffa70b6d8a976a06d4ccf3e00c573eccd9eccdbac56ced056057da8daa6",
+            "node": "vectors:n0",
+            "params_salt": "098023016893b040de8e953490e91ae4",
+            "prev_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+            "seq": 0,
+            "ts": 1,
+            "v": 2
+          },
+          {
+            "agent": "summarizer",
+            "c14n": "JCS",
+            "chain_id": "vectors",
+            "deny_scopes": [
+              "crm.export"
+            ],
+            "event": "spawn",
+            "granted": {
+              "constraints": [
+                {
+                  "key": "max_rows",
+                  "max": 5000
+                }
+              ],
+              "scopes": [
+                "crm.read"
+              ],
+              "ttl": 900
+            },
+            "hash": "ba8b66db1bec4f754176d1a58ea8b5610edaff8606a23da7565912e1828624ba",
+            "node": "vectors:n1",
+            "parent": "vectors:n0",
+            "prev_hash": "fba88ffa70b6d8a976a06d4ccf3e00c573eccd9eccdbac56ced056057da8daa6",
+            "requested": {
+              "constraints": [
+                {
+                  "key": "max_rows",
+                  "max": 5000
+                }
+              ],
+              "scopes": [
+                "crm.read"
+              ],
+              "ttl": 900
+            },
+            "seq": 1,
+            "task": "summarize Q3 pipeline",
+            "ts": 2,
+            "v": 2
+          },
+          {
+            "adapter": {
+              "hook_path": "wrap_tool",
+              "module": "attenu_guard.adapters.example",
+              "version": "1.0.0"
+            },
+            "authorized_params_hash": "d1901bc20e47587a42017724672f7c5fca81f8a6151a6933e5b62482367586a1",
+            "c14n": "JCS",
+            "call_id": "eb099aeb221783e1442261f15df4fb35",
+            "capture": "wrapper_sync",
+            "chain_id": "vectors",
+            "context": {},
+            "event": "allow",
+            "hash": "9c479c34b32b2eb368b7305a31a1730c73a191ce6643dcaa725eac503eea18b2",
+            "node": "vectors:n0",
+            "prev_hash": "ba8b66db1bec4f754176d1a58ea8b5610edaff8606a23da7565912e1828624ba",
+            "scope": "mail.send",
+            "seq": 2,
+            "tool": "mail.send",
+            "ts": 3,
+            "v": 2
+          },
+          {
+            "body_state": "returned",
+            "c14n": "JCS",
+            "call_id": "eb099aeb221783e1442261f15df4fb35",
+            "chain_id": "vectors",
+            "duration_ms": 12,
+            "event": "outcome",
+            "hash": "73d25522a4ae7e35987be185865a1c543ab5859b7392e075a13e6a34623c8d51",
+            "invoked_params_hash": "d1901bc20e47587a42017724672f7c5fca81f8a6151a6933e5b62482367586a1",
+            "node": "vectors:n0",
+            "prev_hash": "9c479c34b32b2eb368b7305a31a1730c73a191ce6643dcaa725eac503eea18b2",
+            "seq": 3,
+            "ts": 4,
+            "v": 2
+          },
+          {
+            "adapter": {
+              "hook_path": "wrap_tool",
+              "module": "attenu_guard.adapters.example",
+              "version": "1.0.0"
+            },
+            "authorized_params_hash": "fce526871286f8690b26b26fd968b9ad482f5e34e453b7fb8907fce528457a9c",
+            "c14n": "JCS",
+            "call_id": "15d42567717e39b8ff1881a14ec42f96",
+            "capture": "wrapper_sync",
+            "chain_id": "vectors",
+            "context": {
+              "rows": 120
+            },
+            "event": "allow",
+            "hash": "87be0c445546a0cc5f8008debf5ab279d28f2a69fa8f568cf1410bd8024a269a",
+            "node": "vectors:n1",
+            "prev_hash": "73d25522a4ae7e35987be185865a1c543ab5859b7392e075a13e6a34623c8d51",
+            "scope": "crm.read",
+            "seq": 4,
+            "tool": "crm.read",
+            "ts": 5,
+            "v": 2
+          },
+          {
+            "c14n": "JCS",
+            "call_id": "b19e6c109fd52df399317b62beac78b4",
+            "chain_id": "vectors",
+            "context": {
+              "rows": 120
+            },
+            "disposition": "out_of_authority",
+            "event": "deny",
+            "hash": "955a658e1679ec20526f0d489f8778f14cb16eaf437b0b55ebe329a6915bca15",
+            "node": "vectors:n1",
+            "prev_hash": "87be0c445546a0cc5f8008debf5ab279d28f2a69fa8f568cf1410bd8024a269a",
+            "reason": "scope_not_granted",
+            "reasons": [
+              {
+                "code": "scope_not_granted",
+                "constraint": null,
+                "limit": null,
+                "message": "scope 'crm.export' not covered by held scopes ['crm.read']",
+                "requested": "crm.export"
+              }
+            ],
+            "scope": "crm.export",
+            "seq": 5,
+            "tool": "crm.export",
+            "ts": 6,
+            "v": 2
+          },
+          {
+            "body_state": "returned",
+            "c14n": "JCS",
+            "call_id": "15d42567717e39b8ff1881a14ec42f96",
+            "chain_id": "vectors",
+            "duration_ms": 7,
+            "event": "outcome",
+            "hash": "7c610aadc7b8dee80f2c5b75f84e66e44d8e3e9ad85e879778605685c2142e32",
+            "invoked_params_hash": "fce526871286f8690b26b26fd968b9ad482f5e34e453b7fb8907fce528457a9c",
+            "node": "vectors:n1",
+            "prev_hash": "955a658e1679ec20526f0d489f8778f14cb16eaf437b0b55ebe329a6915bca15",
+            "seq": 6,
+            "ts": 7,
+            "v": 2
+          },
+          {
+            "agent": "summarizer",
+            "c14n": "JCS",
+            "chain_id": "vectors",
+            "event": "done",
+            "hash": "2f045e7fece922866b123fca5ef72ba4167f9d6f7232074beb6831f173e4c5b6",
+            "node": "vectors:n1",
+            "prev_hash": "7c610aadc7b8dee80f2c5b75f84e66e44d8e3e9ad85e879778605685c2142e32",
+            "seq": 7,
+            "ts": 8,
+            "v": 2
+          },
+          {
+            "agent": "orchestrator",
+            "c14n": "JCS",
+            "chain_id": "vectors",
+            "event": "done",
+            "hash": "0b6172447473ddddb20d3b4c56c5e6499b0ae1f4a56f3e0b324f3ba5ed1f7f62",
+            "node": "vectors:n0",
+            "prev_hash": "2f045e7fece922866b123fca5ef72ba4167f9d6f7232074beb6831f173e4c5b6",
+            "seq": 8,
+            "ts": 9,
+            "v": 2
+          }
+        ],
+        "note": "offline-verifiable: attenu_guard.evidence.verify_bundle(bundle, signer)",
+        "redaction": {
+          "ok": true,
+          "violations": []
+        },
+        "v": 2
+      },
+      "description": "The delegation at seq 1 carries one extra top-level field, `deny_scopes`, which is not one of the 39 names an entry may carry (tests/vectors/README.md, Entry fields). Derived from valid_bundle_v2 by that single change, chain re-hashed and re-anchored, so every other check passes. A verifier that reads an entry by projection, picking the fields it knows, accepts this bundle and never sees the field, which here claims to restrict the child: it reports success on an entry it did not fully read. Required: unknown_ledger_fields on the spawn (seq 1), node the child.",
+      "expect": "reject",
+      "expect_failures": [
+        {
+          "node": "vectors:n1",
+          "reason": "unknown_ledger_fields",
+          "seq": 1
+        }
+      ],
+      "name": "reject_unknown_ledger_fields",
+      "signer": {
+        "alg": "HS256",
+        "kid": "bundle-interop-v1",
+        "secret_hex": "617474656e752d67756172642d62756e646c652d766563746f72732d76312d66697865642d736563726574"
+      }
+    },
+    {
+      "bundle": {
+        "anchor": {
+          "c14n": "JCS",
+          "chain_id": "vectors",
+          "head": "2917202a5dc08f8f7f25c28b69ce5d00e9228a9cd539c33224aa432879d97bee",
+          "kid": "bundle-interop-v1",
+          "seq": 6,
+          "sig": "46cdc01af143e0af7c4097e0d66e1e3bcd524ebeae06aad87d53a703ca7acdc6",
+          "ts": 0,
+          "v": 1,
+          "verified": true
+        },
+        "c14n": "JCS",
+        "chain_id": "vectors",
+        "entries": [
+          {
+            "agent": "orchestrator",
+            "authority": {
+              "constraints": [
+                {
+                  "key": "max_rows",
+                  "max": 100000
+                }
+              ],
+              "scopes": [
+                "crm.*",
+                "mail.send"
+              ],
+              "ttl": 3600
+            },
+            "c14n": "JCS",
+            "chain_id": "vectors",
+            "event": "root",
+            "hash": "8337190f491e32de9373759bc92667cc526a3a13196f934591f8dfb6605152ae",
+            "node": "vectors:n0",
+            "prev_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+            "seq": 0,
+            "ts": 1,
+            "v": 1
+          },
+          {
+            "agent": "summarizer",
+            "c14n": "JCS",
+            "chain_id": "vectors",
+            "event": "spawn",
+            "granted": {
+              "constraints": [
+                {
+                  "key": "max_rows",
+                  "max": 5000
+                }
+              ],
+              "scopes": [
+                "crm.read"
+              ],
+              "ttl": 900
+            },
+            "hash": "ef17b94119ce50f235465237f9203261f0596c082af742d325d160c03ca0fbbd",
+            "node": "vectors:n1",
+            "parent": "vectors:n0",
+            "prev_hash": "8337190f491e32de9373759bc92667cc526a3a13196f934591f8dfb6605152ae",
+            "requested": {
+              "constraints": [
+                {
+                  "key": "max_rows",
+                  "max": 5000
+                }
+              ],
+              "scopes": [
+                "crm.read"
+              ],
+              "ttl": 900
+            },
+            "seq": 1,
+            "task": "summarize Q3 pipeline",
+            "ts": 2,
+            "v": 1
+          },
+          {
+            "c14n": "JCS",
+            "chain_id": "vectors",
+            "context": {},
+            "event": "allow",
+            "hash": "f9d59c5fed57f82f05b414317d0c44371ea2f495f63de78b0a8c433595e7a040",
+            "node": "vectors:n0",
+            "prev_hash": "ef17b94119ce50f235465237f9203261f0596c082af742d325d160c03ca0fbbd",
+            "scope": "mail.send",
+            "seq": 2,
+            "tool": "mail.send",
+            "ts": 3,
+            "v": 1
+          },
+          {
+            "c14n": "JCS",
+            "call_id": "0123456789abcdef0123456789abcdef",
+            "chain_id": "vectors",
+            "context": {
+              "rows": 120
+            },
+            "event": "allow",
+            "hash": "a1bed4b5290d641b3e7186d8008fbfa0dff791ebfca093c6efbd498aed85946c",
+            "node": "vectors:n1",
+            "prev_hash": "f9d59c5fed57f82f05b414317d0c44371ea2f495f63de78b0a8c433595e7a040",
+            "scope": "crm.read",
+            "seq": 3,
+            "tool": "crm.read",
+            "ts": 4,
+            "v": 1
+          },
+          {
+            "c14n": "JCS",
+            "chain_id": "vectors",
+            "context": {
+              "rows": 120
+            },
+            "disposition": "out_of_authority",
+            "event": "deny",
+            "hash": "730fe09e2baa1b404d21e825176c2e6e847520bae52cb5a7270b9ed7b566f186",
+            "node": "vectors:n1",
+            "prev_hash": "a1bed4b5290d641b3e7186d8008fbfa0dff791ebfca093c6efbd498aed85946c",
+            "reason": "scope_not_granted",
+            "reasons": [
+              {
+                "code": "scope_not_granted",
+                "constraint": null,
+                "limit": null,
+                "message": "scope 'crm.export' not covered by held scopes ['crm.read']",
+                "requested": "crm.export"
+              }
+            ],
+            "scope": "crm.export",
+            "seq": 4,
+            "tool": "crm.export",
+            "ts": 5,
+            "v": 1
+          },
+          {
+            "agent": "summarizer",
+            "c14n": "JCS",
+            "chain_id": "vectors",
+            "event": "done",
+            "hash": "6456299714986c64261d92417d4b16bbd2b13ae5a209a41b52f475de51a20c6f",
+            "node": "vectors:n1",
+            "prev_hash": "730fe09e2baa1b404d21e825176c2e6e847520bae52cb5a7270b9ed7b566f186",
+            "seq": 5,
+            "ts": 6,
+            "v": 1
+          },
+          {
+            "agent": "orchestrator",
+            "c14n": "JCS",
+            "chain_id": "vectors",
+            "event": "done",
+            "hash": "2917202a5dc08f8f7f25c28b69ce5d00e9228a9cd539c33224aa432879d97bee",
+            "node": "vectors:n0",
+            "prev_hash": "6456299714986c64261d92417d4b16bbd2b13ae5a209a41b52f475de51a20c6f",
+            "seq": 6,
+            "ts": 7,
+            "v": 1
+          }
+        ],
+        "note": "offline-verifiable: attenu_guard.evidence.verify_bundle(bundle, signer)",
+        "redaction": {
+          "ok": true,
+          "violations": []
+        },
+        "v": 1
+      },
+      "description": "The summarizer's allow at seq 3 of valid_bundle_v1 carries a `call_id`, one of the 12 v2-only field names. Derived from valid_bundle_v1 by that single change, chain re-hashed and re-anchored. A schema_version=1 chain never allocates a call_id, so the entry mixes versions; a verifier that applies the one 39-name allow-list to every chain finds nothing to report, since `call_id` is on it. Required: v2_field_on_v1 on the allow (seq 3), node the child.",
+      "expect": "reject",
+      "expect_failures": [
+        {
+          "node": "vectors:n1",
+          "reason": "v2_field_on_v1",
+          "seq": 3
+        }
+      ],
+      "name": "reject_v2_field_on_v1",
+      "signer": {
+        "alg": "HS256",
+        "kid": "bundle-interop-v1",
+        "secret_hex": "617474656e752d67756172642d62756e646c652d766563746f72732d76312d66697865642d736563726574"
+      }
+    },
+    {
+      "bundle": {
+        "anchor": {
+          "c14n": "JCS",
+          "chain_id": "vectors",
+          "head": "bcefed67ee799e64cab0e3b21775e285fac936fec5c82da02ea0de25da72acd9",
+          "kid": "bundle-interop-v1",
+          "seq": 8,
+          "sig": "1aba7e7520081dc46d303fb26ceb54dc137f31a05c23f521a80f7014ec41c193",
+          "ts": 0,
+          "v": 2,
+          "verified": true
+        },
+        "c14n": "JCS",
+        "chain_id": "vectors",
+        "entries": [
+          {
+            "agent": "orchestrator",
+            "authority": {
+              "constraints": [
+                {
+                  "key": "max_rows",
+                  "max": 100000
+                }
+              ],
+              "scopes": [
+                "crm.*",
+                "mail.send"
+              ],
+              "ttl": 3600
+            },
+            "c14n": "JCS",
+            "chain_id": "vectors",
+            "event": "root",
+            "hash": "fba88ffa70b6d8a976a06d4ccf3e00c573eccd9eccdbac56ced056057da8daa6",
+            "node": "vectors:n0",
+            "params_salt": "098023016893b040de8e953490e91ae4",
+            "prev_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+            "seq": 0,
+            "ts": 1,
+            "v": 2
+          },
+          {
+            "agent": "summarizer",
+            "c14n": "JCS",
+            "chain_id": "vectors",
+            "event": "spawn",
+            "granted": {
+              "constraints": [
+                {
+                  "key": "max_rows",
+                  "max": 5000
+                }
+              ],
+              "scopes": [
+                "crm.read"
+              ],
+              "ttl": 900
+            },
+            "hash": "5339c1271ede46a2b783871e7e65e4f0018e8f141f30ef760e8d3e6b0f31bb8d",
+            "node": "vectors:n1",
+            "parent": "vectors:n0",
+            "prev_hash": "fba88ffa70b6d8a976a06d4ccf3e00c573eccd9eccdbac56ced056057da8daa6",
+            "requested": {
+              "constraints": [
+                {
+                  "key": "max_rows",
+                  "max": 5000
+                }
+              ],
+              "scopes": [
+                "crm.read"
+              ],
+              "ttl": 900
+            },
+            "seq": 1,
+            "task": "summarize Q3 pipeline",
+            "ts": 2,
+            "v": 2
+          },
+          {
+            "adapter": {
+              "hook_path": "wrap_tool",
+              "module": "attenu_guard.adapters.example",
+              "version": "1.0.0"
+            },
+            "authorized_params_hash": "d1901bc20e47587a42017724672f7c5fca81f8a6151a6933e5b62482367586a1",
+            "c14n": "JCS",
+            "call_id": "eb099aeb221783e1442261f15df4fb35",
+            "capture": "wrapper_sync",
+            "chain_id": "vectors",
+            "context": {},
+            "event": "allow",
+            "hash": "6a55969c228f85cca9e5c4ff195fce20fc3a76d8d2afae4788bfa0f3e621340b",
+            "node": "vectors:n0",
+            "prev_hash": "5339c1271ede46a2b783871e7e65e4f0018e8f141f30ef760e8d3e6b0f31bb8d",
+            "scope": "mail.send",
+            "seq": 2,
+            "tool": "mail.send",
+            "ts": 3,
+            "v": 2
+          },
+          {
+            "body_state": "returned",
+            "c14n": "JCS",
+            "call_id": "eb099aeb221783e1442261f15df4fb35",
+            "chain_id": "vectors",
+            "duration_ms": 12,
+            "event": "outcome",
+            "hash": "b5c9da99d2ba0874a150e05307994b35b5c6c3cc7a2dda35a067632404988f62",
+            "invoked_params_hash": "d1901bc20e47587a42017724672f7c5fca81f8a6151a6933e5b62482367586a1",
+            "node": "vectors:n0",
+            "prev_hash": "6a55969c228f85cca9e5c4ff195fce20fc3a76d8d2afae4788bfa0f3e621340b",
+            "seq": 3,
+            "ts": 4,
+            "v": 2
+          },
+          {
+            "adapter": {
+              "hook_path": "wrap_tool",
+              "module": "attenu_guard.adapters.example",
+              "version": "1.0.0"
+            },
+            "authorized_params_hash": "fce526871286f8690b26b26fd968b9ad482f5e34e453b7fb8907fce528457a9c",
+            "c14n": "JCS",
+            "call_id": "15d42567717e39b8ff1881a14ec42f96",
+            "capture": "wrapper_sync",
+            "chain_id": "vectors",
+            "context": {
+              "rows": 120
+            },
+            "event": "allow",
+            "hash": "7230444ce8d0178ca0352ca46bfe8c7518bad7c098f77e0103156bfcc1eb4a7b",
+            "node": "vectors:n1",
+            "prev_hash": "b5c9da99d2ba0874a150e05307994b35b5c6c3cc7a2dda35a067632404988f62",
+            "scope": "crm.read",
+            "seq": 4,
+            "tool": "crm.read",
+            "ts": 5,
+            "v": 2
+          },
+          {
+            "c14n": "JCS",
+            "call_id": "b19e6c109fd52df399317b62beac78b4",
+            "chain_id": "vectors",
+            "context": {
+              "rows": 120
+            },
+            "disposition": "out_of_authority",
+            "event": "deny",
+            "hash": "78288abb02a9742c4059f159b32eaf89a5d7685d2edd7a504df18b9c805e357e",
+            "node": "vectors:n1",
+            "prev_hash": "7230444ce8d0178ca0352ca46bfe8c7518bad7c098f77e0103156bfcc1eb4a7b",
+            "reason": "scope_not_granted",
+            "reasons": [
+              {
+                "code": "scope_not_granted",
+                "constraint": null,
+                "limit": null,
+                "message": "scope 'crm.export' not covered by held scopes ['crm.read']",
+                "requested": "crm.export"
+              }
+            ],
+            "scope": "crm.export",
+            "seq": 5,
+            "tool": "crm.export",
+            "ts": 6,
+            "v": 2
+          },
+          {
+            "body_state": "returned",
+            "c14n": "JCS",
+            "call_id": "15d42567717e39b8ff1881a14ec42f96",
+            "chain_id": "vectors",
+            "duration_ms": 7,
+            "event": "outcome",
+            "hash": "919b70ea66d3a6dcb028d436c606d4503711d465968f2cccca769a14b2d9d28a",
+            "invoked_params_hash": "fce526871286f8690b26b26fd968b9ad482f5e34e453b7fb8907fce528457a9c",
+            "node": "vectors:n1",
+            "prev_hash": "78288abb02a9742c4059f159b32eaf89a5d7685d2edd7a504df18b9c805e357e",
+            "seq": 6,
+            "ts": 7,
+            "v": 2
+          },
+          {
+            "agent": "summarizer",
+            "c14n": "JCS",
+            "chain_id": "vectors",
+            "event": "frobnicate",
+            "hash": "31a72eefbf46b95d50635431ccd4e565f116bb0598a9fe251bb706bac3f7a21c",
+            "node": "vectors:n1",
+            "prev_hash": "919b70ea66d3a6dcb028d436c606d4503711d465968f2cccca769a14b2d9d28a",
+            "seq": 7,
+            "ts": 8,
+            "v": 2
+          },
+          {
+            "agent": "orchestrator",
+            "c14n": "JCS",
+            "chain_id": "vectors",
+            "event": "done",
+            "hash": "bcefed67ee799e64cab0e3b21775e285fac936fec5c82da02ea0de25da72acd9",
+            "node": "vectors:n0",
+            "prev_hash": "31a72eefbf46b95d50635431ccd4e565f116bb0598a9fe251bb706bac3f7a21c",
+            "seq": 8,
+            "ts": 9,
+            "v": 2
+          }
+        ],
+        "note": "offline-verifiable: attenu_guard.evidence.verify_bundle(bundle, signer)",
+        "redaction": {
+          "ok": true,
+          "violations": []
+        },
+        "v": 2
+      },
+      "description": "The summarizer's `done` at seq 7 has its event renamed `frobnicate`, which is not one of the eight event names. Derived from valid_bundle_v2 by that single change, chain re-hashed and re-anchored. Every check reads an entry by its event, so an entry whose event none of them reads was skipped by all of them and the bundle verified clean. Required: unknown_ledger_event on that entry (seq 7), node the child.",
+      "expect": "reject",
+      "expect_failures": [
+        {
+          "node": "vectors:n1",
+          "reason": "unknown_ledger_event",
+          "seq": 7
+        }
+      ],
+      "name": "reject_unknown_ledger_event",
+      "signer": {
+        "alg": "HS256",
+        "kid": "bundle-interop-v1",
+        "secret_hex": "617474656e752d67756172642d62756e646c652d766563746f72732d76312d66697865642d736563726574"
+      }
+    },
+    {
+      "bundle": {
+        "anchor": {
+          "c14n": "JCS",
+          "chain_id": "vectors",
+          "head": "aa04a05e5a6e7fedd5bd2559975887bfbdd7ed5c400191f09ae3346d6a7b0ca6",
+          "kid": "bundle-interop-v1",
+          "seq": 7,
+          "sig": "68f0d429fae4776125aebcf7e73dd6a2856e6c618eb9ac8d0823b4f0d4c34386",
+          "ts": 0,
+          "v": 1,
+          "verified": true
+        },
+        "c14n": "JCS",
+        "chain_id": "vectors",
+        "entries": [
+          {
+            "agent": "orchestrator",
+            "authority": {
+              "constraints": [
+                {
+                  "key": "max_rows",
+                  "max": 100000
+                }
+              ],
+              "scopes": [
+                "crm.*",
+                "mail.send"
+              ],
+              "ttl": 3600
+            },
+            "c14n": "JCS",
+            "chain_id": "vectors",
+            "event": "root",
+            "hash": "8337190f491e32de9373759bc92667cc526a3a13196f934591f8dfb6605152ae",
+            "node": "vectors:n0",
+            "prev_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+            "seq": 0,
+            "ts": 1,
+            "v": 1
+          },
+          {
+            "agent": "summarizer",
+            "c14n": "JCS",
+            "chain_id": "vectors",
+            "event": "spawn",
+            "granted": {
+              "constraints": [
+                {
+                  "key": "max_rows",
+                  "max": 5000
+                }
+              ],
+              "scopes": [
+                "crm.read"
+              ],
+              "ttl": 900
+            },
+            "hash": "ef17b94119ce50f235465237f9203261f0596c082af742d325d160c03ca0fbbd",
+            "node": "vectors:n1",
+            "parent": "vectors:n0",
+            "prev_hash": "8337190f491e32de9373759bc92667cc526a3a13196f934591f8dfb6605152ae",
+            "requested": {
+              "constraints": [
+                {
+                  "key": "max_rows",
+                  "max": 5000
+                }
+              ],
+              "scopes": [
+                "crm.read"
+              ],
+              "ttl": 900
+            },
+            "seq": 1,
+            "task": "summarize Q3 pipeline",
+            "ts": 2,
+            "v": 1
+          },
+          {
+            "c14n": "JCS",
+            "chain_id": "vectors",
+            "context": {},
+            "event": "allow",
+            "hash": "f9d59c5fed57f82f05b414317d0c44371ea2f495f63de78b0a8c433595e7a040",
+            "node": "vectors:n0",
+            "prev_hash": "ef17b94119ce50f235465237f9203261f0596c082af742d325d160c03ca0fbbd",
+            "scope": "mail.send",
+            "seq": 2,
+            "tool": "mail.send",
+            "ts": 3,
+            "v": 1
+          },
+          {
+            "c14n": "JCS",
+            "chain_id": "vectors",
+            "context": {
+              "rows": 120
+            },
+            "event": "allow",
+            "hash": "d0eeb94c3d359ad1445942633db517f85dbbefda08bbbba280c76d0e5080ef30",
+            "node": "vectors:n1",
+            "prev_hash": "f9d59c5fed57f82f05b414317d0c44371ea2f495f63de78b0a8c433595e7a040",
+            "scope": "crm.read",
+            "seq": 3,
+            "tool": "crm.read",
+            "ts": 4,
+            "v": 1
+          },
+          {
+            "c14n": "JCS",
+            "chain_id": "vectors",
+            "event": "outcome",
+            "hash": "14250151bcf12eedd16859321d5c549e5b0368d7f266dddb74f1883c31bf6ca5",
+            "node": "vectors:n1",
+            "prev_hash": "d0eeb94c3d359ad1445942633db517f85dbbefda08bbbba280c76d0e5080ef30",
+            "seq": 4,
+            "ts": 4,
+            "v": 1
+          },
+          {
+            "c14n": "JCS",
+            "chain_id": "vectors",
+            "context": {
+              "rows": 120
+            },
+            "disposition": "out_of_authority",
+            "event": "deny",
+            "hash": "5953fe19288d4acee0134788aab8ec8cb789257bfc8c26296f97fcf5b15c38ff",
+            "node": "vectors:n1",
+            "prev_hash": "14250151bcf12eedd16859321d5c549e5b0368d7f266dddb74f1883c31bf6ca5",
+            "reason": "scope_not_granted",
+            "reasons": [
+              {
+                "code": "scope_not_granted",
+                "constraint": null,
+                "limit": null,
+                "message": "scope 'crm.export' not covered by held scopes ['crm.read']",
+                "requested": "crm.export"
+              }
+            ],
+            "scope": "crm.export",
+            "seq": 5,
+            "tool": "crm.export",
+            "ts": 5,
+            "v": 1
+          },
+          {
+            "agent": "summarizer",
+            "c14n": "JCS",
+            "chain_id": "vectors",
+            "event": "done",
+            "hash": "0eb3709c4481096bd339cfbbbdfc97ec195c803f9bbc9571b2542c9e66d1a7d3",
+            "node": "vectors:n1",
+            "prev_hash": "5953fe19288d4acee0134788aab8ec8cb789257bfc8c26296f97fcf5b15c38ff",
+            "seq": 6,
+            "ts": 6,
+            "v": 1
+          },
+          {
+            "agent": "orchestrator",
+            "c14n": "JCS",
+            "chain_id": "vectors",
+            "event": "done",
+            "hash": "aa04a05e5a6e7fedd5bd2559975887bfbdd7ed5c400191f09ae3346d6a7b0ca6",
+            "node": "vectors:n0",
+            "prev_hash": "0eb3709c4481096bd339cfbbbdfc97ec195c803f9bbc9571b2542c9e66d1a7d3",
+            "seq": 7,
+            "ts": 7,
+            "v": 1
+          }
+        ],
+        "note": "offline-verifiable: attenu_guard.evidence.verify_bundle(bundle, signer)",
+        "redaction": {
+          "ok": true,
+          "violations": []
+        },
+        "v": 1
+      },
+      "description": "valid_bundle_v1 with one entry inserted at seq 4, after the summarizer's allow: an `outcome` carrying only canonical v1 field names (v, c14n, seq, ts, event, chain_id, node), so no v2-only field is present and v2_field_on_v1 has nothing to report. Every later entry shifts up by one seq. `outcome` is a v2-only event: a schema_version=1 chain has seven event names, not eight. This is the shape a v2 bundle takes when it is converted to v1 by stripping the v2-only fields and keeping the outcome entries. Chain re-hashed and re-anchored. Required: unknown_ledger_event on the inserted entry (seq 4), node the child.",
+      "expect": "reject",
+      "expect_failures": [
+        {
+          "node": "vectors:n1",
+          "reason": "unknown_ledger_event",
+          "seq": 4
+        }
+      ],
+      "name": "reject_outcome_event_on_v1",
+      "signer": {
+        "alg": "HS256",
+        "kid": "bundle-interop-v1",
+        "secret_hex": "617474656e752d67756172642d62756e646c652d766563746f72732d76312d66697865642d736563726574"
+      }
+    },
+    {
+      "bundle": {
+        "anchor": {
+          "c14n": "JCS",
+          "chain_id": "vectors",
+          "head": "53349075656990a1bde24c34e2a4bcd4b70826a208924a86c9cf2647a3a0fc9e",
+          "kid": "bundle-interop-v1",
+          "seq": 8,
+          "sig": "0c49095924277666675466722fb40d0b297416622a49b50e05896fa550654dcf",
+          "ts": 0,
+          "v": 2,
+          "verified": true
+        },
+        "c14n": "JCS",
+        "chain_id": "vectors",
+        "entries": [
+          {
+            "agent": "orchestrator",
+            "authority": {
+              "constraints": [
+                {
+                  "key": "max_rows",
+                  "max": 100000
+                }
+              ],
+              "scopes": [
+                "crm.*",
+                "mail.send"
+              ],
+              "ttl": 3600
+            },
+            "c14n": "JCS",
+            "chain_id": "vectors",
+            "event": "root",
+            "hash": "fba88ffa70b6d8a976a06d4ccf3e00c573eccd9eccdbac56ced056057da8daa6",
+            "node": "vectors:n0",
+            "params_salt": "098023016893b040de8e953490e91ae4",
+            "prev_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+            "seq": 0,
+            "ts": 1,
+            "v": 2
+          },
+          {
+            "agent": "summarizer",
+            "c14n": "JCS",
+            "chain_id": "vectors",
+            "event": "spawn",
+            "granted": {
+              "constraints": [
+                {
+                  "key": "max_rows",
+                  "max": 5000
+                }
+              ],
+              "scopes": [
+                "crm.read"
+              ],
+              "ttl": 900
+            },
+            "hash": "5339c1271ede46a2b783871e7e65e4f0018e8f141f30ef760e8d3e6b0f31bb8d",
+            "node": "vectors:n1",
+            "parent": "vectors:n0",
+            "prev_hash": "fba88ffa70b6d8a976a06d4ccf3e00c573eccd9eccdbac56ced056057da8daa6",
+            "requested": {
+              "constraints": [
+                {
+                  "key": "max_rows",
+                  "max": 5000
+                }
+              ],
+              "scopes": [
+                "crm.read"
+              ],
+              "ttl": 900
+            },
+            "seq": 1,
+            "task": "summarize Q3 pipeline",
+            "ts": 2,
+            "v": 2
+          },
+          {
+            "adapter": {
+              "hook_path": "wrap_tool",
+              "module": "attenu_guard.adapters.example",
+              "version": "1.0.0"
+            },
+            "authorized_params_hash": "d1901bc20e47587a42017724672f7c5fca81f8a6151a6933e5b62482367586a1",
+            "c14n": "JCS",
+            "call_id": "eb099aeb221783e1442261f15df4fb35",
+            "capture": "wrapper_sync",
+            "chain_id": "vectors",
+            "context": {},
+            "event": "allow",
+            "hash": "6a55969c228f85cca9e5c4ff195fce20fc3a76d8d2afae4788bfa0f3e621340b",
+            "node": "vectors:n0",
+            "prev_hash": "5339c1271ede46a2b783871e7e65e4f0018e8f141f30ef760e8d3e6b0f31bb8d",
+            "scope": "mail.send",
+            "seq": 2,
+            "tool": "mail.send",
+            "ts": 3,
+            "v": 2
+          },
+          {
+            "body_state": "returned",
+            "c14n": "JCS",
+            "call_id": "eb099aeb221783e1442261f15df4fb35",
+            "chain_id": "vectors",
+            "duration_ms": 12,
+            "event": "outcome",
+            "hash": "b5c9da99d2ba0874a150e05307994b35b5c6c3cc7a2dda35a067632404988f62",
+            "invoked_params_hash": "d1901bc20e47587a42017724672f7c5fca81f8a6151a6933e5b62482367586a1",
+            "node": "vectors:n0",
+            "prev_hash": "6a55969c228f85cca9e5c4ff195fce20fc3a76d8d2afae4788bfa0f3e621340b",
+            "seq": 3,
+            "ts": 4,
+            "v": 2
+          },
+          {
+            "adapter": {
+              "hook_path": "wrap_tool",
+              "module": "attenu_guard.adapters.example",
+              "version": "1.0.0"
+            },
+            "authorized_params_hash": "fce526871286f8690b26b26fd968b9ad482f5e34e453b7fb8907fce528457a9c",
+            "c14n": "JCS",
+            "call_id": "15d42567717e39b8ff1881a14ec42f96",
+            "capture": "wrapper_sync",
+            "chain_id": "vectors",
+            "context": {
+              "rows": 120
+            },
+            "event": "allow",
+            "hash": "7230444ce8d0178ca0352ca46bfe8c7518bad7c098f77e0103156bfcc1eb4a7b",
+            "node": "vectors:n1",
+            "prev_hash": "b5c9da99d2ba0874a150e05307994b35b5c6c3cc7a2dda35a067632404988f62",
+            "scope": "crm.read",
+            "seq": 4,
+            "tool": "crm.read",
+            "ts": 5,
+            "v": 2
+          },
+          {
+            "c14n": "JCS",
+            "call_id": "b19e6c109fd52df399317b62beac78b4",
+            "chain_id": "vectors",
+            "context": {
+              "rows": 120
+            },
+            "disposition": "out_of_authority",
+            "event": "deny",
+            "hash": "78288abb02a9742c4059f159b32eaf89a5d7685d2edd7a504df18b9c805e357e",
+            "node": "vectors:n1",
+            "prev_hash": "7230444ce8d0178ca0352ca46bfe8c7518bad7c098f77e0103156bfcc1eb4a7b",
+            "reason": "scope_not_granted",
+            "reasons": [
+              {
+                "code": "scope_not_granted",
+                "constraint": null,
+                "limit": null,
+                "message": "scope 'crm.export' not covered by held scopes ['crm.read']",
+                "requested": "crm.export"
+              }
+            ],
+            "scope": "crm.export",
+            "seq": 5,
+            "tool": "crm.export",
+            "ts": 6,
+            "v": 2
+          },
+          {
+            "body_state": "returned",
+            "c14n": "JCS",
+            "call_id": "15d42567717e39b8ff1881a14ec42f96",
+            "chain_id": "vectors",
+            "duration_ms": 7,
+            "event": "outcome",
+            "hash": "919b70ea66d3a6dcb028d436c606d4503711d465968f2cccca769a14b2d9d28a",
+            "invoked_params_hash": "fce526871286f8690b26b26fd968b9ad482f5e34e453b7fb8907fce528457a9c",
+            "node": "vectors:n1",
+            "prev_hash": "78288abb02a9742c4059f159b32eaf89a5d7685d2edd7a504df18b9c805e357e",
+            "seq": 6,
+            "ts": 7,
+            "v": 2
+          },
+          "done",
+          {
+            "agent": "orchestrator",
+            "c14n": "JCS",
+            "chain_id": "vectors",
+            "event": "done",
+            "hash": "53349075656990a1bde24c34e2a4bcd4b70826a208924a86c9cf2647a3a0fc9e",
+            "node": "vectors:n0",
+            "prev_hash": "9d99da710ca7ae8dd731099360fc5304746df3d926933c6dcdf61e2033bf2c95",
+            "seq": 8,
+            "ts": 9,
+            "v": 2
+          }
+        ],
+        "note": "offline-verifiable: attenu_guard.evidence.verify_bundle(bundle, signer)",
+        "redaction": {
+          "ok": true,
+          "violations": []
+        },
+        "v": 2
+      },
+      "description": "The summarizer's `done` at entries[7] of valid_bundle_v2 is replaced by the JSON string \"done\". An entry that is not a JSON object has no seq and no node, so the required failure is chain-level: invalid_ledger_entry with seq and node null; this build names the index in its message (`entries[7] is a string, not an object`). A string has no hash, so the chain cannot be re-hashed over it and the ORIGINAL anchor is kept: the hash chain breaks at that index, and this build also reports integrity and integrity(anchor), both chain-level. Those are permitted, not required. A verifier that reads a member of every entry without first checking the entry is an object raises here instead of reporting.",
+      "expect": "reject",
+      "expect_failures": [
+        {
+          "node": null,
+          "reason": "invalid_ledger_entry",
+          "seq": null
+        }
+      ],
+      "name": "reject_invalid_ledger_entry",
+      "signer": {
+        "alg": "HS256",
+        "kid": "bundle-interop-v1",
+        "secret_hex": "617474656e752d67756172642d62756e646c652d766563746f72732d76312d66697865642d736563726574"
+      }
+    },
+    {
+      "bundle": {
+        "anchor": {
+          "c14n": "JCS",
+          "chain_id": "vectors",
+          "head": "53349075656990a1bde24c34e2a4bcd4b70826a208924a86c9cf2647a3a0fc9e",
+          "kid": "bundle-interop-v1",
+          "seq": 8,
+          "sig": "0c49095924277666675466722fb40d0b297416622a49b50e05896fa550654dcf",
+          "ts": 0,
+          "v": 2,
+          "verified": true
+        },
+        "c14n": "JCS",
+        "chain_id": "vectors",
+        "entries": [
+          {
+            "agent": "orchestrator",
+            "authority": {
+              "constraints": [
+                {
+                  "key": "max_rows",
+                  "max": 100000
+                }
+              ],
+              "scopes": [
+                "crm.*",
+                "mail.send"
+              ],
+              "ttl": 3600
+            },
+            "c14n": "JCS",
+            "chain_id": "vectors",
+            "event": "root",
+            "hash": "fba88ffa70b6d8a976a06d4ccf3e00c573eccd9eccdbac56ced056057da8daa6",
+            "node": "vectors:n0",
+            "params_salt": "098023016893b040de8e953490e91ae4",
+            "prev_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+            "seq": 0,
+            "ts": 1,
+            "v": 2
+          },
+          {
+            "agent": "summarizer",
+            "c14n": "JCS",
+            "chain_id": "vectors",
+            "event": "spawn",
+            "granted": {
+              "constraints": [
+                {
+                  "key": "max_rows",
+                  "max": 5000
+                }
+              ],
+              "scopes": [
+                "crm.read"
+              ],
+              "ttl": 900
+            },
+            "hash": "5339c1271ede46a2b783871e7e65e4f0018e8f141f30ef760e8d3e6b0f31bb8d",
+            "node": "vectors:n1",
+            "parent": "vectors:n0",
+            "prev_hash": "fba88ffa70b6d8a976a06d4ccf3e00c573eccd9eccdbac56ced056057da8daa6",
+            "requested": {
+              "constraints": [
+                {
+                  "key": "max_rows",
+                  "max": 5000
+                }
+              ],
+              "scopes": [
+                "crm.read"
+              ],
+              "ttl": 900
+            },
+            "seq": 1,
+            "task": "summarize Q3 pipeline",
+            "ts": 2,
+            "v": 2
+          },
+          {
+            "adapter": {
+              "hook_path": "wrap_tool",
+              "module": "attenu_guard.adapters.example",
+              "version": "1.0.0"
+            },
+            "authorized_params_hash": "d1901bc20e47587a42017724672f7c5fca81f8a6151a6933e5b62482367586a1",
+            "c14n": "JCS",
+            "call_id": "eb099aeb221783e1442261f15df4fb35",
+            "capture": "wrapper_sync",
+            "chain_id": "vectors",
+            "context": {},
+            "event": "allow",
+            "hash": "6a55969c228f85cca9e5c4ff195fce20fc3a76d8d2afae4788bfa0f3e621340b",
+            "node": "vectors:n0",
+            "prev_hash": "5339c1271ede46a2b783871e7e65e4f0018e8f141f30ef760e8d3e6b0f31bb8d",
+            "scope": "mail.send",
+            "seq": 2,
+            "tool": "mail.send",
+            "ts": 3,
+            "v": 2
+          },
+          {
+            "body_state": "returned",
+            "c14n": "JCS",
+            "call_id": "eb099aeb221783e1442261f15df4fb35",
+            "chain_id": "vectors",
+            "duration_ms": 12,
+            "event": "outcome",
+            "hash": "b5c9da99d2ba0874a150e05307994b35b5c6c3cc7a2dda35a067632404988f62",
+            "invoked_params_hash": "d1901bc20e47587a42017724672f7c5fca81f8a6151a6933e5b62482367586a1",
+            "node": "vectors:n0",
+            "prev_hash": "6a55969c228f85cca9e5c4ff195fce20fc3a76d8d2afae4788bfa0f3e621340b",
+            "seq": 3,
+            "ts": 4,
+            "v": 2
+          },
+          {
+            "adapter": {
+              "hook_path": "wrap_tool",
+              "module": "attenu_guard.adapters.example",
+              "version": "1.0.0"
+            },
+            "authorized_params_hash": "fce526871286f8690b26b26fd968b9ad482f5e34e453b7fb8907fce528457a9c",
+            "c14n": "JCS",
+            "call_id": "15d42567717e39b8ff1881a14ec42f96",
+            "capture": "wrapper_sync",
+            "chain_id": "vectors",
+            "context": {
+              "rows": 120
+            },
+            "event": "allow",
+            "hash": "7230444ce8d0178ca0352ca46bfe8c7518bad7c098f77e0103156bfcc1eb4a7b",
+            "node": "vectors:n1",
+            "prev_hash": "b5c9da99d2ba0874a150e05307994b35b5c6c3cc7a2dda35a067632404988f62",
+            "scope": "crm.read",
+            "seq": 4,
+            "tool": "crm.read",
+            "ts": 5,
+            "v": 2
+          },
+          {
+            "c14n": "JCS",
+            "call_id": "b19e6c109fd52df399317b62beac78b4",
+            "chain_id": "vectors",
+            "context": {
+              "rows": 120
+            },
+            "disposition": "out_of_authority",
+            "event": "deny",
+            "hash": "78288abb02a9742c4059f159b32eaf89a5d7685d2edd7a504df18b9c805e357e",
+            "node": "vectors:n1",
+            "prev_hash": "7230444ce8d0178ca0352ca46bfe8c7518bad7c098f77e0103156bfcc1eb4a7b",
+            "reason": "scope_not_granted",
+            "reasons": [
+              {
+                "code": "scope_not_granted",
+                "constraint": null,
+                "limit": null,
+                "message": "scope 'crm.export' not covered by held scopes ['crm.read']",
+                "requested": "crm.export"
+              }
+            ],
+            "scope": "crm.export",
+            "seq": 5,
+            "tool": "crm.export",
+            "ts": 6,
+            "v": 2
+          },
+          {
+            "body_state": "returned",
+            "c14n": "JCS",
+            "call_id": "15d42567717e39b8ff1881a14ec42f96",
+            "chain_id": "vectors",
+            "duration_ms": 7,
+            "event": "outcome",
+            "hash": "919b70ea66d3a6dcb028d436c606d4503711d465968f2cccca769a14b2d9d28a",
+            "invoked_params_hash": "fce526871286f8690b26b26fd968b9ad482f5e34e453b7fb8907fce528457a9c",
+            "node": "vectors:n1",
+            "prev_hash": "78288abb02a9742c4059f159b32eaf89a5d7685d2edd7a504df18b9c805e357e",
+            "seq": 6,
+            "ts": 7,
+            "v": 2
+          },
+          [
+            {
+              "agent": "summarizer",
+              "c14n": "JCS",
+              "chain_id": "vectors",
+              "event": "done",
+              "hash": "9d99da710ca7ae8dd731099360fc5304746df3d926933c6dcdf61e2033bf2c95",
+              "node": "vectors:n1",
+              "prev_hash": "919b70ea66d3a6dcb028d436c606d4503711d465968f2cccca769a14b2d9d28a",
+              "seq": 7,
+              "ts": 8,
+              "v": 2
+            }
+          ],
+          {
+            "agent": "orchestrator",
+            "c14n": "JCS",
+            "chain_id": "vectors",
+            "event": "done",
+            "hash": "53349075656990a1bde24c34e2a4bcd4b70826a208924a86c9cf2647a3a0fc9e",
+            "node": "vectors:n0",
+            "prev_hash": "9d99da710ca7ae8dd731099360fc5304746df3d926933c6dcdf61e2033bf2c95",
+            "seq": 8,
+            "ts": 9,
+            "v": 2
+          }
+        ],
+        "note": "offline-verifiable: attenu_guard.evidence.verify_bundle(bundle, signer)",
+        "redaction": {
+          "ok": true,
+          "violations": []
+        },
+        "v": 2
+      },
+      "description": "reject_invalid_ledger_entry with the summarizer's `done` at entries[7] wrapped in a one-element JSON array instead of replaced by a string: the entry object is all there, one level down. An array is not an object. In JavaScript `typeof` reports an array as \"object\", so a verifier that checks an entry's shape that way reads this array as an entry with no members. Derived from valid_bundle_v2; not re-hashed and not re-anchored, for the same reason as reject_invalid_ledger_entry. Required: invalid_ledger_entry with seq and node null (this build: `entries[7] is an array, not an object`); integrity and integrity(anchor) are permitted, not required.",
+      "expect": "reject",
+      "expect_failures": [
+        {
+          "node": null,
+          "reason": "invalid_ledger_entry",
+          "seq": null
+        }
+      ],
+      "name": "reject_invalid_ledger_entry_array",
+      "signer": {
+        "alg": "HS256",
+        "kid": "bundle-interop-v1",
+        "secret_hex": "617474656e752d67756172642d62756e646c652d766563746f72732d76312d66697865642d736563726574"
+      }
+    },
+    {
+      "bundle": {
+        "anchor": {
+          "c14n": "JCS",
+          "chain_id": "vectors",
+          "head": "de58389faea4103ab7b6f1c4c4a09f5fa7601824fe9188d56d39ac721c8dc0c6",
+          "kid": "bundle-interop-v1",
+          "seq": 7,
+          "sig": "95d1b0682abdfc69ebbfc5662df95b7af684b30b162a9758915b5856314059d9",
+          "ts": 0,
+          "v": 1,
+          "verified": true
+        },
+        "c14n": "JCS",
+        "chain_id": "vectors",
+        "entries": [
+          {
+            "agent": "orchestrator",
+            "authority": {
+              "constraints": [
+                {
+                  "key": "max_rows",
+                  "max": 100000
+                }
+              ],
+              "scopes": [
+                "crm.*",
+                "mail.send"
+              ],
+              "ttl": 3600
+            },
+            "c14n": "JCS",
+            "chain_id": "vectors",
+            "event": "root",
+            "hash": "8337190f491e32de9373759bc92667cc526a3a13196f934591f8dfb6605152ae",
+            "node": "vectors:n0",
+            "prev_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+            "seq": 0,
+            "ts": 1,
+            "v": 1
+          },
+          {
+            "agent": "summarizer",
+            "c14n": "JCS",
+            "chain_id": "vectors",
+            "event": "spawn",
+            "granted": {
+              "constraints": [
+                {
+                  "key": "max_rows",
+                  "max": 5000
+                }
+              ],
+              "scopes": [
+                "crm.read"
+              ],
+              "ttl": 900
+            },
+            "hash": "ef17b94119ce50f235465237f9203261f0596c082af742d325d160c03ca0fbbd",
+            "node": "vectors:n1",
+            "parent": "vectors:n0",
+            "prev_hash": "8337190f491e32de9373759bc92667cc526a3a13196f934591f8dfb6605152ae",
+            "requested": {
+              "constraints": [
+                {
+                  "key": "max_rows",
+                  "max": 5000
+                }
+              ],
+              "scopes": [
+                "crm.read"
+              ],
+              "ttl": 900
+            },
+            "seq": 1,
+            "task": "summarize Q3 pipeline",
+            "ts": 2,
+            "v": 1
+          },
+          {
+            "c14n": "JCS",
+            "chain_id": "vectors",
+            "context": {},
+            "event": "allow",
+            "hash": "f9d59c5fed57f82f05b414317d0c44371ea2f495f63de78b0a8c433595e7a040",
+            "node": "vectors:n0",
+            "prev_hash": "ef17b94119ce50f235465237f9203261f0596c082af742d325d160c03ca0fbbd",
+            "scope": "mail.send",
+            "seq": 2,
+            "tool": "mail.send",
+            "ts": 3,
+            "v": 1
+          },
+          {
+            "c14n": "JCS",
+            "chain_id": "vectors",
+            "context": {
+              "rows": 120
+            },
+            "event": "allow",
+            "hash": "d0eeb94c3d359ad1445942633db517f85dbbefda08bbbba280c76d0e5080ef30",
+            "node": "vectors:n1",
+            "prev_hash": "f9d59c5fed57f82f05b414317d0c44371ea2f495f63de78b0a8c433595e7a040",
+            "scope": "crm.read",
+            "seq": 3,
+            "tool": "crm.read",
+            "ts": 4,
+            "v": 1
+          },
+          {
+            "c14n": "JCS",
+            "chain_id": "vectors",
+            "context": {
+              "rows": 120
+            },
+            "disposition": "out_of_authority",
+            "event": "deny",
+            "hash": "428b6058e71d671f7b07f2a7bfecc4911ea6a86956726e7f443cf5365d14439a",
+            "node": "vectors:n1",
+            "prev_hash": "d0eeb94c3d359ad1445942633db517f85dbbefda08bbbba280c76d0e5080ef30",
+            "reason": "scope_not_granted",
+            "reasons": [
+              {
+                "code": "scope_not_granted",
+                "constraint": null,
+                "limit": null,
+                "message": "scope 'crm.export' not covered by held scopes ['crm.read']",
+                "requested": "crm.export"
+              }
+            ],
+            "scope": "crm.export",
+            "seq": 4,
+            "tool": "crm.export",
+            "ts": 5,
+            "v": 1
+          },
+          {
+            "c14n": "JCS",
+            "chain_id": "vectors",
+            "context": {},
+            "event": "allow",
+            "hash": "13f193fed6cd77d2ba8e969ddb474b755006da153ec708e18566ae1191bb568b",
+            "node": "vectors:n1",
+            "policy": "unlisted",
+            "prev_hash": "428b6058e71d671f7b07f2a7bfecc4911ea6a86956726e7f443cf5365d14439a",
+            "scope": "legacy.sync",
+            "seq": 5,
+            "tool": "legacy.sync",
+            "ts": 6,
+            "v": 1
+          },
+          {
+            "agent": "summarizer",
+            "c14n": "JCS",
+            "chain_id": "vectors",
+            "event": "done",
+            "hash": "aa61e29dcde744fb0bfb20b54404529ce6b5982d544b1808d62f8da3919568f9",
+            "node": "vectors:n1",
+            "prev_hash": "13f193fed6cd77d2ba8e969ddb474b755006da153ec708e18566ae1191bb568b",
+            "seq": 6,
+            "ts": 7,
+            "v": 1
+          },
+          {
+            "agent": "orchestrator",
+            "c14n": "JCS",
+            "chain_id": "vectors",
+            "event": "done",
+            "hash": "de58389faea4103ab7b6f1c4c4a09f5fa7601824fe9188d56d39ac721c8dc0c6",
+            "node": "vectors:n0",
+            "prev_hash": "aa61e29dcde744fb0bfb20b54404529ce6b5982d544b1808d62f8da3919568f9",
+            "seq": 7,
+            "ts": 8,
+            "v": 1
+          }
+        ],
+        "note": "offline-verifiable: attenu_guard.evidence.verify_bundle(bundle, signer)",
+        "redaction": {
+          "ok": true,
+          "violations": []
+        },
+        "v": 1
+      },
+      "description": "valid_bundle_v1 plus one entry: at seq 5 the summarizer calls `legacy.sync` with no declared policy, and the allow carries \"policy\": \"unlisted\". `policy` is a canonical v1 field, not a v2-only one, and the v1 rule is the v2 rule: a policy-marked allow is not tested for containment and is not ignored either. The bundle MUST verify, with actions_checked=2 and ungated=1, which `expect_report` pins, exactly as for valid_bundle_v2_ungated_allow. Eight entries, seq 0..7.",
+      "expect": "accept",
+      "expect_failures": [],
+      "expect_report": {
+        "actions_checked": 2,
+        "ungated": 1
+      },
+      "name": "valid_bundle_v1_ungated_allow",
+      "signer": {
+        "alg": "HS256",
+        "kid": "bundle-interop-v1",
+        "secret_hex": "617474656e752d67756172642d62756e646c652d766563746f72732d76312d66697865642d736563726574"
+      }
+    },
+    {
+      "bundle": {
+        "anchor": {
+          "c14n": "JCS",
+          "chain_id": "vectors",
+          "head": "4e084a5a65d192fc241f567cf770d66c0ca7795166649b8f6b8267877b8e25d6",
+          "kid": "bundle-interop-v1",
+          "seq": 7,
+          "sig": "12f81af013ac7f324f888409c938dde0cdda74a7689891f7bc86bb60c25a2f75",
+          "ts": 0,
+          "v": 1,
+          "verified": true
+        },
+        "c14n": "JCS",
+        "chain_id": "vectors",
+        "entries": [
+          {
+            "agent": "orchestrator",
+            "authority": {
+              "constraints": [
+                {
+                  "key": "max_rows",
+                  "max": 100000
+                }
+              ],
+              "scopes": [
+                "crm.*",
+                "mail.send"
+              ],
+              "ttl": 3600
+            },
+            "c14n": "JCS",
+            "chain_id": "vectors",
+            "event": "root",
+            "hash": "8337190f491e32de9373759bc92667cc526a3a13196f934591f8dfb6605152ae",
+            "node": "vectors:n0",
+            "prev_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+            "seq": 0,
+            "ts": 1,
+            "v": 1
+          },
+          {
+            "agent": "summarizer",
+            "c14n": "JCS",
+            "chain_id": "vectors",
+            "event": "spawn",
+            "granted": {
+              "constraints": [
+                {
+                  "key": "max_rows",
+                  "max": 5000
+                }
+              ],
+              "scopes": [
+                "crm.read"
+              ],
+              "ttl": 900
+            },
+            "hash": "ef17b94119ce50f235465237f9203261f0596c082af742d325d160c03ca0fbbd",
+            "node": "vectors:n1",
+            "parent": "vectors:n0",
+            "prev_hash": "8337190f491e32de9373759bc92667cc526a3a13196f934591f8dfb6605152ae",
+            "requested": {
+              "constraints": [
+                {
+                  "key": "max_rows",
+                  "max": 5000
+                }
+              ],
+              "scopes": [
+                "crm.read"
+              ],
+              "ttl": 900
+            },
+            "seq": 1,
+            "task": "summarize Q3 pipeline",
+            "ts": 2,
+            "v": 1
+          },
+          {
+            "c14n": "JCS",
+            "chain_id": "vectors",
+            "context": {},
+            "event": "allow",
+            "hash": "f9d59c5fed57f82f05b414317d0c44371ea2f495f63de78b0a8c433595e7a040",
+            "node": "vectors:n0",
+            "prev_hash": "ef17b94119ce50f235465237f9203261f0596c082af742d325d160c03ca0fbbd",
+            "scope": "mail.send",
+            "seq": 2,
+            "tool": "mail.send",
+            "ts": 3,
+            "v": 1
+          },
+          {
+            "c14n": "JCS",
+            "chain_id": "vectors",
+            "context": {
+              "rows": 120
+            },
+            "event": "allow",
+            "hash": "d0eeb94c3d359ad1445942633db517f85dbbefda08bbbba280c76d0e5080ef30",
+            "node": "vectors:n1",
+            "prev_hash": "f9d59c5fed57f82f05b414317d0c44371ea2f495f63de78b0a8c433595e7a040",
+            "scope": "crm.read",
+            "seq": 3,
+            "tool": "crm.read",
+            "ts": 4,
+            "v": 1
+          },
+          {
+            "c14n": "JCS",
+            "chain_id": "vectors",
+            "context": {
+              "rows": 120
+            },
+            "disposition": "out_of_authority",
+            "event": "deny",
+            "hash": "428b6058e71d671f7b07f2a7bfecc4911ea6a86956726e7f443cf5365d14439a",
+            "node": "vectors:n1",
+            "prev_hash": "d0eeb94c3d359ad1445942633db517f85dbbefda08bbbba280c76d0e5080ef30",
+            "reason": "scope_not_granted",
+            "reasons": [
+              {
+                "code": "scope_not_granted",
+                "constraint": null,
+                "limit": null,
+                "message": "scope 'crm.export' not covered by held scopes ['crm.read']",
+                "requested": "crm.export"
+              }
+            ],
+            "scope": "crm.export",
+            "seq": 4,
+            "tool": "crm.export",
+            "ts": 5,
+            "v": 1
+          },
+          {
+            "c14n": "JCS",
+            "chain_id": "vectors",
+            "context": {},
+            "event": "allow",
+            "hash": "c5a158b9b87eb73196a9fc97b91300b776d0682318f5c489fd9e61afbd78f0f5",
+            "node": "vectors:n1",
+            "policy": "made-up",
+            "prev_hash": "428b6058e71d671f7b07f2a7bfecc4911ea6a86956726e7f443cf5365d14439a",
+            "scope": "legacy.sync",
+            "seq": 5,
+            "tool": "legacy.sync",
+            "ts": 6,
+            "v": 1
+          },
+          {
+            "agent": "summarizer",
+            "c14n": "JCS",
+            "chain_id": "vectors",
+            "event": "done",
+            "hash": "98790581f28bb8b49a05af84d31fac2306369d8bd404f9604e6de40ea25e16f3",
+            "node": "vectors:n1",
+            "prev_hash": "c5a158b9b87eb73196a9fc97b91300b776d0682318f5c489fd9e61afbd78f0f5",
+            "seq": 6,
+            "ts": 7,
+            "v": 1
+          },
+          {
+            "agent": "orchestrator",
+            "c14n": "JCS",
+            "chain_id": "vectors",
+            "event": "done",
+            "hash": "4e084a5a65d192fc241f567cf770d66c0ca7795166649b8f6b8267877b8e25d6",
+            "node": "vectors:n0",
+            "prev_hash": "98790581f28bb8b49a05af84d31fac2306369d8bd404f9604e6de40ea25e16f3",
+            "seq": 7,
+            "ts": 8,
+            "v": 1
+          }
+        ],
+        "note": "offline-verifiable: attenu_guard.evidence.verify_bundle(bundle, signer)",
+        "redaction": {
+          "ok": true,
+          "violations": []
+        },
+        "v": 1
+      },
+      "description": "reject_unknown_policy_value on a schema_version=1 chain: the un-gated allow at seq 5 of valid_bundle_v1_ungated_allow carries \"policy\": \"made-up\". Derived from valid_bundle_v1_ungated_allow by that single change, chain re-hashed and re-anchored. It MUST reject on BOTH counts. The value is not one the format defines: on v1 that is invalid_policy, since the v2 record check that reports invalid_allow does not run on a v1 chain. And an undefined value buys no containment exemption, so `legacy.sync` is measured against the summarizer's {crm.read} and is outside it (containment). A verifier that validates `policy` only in its v2 execution-binding pass accepts this bundle. Both failures sit on seq 5, node the child; ungated is 0.",
+      "expect": "reject",
+      "expect_failures": [
+        {
+          "node": "vectors:n1",
+          "reason": "containment",
+          "seq": 5
+        },
+        {
+          "node": "vectors:n1",
+          "reason": "invalid_policy",
+          "seq": 5
+        }
+      ],
+      "name": "reject_unknown_policy_value_v1_chain",
+      "signer": {
+        "alg": "HS256",
+        "kid": "bundle-interop-v1",
+        "secret_hex": "617474656e752d67756172642d62756e646c652d766563746f72732d76312d66697865642d736563726574"
+      }
     }
   ],
-  "description": "Bundle-level offline-verification vectors for attenu-guard evidence bundles (schema_version=2, with execution binding). Each case is a complete bundle plus the signer material for its anchor. `expect` is \"accept\" or \"reject\". For a rejecting case, `expect_failures` is the MINIMAL set of failures that MUST appear, each with the exact reason and the exact position (`seq`/`node`, null when the failure is chain-level); a conformant verifier MAY report additional failures \u2014 one broken record often makes a second check unsatisfiable \u2014 but never fewer, and never at a different position. Every rejecting bundle is derived from an accepting case by exactly one change, so each case isolates one rule: from `valid_bundle_v2` unless its description names `valid_bundle_v2_literal`. `version` is the compatibility contract and does not move when cases are appended; `revision` does. Verify an anchor as hex(HMAC-SHA256(secret, JCS(anchor without kid/sig/verified))) and each entry as hex(SHA-256(prev_hash_ascii || JCS(entry without hash))); see tests/vectors/README.md.",
-  "revision": "bundle_vectors_v1.4",
+  "description": "Bundle-level offline-verification vectors for attenu-guard evidence bundles (schema_version=2, with execution binding, and from revision bundle_vectors_v1.5 schema_version=1 cases too). Each case is a complete bundle plus the signer material for its anchor. `expect` is \"accept\" or \"reject\". For a rejecting case, `expect_failures` is the MINIMAL set of failures that MUST appear, each with the exact reason and the exact position (`seq`/`node`, null when the failure is chain-level); a conformant verifier MAY report additional failures \u2014 one broken record often makes a second check unsatisfiable \u2014 but never fewer, and never at a different position. Every rejecting bundle is derived from an accepting case by exactly one change, so each case isolates one rule: from the accepting case its description names, and from `valid_bundle_v2` when it names none. `version` is the compatibility contract and does not move when cases are appended; `revision` does. Verify an anchor as hex(HMAC-SHA256(secret, JCS(anchor without kid/sig/verified))) and each entry as hex(SHA-256(prev_hash_ascii || JCS(entry without hash))); see tests/vectors/README.md.",
+  "revision": "bundle_vectors_v1.5",
   "version": "bundle_vectors_v1"
 }

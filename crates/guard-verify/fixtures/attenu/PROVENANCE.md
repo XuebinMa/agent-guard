@@ -5,9 +5,17 @@
 `tests/vectors/bundles/bundle_vectors_v1.json`, which is licensed
 Apache-2.0. It is unmodified.
 
-- revision: `bundle_vectors_v1.4`, twenty cases, shipped in attenu-guard 0.16.0 and attenu-guard-ts 0.10.0
-- size: 175,552 bytes
-- sha256: `58d3546d67b1bafd8c96e0a01ae80b4b722f46af3459f19ee2b0ef34893da00d`
+- revision: `bundle_vectors_v1.5`, twenty-nine cases
+- immutable source: [`96a3edbbfa93115004673a0724284c4ba5ddc500`](https://github.com/attenu-io/attenu-guard/blob/96a3edbbfa93115004673a0724284c4ba5ddc500/tests/vectors/bundles/bundle_vectors_v1.json)
+- size: 242,534 bytes
+- sha256: `1663000a67f38fcd54ff4856b39583b17ffec342f13f8d0921e2de0bc2bc25c5`
+
+The first twenty cases are unchanged from v1.4 (175,552 bytes, sha256
+`58d3546d67b1bafd8c96e0a01ae80b4b722f46af3459f19ee2b0ef34893da00d`).
+The nine appended cases exercise v1 chains, entry-field/event restrictions and
+non-object entries. Expectations match exact `reason`, `seq` and `node` values;
+the verifier's optional `entry_index` remains a local diagnostic, not a
+member of this published scoring triple.
 
 Rows 19 and 20 pin the `policy` field: an allow may carry it, the only value
 v1 defines is `unlisted`, and an undefined value buys no containment
@@ -52,6 +60,7 @@ reference implementation.
 The strict entry-field and schema-v2 record checks added in October 2026 use
 the field sets that attenu-guard published on 2026-09-26 after an independent
 verifier reported they could not be derived from the earlier prose. The local
-v1.4 corpus bytes remain unchanged; agent-guard supplies its own re-sealed
-negative mutations for those rules so conformance does not depend on a future
-corpus row.
+v1.5 corpus now supplies published rows for several of those rules.
+Agent-guard retains its own re-sealed negative mutations and full field sweeps:
+agreement on these twenty-nine cases does not establish coverage of every
+published field or malformed record.
