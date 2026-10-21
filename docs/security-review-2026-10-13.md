@@ -7,6 +7,13 @@ tags or release markers were changed. A minimal dependency-security follow-up
 from the first hosted CI is described separately below. Exact final-head hosted
 CI belongs in the review PR, separately from the local results below.
 
+Follow-up integration (2026-10-21): user-authorized #176 merged as `ab55c5f`
+removes the separately reviewed YAML dependency blocker and patches the TLS
+graph. The old failed dependency results below remain historical evidence.
+#175's integrated head must pass its own full gates, including the actual
+Linux failure-path tests; final head and main-push conclusions are recorded
+in that PR and #161. Merge/issue closure is authorized, publication is not.
+
 The [plan](plans/2026-10-13-contract-and-seccomp-fixes.md) scopes this as
 bounded maintenance, not a new verifier platform or sandbox backend. No
 upstream comment, issue closure, merge, release or advisory update was made.

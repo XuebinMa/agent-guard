@@ -120,7 +120,7 @@ fn decode_filter(bytes: &[u8]) -> Result<Vec<libc::sock_filter>, String> {
     }
     // libseccomp exports native-endian sock_filter fields. Decode into an
     // aligned Vec: casting the byte buffer would risk unaligned reads/UB.
-    // split_first_chunk is available on the workspace's Rust 1.79 MSRV.
+    // split_first_chunk predates the current workspace MSRV.
     let mut remaining = bytes;
     let mut instructions = Vec::with_capacity(bytes.len() / INSTRUCTION_BYTES);
     while let Some((bytes, rest)) = remaining.split_first_chunk::<INSTRUCTION_BYTES>() {

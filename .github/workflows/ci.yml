@@ -17,6 +17,19 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  policy-msrv:
+    name: Policy Parser MSRV (1.89)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Install exact minimum Rust
+        uses: dtolnay/rust-toolchain@89b12181fb390509a0842a86cc55eeb8eb928c1d
+        with:
+          toolchain: 1.89.0
+      - name: Test the policy parser on the supported compiler floor
+        run: cargo test -p agent-guard-core --locked
+
   rust-test:
     name: Rust Tests (Workspace)
     runs-on: ubuntu-latest

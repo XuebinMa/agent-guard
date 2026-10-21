@@ -84,6 +84,22 @@ gate intact and this PR unmerged if that blocker remains; do not call it green.
 
 ## Environment and evidence rules
 
+Integration checkpoint, 2026-10-21: the user authorized merge/issue closure
+after new-head verification, and preparation (not publication) of a successor.
+The separately reviewed parser migration #176 was merged as `ab55c5f` and is
+normally merged into this branch without force-pushing. It removes the old
+YAML chain, includes the minimum TLS security patches required by its CI, and
+adds an exact Rust 1.89 policy-core job. The dependency-blocker notes above
+describe the earlier heads, not the integrated graph. Preserve the original
+Attenu/seccomp tests and the stronger fail-closed required-name behavior.
+
+Before merging #175, inspect all 22 actual CI conclusions for the integrated
+head and the Linux job's real 10 unit / 14 integration results with zero
+ignored tests. Record the exact head/main push evidence in the PR and issue
+rather than creating self-referential documentation commits. Only then close
+#161 with a distinction between merged and released code. Future Attenu v1.5
+interop results and unrelated platform limitations remain separate.
+
 macOS can execute the offline Attenu verifier and portable seccomp-rule tests.
 Linux-specific code is not validated by a successful macOS build. A Linux VM
 can validate actual seccomp syscalls but does not establish the broker's native

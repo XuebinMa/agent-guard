@@ -20,7 +20,7 @@ fn custom_tool_deserialization_cannot_bypass_identifier_validation() {
             "JSON must reject {id:?}"
         );
         assert!(
-            serde_yaml::from_str::<CustomToolId>(&encoded).is_err(),
+            serde_saphyr::from_str::<CustomToolId>(&encoded).is_err(),
             "YAML must reject {id:?}"
         );
         assert!(

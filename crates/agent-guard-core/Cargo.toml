@@ -2,6 +2,7 @@
 name = "agent-guard-core"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 homepage.workspace = true
@@ -12,7 +13,7 @@ description = "Core types, policy engine and audit for agent-guard"
 [dependencies]
 serde.workspace = true
 serde_json.workspace = true
-serde_yaml.workspace = true
+serde-saphyr.workspace = true
 thiserror.workspace = true
 chrono.workspace = true
 sha2.workspace = true
