@@ -5,38 +5,22 @@
 //! rules tested here come from the corpus README's reason table and its
 //! "version-independent" paragraph, never from an implementation.
 //!
-//! The v1 bundles are derived here by changing `v`, removing the twelve fields
-//! the published format now identifies as v2-only, and re-sealing a published
-//! v2 case.
+//! The v1 bundles change `v`, remove the twelve v2-only fields and `outcome`
+//! entries, renumber the surviving entries, and re-seal a published v2 case.
 
-use super::test_support::{at, chain_level, published, reasons, reseal};
+use super::test_support::{as_v1, at, chain_level, published, reasons, reseal};
 use super::*;
 
 /// The same ledger declared as `version` everywhere it declares one.
 fn declared_as(name: &str, version: i64) -> (Value, Signer) {
     let (mut bundle, signer) = published(name);
-    bundle["v"] = Value::from(version);
-    bundle["anchor"]["v"] = Value::from(version);
-    for entry in bundle["entries"].as_array_mut().expect("entries") {
-        entry["v"] = Value::from(version);
-        if version == 1 {
-            let object = entry.as_object_mut().expect("entry object");
-            for field in [
-                "adapter",
-                "authorized_params_hash",
-                "body_state",
-                "call_id",
-                "capture",
-                "duration_ms",
-                "error_code",
-                "invoked_params_hash",
-                "params_hash_reason",
-                "params_salt",
-                "pending_at_kill",
-                "receipt",
-            ] {
-                object.remove(field);
-            }
+    if version == 1 {
+        as_v1(&mut bundle);
+    } else {
+        bundle["v"] = Value::from(version);
+        bundle["anchor"]["v"] = Value::from(version);
+        for entry in bundle["entries"].as_array_mut().expect("entries") {
+            entry["v"] = Value::from(version);
         }
     }
     reseal(&mut bundle, &signer);
@@ -51,10 +35,45 @@ fn a_v1_chain_of_the_valid_bundle_is_accepted() {
     let report = verify_bundle(&bundle, &signer);
 
     assert!(report.accepted, "failures: {:?}", report.failures);
+    let entries = bundle["entries"].as_array().expect("entries");
+    assert_eq!(entries.len(), 7);
+    assert!(entries.iter().all(|entry| entry["event"] != "outcome"));
+    assert!(report.failures.is_empty());
     assert_eq!(report.execution_binding, ExecutionBinding::NotApplicable);
     // The contract's words, as `attenu-bundle` prints them.
     let rendered = serde_json::to_value(&report).expect("report serializes");
     assert_eq!(rendered["execution_binding"], "not applicable");
+}
+
+/// The public README at b62b3fa closes v1's event set at seven names:
+/// `outcome` is v2-only even when it carries none of the twelve v2 fields.
+#[test]
+fn a_v1_outcome_with_no_v2_fields_is_not_a_verified_no_op() {
+    let (mut bundle, signer) = declared_as("valid_bundle_v2", 1);
+    bundle["entries"][5]["event"] = Value::from("outcome");
+    reseal(&mut bundle, &signer);
+
+    let report = verify_bundle(&bundle, &signer);
+    assert!(!report.accepted, "a v1-only outcome was accepted");
+    assert_eq!(
+        reasons(&report),
+        vec![at("unknown_ledger_event", 5, "vectors:n1")]
+    );
+    assert_eq!(report.execution_binding, ExecutionBinding::NotApplicable);
+}
+
+#[test]
+fn v1_accepts_each_of_its_nonbinding_terminal_or_refusal_events() {
+    for event in ["done", "kill", "spawn_denied"] {
+        let (mut bundle, signer) = declared_as("valid_bundle_v2", 1);
+        bundle["entries"][5]["event"] = Value::from(event);
+        reseal(&mut bundle, &signer);
+
+        let report = verify_bundle(&bundle, &signer);
+        assert!(report.accepted, "{event}: {:?}", report.failures);
+        assert!(report.failures.is_empty(), "{event}");
+        assert_eq!(report.execution_binding, ExecutionBinding::NotApplicable);
+    }
 }
 
 /// The row safal207 specified and rafaelasor accepted for the next revision:
@@ -69,8 +88,8 @@ fn a_v1_chain_reports_an_undefined_policy_as_invalid_policy_and_keeps_containmen
     assert_eq!(
         reasons(&report),
         vec![
-            at("containment", 6, "vectors:n1"),
-            at("invalid_policy", 6, "vectors:n1"),
+            at("containment", 5, "vectors:n1"),
+            at("invalid_policy", 5, "vectors:n1"),
         ]
     );
 }
@@ -86,6 +105,8 @@ fn a_v1_chain_does_not_run_execution_binding() {
         let (bundle, signer) = declared_as(name, 1);
         let report = verify_bundle(&bundle, &signer);
 
+        assert!(report.accepted, "{name}: {:?}", report.failures);
+        assert!(report.failures.is_empty(), "{name}");
         let binding = [
             "duplicate_call_id",
             "duplicate_outcome",
@@ -111,6 +132,17 @@ fn a_v2_chain_still_runs_execution_binding() {
     let (bundle, signer) = published("valid_bundle_v2");
     let report = verify_bundle(&bundle, &signer);
 
+    assert!(report.accepted, "failures: {:?}", report.failures);
+    assert!(report.failures.is_empty());
+    assert_eq!(
+        bundle["entries"]
+            .as_array()
+            .expect("entries")
+            .iter()
+            .filter(|entry| entry["event"] == "outcome")
+            .count(),
+        2
+    );
     assert_eq!(report.execution_binding, ExecutionBinding::Checked);
 }
 

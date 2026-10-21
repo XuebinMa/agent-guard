@@ -3,23 +3,36 @@
 #[cfg(all(target_os = "linux", feature = "seccomp"))]
 use crate::process::{configure_process_group, wait_for_child};
 #[cfg(all(target_os = "linux", feature = "seccomp"))]
-use crate::seccomp_rules::{
-    preflight_required_syscalls_with, COMMON_DENY_SYSCALLS, NETWORK_DENY_SYSCALLS,
-    READ_ONLY_DENY_SYSCALLS, READ_ONLY_WRITE_FLAG_DENIES,
-};
-use crate::{
-    Sandbox, SandboxCapabilities, SandboxContext, SandboxError, SandboxOutput, SandboxResult,
-};
+use crate::SandboxOutput;
+use crate::{Sandbox, SandboxCapabilities, SandboxContext, SandboxError, SandboxResult};
 #[cfg(all(target_os = "linux", feature = "seccomp"))]
 use agent_guard_core::PolicyMode;
-#[cfg(all(target_os = "linux", feature = "seccomp"))]
-use libseccomp::{ScmpAction, ScmpArgCompare, ScmpCompareOp, ScmpFilterContext, ScmpSyscall};
-#[cfg(all(target_os = "linux", feature = "seccomp"))]
-use std::os::unix::process::CommandExt;
 #[cfg(all(target_os = "linux", feature = "seccomp"))]
 use std::os::unix::process::ExitStatusExt;
 #[cfg(all(target_os = "linux", feature = "seccomp"))]
 use std::process::Command;
+
+#[cfg(all(target_os = "linux", feature = "seccomp"))]
+mod native_seccomp;
+
+#[cfg(all(test, target_os = "linux", feature = "seccomp"))]
+#[path = "linux/native_tests.rs"]
+mod native_tests;
+
+#[cfg(all(target_os = "linux", feature = "seccomp"))]
+#[derive(Clone, Copy, Default)]
+struct SetupOptions {
+    #[cfg(test)]
+    fault: Option<SetupFault>,
+}
+
+#[cfg(all(test, target_os = "linux", feature = "seccomp"))]
+#[derive(Clone, Copy)]
+enum SetupFault {
+    MissingSyscall,
+    InvalidFilter,
+    NoNewPrivileges,
+}
 
 /// Linux seccomp-bpf sandbox.
 ///
@@ -236,46 +249,24 @@ fn execute_compat_shell(command: &str, context: &SandboxContext) -> SandboxResul
 
 #[cfg(all(target_os = "linux", feature = "seccomp"))]
 fn execute_with_native_seccomp(command: &str, context: &SandboxContext) -> SandboxResult {
+    execute_with_native_seccomp_options(command, context, SetupOptions::default())
+}
+
+#[cfg(all(target_os = "linux", feature = "seccomp"))]
+fn execute_with_native_seccomp_options(
+    command: &str,
+    context: &SandboxContext,
+    options: SetupOptions,
+) -> SandboxResult {
     if matches!(context.mode, PolicyMode::FullAccess) {
         return execute_compat_shell(command, context);
     }
 
-    let mode = context.mode.clone();
-    let mut child = Command::new("sh");
-    child
-        .arg("-c")
-        .arg(command)
-        .current_dir(&context.working_directory)
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped());
-    configure_process_group(&mut child);
-
-    unsafe {
-        child.pre_exec(move || {
-            apply_seccomp_rules(&mode)
-                .map_err(|e| std::io::Error::new(std::io::ErrorKind::PermissionDenied, e))
-        });
-    }
-
-    let child = match child.spawn() {
-        Ok(child) => child,
-        Err(e) => {
-            let message = e.to_string();
-            if message.contains("seccomp") || e.kind() == std::io::ErrorKind::PermissionDenied {
-                return Err(SandboxError::FilterSetup(format!(
-                    "Seccomp filter setup failed: {}",
-                    message
-                )));
-            }
-
-            return Err(SandboxError::ExecutionFailed(format!(
-                "Failed to spawn process: {}",
-                message
-            )));
-        }
-    };
-
-    finish_child(child, context.timeout_ms)
+    // Resolve names and compile BPF in the parent before fork. No libseccomp
+    // state or allocator-dependent preparation crosses into pre_exec.
+    let filter = native_seccomp::prepare_filter(&context.mode, options)
+        .map_err(SandboxError::FilterSetup)?;
+    native_seccomp::execute_prepared(command, context, filter, options)
 }
 
 #[cfg(all(target_os = "linux", feature = "seccomp"))]
@@ -294,126 +285,6 @@ fn finish_child(child: std::process::Child, timeout_ms: Option<u64>) -> SandboxR
         stderr: output.stderr,
         exit_code: exit_status.code().unwrap_or(-1),
     })
-}
-
-#[cfg(all(target_os = "linux", feature = "seccomp"))]
-fn apply_seccomp_rules(mode: &PolicyMode) -> Result<(), String> {
-    // Resolve the complete required rule set before constructing/loading the
-    // filter. A missing name is a setup failure, not permission to run with a
-    // silently smaller deny set (issue #161).
-    preflight_required_syscalls_with(mode, ScmpSyscall::from_name)?;
-
-    let mut filter = ScmpFilterContext::new_filter(ScmpAction::Allow)
-        .map_err(|e| format!("failed to create seccomp filter: {e}"))?;
-    filter
-        .set_ctl_nnp(true)
-        .map_err(|e| format!("failed to set no_new_privs: {e}"))?;
-
-    add_network_denies(&mut filter)?;
-    add_common_dangerous_syscall_denies(&mut filter)?;
-
-    if matches!(mode, PolicyMode::ReadOnly) {
-        add_read_only_write_denies(&mut filter)?;
-    }
-
-    filter
-        .load()
-        .map_err(|e| format!("failed to load seccomp filter: {e}"))?;
-    Ok(())
-}
-
-#[cfg(all(target_os = "linux", feature = "seccomp"))]
-fn add_network_denies(filter: &mut ScmpFilterContext) -> Result<(), String> {
-    for name in NETWORK_DENY_SYSCALLS {
-        add_deny_rule(filter, name)?;
-    }
-    Ok(())
-}
-
-#[cfg(all(target_os = "linux", feature = "seccomp"))]
-fn add_common_dangerous_syscall_denies(filter: &mut ScmpFilterContext) -> Result<(), String> {
-    for name in COMMON_DENY_SYSCALLS {
-        add_deny_rule(filter, name)?;
-    }
-    Ok(())
-}
-
-#[cfg(all(target_os = "linux", feature = "seccomp"))]
-fn add_read_only_write_denies(filter: &mut ScmpFilterContext) -> Result<(), String> {
-    for &(syscall, arg_index) in READ_ONLY_WRITE_FLAG_DENIES {
-        add_write_flag_denies(filter, syscall, arg_index)?;
-    }
-
-    for name in READ_ONLY_DENY_SYSCALLS {
-        add_deny_rule(filter, name)?;
-    }
-
-    Ok(())
-}
-
-#[cfg(all(target_os = "linux", feature = "seccomp"))]
-fn add_write_flag_denies(
-    filter: &mut ScmpFilterContext,
-    syscall_name: &str,
-    arg_index: u32,
-) -> Result<(), String> {
-    let syscall = resolve_syscall(syscall_name)?;
-    let deny = ScmpAction::Errno(libc::EPERM);
-    let access_mode_mask = libc::O_ACCMODE as u64;
-
-    filter
-        .add_rule_conditional(
-            deny,
-            syscall,
-            &[ScmpArgCompare::new(
-                arg_index,
-                ScmpCompareOp::MaskedEqual(access_mode_mask),
-                libc::O_WRONLY as u64,
-            )],
-        )
-        .map_err(|e| format!("failed to add {syscall_name} O_WRONLY deny rule: {e}"))?;
-
-    filter
-        .add_rule_conditional(
-            deny,
-            syscall,
-            &[ScmpArgCompare::new(
-                arg_index,
-                ScmpCompareOp::MaskedEqual(access_mode_mask),
-                libc::O_RDWR as u64,
-            )],
-        )
-        .map_err(|e| format!("failed to add {syscall_name} O_RDWR deny rule: {e}"))?;
-
-    for flag in [libc::O_CREAT, libc::O_TRUNC, libc::O_APPEND] {
-        filter
-            .add_rule_conditional(
-                deny,
-                syscall,
-                &[ScmpArgCompare::new(
-                    arg_index,
-                    ScmpCompareOp::MaskedEqual(flag as u64),
-                    flag as u64,
-                )],
-            )
-            .map_err(|e| format!("failed to add {syscall_name} flag deny rule: {e}"))?;
-    }
-
-    Ok(())
-}
-
-#[cfg(all(target_os = "linux", feature = "seccomp"))]
-fn add_deny_rule(filter: &mut ScmpFilterContext, syscall_name: &str) -> Result<(), String> {
-    let syscall = resolve_syscall(syscall_name)?;
-
-    filter
-        .add_rule(ScmpAction::Errno(libc::EPERM), syscall)
-        .map_err(|e| format!("failed to add deny rule for {syscall_name}: {e}"))
-}
-
-#[cfg(all(target_os = "linux", feature = "seccomp"))]
-fn resolve_syscall(name: &str) -> Result<ScmpSyscall, String> {
-    crate::seccomp_rules::resolve_required_syscall_with(name, ScmpSyscall::from_name)
 }
 
 #[cfg(all(test, target_os = "linux", not(feature = "seccomp")))]

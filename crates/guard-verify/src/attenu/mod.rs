@@ -50,12 +50,15 @@ use serde_json::Value;
 /// One rule violation, with the position the rule was broken at.
 ///
 /// `seq` and `node` are `None` for a chain-level failure, where the whole
-/// ledger is wrong and there is no single entry to point at.
+/// ledger is wrong and there is no single entry to point at. A malformed
+/// non-object ledger entry instead carries its zero-based `entry_index`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Failure {
     pub reason: String,
     pub seq: Option<i64>,
     pub node: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub entry_index: Option<usize>,
 }
 
 impl Failure {
@@ -64,6 +67,7 @@ impl Failure {
             reason: reason.to_string(),
             seq: entry.get("seq").and_then(Value::as_i64),
             node: entry_str(entry, "node"),
+            entry_index: None,
         }
     }
 
@@ -72,6 +76,16 @@ impl Failure {
             reason: reason.to_string(),
             seq: None,
             node: None,
+            entry_index: None,
+        }
+    }
+
+    fn indexed(index: usize, reason: &str) -> Self {
+        Failure {
+            reason: reason.to_string(),
+            seq: None,
+            node: None,
+            entry_index: Some(index),
         }
     }
 }
@@ -150,6 +164,18 @@ fn verify(
     received: &HashMap<usize, Vec<u8>>,
 ) -> BundleReport {
     let mut failures = Vec::new();
+    check_bundle_shape(bundle, &mut failures);
+    if !failures.is_empty() {
+        return BundleReport {
+            accepted: false,
+            failures,
+            execution_binding: ExecutionBinding::NotRun,
+            actions_checked: 0,
+            ungated: 0,
+            unaccounted_calls: Vec::new(),
+            envelopes: None,
+        };
+    }
 
     let entries = bundle
         .get("entries")
@@ -170,7 +196,12 @@ fn verify(
 
     chain::check_entries(&entries, &mut failures);
     if let Some(signer) = signer {
-        chain::check_anchor(bundle.get("anchor"), &entries, signer, &mut failures);
+        chain::check_anchor(
+            bundle.get("anchor").filter(|anchor| !anchor.is_null()),
+            &entries,
+            signer,
+            &mut failures,
+        );
     }
 
     // A valid signature only proves that these bytes were committed. Refuse
@@ -208,10 +239,36 @@ fn verify(
     }
 }
 
+/// Container shapes are prerequisites for interpreting any ledger claims.
+/// Each malformed member is one chain-level finding; absent/null optional
+/// containers retain their existing empty/absent semantics.
+fn check_bundle_shape(bundle: &Value, failures: &mut Vec<Failure>) {
+    let Some(object) = bundle.as_object() else {
+        failures.push(Failure::chain_level("invalid_bundle"));
+        return;
+    };
+    for key in ["entries", "envelopes"] {
+        if object
+            .get(key)
+            .is_some_and(|value| !value.is_null() && !value.is_array())
+        {
+            failures.push(Failure::chain_level("invalid_bundle"));
+        }
+    }
+    if object
+        .get("anchor")
+        .is_some_and(|value| !value.is_null() && !value.is_object())
+    {
+        failures.push(Failure::chain_level("invalid_bundle"));
+    }
+}
+
 fn entry_str(entry: &Value, key: &str) -> Option<String> {
     entry.get(key).and_then(Value::as_str).map(str::to_string)
 }
 
+#[cfg(test)]
+mod bundle_shape_tests;
 #[cfg(test)]
 mod contract_tests;
 #[cfg(test)]
