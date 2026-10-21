@@ -20,6 +20,10 @@ The `[Unreleased]` heading is rolled forward manually before each release; do no
   See the [profile and migration contract](docs/concepts/policy-yaml.md).
 - Update locked `quinn-proto` to 0.11.18 and its required dependency closure;
   no advisory exceptions or unrelated dependency refresh.
+- Address the first migration CI run's six existing TLS advisories with exact
+  patches: `rustls` 0.23.46, `rustls-webpki` 0.103.16 and
+  `webpki-root-certs` 1.0.10. Keep certificate verification enabled and the
+  dependency audit gates unchanged.
 
 ### Changed
 

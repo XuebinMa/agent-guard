@@ -49,7 +49,7 @@ Primary references:
 - [x] Bound string input and file reads at 1 MiB, structural depth at 64,
   aliases/anchors at 64 each, nodes/events at 16,384/32,768, replayed events
   at 8,192 and alias replay depth at 16. Keep raw input hashing/signing.
-- [x] Refresh only the known required `quinn-proto` security patch to 0.11.18
+- [x] Apply the known required `quinn-proto` security patch to 0.11.18
   (and its necessary closure), also present in #175. It is an independent
   existing audit blocker, not a reason to refresh all dependencies.
 - [x] Run targeted tests, full verification, strict all-target lint and fresh
@@ -86,7 +86,7 @@ advisory ignores, last-wins duplicate handling, hidden security-test skips or
 weaker reload behavior. Record red tests separately from production changes.
 Public `PolicyError` categories stay; parser-specific wording can change.
 
-## Local verification checkpoint
+## Local verification checkpoint before CI dependency follow-up
 
 Final `./scripts/verify.sh full` exited 0 on macOS with Homebrew Rust/Cargo
 1.94.1. Rust summaries: 1,188 passed, zero failed, three existing ignored
@@ -105,6 +105,25 @@ dependency refresh was fabricated for this migration. Linux/seccomp, Windows,
 native-container and Rust 1.89 execution are CI gates, not local macOS claims.
 Neither local green checks nor a previous PR substitutes for the new head's
 actual cargo-audit/cargo-deny conclusions.
+
+## First exact-head CI and minimal TLS follow-up
+
+PR #176 head `0328c17d59c2007bf44500e6d68c40af481eff93`, run
+`39644217696`, passed the actual Rust 1.89.0 job but failed cargo-deny on six
+pre-existing TLS advisories, not YAML: RUSTSEC-2026-0346/0347/0348/0349
+(`rustls`), RUSTSEC-2026-0382 (`rustls-webpki`) and RUSTSEC-2026-0383
+(`webpki-root-certs`). The last two were issued 2026-10-20. The failing job
+was `119375420229`; its bans, licenses and sources checks were successful.
+
+Apply exactly `rustls` 0.23.46, `rustls-webpki` 0.103.16 and
+`webpki-root-certs` 1.0.10. The follow-up lock diff changes only these three
+versions/checksums; no broad update, new feature or ignore rule. Upstream
+[rustls advisory](https://rustsec.org/advisories/RUSTSEC-2026-0346.html),
+[verification advisory](https://rustsec.org/advisories/RUSTSEC-2026-0382.html)
+and [root-store advisory](https://rustsec.org/advisories/RUSTSEC-2026-0383.html)
+confirm these patched ranges. The new head requires a fresh full/lint/parity
+and its own CI; the first run's partial green results do not transfer. Final
+results will be recorded in the PR body without another self-head commit.
 
 This PR does not include #175's Attenu/seccomp changes, bump the release,
 rewrite installed user policies, replace the broker deployment, or repair
