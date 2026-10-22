@@ -1,12 +1,16 @@
 # 0.2.9 source preparation — not published
 
-Checkpoint: 2026-10-21 (America/Los_Angeles).
+Checkpoint: 2026-10-22 (America/Los_Angeles), before publication.
 Source candidate: **0.2.9**. Latest verified published version: **0.2.8**.
 
-The user authorized merging the verified fixes, closing #161 after acceptance,
-and preparing a successor. This does **not** authorize a tag, registry write,
-GitHub Release, advisory edit or restart of the cancelled automation. This
-preparation goes through its own PR and remains open for maintainer review.
+The initial authorization covered source preparation, not publication.
+After #177 and #178 merged and their main CI passed, the user requested
+"请完成上述3步": finish the release-closeout PR, complete formal 0.2.9 delivery
+and independently verify the registry packages. This 2026-10-22 instruction
+authorizes the new tag, normal protected registry workflow, GitHub Release
+and post-verification published-marker update. It does not authorize moving
+old tags, changing protection rules, new advisory scope, further upstream
+comments or restarting the cancelled automation.
 
 ## Included fixes and provenance
 
@@ -21,10 +25,25 @@ preparation goes through its own PR and remains open for maintainer review.
   [22/22 CI jobs](https://github.com/XuebinMa/agent-guard/actions/runs/39648258931).
   The Linux log actually ran 10 native unit + 14 integration tests, zero
   failed/ignored. This does not prove arbitrary-kernel or credential isolation.
-- Final fix-main push CI is
-  [run 39688637686](https://github.com/XuebinMa/agent-guard/actions/runs/39688637686).
-  Read its actual conclusion before relying on it or closing #161; the PR's
-  previous green checks are not that main-push result.
+- The #175 merge passed main push CI
+  [39688637686](https://github.com/XuebinMa/agent-guard/actions/runs/39688637686),
+  22/22 SUCCESS, before #161 was closed with the native Linux evidence.
+- [#177](https://github.com/XuebinMa/agent-guard/pull/177) prepared source
+  0.2.9 and merged as `6af73d4a1e65895f57f09fb6436299577fee8409`.
+  Its [head CI 39689096909](https://github.com/XuebinMa/agent-guard/actions/runs/39689096909)
+  and [main CI 39694796986](https://github.com/XuebinMa/agent-guard/actions/runs/39694796986)
+  each completed 22/22 SUCCESS.
+- [#178](https://github.com/XuebinMa/agent-guard/pull/178) repairs corpus
+  scoring of exact `reason`/`seq`/`node` triples without changing verifier
+  decisions or removing `entry_index` diagnostics. It pins unmodified v1.5
+  (29 cases, SHA-256 `1663000a67f38fcd54ff4856b39583b17ffec342f13f8d0921e2de0bc2bc25c5`).
+  Its test-first commit reproduces the mismatch. The fix scores 29/29;
+  the unchanged envelope corpus scores 19/19 and guard-verify passes 95 tests.
+  Merge `b981614e0f4b0df81ae9231f16cfabd3a3e56a2a` has the same tree as
+  tested head `2d3173e`. [Head CI 39696775285](https://github.com/XuebinMa/agent-guard/actions/runs/39696775285)
+  and [main CI 39697676397](https://github.com/XuebinMa/agent-guard/actions/runs/39697676397)
+  each completed 22/22 SUCCESS. This closeout must pass its own new CI;
+  the previous green runs do not substitute for it.
 
 The dated [contract/seccomp report](security-review-2026-10-13.md),
 [parser profile](concepts/policy-yaml.md) and [CHANGELOG](../CHANGELOG.md)
@@ -48,13 +67,18 @@ files or relax gates to hide these costs.
 - [x] All source markers and exact local pins are 0.2.9; published markers
   remain 0.2.8. The lock graph changes only workspace package versions in this
   preparation, not dependency versions or features.
-- [ ] Fresh complete `./scripts/verify.sh full`, strict all-target lint,
-  format/docs/action-pin checks and 70-scenario fresh-binding parity.
-- [ ] Isolated `cargo install --path ... --locked` for `guard-hook`,
+- [x] #177's complete `./scripts/verify.sh full`, strict all-target lint,
+  format/docs/action-pin checks and 70-scenario fresh-binding parity passed.
+- [x] Isolated `cargo install --path ... --locked` for `guard-hook`,
   `agent-guard-cli` and `guard-verify`, matching 0.2.9 version output and
   installed-binary smoke checks with synthetic local fixtures.
-- [ ] Preparation PR's own exact-head 22-job CI, including actual Linux,
+- [x] Preparation PR's own exact-head 22-job CI, including actual Linux,
   Windows, macOS, bindings/frameworks, MSRV and dependency audit/deny.
+- [x] #178 full verification passed: Rust 1,206 / zero failures / three
+  existing ignores; Python 108 / one optional skip; Node checks passed and
+  plugin 14/14 passed.
+  The exact head passed 22/22 hosted jobs, including fresh-binding parity.
+- [ ] Documentation closeout's own verification, PR CI and final main push CI.
 
 Final preparation-head checks are recorded in its PR body, not another
 self-head documentation/CI commit. A source install proves this checkout and
@@ -63,11 +87,11 @@ tarball exists or that registry exact-version `--locked` installation works.
 No real credentials, third-party push or user global Cargo installation is
 used for these checks.
 
-## Gates reserved for later explicit publication approval
+## Remaining publication gates
 
-1. Review/merge the verified preparation PR. Require successful push CI on
+1. Review/merge the verified closeout PR. Require successful push CI on
    that exact final main SHA and recheck it is still current main.
-2. Create the matching new tag only after permission. Respect release
+2. Create the matching new tag under the current user authorization. Respect release
    preflight, dependency gates and configured registry environment approvals.
    Never move `v0.2.7`/`v0.2.8` or reuse a previous tag/run.
 3. Verify eight public Rust crates, all five Python wheel platforms and the
@@ -80,6 +104,8 @@ used for these checks.
 5. Only then update published markers and decide any warranted advisory or
    upstream communication. A merged fix is not a released fix.
 
-Windows ambient handles, general shared-hard-link containment, Attenu
-fractional TTL and unavailable future-corpus evidence remain separate. These
-limitations are not converted into completed security claims by preparation.
+Windows ambient handles, general shared-hard-link containment and Attenu
+fractional TTL remain separate. The v1.5 corpus is now available and scored;
+its twenty-nine rows still use only thirty of the thirty-nine published entry
+fields, and finite agreement is not complete verifier coverage. These limits
+are not converted into completed security claims by preparation or publication.

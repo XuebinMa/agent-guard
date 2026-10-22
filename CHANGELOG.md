@@ -9,6 +9,13 @@ The `[Unreleased]` heading is rolled forward manually before each release; do no
 
 ## [Unreleased]
 
+## [0.2.9] - 2026-10-22
+
+Release candidate: **not yet published**. The latest independently verified
+published release remains `0.2.8`. Registry-install commands must not move to
+`0.2.9` until publication and independent download/installation checks pass.
+See the [preparation and remaining gates](docs/release-029-preparation.md).
+
 ### Fixed
 
 - Attenu corpus scoring compares the published `reason`/`seq`/`node` triple
@@ -20,13 +27,6 @@ The `[Unreleased]` heading is rolled forward manually before each release; do no
   `1663000a67f38fcd54ff4856b39583b17ffec342f13f8d0921e2de0bc2bc25c5`),
   updating provenance and the whole-corpus regression. Its two invalid-entry
   rows exposed the scorer mismatch that the older v1.4/20 fixture did not.
-
-## [0.2.9] - 2026-10-21
-
-Release preparation only: **not published**. The latest independently verified
-published release remains `0.2.8`. Do not use registry-install commands pinned
-to `0.2.9` until publication and independent download/installation checks pass.
-See the [preparation and remaining gates](docs/release-029-preparation.md).
 
 ### Security
 
