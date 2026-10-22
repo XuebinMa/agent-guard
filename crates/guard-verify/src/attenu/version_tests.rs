@@ -1,9 +1,10 @@
-//! Version dispatch, pinned before the corpus has a row that reaches it.
+//! Version dispatch, originally pinned before the corpus had a v1-chain row.
 //!
-//! Every bundle in `bundle_vectors_v1.4` is a `schema_version=2` chain, so no
-//! published row exercises a v1 ledger (a2aproject/A2A#1575, 2026-09-17). The
-//! rules tested here come from the corpus README's reason table and its
-//! "version-independent" paragraph, never from an implementation.
+//! Every bundle in `bundle_vectors_v1.4` was a `schema_version=2` chain, so no
+//! published row exercised a v1 ledger (a2aproject/A2A#1575, 2026-09-17).
+//! Revision v1.5 now includes v1 chains; these independent mutations still
+//! cover version disagreement. Their rules come from the corpus README's
+//! reason table and "version-independent" paragraph, never an implementation.
 //!
 //! The v1 bundles change `v`, remove the twelve v2-only fields and `outcome`
 //! entries, renumber the surviving entries, and re-seal a published v2 case.

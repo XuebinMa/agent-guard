@@ -5,6 +5,8 @@
 //! exact position. A conformant verifier may report more — one broken record
 //! often makes a second check unsatisfiable — but never fewer, and never at a
 //! different position.
+//! Only the published `reason`/`seq`/`node` triple participates in matching;
+//! local diagnostics such as `entry_index` remain in the report, not the score.
 
 use std::collections::{BTreeMap, HashMap};
 
@@ -56,6 +58,12 @@ pub fn score_corpus(file: &VectorFile) -> Vec<CaseScore> {
     file.cases.iter().map(score_case).collect()
 }
 
+/// Null positions match null only. This does not change `Failure` equality
+/// outside corpus scoring or erase diagnostic details from either report.
+fn same_published_failure(actual: &Failure, required: &Failure) -> bool {
+    actual.reason == required.reason && actual.seq == required.seq && actual.node == required.node
+}
+
 fn score_case(case: &VectorCase) -> CaseScore {
     let report = verify_bundle(&case.bundle, &case.signer);
     let should_accept = case.expect == "accept";
@@ -74,7 +82,11 @@ fn score_case(case: &VectorCase) -> CaseScore {
     }
 
     for required in &case.expect_failures {
-        if !report.failures.contains(required) {
+        if !report
+            .failures
+            .iter()
+            .any(|actual| same_published_failure(actual, required))
+        {
             problems.push(format!(
                 "missing required failure {} at seq {:?} node {:?}",
                 required.reason, required.seq, required.node
@@ -97,7 +109,12 @@ fn score_case(case: &VectorCase) -> CaseScore {
     let additional = report
         .failures
         .iter()
-        .filter(|failure| !case.expect_failures.contains(failure))
+        .filter(|failure| {
+            !case
+                .expect_failures
+                .iter()
+                .any(|required| same_published_failure(failure, required))
+        })
         .cloned()
         .collect();
 
@@ -262,7 +279,11 @@ fn score_envelope_case(case: &EnvelopeVectorCase) -> EnvelopeCaseScore {
     }
 
     for required in &case.expect_failures {
-        if !report.failures.contains(required) {
+        if !report
+            .failures
+            .iter()
+            .any(|actual| same_published_failure(actual, required))
+        {
             problems.push(format!(
                 "missing required failure {} at seq {:?} node {:?}",
                 required.reason, required.seq, required.node
@@ -273,7 +294,12 @@ fn score_envelope_case(case: &EnvelopeVectorCase) -> EnvelopeCaseScore {
     let additional = report
         .failures
         .iter()
-        .filter(|failure| !case.expect_failures.contains(failure))
+        .filter(|failure| {
+            !case
+                .expect_failures
+                .iter()
+                .any(|required| same_published_failure(failure, required))
+        })
         .cloned()
         .collect();
 
@@ -285,3 +311,7 @@ fn score_envelope_case(case: &EnvelopeVectorCase) -> EnvelopeCaseScore {
         report,
     }
 }
+
+#[cfg(test)]
+#[path = "corpus_tests.rs"]
+mod tests;
