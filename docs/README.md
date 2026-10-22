@@ -9,8 +9,8 @@
 ## 📣 Release Status
 
 - **Source version** → `v0.2.9`
-- **Latest published release** → [`v0.2.8`](https://github.com/XuebinMa/agent-guard/releases/tag/v0.2.8) — crates.io, PyPI, npm
-- **0.2.9 preparation** → [Source candidate and remaining gates](release-029-preparation.md) — not a published release
+- **Latest published release** → [`v0.2.9`](https://github.com/XuebinMa/agent-guard/releases/tag/v0.2.9) — crates.io, PyPI, npm
+- **0.2.9 delivery** → [Verified packages and installations](release-029-delivery.md); [preparation history](release-029-preparation.md)
 - **Community Thread** → [GitHub Discussions #1](https://github.com/XuebinMa/agent-guard/discussions/1)
 
 If you are arriving from GitHub or social posts, these are the two best entry points before you dive deeper into the docs.
@@ -117,7 +117,7 @@ For security researchers and auditors reviewing the system's defensive posture.
 - 🎯 **[Accepted Broker-first Scope](decisions/2026-10-06-broker-first-scope.md)**: Persistent product decision, finite Shell maintenance obligations, and explicit non-goals.
 - 🛠️ **[Broker-first Development Plan](plans/broker-first-development-plan.md)**: Task dependencies, deployment acceptance, evidence requirements, and release gates.
 - 🧪 **[Testing Strategy](concepts/testing-strategy.md)**: Why the test is the specification of the boundary, the layer map, and what "done" means before a change can merge.
-- 📄 **[Policy YAML Profile](concepts/policy-yaml.md)**: Parser migration, supported scalar types, finite limits, compatibility changes and executable regression contracts (unreleased).
+- 📄 **[Policy YAML Profile](concepts/policy-yaml.md)**: Parser migration, supported scalar types, finite limits, compatibility changes and executable regression contracts (published in 0.2.9).
 - 🗺️ **[Capability Parity Matrix](concepts/capability-parity.md)**: Feature alignment across Linux, macOS, and Windows.
 - 🔍 **[Security Audit Report](reference/security-audit.md)**: Release-era self-audit checkpoint, useful after the primary threat-model review.
 - 🌐 **[Cross-Language Parity](concepts/cross-language-parity.md)**: API and decision identity across Rust / Python / Node bindings.

@@ -1,4 +1,13 @@
-# 0.2.9 source preparation — not published
+# 0.2.9 source preparation — completed
+
+**Published and independently verified on 2026-10-22 UTC.** See the
+[completed delivery record](release-029-delivery.md) and
+[machine-readable evidence](security-evidence/2026-10-22/release-029.json).
+The dated prepublication checkpoint below is retained as history: its 0.2.8
+published-marker statements describe the preparation, not current registry
+availability. Do not repeat the completed publication or move `v0.2.9`.
+
+## Prepublication checkpoint
 
 Checkpoint: 2026-10-22 (America/Los_Angeles), before publication.
 Source candidate: **0.2.9**. Latest verified published version: **0.2.8**.
@@ -78,7 +87,12 @@ files or relax gates to hide these costs.
   existing ignores; Python 108 / one optional skip; Node checks passed and
   plugin 14/14 passed.
   The exact head passed 22/22 hosted jobs, including fresh-binding parity.
-- [ ] Documentation closeout's own verification, PR CI and final main push CI.
+- [x] Documentation closeout's own verification and #179 head CI
+  [39828133089](https://github.com/XuebinMa/agent-guard/actions/runs/39828133089)
+  passed. Final main `8f29c88f40218ed289d115106bee00556a7a23e6` passed
+  [39828921029](https://github.com/XuebinMa/agent-guard/actions/runs/39828921029),
+  22/22 successful results. Attempt 2 reran only the stale-status documentation
+  job; it retained the other 21 original successful executions.
 
 Final preparation-head checks are recorded in its PR body, not another
 self-head documentation/CI commit. A source install proves this checkout and
@@ -87,7 +101,10 @@ tarball exists or that registry exact-version `--locked` installation works.
 No real credentials, third-party push or user global Cargo installation is
 used for these checks.
 
-## Remaining publication gates
+## Publication gates at preparation
+
+These ordered gates are the original checklist, completed in the delivery
+checkpoint below. They are not instructions to retag or republish 0.2.9.
 
 1. Review/merge the verified closeout PR. Require successful push CI on
    that exact final main SHA and recheck it is still current main.
@@ -109,3 +126,25 @@ fractional TTL remain separate. The v1.5 corpus is now available and scored;
 its twenty-nine rows still use only thirty of the thirty-nine published entry
 fields, and finite agreement is not complete verifier coverage. These limits
 are not converted into completed security claims by preparation or publication.
+
+## Verified completion checkpoint — 2026-10-22 UTC
+
+- [x] #179 merged normally to the exact successful main SHA above. The new
+  annotated `v0.2.9` tag resolves to that commit and remains immutable.
+- [x] [Release 39830348740](https://github.com/XuebinMa/agent-guard/actions/runs/39830348740)
+  completed all ten jobs through the configured protected environment stages.
+- [x] Independently downloaded and checked eight Rust crate archives, all five
+  Python wheel platforms and the npm tarball, including contents, hashes and
+  provenance. Separate npm 11.8.0 signature/attestation validation passed.
+- [x] Three exact-version registry `--locked` CLI installations passed version
+  checks and their scoped smokes. The actual macOS arm64 PyPI wheel passed
+  import/decision checks; installed `guard-verify` scored 29/29 and 19/19.
+  Other wheel platforms received content/hash checks, not installed execution.
+- [x] GitHub Release became public at `2026-10-22T18:41:01Z`, non-draft and
+  non-prerelease, after independent acceptance. The existing GHSA is unchanged.
+
+The [delivery record](release-029-delivery.md) also records the temporary
+archive-download acceptance-tool error and npm propagation wait without
+concealing them as successful first attempts. Updating published markers and
+retaining this evidence is a separate record-only PR, with its own CI; it does
+not authorize another release, advisory change, upstream comment or automation.

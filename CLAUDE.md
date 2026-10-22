@@ -105,8 +105,10 @@ mechanisms and no alternate credential-bearing path. Green classifier tests,
 receipts or sandbox capability reports are not proof of that deployment.
 Completing this milestone does not authorize horizontal expansion. Preserve
 existing user changes, immutable tags and the separate publication gates.
-The subsequent user chose self-use first and a 0.2.8 successor; current release
-authority and remaining gates are in [the delivery checkpoint](docs/release-028-delivery.md).
+The subsequent user chose self-use first and a 0.2.8 successor. The latest
+authorized maintenance release and verified registry-install evidence are in
+[the 0.2.9 delivery checkpoint](docs/release-029-delivery.md); the
+[0.2.8 record](docs/release-028-delivery.md) retains the earlier release decision.
 
 ## Core Execution Pipeline
 

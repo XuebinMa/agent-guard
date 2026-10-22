@@ -1,0 +1,706 @@
+{
+  "schema_version": 1,
+  "observed_at_utc": "2026-10-22T18:43:21Z",
+  "version": "0.2.9",
+  "source_commit": "8f29c88f40218ed289d115106bee00556a7a23e6",
+  "authorization": "2026-10-22 user request to complete the three release-closeout, protected-publication and independent-verification steps",
+  "tag": {
+    "name": "v0.2.9",
+    "object": "f454ebdaa03a6ba75dd6470bdedb29d94348be20",
+    "commit": "8f29c88f40218ed289d115106bee00556a7a23e6",
+    "annotated": true,
+    "immutable": true
+  },
+  "closeout_pr": {
+    "number": 179,
+    "head": "6d7d3f98652b6d2ce4a4cefda8dd7df336832b2e",
+    "ci_run": 39828133089,
+    "completed_success_jobs": 22,
+    "merge_commit": "8f29c88f40218ed289d115106bee00556a7a23e6",
+    "merged_at_utc": "2026-10-22T18:09:40Z"
+  },
+  "local_closeout": {
+    "full_exit": 0,
+    "rust_passed": 1206,
+    "rust_failed": 0,
+    "rust_ignored": 3,
+    "python_passed": 108,
+    "python_optional_skipped": 1,
+    "plugin_passed": 14,
+    "strict_all_target_clippy_exit": 0
+  },
+  "main_ci": {
+    "observed_at_utc": "2026-10-22T18:38:14Z",
+    "repository": "XuebinMa/agent-guard",
+    "head_sha": "8f29c88f40218ed289d115106bee00556a7a23e6",
+    "run_id": 39828921029,
+    "run_attempt": 2,
+    "event": "push",
+    "branch": "main",
+    "status": "completed",
+    "conclusion": "success",
+    "url": "https://github.com/XuebinMa/agent-guard/actions/runs/39828921029",
+    "actual_latest_job_count": 22,
+    "completed_success_job_count": 22,
+    "rerun_scope": {
+      "actually_rerun_job": "Documentation Check",
+      "fresh_job_id": 120003808964,
+      "fresh_started_at": "2026-10-22T18:18:17Z",
+      "fresh_completed_at": "2026-10-22T18:18:23Z",
+      "original_job_id": 119999549769,
+      "original_api_status": "in_progress",
+      "original_steps_all_completed_success": true,
+      "reason": "Original documentation job retained stale UI/API aggregate status despite successful completed steps; only that job was requested again.",
+      "reused_successful_job_count": 21,
+      "all_jobs_rerun": false,
+      "independent_confirmation": "All 21 other latest jobs preserve the exact original successful start/end timestamps; attempt-2 job IDs are copied result records, not evidence of re-execution."
+    },
+    "seccomp": {
+      "original_log_job_id": 119999549320,
+      "latest_result_job_id": 120003853447,
+      "native_units": {
+        "passed": 10,
+        "failed": 0,
+        "ignored": 0,
+        "filtered_out": 11
+      },
+      "integration": {
+        "passed": 14,
+        "failed": 0,
+        "ignored": 0,
+        "filtered_out": 0
+      },
+      "scope": "Actual Linux native tests inspected in original successful execution logs. No security-test ignore/skip; unit command deliberately selects native tests. An internal toolchain-action skipped marker is not a test skip."
+    },
+    "native_acceptance": {
+      "artifact_id": 12447457758,
+      "artifact_name": "broker-first-native-8f29c88f40218ed289d115106bee00556a7a23e6",
+      "artifact_api_declared_digest": "sha256:378699d44574f29f6f12811fef13010448513e8db56341e0904876f182ca4a53",
+      "artifact_api_declared_size": 5641,
+      "expired": false,
+      "accepted": true,
+      "cleanup_complete": true,
+      "checkout_sha": "8f29c88f40218ed289d115106bee00556a7a23e6",
+      "broker_version": "agent-guard 0.2.9",
+      "broker_sha256": "9b7eb7d60463ca1cf0bc6abc8405e9acc578b630a49b5ae11b18bda185f13c63",
+      "runtime": "native-linux-docker",
+      "profile": "broker-first-v1",
+      "kernel": "6.17.0-1022-azure",
+      "direct_checks": [
+        "I5",
+        "I6",
+        "I8",
+        "I7-success"
+      ],
+      "broker_tests": {
+        "passed": 70,
+        "failed": 0,
+        "ignored": 1,
+        "ignored_test": "git::snapshot::cost::synthetic_copy_cost_probe",
+        "ignored_reason": "Explicit opt-in bounded performance measurement; not a security regression skip."
+      },
+      "cli_tests": {
+        "passed": 23,
+        "failed": 0,
+        "ignored": 0
+      },
+      "independently_hashed_extracted_files": {
+        "native.json": "6c4b50ca7a30fa4506b456a35f3bcc744687441b46b52824486116592c47246d",
+        "broker-tests.log": "2c7aea22ed160906fbe2bfbb361f3b1420b55fc1d9367502f7b9fad7343c4549",
+        "cli-tests.log": "72ea294f87bd98b69614de9eb87140152260cf6e01b309ae41b8c19d0a132095",
+        "image.id": "ffaa46a01a9cbae5b471a57427bd22f0ddff839b584118c49643abce32555730"
+      },
+      "limits": [
+        "Only the fixed synthetic native Linux Docker deployment was accepted, not arbitrary containers or host credential isolation.",
+        "PTY approval is synthetic, not human workflow acceptance.",
+        "I1-I4/I7-negative require the separate mandatory broker suites; direct artifact checks alone do not establish them.",
+        "Windows ambient handles, general shared hard links and Attenu fractional TTL remain open.",
+        "Artifact ZIP digest above is the API declaration; extracted-file digests were independently computed after download."
+      ]
+    }
+  },
+  "release_workflow": {
+    "run": 39830348740,
+    "source": "8f29c88f40218ed289d115106bee00556a7a23e6",
+    "status": "completed",
+    "conclusion": "success",
+    "jobs": [
+      {
+        "name": "Verify Tag Matches Workspace Version",
+        "status": "completed",
+        "conclusion": "success"
+      },
+      {
+        "name": "Full Release Preflight",
+        "status": "completed",
+        "conclusion": "success"
+      },
+      {
+        "name": "Publish Rust Crates",
+        "status": "completed",
+        "conclusion": "success"
+      },
+      {
+        "name": "Publish Python Wheels (ubuntu-24.04-arm, aarch64)",
+        "status": "completed",
+        "conclusion": "success"
+      },
+      {
+        "name": "Publish Python Wheels (windows-latest, x64)",
+        "status": "completed",
+        "conclusion": "success"
+      },
+      {
+        "name": "Publish Python Wheels (ubuntu-latest, x86_64)",
+        "status": "completed",
+        "conclusion": "success"
+      },
+      {
+        "name": "Publish Python Wheels (macos-15-intel, x86_64)",
+        "status": "completed",
+        "conclusion": "success"
+      },
+      {
+        "name": "Publish Python Wheels (macos-latest, aarch64)",
+        "status": "completed",
+        "conclusion": "success"
+      },
+      {
+        "name": "Upload Wheels to PyPI",
+        "status": "completed",
+        "conclusion": "success"
+      },
+      {
+        "name": "Publish Claude Code Plugin",
+        "status": "completed",
+        "conclusion": "success"
+      }
+    ],
+    "normal_environment_approvals": [
+      "crates-io",
+      "pypi",
+      "npm"
+    ],
+    "protection_rules_changed": false,
+    "manual_registry_publication": false
+  },
+  "registry_artifacts": {
+    "observed_at_utc": "2026-10-22T18:40:01.825485+00:00",
+    "completed_at_utc": "2026-10-22T18:40:08.310657+00:00",
+    "downloaded_bytes": 25516681,
+    "success": true,
+    "rust_crates": [
+      {
+        "crate": "agent-guard-core",
+        "version": "0.2.9",
+        "yanked": false,
+        "checksum": "350009afc67c15cc1cd2d771a2e250ce432ed6f4cba257e6fd69573bee28e574",
+        "download_bytes": 64479,
+        "vcs_commit": "8f29c88f40218ed289d115106bee00556a7a23e6",
+        "manifest_internal_pins": [],
+        "packaged_lock": {
+          "sha256": "0359291d11c82a25f05c8bcd1c777f23483e2a89aab95a6618c1868d2ffe9b76",
+          "security_versions": {
+            "serde-saphyr": [
+              "2.0.0"
+            ]
+          }
+        },
+        "fixture_digests": {}
+      },
+      {
+        "crate": "agent-guard-validators",
+        "version": "0.2.9",
+        "yanked": false,
+        "checksum": "e8569e8487a4e0f090b707549d19eebb870f856a8218a1d652bb0f19e9276a56",
+        "download_bytes": 109493,
+        "vcs_commit": "8f29c88f40218ed289d115106bee00556a7a23e6",
+        "manifest_internal_pins": [
+          {
+            "crate": "agent-guard-core",
+            "version": "=0.2.9",
+            "table": "dependencies"
+          }
+        ],
+        "packaged_lock": {
+          "sha256": "ecdcdf2b83c82f9810a5bcf7779e3280ed88c10ca73b2716249c58a58c376dd0",
+          "security_versions": {
+            "serde-saphyr": [
+              "2.0.0"
+            ]
+          }
+        },
+        "fixture_digests": {}
+      },
+      {
+        "crate": "agent-guard-sandbox",
+        "version": "0.2.9",
+        "yanked": false,
+        "checksum": "30aeae33e0c56ae75c6bdad3950bad50660e6c622e151ed0871e3f80c2196a1b",
+        "download_bytes": 52361,
+        "vcs_commit": "8f29c88f40218ed289d115106bee00556a7a23e6",
+        "manifest_internal_pins": [
+          {
+            "crate": "agent-guard-core",
+            "version": "=0.2.9",
+            "table": "dependencies"
+          }
+        ],
+        "packaged_lock": {
+          "sha256": "8b789e8b85d7bb55df634af3f6869a0e443be4bdc31ed74c06faba71e2248a10",
+          "security_versions": {
+            "serde-saphyr": [
+              "2.0.0"
+            ]
+          }
+        },
+        "fixture_digests": {}
+      },
+      {
+        "crate": "agent-guard-sdk",
+        "version": "0.2.9",
+        "yanked": false,
+        "checksum": "dcae9d1dd0867379218197e3a9bad67747cbf445f48f4789e29491a199ab6583",
+        "download_bytes": 175467,
+        "vcs_commit": "8f29c88f40218ed289d115106bee00556a7a23e6",
+        "manifest_internal_pins": [
+          {
+            "crate": "agent-guard-core",
+            "version": "=0.2.9",
+            "table": "dependencies"
+          },
+          {
+            "crate": "agent-guard-sandbox",
+            "version": "=0.2.9",
+            "table": "dependencies"
+          },
+          {
+            "crate": "agent-guard-validators",
+            "version": "=0.2.9",
+            "table": "dependencies"
+          }
+        ],
+        "packaged_lock": {
+          "sha256": "ca9d5df1f79c99491ecb777330facf8bd91bb21f7a86ac7d964bdf6d17099831",
+          "security_versions": {
+            "serde-saphyr": [
+              "2.0.0"
+            ],
+            "quinn-proto": [
+              "0.11.18"
+            ],
+            "rustls": [
+              "0.23.46"
+            ],
+            "rustls-webpki": [
+              "0.103.16"
+            ],
+            "webpki-root-certs": [
+              "1.0.10"
+            ]
+          }
+        },
+        "fixture_digests": {}
+      },
+      {
+        "crate": "agent-guard-broker",
+        "version": "0.2.9",
+        "yanked": false,
+        "checksum": "1b8d9babd4b62b1c89c40bb2cd73bb44f4cc3571d1d03b6ed4bc1f6e16207ca0",
+        "download_bytes": 53203,
+        "vcs_commit": "8f29c88f40218ed289d115106bee00556a7a23e6",
+        "manifest_internal_pins": [
+          {
+            "crate": "agent-guard-core",
+            "version": "=0.2.9",
+            "table": "dependencies"
+          }
+        ],
+        "packaged_lock": {
+          "sha256": "3aca7e336fcd391c0926d25c681e5423495f4643c6fc515de28cc478448727db",
+          "security_versions": {
+            "serde-saphyr": [
+              "2.0.0"
+            ]
+          }
+        },
+        "fixture_digests": {}
+      },
+      {
+        "crate": "agent-guard-cli",
+        "version": "0.2.9",
+        "yanked": false,
+        "checksum": "c9ce60616a0532163735830fb44ad11c5f130f2b56b2eced6c1adc3b384e4d9b",
+        "download_bytes": 32020,
+        "vcs_commit": "8f29c88f40218ed289d115106bee00556a7a23e6",
+        "manifest_internal_pins": [
+          {
+            "crate": "agent-guard-broker",
+            "version": "=0.2.9",
+            "table": "dependencies"
+          },
+          {
+            "crate": "agent-guard-sdk",
+            "version": "=0.2.9",
+            "table": "dependencies"
+          }
+        ],
+        "packaged_lock": {
+          "sha256": "d92ef4a76936a1a322ebc21eee5027e286519dae801fb59325a5be7e502f1723",
+          "security_versions": {
+            "serde-saphyr": [
+              "2.0.0"
+            ],
+            "quinn-proto": [
+              "0.11.18"
+            ],
+            "rustls": [
+              "0.23.46"
+            ],
+            "rustls-webpki": [
+              "0.103.16"
+            ],
+            "webpki-root-certs": [
+              "1.0.10"
+            ]
+          }
+        },
+        "fixture_digests": {}
+      },
+      {
+        "crate": "guard-hook",
+        "version": "0.2.9",
+        "yanked": false,
+        "checksum": "ec5e427a81e9e5e2f1a63b41cfa82541e2904623263b2711823c2140268f38e1",
+        "download_bytes": 32725,
+        "vcs_commit": "8f29c88f40218ed289d115106bee00556a7a23e6",
+        "manifest_internal_pins": [
+          {
+            "crate": "agent-guard-broker",
+            "version": "=0.2.9",
+            "table": "dependencies"
+          },
+          {
+            "crate": "agent-guard-core",
+            "version": "=0.2.9",
+            "table": "dependencies"
+          },
+          {
+            "crate": "agent-guard-sdk",
+            "version": "=0.2.9",
+            "table": "dependencies"
+          },
+          {
+            "crate": "agent-guard-validators",
+            "version": "=0.2.9",
+            "table": "dependencies"
+          }
+        ],
+        "packaged_lock": {
+          "sha256": "0d26f31d671c3c05daf215f6cd3522d949fbe45446e9445a20f2c5bde0e44434",
+          "security_versions": {
+            "serde-saphyr": [
+              "2.0.0"
+            ],
+            "quinn-proto": [
+              "0.11.18"
+            ],
+            "rustls": [
+              "0.23.46"
+            ],
+            "rustls-webpki": [
+              "0.103.16"
+            ],
+            "webpki-root-certs": [
+              "1.0.10"
+            ]
+          }
+        },
+        "fixture_digests": {}
+      },
+      {
+        "crate": "guard-verify",
+        "version": "0.2.9",
+        "yanked": false,
+        "checksum": "bc4e4746f0fe827bf2996f20ade675688788b2a2071876ea94e79669c0dcf44b",
+        "download_bytes": 104565,
+        "vcs_commit": "8f29c88f40218ed289d115106bee00556a7a23e6",
+        "manifest_internal_pins": [
+          {
+            "crate": "agent-guard-core",
+            "version": "=0.2.9",
+            "table": "dependencies"
+          },
+          {
+            "crate": "agent-guard-sdk",
+            "version": "=0.2.9",
+            "table": "dependencies"
+          }
+        ],
+        "packaged_lock": {
+          "sha256": "fa512894be0d70a3a0aae40552d4eb55ba842c9090b68b5b469467c69f645fb6",
+          "security_versions": {
+            "serde-saphyr": [
+              "2.0.0"
+            ],
+            "quinn-proto": [
+              "0.11.18"
+            ],
+            "rustls": [
+              "0.23.46"
+            ],
+            "rustls-webpki": [
+              "0.103.16"
+            ],
+            "webpki-root-certs": [
+              "1.0.10"
+            ]
+          }
+        },
+        "fixture_digests": {
+          "bundle_vectors_v1.json": "1663000a67f38fcd54ff4856b39583b17ffec342f13f8d0921e2de0bc2bc25c5",
+          "envelope_vectors_v1.json": "a8be5ff764a86122ca09e94340416b7169531bf5d0cc76a0b1fc87f8272eb16e"
+        }
+      }
+    ],
+    "python_wheels": [
+      {
+        "wheel": "agent_guard_python-0.2.9-cp310-abi3-macosx_10_12_x86_64.whl",
+        "platform": "macOS x86_64",
+        "sha256": "a1c94d0dffa7904ad60755ae598277499ff2e881ec831b127663f15c5a79bc3e",
+        "download_bytes": 5017943,
+        "native": "agent_guard/_agent_guard.abi3.so",
+        "tags": [
+          "cp310-abi3-macosx_10_12_x86_64"
+        ],
+        "record_verified": true,
+        "requires_python": ">=3.10"
+      },
+      {
+        "wheel": "agent_guard_python-0.2.9-cp310-abi3-macosx_11_0_arm64.whl",
+        "platform": "macOS arm64",
+        "sha256": "414d70e38adcc39111dee20aa1c25fdc4d4d44668433829609dd0759a2b8ce0f",
+        "download_bytes": 4801564,
+        "native": "agent_guard/_agent_guard.abi3.so",
+        "tags": [
+          "cp310-abi3-macosx_11_0_arm64"
+        ],
+        "record_verified": true,
+        "requires_python": ">=3.10"
+      },
+      {
+        "wheel": "agent_guard_python-0.2.9-cp310-abi3-manylinux_2_17_aarch64.manylinux2014_aarch64.whl",
+        "platform": "Linux aarch64",
+        "sha256": "ca3b4cb9bff98f4bc25208041925f7a89b754c92dde260e018e660859fe9032c",
+        "download_bytes": 5274870,
+        "native": "agent_guard/_agent_guard.abi3.so",
+        "tags": [
+          "cp310-abi3-manylinux2014_aarch64",
+          "cp310-abi3-manylinux_2_17_aarch64"
+        ],
+        "record_verified": true,
+        "requires_python": ">=3.10"
+      },
+      {
+        "wheel": "agent_guard_python-0.2.9-cp310-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl",
+        "platform": "Linux x86_64",
+        "sha256": "f46a751309a05b4aaa0ff97916f0dbfdd1aa00636180c5d1a7490046b7cb52e8",
+        "download_bytes": 5316263,
+        "native": "agent_guard/_agent_guard.abi3.so",
+        "tags": [
+          "cp310-abi3-manylinux2014_x86_64",
+          "cp310-abi3-manylinux_2_17_x86_64"
+        ],
+        "record_verified": true,
+        "requires_python": ">=3.10"
+      },
+      {
+        "wheel": "agent_guard_python-0.2.9-cp310-abi3-win_amd64.whl",
+        "platform": "Windows amd64",
+        "sha256": "f8303bd4d32e7d8ab7a062fa04cc4f99bfaad0e2b691895399cccf25da8cf60b",
+        "download_bytes": 4429234,
+        "native": "agent_guard/_agent_guard.pyd",
+        "tags": [
+          "cp310-abi3-win_amd64"
+        ],
+        "record_verified": true,
+        "requires_python": ">=3.10"
+      }
+    ],
+    "npm": {
+      "package": "agent-guard-plugin",
+      "version": "0.2.9",
+      "integrity": "sha512-mcpUjRgCyfzQeyuabCNnyaFGFasBYphCfGt77DG+YCzgBpCHzqWA3al8GvsC0aRi4h2lvZfcnnzD/h4ZJcyoFw==",
+      "download_bytes": 11243,
+      "digests": {
+        "sha512": "99ca548d1802c9fcd07b2b9a6c2367c9a14615ab016298427c6b7bec31be602ce0069087cea580dda97c1afb02d1a462e21da5bd97dc9e7cc3fe1e1925cca817",
+        "sha256": "b4c3e41a234d27aa38d767691e8d8fa953474f1bb48a9610b56b4b7adb1b1ec2"
+      },
+      "dependencies": {},
+      "package_members": [
+        "README.md",
+        "assets/coding-agent-outbound.yaml",
+        "bin/cli.js",
+        "lib/init.js",
+        "package.json"
+      ],
+      "installer_locked_and_version_checked": true,
+      "provenance_statement": {
+        "predicate_type": "https://slsa.dev/provenance/v1",
+        "statement_commit": "8f29c88f40218ed289d115106bee00556a7a23e6",
+        "statement_ref": "refs/tags/v0.2.9",
+        "statement_workflow": ".github/workflows/release.yml",
+        "statement_repository": "https://github.com/XuebinMa/agent-guard",
+        "statement_invocation": "https://github.com/XuebinMa/agent-guard/actions/runs/39830348740/attempts/1",
+        "subject_integrity_matched": true,
+        "cryptographic_signature_verification": "not performed; independently run npm audit signatures",
+        "attestations_url": "https://registry.npmjs.org/-/npm/v1/attestations/agent-guard-plugin@0.2.9",
+        "attestation_response_sha256": "c76af9e9ea84a91d16ce0335cf726df860e96ad418597529d0470c9537a97541",
+        "statement_sha256": "d2f787fb39ca5aebffe6294b417e178c01e52c0e05e6d5d6484f774f8215319a"
+      }
+    }
+  },
+  "installed_rust": {
+    "packages": [
+      "guard-hook",
+      "agent-guard-cli",
+      "guard-verify"
+    ],
+    "version": "0.2.9",
+    "registry": "crates-io",
+    "exact_version_constraint": "=0.2.9",
+    "locked": true,
+    "isolated_cargo_home": true,
+    "isolated_target_and_prefix": true,
+    "local_path_install": false,
+    "command_template": "cargo install <package> --version =0.2.9 --locked --registry crates-io --root <isolated-prefix>"
+  },
+  "installed_python": {
+    "distribution": "agent-guard-python",
+    "version": "0.2.9",
+    "platform": "macOS arm64",
+    "python": "3.14",
+    "isolated_venv": true,
+    "only_binary": true,
+    "no_dependencies": true,
+    "required_sha256": "414d70e38adcc39111dee20aa1c25fdc4d4d44668433829609dd0759a2b8ce0f",
+    "module_within_venv_and_outside_checkout": true
+  },
+  "installed_smoke": {
+    "version": "0.2.9",
+    "shell_inputs_executed": false,
+    "binaries": {
+      "guard-hook": "guard-hook 0.2.9",
+      "agent-guard": "agent-guard 0.2.9",
+      "guard-verify": "guard-verify 0.2.9"
+    },
+    "hook_decisions": [
+      {
+        "input": "echo smoke",
+        "decision": "allow"
+      },
+      {
+        "input": "git push origin local-test",
+        "decision": "ask"
+      },
+      {
+        "input": "sudo echo denied",
+        "decision": "deny"
+      },
+      {
+        "input": "=printf visible",
+        "decision": "deny"
+      },
+      {
+        "input": "ls \r#;printf visible",
+        "decision": "deny"
+      }
+    ],
+    "corpora": {
+      "attenu-vectors": "29/29 conformant",
+      "attenu-envelope-vectors": "19/19 conformant"
+    },
+    "broker_help_contract": true,
+    "wheel_decisions": [
+      {
+        "input": "echo smoke",
+        "decision": "allow"
+      },
+      {
+        "input": "git push origin local-test",
+        "decision": "ask_user"
+      },
+      {
+        "input": "sudo echo denied",
+        "decision": "deny"
+      },
+      {
+        "input": "=printf visible",
+        "decision": "deny"
+      },
+      {
+        "input": "ls \r#;printf visible",
+        "decision": "deny"
+      }
+    ],
+    "wheel_policy_negative_checks": 2,
+    "success": true
+  },
+  "npm_signature_verification": {
+    "npm_version": "11.8.0",
+    "command": "npm audit signatures",
+    "exit_code": 0,
+    "isolated_prefix_and_configs": true,
+    "install_scripts_disabled": true,
+    "verified_registry_signatures": 1,
+    "verified_attestations": 1
+  },
+  "github_release": {
+    "url": "https://github.com/XuebinMa/agent-guard/releases/tag/v0.2.9",
+    "tag": "v0.2.9",
+    "published_at_utc": "2026-10-22T18:41:01Z",
+    "draft": false,
+    "prerelease": false
+  },
+  "verification_tools": {
+    "registry": {
+      "file": "verify_registry.py",
+      "sha256": "a2a6e6e393aeb90a159fe70cbcadc81afecb593997b04a6d3d2f3f331e0cd68b",
+      "offline_tests_passed": 9
+    },
+    "installed": {
+      "file": "installed_smoke.py",
+      "sha256": "95b85c7322103a794f424245f3e66b6c46caa35e06b912d8db3ae40ee6f5ab79"
+    }
+  },
+  "local_log_sha256": {
+    "install-guard-hook.log": "c8f3db422c9373abb9b0e03696bee97f19b059c1b34e1d664f32aee312b366da",
+    "install-agent-guard-cli.log": "15ad379d406823f4937ef2efead12f1af626d652903e2386af043af9fbfe1ec2",
+    "install-guard-verify.log": "7312eb446ee7728cc2e40d98d112f52dae73bb76dca628611b3cbc61c6d16aad",
+    "npm-signatures.log": "17f2d7d774935ac35ce5f8c606c92dd18c98c5b25b8726956ffae4cb8ad7c6a0",
+    "wheel-install.log": "7c0bd659f04c37bf2fb29cf9e8ff673794d2c5468048fafa03ff7c65be80e27f"
+  },
+  "verification_corrections": [
+    {
+      "kind": "verification-tool download negotiation",
+      "first_attempt_success": false,
+      "first_attempt_error": "sha256 artifact checksum mismatch",
+      "cause": "crates.io API download endpoint returned JSON URL metadata under the JSON Accept header, not crate bytes",
+      "resolution": "Fetch the exact official static.crates.io archive; keep SHA256, VCS, content and negative checks; add a fixed-endpoint regression",
+      "product_changed": false
+    },
+    {
+      "kind": "npm propagation",
+      "observation": "Definitive HTTP404 immediately after successful npm publication; later exact version available",
+      "resolution": "Wait for normal registry propagation; no republish"
+    }
+  ],
+  "limits": [
+    "Only the installed macOS arm64 wheel was executed; all five platform wheels had hash, contents and RECORD validation.",
+    "The hook remains advisory/fail-open; default noop execution is not OS containment.",
+    "Native Linux evidence covers the fixed synthetic broker-first-v1 Docker configuration, not arbitrary hosts/images or trusted human approval.",
+    "Finite bundle29/29 and envelope19/19 are conformance observations, not complete Attenu coverage; 9 of39 published fields are unused by the bundle corpus.",
+    "Windows ambient handles, general shared-hard-link containment and Attenu fractional TTL remain open.",
+    "No new GHSA scope, CVE assertion, upstream comment, automation restart, real credentials or third-party Git push was part of this release."
+  ]
+}

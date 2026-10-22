@@ -11,10 +11,11 @@ The `[Unreleased]` heading is rolled forward manually before each release; do no
 
 ## [0.2.9] - 2026-10-22
 
-Release candidate: **not yet published**. The latest independently verified
-published release remains `0.2.8`. Registry-install commands must not move to
-`0.2.9` until publication and independent download/installation checks pass.
-See the [preparation and remaining gates](docs/release-029-preparation.md).
+Published and independently verified on 2026-10-22 UTC: eight Rust crates,
+five Python wheel platforms and the npm plugin. Three registry-installed Rust
+CLIs passed exact-version `--locked` installation and safe decision/corpus
+checks; the actual macOS arm64 wheel was imported and tested. Delivery evidence
+and platform limits: [0.2.9 record](docs/release-029-delivery.md).
 
 ### Fixed
 
@@ -81,7 +82,7 @@ See the [preparation and remaining gates](docs/release-029-preparation.md).
   fields accept any ASCII case of `true`/`false` (including newly accepted
   `tRuE`/`fAlSe`), not YAML 1.1 `yes`/`no`/`on`/`off` or quoted booleans.
   Existing shipped policies remain unchanged; error categories remain stable
-  but parser-specific wording may differ. This change is not yet released.
+  but parser-specific wording may differ.
 
 ## [0.2.8] - 2026-10-06
 
