@@ -1,7 +1,8 @@
 # Policy YAML profile and parser migration
 
-Status: unreleased source change, reviewed on 2026-10-21. The published 0.2.8
-packages do not contain this migration. No release or advisory is changed here.
+Status: published in 0.2.9 and independently verified on 2026-10-22. The older
+0.2.8 packages do not contain this migration. See the
+[delivery evidence](../release-029-delivery.md); existing advisories are unchanged.
 
 ## Selection
 

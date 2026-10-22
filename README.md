@@ -140,7 +140,8 @@ checkout with `npm ci --prefix crates/agent-guard-node && npm run build
 ## Release Status
 
 - **Source version**: `v0.2.9`
-- **Latest published release**: [`v0.2.8`](https://github.com/XuebinMa/agent-guard/releases/tag/v0.2.8) — crates.io, PyPI, npm
+- **Latest published release**: [`v0.2.9`](https://github.com/XuebinMa/agent-guard/releases/tag/v0.2.9) — crates.io, PyPI, npm
+- **Verified delivery**: [0.2.9 package and installation evidence](docs/release-029-delivery.md)
 - **Announcement**: [GitHub Discussions #1](https://github.com/XuebinMa/agent-guard/discussions/1)
 
 ## Verify Locally
@@ -452,7 +453,7 @@ safety net, not the primary control.
 
 Additional references:
 
-- [Latest published release](https://github.com/XuebinMa/agent-guard/releases/tag/v0.2.8)
+- [Latest published release](https://github.com/XuebinMa/agent-guard/releases/tag/v0.2.9)
 - [Join the Discussion](https://github.com/XuebinMa/agent-guard/discussions/1)
 - [Deployment Guide](docs/guides/operations/deployment-guide.md)
 - [Roadmap](ROADMAP.md): what's shipped, partial, and planned
