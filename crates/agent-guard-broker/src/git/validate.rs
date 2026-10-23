@@ -241,7 +241,15 @@ mod tests {
         ] {
             assert!(validate_remote_url(refused, false).is_err(), "{refused}");
         }
-        assert!(validate_remote_url("/tmp/repo.git", true).is_ok());
+        let native_path = if cfg!(windows) {
+            r"C:\owned-fixture\repo.git"
+        } else {
+            "/owned-fixture/repo.git"
+        };
+        assert!(Path::new(native_path).is_absolute());
+        assert!(validate_remote_url(native_path, false).is_err());
+        assert!(validate_remote_url(native_path, true).is_ok());
+        assert!(validate_remote_url("file:///owned-fixture/repo.git", true).is_ok());
     }
 
     #[test]
