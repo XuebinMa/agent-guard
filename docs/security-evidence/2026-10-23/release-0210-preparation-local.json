@@ -1,0 +1,112 @@
+{
+  "schema": 1,
+  "kind": "source-release-preparation-local-checkpoint",
+  "date": "2026-10-23",
+  "source_version": "0.2.10",
+  "published_version": "0.2.9",
+  "base_main": "f5c5f9ae017722bb68635d74dc2df19e9c597a8c",
+  "scope": "Version and documentation only; no production behavior, third-party dependency, gate or regression change.",
+  "authority": {
+    "prepare_pr_and_verify": true,
+    "merge": false,
+    "tag_or_registry_publication": false,
+    "advisory_changes": false,
+    "restart_automation": false
+  },
+  "environment": {
+    "platform": "Darwin 25.6.0 arm64",
+    "rustc": "1.94.1",
+    "node": "25.6.0",
+    "python": "3.14.2",
+    "not_the_hosted_os_matrix": true
+  },
+  "versions": {
+    "command": "scripts/release/bump-version.sh 0.2.10; scripts/check-version-consistency.sh",
+    "exit_code": 0,
+    "workspace_packages": 10,
+    "cargo_lock_diff": "Only the ten workspace package versions: 0.2.9 -> 0.2.10; no other package, checksum or edge changes.",
+    "cargo_lock_sha256": "63bbc59c93124904e99f9c3b5147100c5f00181344619e3611b9a0dc41b23a71",
+    "tokio": "1.51.6",
+    "process_wrap": "10.0.1",
+    "published_markers_unchanged": true
+  },
+  "full": {
+    "command": "./scripts/verify.sh full",
+    "exit_code": 0,
+    "rust_top_level_passed": 1235,
+    "rust_nested_child_passed": 1,
+    "rust_failed": 0,
+    "existing_ignored_summaries": 3,
+    "ignore_scope": "Two opt-in cost probes and one child-only environment probe actually invoked by its parent; no new security skip.",
+    "python_passed": 112,
+    "python_optional_framework_skipped": 1,
+    "node_checks": "native/types/adapters/frameworks passed; Actions 3/3; plugin 14/14",
+    "script_tests": 52,
+    "markdown_files": 93,
+    "log": "/private/tmp/agent-guard-release-0210-full.log",
+    "sha256": "cbc9a2da2dca834d1c71fab6ef5a31c85c95da7df8866a051b34f4bce01c0d43"
+  },
+  "strict_lint": {
+    "command": "cargo clippy --workspace --exclude agent-guard-python --all-features --all-targets --locked -- -D warnings",
+    "exit_code": 0,
+    "log": "/private/tmp/agent-guard-release-0210-strictlint.log",
+    "sha256": "4eba6e147eff2e3ac62f92103f305d955cae5169ea883c350ce247cbd455dd0d"
+  },
+  "dependency_checks": {
+    "commands": ["cargo deny --locked check", "cargo audit"],
+    "exit_codes": [0, 0],
+    "no_new_ignore": true,
+    "deny_log_sha256": "85b48a004b43b23791c5f8eda328b58b7dd4556ec1bad8e806fefa8d057b3644",
+    "audit_log_sha256": "88cc5068dc25ef45cbefa0fbd97b870b3e3fd46de66ca4a7dfc73ffd170ee568"
+  },
+  "source_install": {
+    "method": "cargo install --path crates/<crate> --locked --offline --debug --root <owned-temp>/install --target-dir target",
+    "crates": ["guard-hook", "agent-guard-cli", "guard-verify"],
+    "reported_versions": ["guard-hook 0.2.10", "agent-guard 0.2.10", "guard-verify 0.2.10"],
+    "smoke": "Installed hook: git status allow, git push origin main ask, sudo ls /etc deny; these are JSON decision inputs, never shell execution. Installed agent-guard push --help includes --git-timeout-seconds. Installed guard-verify offline corpora: 29/29 and 19/19.",
+    "exit_code": 0,
+    "global_install_unchanged": true,
+    "registry_install_proven": false,
+    "install_log_sha256": "b822034b485eedcf550a4cc54c58bb99abc855e489e785129b2016170fa948bf",
+    "smoke_log_sha256": "ce687adaf843df72a9135d8f8161f5a5275fdb21b213ca8ee8f74f74b8a2378c"
+  },
+  "installed_cli_authenticated_fixture": {
+    "command": "AGENT_GUARD_TEST_CLI=<owned-temp>/install/bin/agent-guard python3 -m unittest discover -s tests/broker-first -p test_authenticated_git.py -v",
+    "exit_code": 0,
+    "passed": 13,
+    "scope": "Owned local repositories and authenticated loopback TLS, synthetic credentials; independent remote observation, timeout/disconnect/indeterminate and consumed-grant controls. No third-party push. Not container isolation.",
+    "log_sha256": "142079a2166e5d6f5775042b0390c4bbcf8d2ab0e83eaab0739b270e18588b3a"
+  },
+  "fresh_parity": {
+    "method": "Full rebuilds Node; maturin develop --locked --features extension-module rebuilds Python; persistent venv runs tests/cross-language-parity/compare.py from root, which builds Rust.",
+    "exit_code": 0,
+    "scenarios_per_language": 70,
+    "log_sha256": "57a3f4800f8c7ecd869f001ccdc9ae8da0aa42d066d056e5c3f5d3bb229139ef"
+  },
+  "local_wheel": {
+    "method": "maturin build --locked --out <owned-temp>/wheels --interpreter <venv>/bin/python; local debug build from crates/agent-guard-python",
+    "file": "agent_guard_python-0.2.10-cp310-abi3-macosx_11_0_arm64.whl",
+    "sha256": "dfba48498ce8feaf42dacabf49f9db40066d9bb9a218d098a265819e9211aa98",
+    "entries": 9,
+    "checked": ["version and package metadata", "native extension", "Python wrappers", "all RECORD sizes and sha256 values", "no dSYM, pycache or pyc"],
+    "installed_check": "Fresh venv pip --no-index --no-deps; isolated Python import proven inside that venv, version 0.2.10; 70 shared scenario outputs byte-match the fresh Python binding.",
+    "runner_jsonl_sha256": "aecb941afa1a72f27504b08524236fe378b75161092a4f3e1edd22388e37ba27",
+    "registry_or_five_platform_acceptance": false
+  },
+  "local_plugin": {
+    "method": "npm pack ./packages/agent-guard-plugin --offline --ignore-scripts --pack-destination <owned-temp>",
+    "file": "agent-guard-plugin-0.2.10.tgz",
+    "sha256": "1cecfa1122ed0ccf68202296193f128ae8a743dd7da60bf6307f64330e3e4b6c",
+    "checked_files": ["bin/cli.js", "lib/init.js", "package.json", "README.md", "assets/coding-agent-outbound.yaml"],
+    "runtime_dependencies": 0,
+    "preset_byte_identical": true,
+    "publication_or_provenance_proven": false
+  },
+  "remaining": [
+    "The exact new PR head requires its own complete hosted CI and native acceptance; final identities belong in the PR body.",
+    "Merge, final-main verification, tagging, protected publication and registry acceptance require separate authority.",
+    "Local temporary logs may expire; hashes and methods do not themselves publish or reproduce a signed artifact.",
+    "Windows ambient handles and general shared-hard-link containment remain open.",
+    "Six Node development-graph advisory entries remain separate; no npm dependency change is made here."
+  ]
+}

@@ -14,8 +14,8 @@ name = "agent-guard"
 path = "src/main.rs"
 
 [dependencies]
-agent-guard-sdk = { path = "../agent-guard-sdk", version = "=0.2.9" }
-agent-guard-broker = { path = "../agent-guard-broker", version = "=0.2.9" }
+agent-guard-sdk = { path = "../agent-guard-sdk", version = "=0.2.10" }
+agent-guard-broker = { path = "../agent-guard-broker", version = "=0.2.10" }
 chrono.workspace = true
 serde_json.workspace = true
 clap.workspace = true
