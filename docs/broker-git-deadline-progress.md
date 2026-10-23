@@ -1,8 +1,10 @@
 # Broker Git deadline implementation checkpoint
 
-Unreleased, in progress. User authorization: implement item 1 (Broker deadlines
-and failure recovery), then "請繼續". No release, merge to main, advisory change or
-automation. Base main `6751d9fb52c3eee14e939b1dc02376efd6fe571d`; branch
+Unreleased, in progress. Initial user authorization: implement item 1 (Broker
+deadlines and failure recovery), then "請繼續". Main merging was not authorized
+at that stage; the subsequent explicit merge/repair decisions are recorded
+below. No release, advisory change or automation. Base main
+`6751d9fb52c3eee14e939b1dc02376efd6fe571d`; branch
 `codex/broker-git-deadlines` reuses the clean independent worktree. Original
 `codex/release-027-record` checkout and its dirty documents are untouched.
 See the [bounded plan and references](plans/2026-10-22-broker-git-deadlines.md).
@@ -124,6 +126,69 @@ lockfile edit or ignored gate was added to this scoped repair.
 
 ## Remaining before review/merge
 
+### Subsequent authorized merge and newly exposed blockers
+
+On 2026-10-23 the maintainer explicitly authorized ordered main merges #182
+then #181, without release/advisory work. #182 merged as
+`e6ff0609023d0d60f8d696e33f9843ee75a35976`; its tree equals the reviewed
+prerequisite. #181 synchronized that exact main as `16c1351`, with a complete
+tree identical to the previously validated `df36d20`.
+
+Those fresh checks exposed new actual failures, not grant/timeout regressions:
+first-main run `39978398930` finished 20/22 success (Tokio advisory and one
+Python framework audit assertion); synced #181 run `39978530656` finished
+21/22 success (the same Tokio advisory). The failed job logs are retained;
+neither result is called green or erased by an older passing run.
+
+The maintainer then authorized the minimal dependency repair and async-audit
+diagnosis/regression repair before continuing #181. A newly patched, fully
+green #181 head must repair current main through the normal protected merge;
+the old unpatched main SHA cannot become safe by retrying or ignoring its
+advisory. Final repaired-main push CI remains mandatory before declaring this
+merge task accepted. Release/publication authority remains separate.
+
+- The official [RustSec metadata](https://github.com/RustSec/advisory-db/blob/main/crates/tokio/RUSTSEC-2026-0386.md)
+  marks Tokio 1.51.0 affected by the Unix AsyncFd I/O-safety issue; the minimal
+  same-series patch is 1.51.6. Its MSRV is 1.71, below the unchanged project
+  minimum 1.89. No project AsyncFd call was found, which does not prove absence
+  of transitive/downstream impact. This is not a reproduced remote exploit.
+- After an explicit official-database fetch, unchanged source reproduced the
+  actual deny failure. Commit `d82f70e` changes only Tokio's locked version and
+  checksum plus its changelog note. Cargo proposed six unrelated Windows edge
+  changes; restoring their previous selections was accepted by
+  `cargo metadata --locked`. The final lock passes the same unchanged
+  `cargo deny --locked check`. Downstream lockfiles need their own update.
+- The Python assertion conflated report enqueueing with disk visibility.
+  The SDK's asynchronous writer intentionally returns before file persistence.
+  A real-binding owned-file-lock fixture holds back the real writer after
+  callback completion; successful and failed callbacks both retain their
+  actual result and eventually produce exactly one record after unlock.
+  This proves that short-delay scenario is visibility, not dropped data.
+- Separate test-first commit `0365e38` retains immediate-read semantics and
+  deterministically fails three new controls while one malformed-JSON control
+  passes. The successor uses at most two seconds of monotonic polling only
+  after completion. Existing no-early-report, one-record, actual exit/error
+  and cancellation assertions remain. Missing reports still time out;
+  malformed JSON is not swallowed. The complete test file passes 12 tests.
+  These preliminary red/green controls used the pre-upgrade native binding;
+  final native rebuilding and full checks are recorded separately.
+- No production audit code, queue capacity/drop policy, lock deadline or
+  durability guarantee is changed. Queue overflow, long lock contention,
+  crashes and abrupt shutdown remain outside this visibility-test repair.
+
+Exact repair-head CI, post-merge main CI and sanitized log identities are
+tracked in PR #181. Do not manufacture documentation/CI loops to record a
+document's own commit hash or treat earlier-head checks as final acceptance.
+The [repair evidence](security-evidence/2026-10-23/merge-blocker-repairs-local.json)
+retains separate red controls, minimal dependency diff, log hashes and limits.
+Fresh full verification exits 0: Rust 1,235 top-level plus one nested pass,
+zero failures, three existing ignored summaries; Python **112 passed / one
+optional framework skip**. Strict all-target lint, rebuilt-binding parity
+**70/70**, authenticated loopback **13/13** and 20 separate runs of all
+12 async lifecycle tests pass. Final documentation has a separate gate.
+The supported-series real-framework matrix and native Linux/Windows results
+must still pass on the new exact PR head; local success is not their proxy.
+
 - Final runner/outcome diff received a separate read-only source review; no
   blocking defect was found. That review did not rerun tests or prove native
   platform behavior. Final evidence/documentation, version/action pins and
@@ -131,9 +196,10 @@ lockfile edit or ignored gate was added to this scoped repair.
 - Native Linux and Windows runtime results are **unrun locally**. Existing
   macOS/Windows CI jobs now include Broker/CLI runtime tests; prior CI on an
   unchanged release source cannot substitute for this new head.
-- Exact committed head and hosted checks are tracked in the draft PR, not
-  self-referential documentation commits. No merge or release is authorized;
-  no current version/tag/published marker changed.
+- Exact committed head and hosted checks are tracked in the PR, not
+  self-referential documentation commits. Main merges follow the subsequent
+  explicit authorization above; release remains unauthorized. No current
+  version/tag/published marker changed.
 - Existing Windows ambient handles, general shared-hard-link containment,
   credentials as a deployment property, physical snapshot I/O and detached
   malicious trusted helper limits remain explicit. This is not OS containment.

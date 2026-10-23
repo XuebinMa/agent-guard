@@ -39,7 +39,15 @@ def reported_events(audit_path):
 
 
 async def wait_for_reported_events(audit_path, *, timeout=2):
-    return reported_events(audit_path)
+    # Reporting enqueues the JSONL record; persistence is handled by the writer.
+    deadline = time.monotonic() + timeout
+    while True:
+        reports = reported_events(audit_path)
+        if reports:
+            return reports
+        remaining = deadline - time.monotonic()
+        assert remaining > 0, "execution_reported was not persisted before the deadline"
+        await asyncio.sleep(min(0.01, remaining))
 
 
 @pytest.mark.skipif(os.name != "posix", reason="requires POSIX advisory file locks")

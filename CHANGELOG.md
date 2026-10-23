@@ -45,6 +45,11 @@ The `[Unreleased]` heading is rolled forward manually before each release; do no
 
 ### Fixed
 
+- Python asynchronous lifecycle tests wait within a finite budget for queued
+  audit records to become visible, instead of treating callback completion as
+  a synchronous file flush. Real locked-file delay controls retain exact
+  outcome/one-record checks; missing and malformed reports still fail. This is
+  a test synchronization repair, not stronger production audit durability.
 - Broker Git subprocesses use a shared finite budget for each preview and each
   execution, including config reads and batch object checks. Managed process
   groups/jobs are terminated with bounded leader reaping; regular-file output
