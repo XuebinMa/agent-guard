@@ -29,6 +29,15 @@ The `[Unreleased]` heading is rolled forward manually before each release; do no
   writable grant stores, mixed old/new consumers or power-loss durability.
   See the [claim repair plan](docs/plans/2026-10-22-grant-claim-fence.md).
 
+### Fixed
+
+- Windows CLI approval-ledger writers request read access as required by the
+  existing byte-range lock, in addition to append access. Locks, append-only
+  writes and error refusal remain; Unix write-only ledger access is unchanged.
+  The full native Broker/CLI gate exposed this existing compatibility failure
+  after the grant tests passed. This does not turn the advisory SDK ledger into
+  an authenticated grant store.
+
 ## [0.2.9] - 2026-10-22
 
 Published and independently verified on 2026-10-22 UTC: eight Rust crates,

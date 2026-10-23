@@ -18,9 +18,12 @@ exposed the previously unrun invariant. Neither the grant implementation nor
 that race test differs from v0.2.9, but affected published compiler/build
 combinations have not been exhaustively backtested.
 
-The fix changes only grant claiming/evidence retention, its tests and required
-native verification. No deadline-runner code/dependency, new service, grant
-schema, receipt schema or signing format is needed. Keep #181 draft until
+The fix changes grant claiming/evidence retention, its tests and required
+native verification. The native gate also exposed an existing CLI approval
+ledger handle-access failure; a separate minimal Windows-only compatibility
+commit preserves its existing locks and Unix write-only access. No other SDK
+behavior, deadline-runner dependency, new service, grant schema, receipt schema
+or signing format changes. Keep #181 draft until
 its prerequisite and integrated exact head pass review/CI.
 
 ## Existing implementation references
@@ -61,3 +64,21 @@ its prerequisite and integrated exact head pass review/CI.
   [verification checkpoint](../grant-claim-progress.md).
 - [ ] Exact-head native CI; local macOS is not Windows acceptance.
 - [ ] Separate review PR with honest limitations; no automatic merge/release.
+
+## Native follow-up
+
+Initial repair head `8500a4ed4ca1bde4ea4a7e3b01fc377544bcf4ab` completed
+[run 39885569185](https://github.com/XuebinMa/agent-guard/actions/runs/39885569185)
+with 21 success / one failure. **All 70 native Windows Broker tests passed**,
+including the unchanged race, actual subprocess contenders and interrupted
+reservation. Four later CLI approval-ledger tests failed with access denied.
+Their source/SDK code was unchanged by the claim repair.
+
+The existing ledger writer opens append-only, but
+[LockFileEx](https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-lockfileex)
+requires generic read or write access. Windows now also requests read access
+for that already-readable approval ledger; Unix remains append-only. There is
+no unlocked fallback, truncation, changed contention timeout or JSONL protocol.
+New prefix/frame/state and Unix `0200` controls protect compatibility; the
+Windows job additionally runs the targeted SDK approval tests. All new-head
+gates must pass again, not borrow the initial grant-test success.

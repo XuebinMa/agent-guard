@@ -178,6 +178,9 @@ jobs:
       - name: Verify broker runtime and one-use grants on Windows
         timeout-minutes: 8
         run: cargo test -p agent-guard-broker -p agent-guard-cli --locked
+      - name: Verify Windows approval ledger locking compatibility
+        timeout-minutes: 8
+        run: cargo test -p agent-guard-sdk --lib approval::tests --locked
       # Keep the compatibility feature compiling, but lock the current safety
       # posture: direct AppContainer execution is unavailable and SDK
       # selection falls back to the independently probed Low-IL backend (or
