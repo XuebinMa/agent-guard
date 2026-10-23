@@ -97,6 +97,14 @@ class AuthenticatedGitTests(unittest.TestCase):
             input=answer, capture_output=True, timeout=30, env=git_env(), cwd=self.root,
         )
 
+    def assert_consumed_grant(self, record):
+        grant_id = record["grant_id"]
+        self.assertTrue(grant_id)
+        store = self.root / "grants"
+        self.assertTrue((store / "spent" / f"claim-{grant_id}.consumed").is_file())
+        self.assertTrue((store / "spent" / f"{grant_id}.json").is_file())
+        self.assertFalse((store / f"{grant_id}.json").exists())
+
     def test_reachable_tls_service_refuses_unauthenticated_mutation(self):
         connection = http.client.HTTPSConnection(
             "127.0.0.1", self.service.port, timeout=5,
@@ -133,9 +141,7 @@ class AuthenticatedGitTests(unittest.TestCase):
         self.assertTrue(self.service.pause_reached.is_set())
         record = json.loads(self.receipt.read_text())
         self.assertEqual(record["attempt"]["outcome"], "refused")
-        self.assertTrue(record["grant_id"])
-        self.assertTrue((self.root / "grants" / "spent" / (record["grant_id"] + ".json")).is_file())
-        self.assertFalse((self.root / "grants" / (record["grant_id"] + ".json")).exists())
+        self.assert_consumed_grant(record)
         self.assertIsNone(self.service.tip())
         self.assertFalse(any(method == "POST" for method, _, _ in self.service.requests))
 
@@ -147,9 +153,7 @@ class AuthenticatedGitTests(unittest.TestCase):
         record = json.loads(self.receipt.read_text())
         self.assertEqual(record["transaction"]["local_oid"], self.oid)
         self.assertEqual(record["transaction"]["remote_url"], self.service.url)
-        self.assertTrue(record["grant_id"])
-        self.assertTrue((self.root / "grants" / "spent" / (record["grant_id"] + ".json")).is_file())
-        self.assertFalse((self.root / "grants" / (record["grant_id"] + ".json")).exists())
+        self.assert_consumed_grant(record)
         self.assertEqual(record["attempt"]["outcome"], "indeterminate")
         self.assertEqual(result.returncode, 3)
         self.assertIn("result is unknown", result.stderr.decode())
@@ -167,7 +171,7 @@ class AuthenticatedGitTests(unittest.TestCase):
         self.assertEqual(result.returncode, 3)
         self.assertNotIn("Not pushed", result.stderr.decode())
         self.assertEqual(len([entry for entry in self.service.requests if entry[0] == "POST"]), 1)
-        self.assertTrue((self.root / "grants" / "spent" / (record["grant_id"] + ".json")).is_file())
+        self.assert_consumed_grant(record)
 
     def test_approved_host_push_matches_independent_ref_and_receipt(self):
         result = self.broker(b"y\n")
@@ -176,7 +180,7 @@ class AuthenticatedGitTests(unittest.TestCase):
         record = json.loads(self.receipt.read_text())
         self.assertEqual(record["transaction"]["remote_url"], self.service.url)
         self.assertEqual(record["transaction"]["local_oid"], self.oid)
-        self.assertTrue(record["grant_id"])
+        self.assert_consumed_grant(record)
         self.assertEqual(record["attempt"]["outcome"], "pushed")
         self.assertEqual(record["witness"]["kind"], "unsigned")
         self.assertIn(self.service.url, result.stdout.decode())

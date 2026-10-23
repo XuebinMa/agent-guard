@@ -364,6 +364,9 @@ impl ApprovalLedger {
         let file = OpenOptions::new()
             .create(true)
             .append(true)
+            // LockFileEx needs generic read/write access, not append-only.
+            // Keep Unix writers compatible with write-only ledger files.
+            .read(cfg!(windows))
             .open(&self.path)
             .map_err(|source| ApprovalError::Io {
                 path: self.path.clone(),
@@ -473,6 +476,55 @@ mod tests {
         assert_eq!(record.tool, "bash");
         assert_eq!(record.agent_id.as_deref(), Some("a"));
         assert!(record.decided_at.is_none());
+    }
+
+    #[test]
+    fn locking_access_does_not_truncate_or_overwrite_existing_frames() {
+        let (_dir, ledger) = ledger();
+        ledger
+            .create_pending("a", "bash", "h", "first", None, None)
+            .unwrap();
+        let prefix = std::fs::read(ledger.path()).unwrap();
+        ledger
+            .create_pending("b", "bash", "h", "second", None, None)
+            .unwrap();
+        ledger.approve("a", None).unwrap();
+        let complete = std::fs::read(ledger.path()).unwrap();
+        assert!(complete.starts_with(&prefix));
+        assert_eq!(complete.iter().filter(|&&b| b == b'\n').count(), 3);
+        assert_eq!(
+            ledger.get("a").unwrap().unwrap().status,
+            ApprovalStatus::Approved
+        );
+        assert_eq!(
+            ledger.get("b").unwrap().unwrap().status,
+            ApprovalStatus::Pending
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_write_only_unix_ledger_still_accepts_pending_frames() {
+        use std::os::unix::fs::PermissionsExt;
+        let (_dir, ledger) = ledger();
+        std::fs::write(ledger.path(), b"").unwrap();
+        std::fs::set_permissions(ledger.path(), std::fs::Permissions::from_mode(0o200)).unwrap();
+        assert_eq!(
+            std::fs::metadata(ledger.path())
+                .unwrap()
+                .permissions()
+                .mode()
+                & 0o777,
+            0o200
+        );
+        ledger
+            .create_pending("a", "bash", "h", "append-only fixture", None, None)
+            .unwrap();
+        std::fs::set_permissions(ledger.path(), std::fs::Permissions::from_mode(0o600)).unwrap();
+        assert_eq!(
+            ledger.get("a").unwrap().unwrap().status,
+            ApprovalStatus::Pending
+        );
     }
 
     #[test]

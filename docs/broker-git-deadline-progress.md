@@ -1,7 +1,7 @@
 # Broker Git deadline implementation checkpoint
 
 Unreleased, in progress. User authorization: implement item 1 (Broker deadlines
-and failure recovery), then "請繼續". No release, merge, advisory change or
+and failure recovery), then "請繼續". No release, merge to main, advisory change or
 automation. Base main `6751d9fb52c3eee14e939b1dc02376efd6fe571d`; branch
 `codex/broker-git-deadlines` reuses the clean independent worktree. Original
 `codex/release-027-record` checkout and its dirty documents are untouched.
@@ -72,6 +72,55 @@ retained in [local evidence](security-evidence/2026-10-22/broker-git-deadlines-l
 Full local logs remain temporary under `/private/tmp/agent-guard-deadline-*.log`.
 No negative Shell strings are executed; the
 only test writes are owned temporary repositories/markers with synthetic auth.
+
+## Prerequisite integration after review
+
+The next exact head, `77864226237c440c65204a40e1ec1928e1d1d206`, completed
+[run 39880569681](https://github.com/XuebinMa/agent-guard/actions/runs/39880569681)
+with 21 successes and one Windows failure: the unchanged grant race test
+observed **16 successful claims for one ID**, not 16 remote writes. The
+separate authorized repair is draft [PR #182](https://github.com/XuebinMa/agent-guard/pull/182),
+head `63ef4d167d87ea173300e3cdfc5f9268e8df71ba`. Its own
+[run 39886988969](https://github.com/XuebinMa/agent-guard/actions/runs/39886988969)
+has 22/22 completed successes, including native Windows Broker/CLI and targeted
+SDK approval tests. Those results do not validate an integrated deadline head.
+
+After the user's subsequent instruction to continue, #181 incorporates that
+exact prerequisite through a normal development-branch merge, preserving both
+histories and the independent #182 review. Only CI step names and CHANGELOG
+required conflict resolution; all checks and both behavior notes remain. The
+claim and SDK production code are byte-identical to #182. No main merge, tag,
+publication or advisory action is included.
+
+The authenticated loopback tests additionally check that success, execution
+query timeout, delayed acknowledgement and transport disconnect preserve both
+the permanent consumed marker and archived grant, remove pending JSON and keep
+the receipt's ID. Lost responses still result in one POST, `indeterminate` and
+no automatic retry. These are composition assertions, not a newly claimed
+standalone vulnerability. The earlier test-first commits retain the red/green
+history for each production repair.
+
+A separate read-only composition review found no actionable blocker in the
+documented scope; it did not run runtime tests. The
+[integrated verification record](security-evidence/2026-10-23/broker-deadline-claims-integrated.json)
+separates fresh local results from hosted CI, which must be checked on the
+integrated exact head. Do not borrow either parent's checks.
+
+Fresh integrated-tree full verification exits 0: **1,235 top-level Rust passes
+plus one nested child pass**, zero failures and three existing ignored
+summaries. Broker **96**, CLI **23**, Python **108/one optional framework skip**,
+Actions **3/3**, plugin **14/14**, scripts **52** and 92-document gates pass.
+Strict all-target lint, rebuilt-binding parity **70/70** and authenticated
+loopback **13/13** pass. Final evidence/documentation has its own docs gate.
+The first full log completed but its old executor session was lost during
+the quota interruption; a complete rerun obtained the real zero exit.
+
+Cargo-deny passes all four categories with four existing unmatched-license and
+ten duplicate-dependency warnings. Node production audit has **zero findings**;
+its development/test dependency audit reports **six** (3 moderate, 2 high,
+1 critical), not the earlier count. The plugin declares no runtime dependencies.
+These are not claimed fixed or harmless to development: no auto-upgrade,
+lockfile edit or ignored gate was added to this scoped repair.
 
 ## Remaining before review/merge
 

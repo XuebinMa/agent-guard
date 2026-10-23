@@ -141,6 +141,31 @@ operator-owned generated paths before recovery; do not reuse a replaced volume
 or bulk-delete user data. Shared-hard-link and Windows inherited-handle findings
 remain open; this Linux workflow does not repair them.
 
+### One-use grant store upgrade — unreleased source
+
+The claim repair is not in published 0.2.9 packages. Patched source creates
+`spent/claim-<id>.consumed` exclusively before reading or archiving an issued
+grant. Only its creator proceeds; the marker stays after success, refusal,
+missing-source archival failure or process interruption. An empty or partial
+marker already means consumed. The retained `spent/<id>.json` is evidence,
+not the only source of one-use state; legacy spent entries also prevent reuse.
+
+Stop **all unpatched consumers** before using the same store with a patched
+Broker. Old binaries ignore these markers. Do not treat them as stale locks,
+delete them for retries, copy only unspent JSON back into the store or roll the
+store back. A new attempt requires a new preview and a new grant ID. Backups
+must retain both marker and archive state; restoring an old whole-store backup
+is outside this one-use guarantee.
+
+The proof assumes a protected, broker-owned local filesystem with atomic
+exclusive creation. It does not repair writable store/parent paths, Windows
+ACLs or arbitrary shared/network filesystems, and file synchronization alone
+does not establish power-loss durability. Receipts keep the consumed ID when
+only a marker remains, but cannot recover an interrupted attempt's remote
+outcome. The [negative/process tests](../../../crates/agent-guard-broker/tests/grant_claims.rs)
+and [abrupt-exit test](../../../crates/agent-guard-broker/src/grant/claim_tests.rs)
+lock this lifecycle; native Windows results remain mandatory.
+
 ## Reproducible synthetic measurement
 
 No prior reusable broker snapshot benchmark exists in this checkout; the

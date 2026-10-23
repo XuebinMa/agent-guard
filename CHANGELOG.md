@@ -9,6 +9,35 @@ The `[Unreleased]` heading is rolled forward manually before each release; do no
 
 ## [Unreleased]
 
+### Security
+
+- One-use Broker grants now require exclusive creation of a permanent
+  consumption marker before any grant read or archive rename. A native Windows
+  regression observed 16 successful concurrent claims for one grant when
+  rename alone provided exclusivity; this does not establish 16 remote writes.
+  Failures and process interruption never remove the marker, legacy spent
+  entries cannot be overwritten, and marker-only consumption is retained in
+  refused receipts. The claim repair itself does not change grant/receipt JSON;
+  the deadline outcome extension is listed separately below. This is unreleased
+  source, not an available 0.2.9 package fix.
+
+### Changed
+
+- `agent-guard push --git-timeout-seconds` accepts 1–3600 seconds, default 300,
+  separately for preview and execution; confirmation time is excluded. Rust
+  callers can use `PushBroker::with_git_timeout` without changing existing
+  `BrokerGitOptions` literals. This is unreleased source, not in 0.2.9 packages.
+- Broker v1 receipts add `attempt.outcome: indeterminate`; old pushed/refused
+  encodings and signing preimages remain byte-stable. Consumers must handle or
+  reject the new variant, never turn an unknown outcome into success/refusal.
+  The CLI exits 3 for uncertainty and prints read-only reconciliation guidance.
+- Patched Brokers retain `spent/claim-<id>.consumed` alongside archived grant
+  JSON. Stop unpatched Broker processes before upgrading a store; never remove
+  these markers as stale locks or restore only unspent JSON to retry. A fresh
+  approval uses a new ID. This does not protect against whole-store rollback,
+  writable grant stores, mixed old/new consumers or power-loss durability.
+  See the [claim repair plan](docs/plans/2026-10-22-grant-claim-fence.md).
+
 ### Fixed
 
 - Broker Git subprocesses use a shared finite budget for each preview and each
@@ -22,17 +51,12 @@ The `[Unreleased]` heading is rolled forward manually before each release; do no
   retain the exact transaction and spent grant as `indeterminate`, with no
   automatic retry. Definite rejection requires Git porcelain for the exact
   approved ref; existing stale-lease refusals and successful pushes remain.
-
-### Changed
-
-- `agent-guard push --git-timeout-seconds` accepts 1–3600 seconds, default 300,
-  separately for preview and execution; confirmation time is excluded. Rust
-  callers can use `PushBroker::with_git_timeout` without changing existing
-  `BrokerGitOptions` literals. This is unreleased source, not in 0.2.9 packages.
-- Broker v1 receipts add `attempt.outcome: indeterminate`; old pushed/refused
-  encodings and signing preimages remain byte-stable. Consumers must handle or
-  reject the new variant, never turn an unknown outcome into success/refusal.
-  The CLI exits 3 for uncertainty and prints read-only reconciliation guidance.
+- Windows CLI approval-ledger writers request read access as required by the
+  existing byte-range lock, in addition to append access. Locks, append-only
+  writes and error refusal remain; Unix write-only ledger access is unchanged.
+  The full native Broker/CLI gate exposed this existing compatibility failure
+  after the grant tests passed. This does not turn the advisory SDK ledger into
+  an authenticated grant store.
 
 ## [0.2.9] - 2026-10-22
 
