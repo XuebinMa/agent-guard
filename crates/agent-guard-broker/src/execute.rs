@@ -48,6 +48,10 @@ pub enum ExecuteError {
     UnsupportedShape { kind: RefUpdateKind },
     #[error("git refused the push: {0}")]
     Push(#[source] GitError),
+    #[error("push result is unknown: {0}")]
+    Indeterminate(#[source] GitError),
+    #[error("push was not started: {0}")]
+    NotStarted(#[source] GitError),
 }
 
 /// Compatibility wrapper using strict defaults: no inherited Git config and
@@ -134,17 +138,22 @@ impl PushBroker {
         // question. GitSnapshot::capture runs only local plumbing. The URL and
         // OID must still equal what the approver saw before `ls-remote` is
         // permitted to run.
-        let snapshot =
-            match GitSnapshot::capture(repo, &approved.remote, &approved.branch, &self.options) {
-                Ok(snapshot) => snapshot,
-                Err(error) => {
-                    return ExecutionAttempt {
-                        transaction: Some(approved),
-                        grant_id: consumed_grant_id,
-                        result: Err(ExecuteError::Resolve(error)),
-                    }
+        let snapshot = match GitSnapshot::capture(
+            repo,
+            &approved.remote,
+            &approved.branch,
+            &self.options,
+            self.git_timeout,
+        ) {
+            Ok(snapshot) => snapshot,
+            Err(error) => {
+                return ExecutionAttempt {
+                    transaction: Some(approved),
+                    grant_id: consumed_grant_id,
+                    result: Err(ExecuteError::Resolve(error)),
                 }
-            };
+            }
+        };
 
         let mut local_presentation = approved.clone();
         local_presentation.remote_url = snapshot.remote_url.clone();
@@ -201,7 +210,11 @@ impl PushBroker {
                 grant,
                 git_output,
             })
-            .map_err(ExecuteError::Push);
+            .map_err(|error| match error {
+                GitError::Rejected { .. } => ExecuteError::Push(error),
+                GitError::TimedOut { started: false, .. } => ExecuteError::NotStarted(error),
+                other => ExecuteError::Indeterminate(other),
+            });
 
         ExecutionAttempt {
             transaction: Some(approved),
@@ -223,6 +236,7 @@ fn push_pinned(snapshot: &GitSnapshot, tx: &PushTransaction) -> Result<String, G
             snapshot.push(&[
                 "push",
                 "--no-verify",
+                "--porcelain",
                 &lease,
                 "--",
                 &tx.remote_url,
@@ -234,6 +248,7 @@ fn push_pinned(snapshot: &GitSnapshot, tx: &PushTransaction) -> Result<String, G
             snapshot.push(&[
                 "push",
                 "--no-verify",
+                "--porcelain",
                 &lease,
                 "--",
                 &tx.remote_url,
@@ -277,6 +292,9 @@ impl PushBroker {
         let attempt = self.execute_attempt(repo, grant_dir, grant_id, policy_hash, now);
         let outcome = match attempt.result {
             Ok(_) => PushAttempt::Pushed,
+            Err(ExecuteError::Indeterminate(error)) => PushAttempt::Indeterminate {
+                reason: error.to_string(),
+            },
             Err(error) => PushAttempt::Refused {
                 reason: error.to_string(),
             },

@@ -87,14 +87,23 @@ class AuthenticatedGitTests(unittest.TestCase):
         )
         self.receipt = self.root / "receipt.json"
 
-    def broker(self, answer, config=None):
+    def broker(self, answer, config=None, timeout_seconds=None):
+        extra = [] if timeout_seconds is None else ["--git-timeout-seconds", str(timeout_seconds)]
         return subprocess.run(
             [str(self.cli), "push", "--repo", str(self.work),
              "--policy", str(self.policy), "--git-config", str(config or self.config),
              "--remote", "origin", "--branch", "main", "--grants", str(self.root / "grants"),
-             "--receipt", str(self.receipt)],
+             "--receipt", str(self.receipt), *extra],
             input=answer, capture_output=True, timeout=30, env=git_env(), cwd=self.root,
         )
+
+    def assert_consumed_grant(self, record):
+        grant_id = record["grant_id"]
+        self.assertTrue(grant_id)
+        store = self.root / "grants"
+        self.assertTrue((store / "spent" / f"claim-{grant_id}.consumed").is_file())
+        self.assertTrue((store / "spent" / f"{grant_id}.json").is_file())
+        self.assertFalse((store / f"{grant_id}.json").exists())
 
     def test_reachable_tls_service_refuses_unauthenticated_mutation(self):
         connection = http.client.HTTPSConnection(
@@ -113,6 +122,57 @@ class AuthenticatedGitTests(unittest.TestCase):
         self.assertTrue(self.service.requests)
         self.assertFalse(any(auth for _, _, auth in self.service.requests))
 
+    def test_preview_timeout_never_issues_a_grant_or_execution_receipt(self):
+        self.service.pause_at = "preview"
+        start = time.monotonic()
+        result = self.broker(b"y\n", timeout_seconds=1)
+        self.assertEqual(result.returncode, 2, result.stderr.decode())
+        self.assertTrue(self.service.pause_reached.is_set())
+        self.assertLess(time.monotonic() - start, 4)
+        self.assertIn("operation budget", result.stderr.decode())
+        self.assertFalse(self.receipt.exists())
+        self.assertFalse((self.root / "grants").exists())
+        self.assertIsNone(self.service.tip())
+
+    def test_execution_query_timeout_consumes_grant_but_does_not_launch_push(self):
+        self.service.pause_at = "execution"
+        result = self.broker(b"y\n", timeout_seconds=1)
+        self.assertEqual(result.returncode, 1, result.stderr.decode())
+        self.assertTrue(self.service.pause_reached.is_set())
+        record = json.loads(self.receipt.read_text())
+        self.assertEqual(record["attempt"]["outcome"], "refused")
+        self.assert_consumed_grant(record)
+        self.assertIsNone(self.service.tip())
+        self.assertFalse(any(method == "POST" for method, _, _ in self.service.requests))
+
+    def test_lost_push_response_does_not_claim_the_updated_remote_was_unchanged(self):
+        self.service.pause_at = "after_update"
+        result = self.broker(b"y\n", timeout_seconds=1)
+        self.assertTrue(self.service.pause_reached.is_set())
+        self.assertEqual(self.service.tip(), self.oid, "the fixture really applied the approved ref")
+        record = json.loads(self.receipt.read_text())
+        self.assertEqual(record["transaction"]["local_oid"], self.oid)
+        self.assertEqual(record["transaction"]["remote_url"], self.service.url)
+        self.assert_consumed_grant(record)
+        self.assertEqual(record["attempt"]["outcome"], "indeterminate")
+        self.assertEqual(result.returncode, 3)
+        self.assertIn("result is unknown", result.stderr.decode())
+        self.assertNotIn("Not pushed", result.stderr.decode())
+        posts = [entry for entry in self.service.requests if entry[0] == "POST"]
+        self.assertEqual(len(posts), 1, "no automatic second push is permitted")
+
+    def test_a_transport_disconnect_after_update_is_indeterminate_too(self):
+        self.service.drop_update_response = True
+        result = self.broker(b"y\n")
+        self.assertTrue(self.service.pause_reached.is_set())
+        self.assertEqual(self.service.tip(), self.oid)
+        record = json.loads(self.receipt.read_text())
+        self.assertEqual(record["attempt"]["outcome"], "indeterminate")
+        self.assertEqual(result.returncode, 3)
+        self.assertNotIn("Not pushed", result.stderr.decode())
+        self.assertEqual(len([entry for entry in self.service.requests if entry[0] == "POST"]), 1)
+        self.assert_consumed_grant(record)
+
     def test_approved_host_push_matches_independent_ref_and_receipt(self):
         result = self.broker(b"y\n")
         self.assertEqual(result.returncode, 0, result.stderr.decode())
@@ -120,7 +180,7 @@ class AuthenticatedGitTests(unittest.TestCase):
         record = json.loads(self.receipt.read_text())
         self.assertEqual(record["transaction"]["remote_url"], self.service.url)
         self.assertEqual(record["transaction"]["local_oid"], self.oid)
-        self.assertTrue(record["grant_id"])
+        self.assert_consumed_grant(record)
         self.assertEqual(record["attempt"]["outcome"], "pushed")
         self.assertEqual(record["witness"]["kind"], "unsigned")
         self.assertIn(self.service.url, result.stdout.decode())

@@ -102,6 +102,10 @@ enum Commands {
         /// and demos; HTTPS and SSH are the production defaults.
         #[arg(long)]
         allow_local_file_remote: bool,
+        /// Total Git-operation budget for preview and, separately, execution.
+        /// Confirmation time is excluded. Timeout never authorizes a retry.
+        #[arg(long, default_value_t = 300, value_parser = clap::value_parser!(u64).range(1..=3600))]
+        git_timeout_seconds: u64,
         /// Persist the execution-stage receipt here as JSON.
         #[arg(long)]
         receipt: Option<PathBuf>,
@@ -136,6 +140,7 @@ fn main() {
             grants,
             git_config,
             allow_local_file_remote,
+            git_timeout_seconds,
             receipt,
         } => run_push(PushCommandOptions {
             policy,
@@ -146,6 +151,7 @@ fn main() {
             grants,
             git_config,
             allow_local_file_remote,
+            git_timeout_seconds,
             receipt_path: receipt,
         }),
     };
@@ -285,6 +291,7 @@ struct PushCommandOptions {
     grants: Option<PathBuf>,
     git_config: Option<PathBuf>,
     allow_local_file_remote: bool,
+    git_timeout_seconds: u64,
     receipt_path: Option<PathBuf>,
 }
 
@@ -298,6 +305,7 @@ fn run_push(options: PushCommandOptions) -> i32 {
         grants,
         git_config,
         allow_local_file_remote,
+        git_timeout_seconds,
         receipt_path,
     } = options;
     let repo = repo.as_path();
@@ -361,7 +369,9 @@ fn run_push(options: PushCommandOptions) -> i32 {
     let broker = PushBroker::new(BrokerGitOptions {
         trusted_config: Some(git_config),
         allow_local_file_remote,
-    });
+    })
+    .with_git_timeout(std::time::Duration::from_secs(git_timeout_seconds))
+    .expect("clap enforces a positive Git timeout of at most one hour");
 
     let transaction = match broker.resolve_push_transaction(repo, remote, branch) {
         Ok(transaction) => transaction,
@@ -455,6 +465,12 @@ fn run_push(options: PushCommandOptions) -> i32 {
         PushAttempt::Refused { reason } => {
             eprintln!("\nNot pushed: {}", printable(reason));
             1
+        }
+        PushAttempt::Indeterminate { reason } => {
+            eprintln!("\nPush result is unknown: {}", printable(reason));
+            eprintln!("The one-use authorization is consumed. Do not retry automatically. Independently check {} refs/heads/{} against {} before seeking a fresh preview.",
+                display_safe(&transaction.remote_url), display_safe(branch), display_safe(&transaction.local_oid));
+            3
         }
     }
 }
@@ -564,6 +580,32 @@ mod tests {
             "--allow-local-file-remote",
         ]);
         assert!(parsed.is_ok(), "{:?}", parsed.err());
+    }
+
+    #[test]
+    fn git_budget_is_finite_and_validated_before_policy_or_git() {
+        for value in ["0", "3601", "-1", "unlimited"] {
+            assert!(Cli::try_parse_from([
+                "agent-guard",
+                "push",
+                "--branch",
+                "main",
+                "--git-timeout-seconds",
+                value
+            ])
+            .is_err());
+        }
+        for value in ["1", "300", "3600"] {
+            assert!(Cli::try_parse_from([
+                "agent-guard",
+                "push",
+                "--branch",
+                "main",
+                "--git-timeout-seconds",
+                value
+            ])
+            .is_ok());
+        }
     }
 
     #[test]

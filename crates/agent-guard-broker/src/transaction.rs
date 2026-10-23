@@ -93,7 +93,7 @@ impl PushBroker {
         remote: &str,
         branch: &str,
     ) -> Result<PushTransaction, GitError> {
-        let snapshot = GitSnapshot::capture(repo, remote, branch, &self.options)?;
+        let snapshot = GitSnapshot::capture(repo, remote, branch, &self.options, self.git_timeout)?;
         resolve_from_snapshot(&snapshot, remote, branch)
     }
 }

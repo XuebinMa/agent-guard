@@ -92,6 +92,11 @@ class LocalGitService:
         self.handshake_started = threading.Event()
         self._closed = False
         self.requests = []  # method, path, authenticated; never raw headers.
+        self.pause_at = None  # Owned timeout tests only: preview/execution/after_update.
+        self.drop_update_response = False
+        self.pause_reached = threading.Event()
+        self._release_pause = threading.Event()
+        self._advertisements = 0
         run_git(self.root, "init", "--bare", "-b", "main", str(self.remote))
         # No live identity or key store. Key/cert are ephemeral and private.
         subprocess.run(
@@ -143,6 +148,13 @@ class LocalGitService:
                 if not authenticated:
                     self.refuse(401)
                     return
+                if self.command == "GET" and parsed.path.endswith("/info/refs"):
+                    with owner._lock:
+                        owner._advertisements += 1
+                        number = owner._advertisements
+                    phase = {1: "preview", 2: "execution"}.get(number)
+                    if phase is not None and owner.pause(phase):
+                        return
                 if self.headers.get("Transfer-Encoding"):
                     self.refuse(400)
                     return
@@ -174,6 +186,13 @@ class LocalGitService:
                 except subprocess.TimeoutExpired:
                     self.refuse(504)
                     return
+                if self.command == "POST" and parsed.path.endswith("/git-receive-pack"):
+                    if owner.drop_update_response:
+                        owner.pause_reached.set()
+                        self.close_connection = True
+                        return
+                    if owner.pause("after_update"):
+                        return
                 headers, separator, body = result.stdout.partition(b"\r\n\r\n")
                 if not separator or result.returncode:
                     self.refuse(502)
@@ -192,7 +211,10 @@ class LocalGitService:
                         self.send_header(key.decode("ascii"), value.strip().decode("ascii"))
                 self.send_header("Content-Length", str(len(body)))
                 self.end_headers()
-                self.wfile.write(body)
+                try:
+                    self.wfile.write(body)
+                except (BrokenPipeError, ConnectionResetError, ssl.SSLError):
+                    pass  # Expected when an owned timeout test closes its client.
 
         tls = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
         tls.minimum_version = ssl.TLSVersion.TLSv1_2
@@ -231,6 +253,14 @@ class LocalGitService:
     def _auth_header(self):
         return "Authorization: " + self._auth
 
+    def pause(self, phase):
+        if self.pause_at != phase:
+            return False
+        self.pause_reached.set()
+        # A finite server delay is an independent outer bound even if the
+        # product timeout regresses. Closing the fixture releases the handler.
+        return self._release_pause.wait(3)
+
     def tip(self):
         result = run_git(self.remote, "show-ref", "--quiet", "--verify", "refs/heads/main", check=False)
         if result.returncode == 1:
@@ -241,6 +271,7 @@ class LocalGitService:
     def close(self):
         if self._closed:
             return
+        self._release_pause.set()
         self.server.shutdown()
         self.server.server_close()
         self.thread.join(timeout=3)

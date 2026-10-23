@@ -1,14 +1,16 @@
 use std::fs::{self, File, Metadata};
-use std::io::{Read, Write};
+use std::io::Read;
 use std::path::{Path, PathBuf};
-use std::process::{Command, Output, Stdio};
+use std::process::{Command, Output};
+use std::time::Duration;
 
 use tempfile::TempDir;
 
 use super::command::{failed, sanitized_git_command};
+use super::process::{run, Deadline};
 use super::validate::{
     read_single_push_url, reject_partial_clone, validate_push_target, validate_remote_url,
-    validate_trusted_config_snapshot,
+    validate_trusted_config_with_deadline,
 };
 use super::{BrokerGitOptions, GitError};
 
@@ -18,6 +20,7 @@ pub(crate) struct GitSnapshot {
     trusted_config: PathBuf,
     hooks_dir: PathBuf,
     allow_local_file_remote: bool,
+    deadline: Deadline,
     pub(crate) remote_url: String,
     pub(crate) local_oid: String,
 }
@@ -28,7 +31,9 @@ impl GitSnapshot {
         remote: &str,
         branch: &str,
         options: &BrokerGitOptions,
+        timeout: Duration,
     ) -> Result<Self, GitError> {
+        let deadline = Deadline::new(timeout);
         validate_push_target(remote, branch)?;
 
         let repo = repo
@@ -48,8 +53,8 @@ impl GitSnapshot {
         let temp = tempfile::tempdir()?;
         let source_config_snapshot = temp.path().join("source.gitconfig");
         fs::write(&source_config_snapshot, source_config_bytes)?;
-        reject_partial_clone(&source_config_snapshot)?;
-        let remote_url = read_single_push_url(&source_config_snapshot, remote)?;
+        reject_partial_clone(&source_config_snapshot, deadline)?;
+        let remote_url = read_single_push_url(&source_config_snapshot, remote, deadline)?;
         validate_remote_url(&remote_url, options.allow_local_file_remote)?;
 
         let trusted_bytes = read_trusted_config(options.trusted_config.as_deref(), &repo)?;
@@ -66,7 +71,7 @@ impl GitSnapshot {
 
         let trusted_config = temp.path().join("trusted.gitconfig");
         fs::write(&trusted_config, trusted_bytes)?;
-        let authentication = validate_trusted_config_snapshot(&trusted_config)?;
+        let authentication = validate_trusted_config_with_deadline(&trusted_config, deadline)?;
         authentication.authorize_destination(&remote_url)?;
 
         copy_primary_objects(&source_git.join("objects"), &git_dir.join("objects"))?;
@@ -83,6 +88,7 @@ impl GitSnapshot {
             trusted_config,
             hooks_dir,
             allow_local_file_remote: options.allow_local_file_remote,
+            deadline,
             remote_url,
             local_oid: String::new(),
         };
@@ -136,7 +142,20 @@ impl GitSnapshot {
     }
 
     pub(crate) fn push(&self, args: &[&str]) -> Result<String, GitError> {
-        self.run(args)
+        let output = self.output(args)?;
+        if output.status.success() {
+            return Ok(String::from_utf8_lossy(&output.stdout).trim().to_string());
+        }
+        if args
+            .last()
+            .is_some_and(|refspec| explicitly_rejected(&output.stdout, refspec))
+        {
+            return Err(GitError::Rejected {
+                status: output.status.code(),
+                stderr: String::from_utf8_lossy(&output.stderr).trim().to_string(),
+            });
+        }
+        Err(failed(args, output))
     }
 
     /// Ask for one object's type without interpreting a generic fatal exit as
@@ -145,21 +164,13 @@ impl GitSnapshot {
     /// errors.
     pub(crate) fn object_is_commit(&self, oid: &str) -> Result<bool, GitError> {
         let args = ["cat-file", "--batch-check=%(objectname) %(objecttype)"];
-        let mut child = self
-            .command(&args)
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn()?;
-        child
-            .stdin
-            .take()
-            .ok_or_else(|| GitError::Unexpected {
-                command: args.join(" "),
-                detail: "git did not provide the requested stdin pipe".to_string(),
-            })?
-            .write_all(format!("{oid}\n").as_bytes())?;
-        let output = child.wait_with_output()?;
+        let input = format!("{oid}\n");
+        let output = run(
+            self.command(&args),
+            Some(input.as_bytes()),
+            self.deadline,
+            "cat-file",
+        )?;
         if !output.status.success() {
             return Err(failed(&args, output));
         }
@@ -177,7 +188,12 @@ impl GitSnapshot {
     }
 
     fn output(&self, args: &[&str]) -> Result<Output, GitError> {
-        Ok(self.command(args).output()?)
+        run(
+            self.command(args),
+            None,
+            self.deadline,
+            args.first().copied().unwrap_or("git"),
+        )
     }
 
     fn command(&self, args: &[&str]) -> Command {
@@ -197,6 +213,25 @@ impl GitSnapshot {
         command.args(args).current_dir(self._temp.path());
         command
     }
+}
+
+fn explicitly_rejected(stdout: &[u8], expected_refspec: &str) -> bool {
+    let Ok(text) = std::str::from_utf8(stdout) else {
+        return false;
+    };
+    let mut statuses = text
+        .lines()
+        .filter(|line| line.as_bytes().get(1) == Some(&b'\t'));
+    let Some(line) = statuses.next() else {
+        return false;
+    };
+    if statuses.next().is_some() {
+        return false;
+    }
+    let fields = line.split('\t').collect::<Vec<_>>();
+    matches!(fields.as_slice(), ["!", refspec, summary]
+        if *refspec == expected_refspec && ["[rejected]", "[remote rejected]"].iter().any(|label|
+            summary.strip_prefix(label).is_some_and(|tail| tail.is_empty() || (tail.starts_with(" (") && tail.ends_with(')')))))
 }
 
 fn read_trusted_config(path: Option<&Path>, repo: &Path) -> Result<Vec<u8>, GitError> {
@@ -525,6 +560,30 @@ mod cost;
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn only_an_exact_rejected_porcelain_ref_is_a_definite_refusal() {
+        let refspec = "0123456789012345678901234567890123456789:refs/heads/main";
+        for reason in [
+            "[rejected] (stale info)",
+            "[remote rejected] (hook declined)",
+        ] {
+            assert!(explicitly_rejected(
+                format!("To /owned-fixture\n!\t{refspec}\t{reason}\nDone\n").as_bytes(),
+                refspec
+            ));
+        }
+        for report in [
+            format!("!\t{refspec}\t[remote failure] (remote failed to report status)\n"),
+            format!("*\t{refspec}\t[new branch]\n"),
+            "!\tother:refs/heads/main\t[rejected]\n".to_string(),
+            format!("!\t{refspec}\t[rejected]not-a-status\n"),
+            format!("!\t{refspec}\t[rejected]\n*\tother:refs/heads/other\t[new branch]\n"),
+            "fatal: connection closed\n".to_string(),
+        ] {
+            assert!(!explicitly_rejected(report.as_bytes(), refspec), "{report}");
+        }
+    }
 
     #[test]
     fn packed_refs_copy_only_local_branch_names() {

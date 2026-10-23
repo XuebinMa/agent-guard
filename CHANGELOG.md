@@ -11,17 +11,31 @@ The `[Unreleased]` heading is rolled forward manually before each release; do no
 
 ### Security
 
+- Update the locked Tokio dependency from 1.51.0 to the minimal patched
+  1.51.6 for [RUSTSEC-2026-0386](https://rustsec.org/advisories/RUSTSEC-2026-0386.html).
+  The SDK manifest's compatible version range and project MSRV are unchanged;
+  no other locked package or advisory policy is changed. Existing downstream
+  lockfiles still require their own update. This is not a published package fix.
 - One-use Broker grants now require exclusive creation of a permanent
   consumption marker before any grant read or archive rename. A native Windows
   regression observed 16 successful concurrent claims for one grant when
   rename alone provided exclusivity; this does not establish 16 remote writes.
   Failures and process interruption never remove the marker, legacy spent
   entries cannot be overwritten, and marker-only consumption is retained in
-  refused receipts. Grant and receipt JSON schemas are unchanged. This is
-  unreleased source, not an available 0.2.9 package fix.
+  refused receipts. The claim repair itself does not change grant/receipt JSON;
+  the deadline outcome extension is listed separately below. This is unreleased
+  source, not an available 0.2.9 package fix.
 
 ### Changed
 
+- `agent-guard push --git-timeout-seconds` accepts 1–3600 seconds, default 300,
+  separately for preview and execution; confirmation time is excluded. Rust
+  callers can use `PushBroker::with_git_timeout` without changing existing
+  `BrokerGitOptions` literals. This is unreleased source, not in 0.2.9 packages.
+- Broker v1 receipts add `attempt.outcome: indeterminate`; old pushed/refused
+  encodings and signing preimages remain byte-stable. Consumers must handle or
+  reject the new variant, never turn an unknown outcome into success/refusal.
+  The CLI exits 3 for uncertainty and prints read-only reconciliation guidance.
 - Patched Brokers retain `spent/claim-<id>.consumed` alongside archived grant
   JSON. Stop unpatched Broker processes before upgrading a store; never remove
   these markers as stale locks or restore only unspent JSON to retry. A fresh
@@ -31,6 +45,22 @@ The `[Unreleased]` heading is rolled forward manually before each release; do no
 
 ### Fixed
 
+- Python asynchronous lifecycle tests wait within a finite budget for queued
+  audit records to become visible, instead of treating callback completion as
+  a synchronous file flush. Real locked-file delay controls retain exact
+  outcome/one-record checks; missing and malformed reports still fail. This is
+  a test synchronization repair, not stronger production audit durability.
+- Broker Git subprocesses use a shared finite budget for each preview and each
+  execution, including config reads and batch object checks. Managed process
+  groups/jobs are terminated with bounded leader reaping; regular-file output
+  capture avoids inherited-pipe waits and refuses output beyond 16 MiB per stream.
+  This does not bound hung OS/filesystem/spawn calls or contain deliberately
+  detached trusted helpers. See the [implementation plan](docs/plans/2026-10-22-broker-git-deadlines.md).
+- An unacknowledged push is no longer recorded/displayed as definitely refused.
+  Timeout, lost response and transport/collection failures after push invocation
+  retain the exact transaction and spent grant as `indeterminate`, with no
+  automatic retry. Definite rejection requires Git porcelain for the exact
+  approved ref; existing stale-lease refusals and successful pushes remain.
 - Windows CLI approval-ledger writers request read access as required by the
   existing byte-range lock, in addition to append access. Locks, append-only
   writes and error refusal remain; Unix write-only ledger access is unchanged.

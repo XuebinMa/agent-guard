@@ -2,6 +2,7 @@ use std::ffi::OsString;
 use std::path::Path;
 use std::process::{Command, Output};
 
+use super::process::{run, Deadline};
 use super::GitError;
 
 pub(super) fn failed(args: &[&str], output: Output) -> GitError {
@@ -65,7 +66,11 @@ fn config_only_command() -> Command {
     sanitized_git_command(Path::new(null_config))
 }
 
-pub(super) fn config_values(config: &Path, key: &str) -> Result<Vec<String>, GitError> {
+pub(super) fn config_values(
+    config: &Path,
+    key: &str,
+    deadline: Deadline,
+) -> Result<Vec<String>, GitError> {
     let args: Vec<OsString> = vec![
         "config".into(),
         "--file".into(),
@@ -75,7 +80,9 @@ pub(super) fn config_values(config: &Path, key: &str) -> Result<Vec<String>, Git
         "--get-all".into(),
         key.into(),
     ];
-    let output = config_only_command().args(&args).output()?;
+    let mut command = config_only_command();
+    command.args(&args);
+    let output = run(command, None, deadline, "config")?;
     if output.status.success() {
         return nul_fields(&output.stdout, &format!("config --get-all {key}"));
     }
@@ -89,12 +96,15 @@ pub(super) fn config_values(config: &Path, key: &str) -> Result<Vec<String>, Git
     })
 }
 
-pub(super) fn config_names(config: &Path) -> Result<Vec<String>, GitError> {
-    let output = config_only_command()
-        .args(["config", "--file"])
-        .arg(config)
-        .args(["--no-includes", "--name-only", "--list", "--null"])
-        .output()?;
+pub(super) fn config_names(config: &Path, deadline: Deadline) -> Result<Vec<String>, GitError> {
+    let mut command = config_only_command();
+    command.args(["config", "--file"]).arg(config).args([
+        "--no-includes",
+        "--name-only",
+        "--list",
+        "--null",
+    ]);
+    let output = run(command, None, deadline, "config")?;
     if !output.status.success() {
         return Err(GitError::Failed {
             command: format!("config --file {} --list", config.display()),

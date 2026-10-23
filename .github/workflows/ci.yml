@@ -160,7 +160,7 @@ jobs:
         uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
       - name: Run Seatbelt integration tests
         run: cargo test -p agent-guard-sandbox --features macos-sandbox --test macos_integration -- --nocapture
-      - name: Verify broker runtime and one-use grants on macOS
+      - name: Verify broker deadlines and one-use grants on macOS
         timeout-minutes: 8
         run: cargo test -p agent-guard-broker -p agent-guard-cli --locked
 
@@ -175,7 +175,7 @@ jobs:
         uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
       - name: Run Job Object integration tests
         run: cargo test -p agent-guard-sandbox --features windows-sandbox --test windows_job_integration -- --nocapture
-      - name: Verify broker runtime and one-use grants on Windows
+      - name: Verify broker deadlines and one-use grants on Windows
         timeout-minutes: 8
         run: cargo test -p agent-guard-broker -p agent-guard-cli --locked
       - name: Verify Windows approval ledger locking compatibility
