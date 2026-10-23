@@ -38,6 +38,68 @@ def reported_events(audit_path):
     ]
 
 
+async def wait_for_reported_events(audit_path, *, timeout=2):
+    return reported_events(audit_path)
+
+
+@pytest.mark.skipif(os.name != "posix", reason="requires POSIX advisory file locks")
+@pytest.mark.parametrize("fails", [False, True])
+def test_completed_handoff_report_survives_delayed_file_visibility(tmp_path, fails):
+    import fcntl
+
+    audit_path = tmp_path / "audit.jsonl"
+    with audit_path.open("a") as locked_file:
+        fcntl.flock(locked_file, fcntl.LOCK_EX)
+        guard = audit_guard(audit_path)
+
+        async def action(value):
+            if fails:
+                raise ValueError("delayed audit callback failed")
+            return value + 1
+
+        async def scenario():
+            wrapped = wrap_openai_tool(guard, action, tool="calc", mode="auto")
+            if fails:
+                with pytest.raises(ValueError, match="delayed audit callback failed"):
+                    await asyncio.wait_for(wrapped(1), timeout=1)
+            else:
+                assert await asyncio.wait_for(wrapped(1), timeout=1) == 2
+            assert reported_events(audit_path) == []
+
+            waiter = asyncio.create_task(wait_for_reported_events(audit_path))
+            try:
+                await asyncio.sleep(0.03)
+                assert not waiter.done(), "completion does not synchronously flush the audit file"
+            finally:
+                fcntl.flock(locked_file, fcntl.LOCK_UN)
+            reports = await asyncio.wait_for(waiter, timeout=2)
+            assert len(reports) == 1
+            assert reports[0]["exit_code"] == (1 if fails else 0)
+
+        asyncio.run(scenario())
+
+
+def test_report_waiter_rejects_a_missing_report_within_its_budget(tmp_path):
+    async def scenario():
+        started = time.monotonic()
+        with pytest.raises(AssertionError, match="execution_reported"):
+            await wait_for_reported_events(tmp_path / "absent.jsonl", timeout=0.03)
+        assert time.monotonic() - started < 0.5
+
+    asyncio.run(scenario())
+
+
+def test_report_waiter_rejects_malformed_json_instead_of_retrying(tmp_path):
+    audit_path = tmp_path / "malformed.jsonl"
+    audit_path.write_text("not JSON\n")
+
+    async def scenario():
+        with pytest.raises(json.JSONDecodeError):
+            await wait_for_reported_events(audit_path, timeout=0.03)
+
+    asyncio.run(scenario())
+
+
 @pytest.mark.parametrize("returns_awaitable", [False, True])
 @pytest.mark.parametrize("fails", [False, True])
 def test_openai_async_handoff_reports_the_awaited_result(
@@ -73,7 +135,7 @@ def test_openai_async_handoff_reports_the_awaited_result(
             else:
                 assert await task == 2
 
-        reports = reported_events(audit_path)
+        reports = await wait_for_reported_events(audit_path)
         assert len(reports) == 1
         assert reports[0]["exit_code"] == (1 if fails else 0)
 
@@ -120,11 +182,7 @@ def test_cancelled_thread_handoff_reports_only_after_the_worker_finishes(tmp_pat
             release.set()
             assert await asyncio.to_thread(finished.wait, 2)
 
-        for _ in range(100):
-            reports = reported_events(audit_path)
-            if reports:
-                break
-            await asyncio.sleep(0.01)
+        reports = await wait_for_reported_events(audit_path)
         assert len(reports) == 1
         assert reports[0]["exit_code"] == (1 if fails else 0)
         assert results == ([] if fails else ["completed"])
