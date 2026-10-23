@@ -93,7 +93,7 @@ impl PushBroker {
         // Claim first. Nothing above this point inspects the repository or can
         // invoke Git, so one approval cannot be reused to probe several
         // destinations. Policy and expiry are validated as part of the same
-        // claim, after the atomic rename has made it one-use.
+        // claim, after exclusive marker creation has made it one-use.
         let grant = match claim_grant(grant_dir, grant_id, policy_hash, now) {
             Ok(grant) => grant,
             Err(error) => {

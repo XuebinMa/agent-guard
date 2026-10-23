@@ -1,17 +1,17 @@
 //! One-use authorization for one resolved transaction.
 //!
-//! ## Spending is a rename
+//! ## Spending reserves a permanent exclusive marker
 //!
-//! A grant is a file. Spending it renames that file into a sibling
-//! `spent/` directory, and `rename` within a filesystem is one atomic
-//! operation: of many callers racing for the same grant, exactly one syscall
-//! succeeds and the rest get "no such file". Nothing here reads the grant to
-//! decide whether it is still available, because a read followed by a write
-//! has a window between them, and that window is the whole of what one-use
-//! has to exclude.
+//! A grant is a file. A claimant must exclusively create its consumption
+//! marker in `spent/` before reading or archiving the grant. Renaming alone
+//! does not guarantee a unique winner on every platform. The marker is never
+//! removed, including after validation failure or process interruption; a
+//! stale-looking marker is consumed authority, not a recoverable lock.
 //!
-//! The spent file is kept rather than deleted. A grant that authorized a push
-//! is evidence about that push.
+//! The spent JSON remains evidence about the attempt. Legacy spent entries
+//! also prevent reuse. Stop old brokers before upgrading a store: old binaries
+//! ignore markers. This assumes a broker-owned local store and does not protect
+//! against writable stores, whole-store rollback or power-loss durability.
 //!
 //! ## Spending happens before validation, deliberately
 //!
@@ -115,7 +115,43 @@ fn grant_path(dir: &Path, id: &str) -> Result<PathBuf, GrantError> {
 }
 
 pub(crate) fn grant_was_spent(dir: &Path, id: &str) -> bool {
-    grant_path(&dir.join("spent"), id).is_ok_and(|path| path.is_file())
+    let spent_dir = dir.join("spent");
+    let Ok(spent_path) = grant_path(&spent_dir, id) else {
+        return false;
+    };
+    std::fs::symlink_metadata(claim_marker_path(&spent_dir, id)).is_ok()
+        || std::fs::symlink_metadata(spent_path).is_ok()
+}
+
+fn claim_marker_path(spent_dir: &Path, validated_id: &str) -> PathBuf {
+    spent_dir.join(format!("claim-{validated_id}.consumed"))
+}
+
+fn reserve_claim(spent_dir: &Path, id: &str) -> Result<(), GrantError> {
+    let spent_path = grant_path(spent_dir, id)?;
+    let mut options = std::fs::OpenOptions::new();
+    options.write(true).create_new(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.mode(0o600);
+    }
+    let marker = match options.open(claim_marker_path(spent_dir, id)) {
+        Ok(marker) => marker,
+        Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {
+            return Err(GrantError::NotFound { id: id.to_string() });
+        }
+        Err(error) => return Err(error.into()),
+    };
+    marker.sync_all()?;
+    // Old stores have only the retained JSON. Never replace that evidence
+    // even if an unspent copy has reappeared. Inspect entries without following
+    // links; inability to inspect is an error, not evidence of availability.
+    match std::fs::symlink_metadata(spent_path) {
+        Ok(_) => Err(GrantError::NotFound { id: id.to_string() }),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(error.into()),
+    }
 }
 
 /// Record a human decision about `transaction` and return the grant id.
@@ -242,9 +278,9 @@ pub fn spend_grant(
 /// Atomically claim a grant and validate the facts that do not require
 /// inspecting a repository or contacting a remote.
 ///
-/// The rename is deliberately the first operation. Once a caller presents a
-/// grant id, policy drift, expiry, corruption, or later repository drift all
-/// burn that approval rather than leaving it reusable as a network oracle.
+/// Exclusive marker creation precedes all grant reads and archival. Policy
+/// drift, expiry, corruption and interrupted archival burn that approval
+/// rather than leaving it reusable as a network oracle.
 pub(crate) fn claim_grant(
     dir: &Path,
     id: &str,
@@ -254,11 +290,12 @@ pub(crate) fn claim_grant(
     let path = grant_path(dir, id)?;
     let spent_dir = dir.join("spent");
     std::fs::create_dir_all(&spent_dir)?;
+    restrict_directory(&spent_dir)?;
     let spent_path = grant_path(&spent_dir, id)?;
+    reserve_claim(&spent_dir, id)?;
 
-    // The one atomic step. Whoever wins this rename holds the grant; everyone
-    // else sees it gone. No read precedes it, because a read would create the
-    // window this exists to close.
+    // Only the exclusive-marker winner reaches the rename. Any failure keeps
+    // the marker; neither restart nor missing archive restores authority.
     match std::fs::rename(&path, &spent_path) {
         Ok(()) => {}
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
@@ -331,3 +368,7 @@ pub(crate) fn claim_grant(
 
     Ok(grant)
 }
+
+#[cfg(test)]
+#[path = "grant/claim_tests.rs"]
+mod claim_tests;

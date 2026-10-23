@@ -175,6 +175,41 @@ fn marker_only_interruption_is_receipted_before_repository_inspection() {
 }
 
 #[test]
+fn read_failure_after_archival_keeps_consumption_and_refuses_a_restored_source() {
+    let dir = tempfile::tempdir().unwrap();
+    let id = issue(dir.path());
+    let original = std::fs::read(pending(dir.path(), &id)).unwrap();
+    std::fs::remove_file(pending(dir.path(), &id)).unwrap();
+    std::fs::create_dir(pending(dir.path(), &id)).unwrap();
+    let record = PushBroker::default().execute_push_with_receipt(
+        &dir.path().join("not-a-repository"),
+        dir.path(),
+        &id,
+        "policy",
+        Utc::now(),
+        None,
+    );
+    assert!(matches!(record.attempt, PushAttempt::Refused { .. }));
+    assert_eq!(record.grant_id.as_deref(), Some(id.as_str()));
+    assert!(record.transaction.is_none());
+    assert!(
+        !pending(dir.path(), &id).exists(),
+        "archival actually succeeded"
+    );
+    assert!(archived(dir.path(), &id).is_dir());
+    assert!(marker(dir.path(), &id).is_file());
+    std::fs::remove_dir(archived(dir.path(), &id)).unwrap();
+    std::fs::write(pending(dir.path(), &id), original).unwrap();
+    unavailable(spend_grant(
+        dir.path(),
+        &id,
+        &transaction(),
+        "policy",
+        Utc::now(),
+    ));
+}
+
+#[test]
 fn dotted_ids_have_distinct_consumption_slots() {
     let dir = tempfile::tempdir().unwrap();
     let issued = issue(dir.path());

@@ -1,0 +1,85 @@
+{
+  "schema": "agent-guard/local-verification/v1",
+  "status": "unreleased_local_complete_native_ci_pending",
+  "base_main": "6751d9fb52c3eee14e939b1dc02376efd6fe571d",
+  "branch": "codex/grant-claim-fence",
+  "test_first_commit": "894cf6f2b28121b3eb65482e31b532101ec110e8",
+  "original_windows_red": {
+    "pr": 181,
+    "head": "77864226237c440c65204a40e1ec1928e1d1d206",
+    "run": 39880569681,
+    "job": 120176690362,
+    "rustc": "1.99.1 x86_64-pc-windows-msvc",
+    "test": "concurrent_spenders_produce_exactly_one_winner",
+    "expected_winners": 1,
+    "observed_winners": 16,
+    "remote_writes_proved": false,
+    "test_and_grant_code_unchanged_from_v029": true,
+    "raw_log_sha256": "8a8ce185af227d8e9b961d76776767c6fcd984ebe24b3fe2c0fe24b4562b1dee"
+  },
+  "local_red": {
+    "platform": "Darwin arm64",
+    "command": "cargo test -p agent-guard-broker --test grant_claims --locked",
+    "exit_code": 101,
+    "failed": 9,
+    "passed": 1,
+    "interpretation": "Includes new lifecycle/marker contract assertions, not nine separate exploits",
+    "raw_log_sha256": "28c5216a8ea6ad60e7e608c129f8917f8fcec4e523247496bfbbe5ef27d414bb"
+  },
+  "final_local_green": {
+    "broker": {
+      "exit_code": 0,
+      "passed": 84,
+      "ignored_existing_opt_in_cost_probe": 1,
+      "original_16_thread_assertion_unchanged": true,
+      "actual_process_contenders": 8,
+      "abrupt_exit_uses_production_reservation": true,
+      "post_archive_read_error_and_receipt_test": true,
+      "raw_log_sha256": "627cbecfd9ef1695200c8fcf8c5432d17df426076bafe9a6b3c93441ef47e3ba"
+    },
+    "cli_passed": 23,
+    "full": {
+      "exit_code": 0,
+      "rust_top_level_passed": 1219,
+      "rust_nested_child_passed": 1,
+      "rust_failed": 0,
+      "rust_existing_ignored_summaries": 3,
+      "python_passed": 108,
+      "python_optional_framework_skipped": 1,
+      "node_native_types_adapters_frameworks": "passed",
+      "actions_example_passed": 3,
+      "plugin_passed": 14,
+      "script_tests_passed": 52,
+      "markdown_files_checked": 89,
+      "version_action_pin_checks": "passed",
+      "raw_log_sha256": "b43822d10c1c5568102e90c37b327ab07f08d87dfca919bac46c0b3275661c27"
+    },
+    "strict_workspace_all_target_clippy": {
+      "exit_code": 0,
+      "raw_log_sha256": "f089d019bfaa42e8ec216978f93fb068327d5e0b733cae044dfd7c2182b56bbd"
+    },
+    "fresh_binding_parity": {
+      "exit_code": 0,
+      "rust_python_node_matched": 70,
+      "raw_log_sha256": "57a3f4800f8c7ecd869f001ccdc9ae8da0aa42d066d056e5c3f5d3bb229139ef"
+    },
+    "authenticated_owned_loopback_git": {
+      "exit_code": 0,
+      "passed": 9,
+      "raw_log_sha256": "af3872a4a978bafe7fadf6217532afca6ed38932f0f8c648b563206e06643684"
+    }
+  },
+  "reproduction": {
+    "red": "At the test-first commit run cargo test -p agent-guard-broker --test grant_claims --locked; nine assertions fail against unchanged production code",
+    "green": "At the repair head run cargo test -p agent-guard-broker -p agent-guard-cli --locked; inspect native Windows CI as well as local results",
+    "safety": "Owned temporary grant stores and finite Rust child fixtures; normal Git controls use temporary repos, loopback HTTPS and synthetic auth only"
+  },
+  "limits": [
+    "Native Windows/macOS/Linux exact-head CI still required",
+    "No mixed patched/unpatched consumers on the same store",
+    "Consumption markers are permanent, not stale locks",
+    "No guarantee for writable authority stores, whole-store rollback, arbitrary network filesystems or power loss",
+    "Windows ambient handles and general shared-hard-link findings remain open",
+    "No new dependency, schema, signing format, version, merge, release or advisory change"
+  ]
+}

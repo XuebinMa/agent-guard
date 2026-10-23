@@ -9,6 +9,26 @@ The `[Unreleased]` heading is rolled forward manually before each release; do no
 
 ## [Unreleased]
 
+### Security
+
+- One-use Broker grants now require exclusive creation of a permanent
+  consumption marker before any grant read or archive rename. A native Windows
+  regression observed 16 successful concurrent claims for one grant when
+  rename alone provided exclusivity; this does not establish 16 remote writes.
+  Failures and process interruption never remove the marker, legacy spent
+  entries cannot be overwritten, and marker-only consumption is retained in
+  refused receipts. Grant and receipt JSON schemas are unchanged. This is
+  unreleased source, not an available 0.2.9 package fix.
+
+### Changed
+
+- Patched Brokers retain `spent/claim-<id>.consumed` alongside archived grant
+  JSON. Stop unpatched Broker processes before upgrading a store; never remove
+  these markers as stale locks or restore only unspent JSON to retry. A fresh
+  approval uses a new ID. This does not protect against whole-store rollback,
+  writable grant stores, mixed old/new consumers or power-loss durability.
+  See the [claim repair plan](docs/plans/2026-10-22-grant-claim-fence.md).
+
 ## [0.2.9] - 2026-10-22
 
 Published and independently verified on 2026-10-22 UTC: eight Rust crates,
