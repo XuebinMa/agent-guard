@@ -23,7 +23,7 @@
       "rust_ignored_summaries": 3,
       "ignored_explanation": "Existing opt-in snapshot/audit cost probes and a child-only environment probe actually invoked by its parent; no new ignore",
       "broker_passed": 96,
-      "cli_passed": 23,
+      "cli_passed": 24,
       "python_passed": 108,
       "python_optional_framework_skipped": 1,
       "plugin_passed": 14,

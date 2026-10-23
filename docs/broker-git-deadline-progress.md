@@ -108,7 +108,7 @@ integrated exact head. Do not borrow either parent's checks.
 
 Fresh integrated-tree full verification exits 0: **1,235 top-level Rust passes
 plus one nested child pass**, zero failures and three existing ignored
-summaries. Broker **96**, CLI **23**, Python **108/one optional framework skip**,
+summaries. Broker **96**, CLI **24**, Python **108/one optional framework skip**,
 Actions **3/3**, plugin **14/14**, scripts **52** and 92-document gates pass.
 Strict all-target lint, rebuilt-binding parity **70/70** and authenticated
 loopback **13/13** pass. Final evidence/documentation has its own docs gate.
