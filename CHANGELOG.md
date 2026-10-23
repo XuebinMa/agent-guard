@@ -11,6 +11,11 @@ The `[Unreleased]` heading is rolled forward manually before each release; do no
 
 ### Security
 
+- Update the locked Tokio dependency from 1.51.0 to the minimal patched
+  1.51.6 for [RUSTSEC-2026-0386](https://rustsec.org/advisories/RUSTSEC-2026-0386.html).
+  The SDK manifest's compatible version range and project MSRV are unchanged;
+  no other locked package or advisory policy is changed. Existing downstream
+  lockfiles still require their own update. This is not a published package fix.
 - One-use Broker grants now require exclusive creation of a permanent
   consumption marker before any grant read or archive rename. A native Windows
   regression observed 16 successful concurrent claims for one grant when
