@@ -498,8 +498,15 @@ fn parse_broker_push(args: &[String]) -> Option<GitPushIntent> {
         };
         match name {
             "push" if !is_push => is_push = true,
-            "--ledger" | "--policy" | "--grants" | "--git-config" | "--receipt" | "--remote"
-            | "--branch" | "--repo" => {
+            "--ledger"
+            | "--policy"
+            | "--grants"
+            | "--git-config"
+            | "--receipt"
+            | "--remote"
+            | "--branch"
+            | "--repo"
+            | "--git-timeout-seconds" => {
                 let value = attached.or_else(|| iter.next().cloned());
                 match name {
                     "--remote" => remote = value?,

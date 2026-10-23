@@ -38,6 +38,10 @@ pub enum PushAttempt {
     /// The broker declined, or git refused. The reason is carried because a
     /// refusal without one cannot be acted on.
     Refused { reason: String },
+    /// The push was invoked but its final result was not acknowledged.
+    /// The remote may already hold the approved OID. The grant stays spent;
+    /// reconcile the exact ref before a fresh preview, never automatically retry.
+    Indeterminate { reason: String },
 }
 
 /// Whether anyone can check this receipt, and how.
@@ -118,5 +122,60 @@ impl PushReceipt {
             &self.attempt,
         ))
         .expect("push receipt preimage should always serialize")
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn receipt(attempt: PushAttempt) -> PushReceipt {
+        PushReceipt {
+            version: 1,
+            at: "2026-10-22T00:00:00Z".parse().unwrap(),
+            transaction: None,
+            grant_id: None,
+            attempt,
+            witness: Witness::Unsigned,
+        }
+    }
+
+    #[test]
+    fn existing_v1_outcome_preimages_are_byte_stable() {
+        for (attempt, json) in [
+            (PushAttempt::Pushed, r#"{"outcome":"pushed"}"#),
+            (
+                PushAttempt::Refused {
+                    reason: "fixture".into(),
+                },
+                r#"{"outcome":"refused","reason":"fixture"}"#,
+            ),
+        ] {
+            let old = format!(
+                r#"["agent-guard/push-receipt/v1",1,"2026-10-22T00:00:00+00:00",null,null,{json}]"#
+            );
+            assert_eq!(receipt(attempt).preimage(), old.as_bytes());
+        }
+    }
+
+    #[test]
+    fn an_indeterminate_outcome_is_signed_roundtripped_and_cannot_be_relabelled() {
+        let key = SigningKey::from_bytes(&[7; 32]);
+        let mut original = receipt(PushAttempt::Indeterminate {
+            reason: "timeout".into(),
+        });
+        original.grant_id = Some("consumed-fixture-grant".into());
+        let original = original.seal(Some(&key));
+        let encoded = serde_json::to_vec(&original).unwrap();
+        let mut decoded: PushReceipt = serde_json::from_slice(&encoded).unwrap();
+        assert_eq!(decoded, original);
+        assert!(decoded.verify(&key.verifying_key()));
+        decoded.attempt = PushAttempt::Refused {
+            reason: "timeout".into(),
+        };
+        assert!(!decoded.verify(&key.verifying_key()));
+        decoded = original;
+        decoded.grant_id = None;
+        assert!(!decoded.verify(&key.verifying_key()));
     }
 }

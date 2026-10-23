@@ -1,0 +1,90 @@
+{
+  "schema": "agent-guard/local-verification/v1",
+  "recorded_at": "2026-10-23T00:40:51Z",
+  "status": "unreleased_local_verification_complete_native_ci_pending",
+  "base_main": "6751d9fb52c3eee14e939b1dc02376efd6fe571d",
+  "branch": "codex/broker-git-deadlines",
+  "environment": {
+    "platform": "Darwin arm64",
+    "rustc": "1.94.1 (e408947bf 2026-03-25) Homebrew",
+    "git": "2.49.0",
+    "workspace_msrv_unchanged": "1.89"
+  },
+  "released_binary_control": {
+    "version": "0.2.9",
+    "source_commit": "8f29c88f40218ed289d115106bee00556a7a23e6",
+    "binary_sha256": "88155853ea546d723c2a4b975b6cc8ddec6849c12530635c258ddc99aeb2eccf",
+    "origin": "isolated cargo install --locked from crates.io during independently recorded 0.2.9 acceptance",
+    "test": "test_authenticated_git.AuthenticatedGitTests.test_a_transport_disconnect_after_update_is_indeterminate_too",
+    "new_timeout_flag_used": false,
+    "remote_ref_independently_equal_to_approved_oid_before_failure": true,
+    "observed_receipt_outcome": "refused",
+    "required_receipt_outcome": "indeterminate",
+    "exit_code": 1,
+    "test_duration_seconds": 1.248,
+    "sanitized_failure": "AssertionError: 'refused' != 'indeterminate'",
+    "raw_log_sha256": "9d4244ee54b7b76bf41d8ef44160176ad687ce0a460f2f89959cd30a0b5f1beb"
+  },
+  "reproduction": {
+    "working_directory": "tests/broker-first",
+    "cli_selection": "Set AGENT_GUARD_TEST_CLI to an isolated installed 0.2.9 CLI or the freshly built current-tree CLI",
+    "command": "python3 -m unittest test_authenticated_git.AuthenticatedGitTests.test_a_transport_disconnect_after_update_is_indeterminate_too -v",
+    "safety": "Owned temporary repositories, loopback HTTPS and ephemeral synthetic authentication only; no external Git destination or real credential",
+    "expected_baseline": "One assertion fails after independently observing the applied approved ref",
+    "expected_patch": "Pass; receipt is indeterminate, exit 3, spent grant retained, exactly one POST and no automatic retry"
+  },
+  "final_tree_results": {
+    "verify_full": {
+      "exit_code": 0,
+      "rust_top_level_passed": 1219,
+      "rust_nested_child_passed": 1,
+      "rust_failed": 0,
+      "rust_ignored_summaries": 3,
+      "ignored_explanation": "Existing opt-in snapshot cost and audit performance probes, plus a child-only environment probe actually run by its parent; no new ignored test",
+      "python_passed": 108,
+      "python_optional_framework_skipped": 1,
+      "plugin_passed": 14,
+      "actions_example_passed": 3,
+      "node_adapters_framework_types_native": "passed",
+      "script_tests_passed": 52,
+      "markdown_files_checked": 90,
+      "version_and_action_pin_checks": "passed",
+      "raw_log_sha256": "10c8d3b4f46bfd2968bbdc67014098d5f59226771f972e210920b98f50816d1b"
+    },
+    "strict_all_target_clippy": {
+      "exit_code": 0,
+      "command": "cargo clippy --workspace --exclude agent-guard-python --all-features --all-targets -- -D warnings",
+      "raw_log_sha256": "8575baf6fd298230d51953c1f6cdd0b5758d20b8c5886dcfba48355ce376df54"
+    },
+    "fresh_cross_language_parity": {
+      "exit_code": 0,
+      "rust_python_node_matched": 70,
+      "bindings_rebuilt_from_current_tree": true,
+      "raw_log_sha256": "57a3f4800f8c7ecd869f001ccdc9ae8da0aa42d066d056e5c3f5d3bb229139ef"
+    },
+    "authenticated_local_git": {
+      "exit_code": 0,
+      "passed": 13,
+      "duration_seconds": 11.990,
+      "includes_same_released_binary_control": true,
+      "includes_preview_and_execution_timeout": true,
+      "includes_delayed_and_disconnected_response_after_real_ref_update": true,
+      "raw_log_sha256": "a55734ee1ec3b6ef9f45833d92b4bc3da9b2d3091351ec577bd38b26c684e512"
+    },
+    "cargo_deny": {
+      "exit_code": 0,
+      "advisories_bans_licenses_sources": "all passed",
+      "advisory_ignores_added": false,
+      "raw_log_sha256": "c6ce89c3f5b1516caa209c39c06873e1c2dfb69f49fce7b7394bed31f7febc8c"
+    }
+  },
+  "limits": [
+    "Native Windows/Linux runtime results must pass on the new PR head; local macOS is not substitute evidence",
+    "Budgets require a live supervisor and do not forcibly interrupt OS/spawn/filesystem calls or physical snapshot copying",
+    "Output size polling is not a strict disk allocation quota",
+    "Deliberately detached trusted helpers can escape a Unix process group",
+    "Windows wrapper does not set kill-on-job-close; explicit ordinary cleanup is not a parent-death guarantee",
+    "Existing Windows ambient handles and general shared-hard-link containment remain open",
+    "No release, merge, tag or advisory change performed"
+  ]
+}

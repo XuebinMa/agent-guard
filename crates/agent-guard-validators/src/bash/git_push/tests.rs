@@ -1,6 +1,20 @@
 use super::*;
 
 #[test]
+fn broker_timeout_options_do_not_change_the_outbound_transaction() {
+    for option in ["--git-timeout-seconds 1", "--git-timeout-seconds=300"] {
+        let intent = single_intent(&format!(
+            "agent-guard push {option} --repo /workspace --remote origin --branch main"
+        ));
+        assert_eq!(intent.command, BROKER_PUSH_COMMAND);
+        assert_eq!(intent.remote.as_deref(), Some("origin"));
+        assert_eq!(intent.refspecs, vec!["main"]);
+        assert_eq!(intent.directory_changes, vec!["/workspace"]);
+        assert_eq!(intent.policy_subjects(), vec!["git push"]);
+    }
+}
+
+#[test]
 fn pr170_nested_aliases_keep_inherited_configuration() {
     let mirror = single_intent(
         "git -c remote.origin.mirror=true -c alias.q=push -c 'alias.p=!git q' p origin",

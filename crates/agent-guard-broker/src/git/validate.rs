@@ -2,6 +2,7 @@ use std::path::Path;
 
 use super::command::{config_names, config_values};
 use super::credentials::AuthenticationPolicy;
+use super::process::Deadline;
 use super::GitError;
 
 /// Reject values that are safe as argv but unsafe to restate as an advisory
@@ -45,10 +46,14 @@ fn valid_branch_shape(branch: &str) -> bool {
             .all(|part| !part.is_empty() && !part.starts_with('.') && !part.ends_with(".lock"))
 }
 
-pub(super) fn read_single_push_url(config: &Path, remote: &str) -> Result<String, GitError> {
-    let push_urls = config_values(config, &format!("remote.{remote}.pushurl"))?;
+pub(super) fn read_single_push_url(
+    config: &Path,
+    remote: &str,
+    deadline: Deadline,
+) -> Result<String, GitError> {
+    let push_urls = config_values(config, &format!("remote.{remote}.pushurl"), deadline)?;
     let urls = if push_urls.is_empty() {
-        config_values(config, &format!("remote.{remote}.url"))?
+        config_values(config, &format!("remote.{remote}.url"), deadline)?
     } else {
         push_urls
     };
@@ -125,8 +130,8 @@ fn is_scp_style_ssh(url: &str) -> bool {
         && !path.is_empty()
 }
 
-pub(super) fn reject_partial_clone(config: &Path) -> Result<(), GitError> {
-    for name in config_names(config)? {
+pub(super) fn reject_partial_clone(config: &Path, deadline: Deadline) -> Result<(), GitError> {
+    for name in config_names(config, deadline)? {
         let lower = name.to_ascii_lowercase();
         if lower == "extensions.partialclone" || lower.ends_with(".promisor") {
             return Err(GitError::UnsafeRepository {
@@ -137,10 +142,11 @@ pub(super) fn reject_partial_clone(config: &Path) -> Result<(), GitError> {
     Ok(())
 }
 
-pub(super) fn validate_trusted_config_snapshot(
+pub(super) fn validate_trusted_config_with_deadline(
     config: &Path,
+    deadline: Deadline,
 ) -> Result<AuthenticationPolicy, GitError> {
-    let names = config_names(config)?;
+    let names = config_names(config, deadline)?;
     for name in &names {
         let lower = name.to_ascii_lowercase();
         let allowed = lower.starts_with("credential.")
@@ -178,7 +184,17 @@ pub(super) fn validate_trusted_config_snapshot(
             });
         }
     }
-    AuthenticationPolicy::from_config(config, &names)
+    AuthenticationPolicy::from_config(config, &names, deadline)
+}
+
+#[cfg(test)]
+pub(super) fn validate_trusted_config_snapshot(
+    config: &Path,
+) -> Result<AuthenticationPolicy, GitError> {
+    validate_trusted_config_with_deadline(
+        config,
+        Deadline::new(super::process::DEFAULT_GIT_TIMEOUT),
+    )
 }
 
 /// A scoped key carries its URL between `http.` and `.extraheader`.

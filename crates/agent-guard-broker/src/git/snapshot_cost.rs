@@ -78,8 +78,14 @@ fn synthetic_copy_cost_probe() {
     // Validate an actual ordinary repository with the production capture path.
     // capture() performs no remote query; this time includes config and Git/fsck.
     let start = Instant::now();
-    let snapshot =
-        GitSnapshot::capture(&repo, "origin", "main", &options).expect("valid fixture snapshot");
+    let snapshot = GitSnapshot::capture(
+        &repo,
+        "origin",
+        "main",
+        &options,
+        super::super::process::DEFAULT_GIT_TIMEOUT,
+    )
+    .expect("valid fixture snapshot");
     let capture_seconds = start.elapsed().as_secs_f64();
     let local_oid = snapshot.local_oid.clone();
     let capture_held_files = held_files(snapshot._temp.path()).expect("held snapshot accounting");

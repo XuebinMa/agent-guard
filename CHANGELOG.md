@@ -9,6 +9,31 @@ The `[Unreleased]` heading is rolled forward manually before each release; do no
 
 ## [Unreleased]
 
+### Fixed
+
+- Broker Git subprocesses use a shared finite budget for each preview and each
+  execution, including config reads and batch object checks. Managed process
+  groups/jobs are terminated with bounded leader reaping; regular-file output
+  capture avoids inherited-pipe waits and refuses output beyond 16 MiB per stream.
+  This does not bound hung OS/filesystem/spawn calls or contain deliberately
+  detached trusted helpers. See the [implementation plan](docs/plans/2026-10-22-broker-git-deadlines.md).
+- An unacknowledged push is no longer recorded/displayed as definitely refused.
+  Timeout, lost response and transport/collection failures after push invocation
+  retain the exact transaction and spent grant as `indeterminate`, with no
+  automatic retry. Definite rejection requires Git porcelain for the exact
+  approved ref; existing stale-lease refusals and successful pushes remain.
+
+### Changed
+
+- `agent-guard push --git-timeout-seconds` accepts 1–3600 seconds, default 300,
+  separately for preview and execution; confirmation time is excluded. Rust
+  callers can use `PushBroker::with_git_timeout` without changing existing
+  `BrokerGitOptions` literals. This is unreleased source, not in 0.2.9 packages.
+- Broker v1 receipts add `attempt.outcome: indeterminate`; old pushed/refused
+  encodings and signing preimages remain byte-stable. Consumers must handle or
+  reject the new variant, never turn an unknown outcome into success/refusal.
+  The CLI exits 3 for uncertainty and prints read-only reconciliation guidance.
+
 ## [0.2.9] - 2026-10-22
 
 Published and independently verified on 2026-10-22 UTC: eight Rust crates,

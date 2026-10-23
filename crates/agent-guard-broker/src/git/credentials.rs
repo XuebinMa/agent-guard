@@ -3,6 +3,7 @@ use std::path::Path;
 use url::Url;
 
 use super::command::config_values;
+use super::process::Deadline;
 use super::GitError;
 
 #[derive(Debug)]
@@ -11,12 +12,16 @@ pub(super) struct AuthenticationPolicy {
 }
 
 impl AuthenticationPolicy {
-    pub(super) fn from_config(config: &Path, names: &[String]) -> Result<Self, GitError> {
+    pub(super) fn from_config(
+        config: &Path,
+        names: &[String],
+        deadline: Deadline,
+    ) -> Result<Self, GitError> {
         let mut scopes = Vec::new();
         for name in names {
             let lower = name.to_ascii_lowercase();
             if lower.starts_with("credential.") && lower.ends_with(".usehttppath") {
-                for value in config_values(config, name)? {
+                for value in config_values(config, name, deadline)? {
                     if !matches!(
                         value.to_ascii_lowercase().as_str(),
                         "true" | "yes" | "on" | "1"
@@ -37,7 +42,10 @@ impl AuthenticationPolicy {
             };
             // Inspect every value, not just the last or most-specific one:
             // Git chains all matching helpers and an empty value resets them.
-            if config_values(config, name)?.iter().all(String::is_empty) {
+            if config_values(config, name, deadline)?
+                .iter()
+                .all(String::is_empty)
+            {
                 continue;
             }
             let scope_start = section.len() + 1;

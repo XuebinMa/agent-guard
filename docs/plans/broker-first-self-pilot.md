@@ -147,7 +147,8 @@ conditions. Logical retained bytes and `st_blocks` sampling are not full unique
 physical peaks, especially on shared-extent filesystems. If a trustworthy full
 peak or cold-cache observation is unavailable, record **unmeasured**, not zero
 or passed. Do not flush a live host's caches or impose a disk-exhaustion trial.
-Production Git calls still do not promise finite deadlines. Windows inherited
+Published 0.2.9 Git calls do not promise finite deadlines; see the separate
+[unreleased bounded-path work](2026-10-22-broker-git-deadlines.md). Windows inherited
 handles and general shared hard links remain open.
 
 P5 is complete only after actual task/feedback and representative operating

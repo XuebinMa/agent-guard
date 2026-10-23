@@ -84,11 +84,57 @@ record without the operator choosing that setup.
 | Receipt persistence fails after execution | The remote may already have accepted the push even when no receipt file exists | Preserve stderr and establish actual remote state before another approval. Report missing local evidence; do not label the attempt unsuccessful merely because recording failed. |
 | Process interrupted or remote query stalls | The terminal state may be unknown; absence of a receipt is not proof of no mutation | Keep the agent stopped, preserve diagnostics, check the exact remote ref through trusted operator tooling, and authorize a fresh attempt only after reconciliation. |
 
-The current broker Git path does not itself promise a finite network/process
-deadline; the deployment reference lists bounded broker/network execution as
-separate work. The synthetic benchmark below adds an **external test-process**
-deadline. That is not a production timeout fix. Killing a process is not a
-transaction rollback or a guarantee that remote state is unchanged.
+Published 0.2.9 and earlier do not promise a finite production Git deadline.
+The unreleased source implements the bounded path below; the historical
+benchmark's **external test-process** deadline is not the product fix.
+Killing a process is not a transaction rollback or proof of unchanged refs.
+
+### Bounded Git operations — unreleased source
+
+Every Broker Git subprocess, including local config and batch checks, uses the
+same monotonic budget within one preview or execution. The default is 300 s;
+trusted CLI callers may set `--git-timeout-seconds 1..3600`, and library callers
+may use `PushBroker::with_git_timeout`. Execution starts a fresh budget after
+human confirmation and consumes the existing one-use grant as before. Neither
+an option nor a timeout renews/replays that authorization.
+
+On timeout or collection failure, the runner terminates its Unix process group
+or Windows job and polls leader reaping for at most two additional seconds.
+Cleanup errors are reported, not hidden. This is not a new sandbox: malicious
+trusted helpers which detach can escape a Unix group, OS/spawn/filesystem calls
+can be uninterruptible, and physical snapshot I/O is not forcibly cancelled.
+The deadline requires a live supervising broker; abrupt parent termination or
+host failure can prevent both cleanup and receipt emission. External interruption
+is not an acknowledged cancellation or rollback.
+Regular private output files avoid inherited-pipe EOF waits. The runner refuses
+captured stdout or stderr above 16 MiB instead of interpreting truncated data;
+size polling can overshoot and is not a strict temporary-disk quota.
+
+| Result | Meaning and recovery |
+| --- | --- |
+| Preview error/timeout, exit 2 | No execution grant or execution receipt; resolve the fault and review a new preview. |
+| Refused, exit 1 | No push was launched, or trusted Git explicitly rejected the exact approved ref. Any consumed grant stays spent. |
+| Pushed, exit 0 | Git acknowledged the push. Independently observed remote state remains stronger than a local record. |
+| Indeterminate, exit 3 | The push result was not acknowledged. It may already have changed the remote, including when Git exits nonzero after losing its response. |
+
+For `indeterminate`, preserve the exact URL, `refs/heads/<branch>`, approved OID
+and grant ID from the receipt/preview. Keep the agent stopped; use trusted
+read-only operator tooling to reconcile that ref. Even finding the approved OID
+does not retroactively prove which actor updated it. Do not automatically push
+again, reinterpret a timeout as rollback or restore an authorization from
+`spent/`. Any new write requires a fresh preview and approval.
+
+Receipts remain optional/unsigned in this CLI and are persisted only with
+`--receipt`. V1 adds `attempt.outcome: indeterminate`; existing pushed/refused
+bytes and signature preimages are unchanged. Old exhaustive readers must be
+updated or fail closed on the new value. SDK `ExecutionReceipt` verification
+still is not a `PushReceipt` verification interface.
+
+The safe authenticated timeout/disconnect fixtures are in
+[`test_authenticated_git.py`](../../../tests/broker-first/test_authenticated_git.py);
+the [bounded child fixtures](../../../crates/agent-guard-broker/src/git/process.rs)
+cover execution budgets, descendants, stdin and output limits. Hosted native
+Linux/Windows/macOS results must be checked separately from local macOS runs.
 
 Partial workspace initialization remains visible. Inspect only known
 operator-owned generated paths before recovery; do not reuse a replaced volume
