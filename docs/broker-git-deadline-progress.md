@@ -54,6 +54,18 @@ See the [bounded plan and references](plans/2026-10-22-broker-git-deadlines.md).
   briefly to test output-limit termination specifically; no EPERM is suppressed.
   New fixture code was corrected to wait for its owned child, satisfying strict
   Clippy rather than disabling the zombie-process lint.
+- Draft PR **#181**, initial head `d89b5f7b32250798aa1ba269528a777924ad7258`,
+  run **39879854995**, exposed an old Unix-only test assumption on Windows:
+  `/tmp/repo.git` is not a Windows absolute path. Every new managed-process
+  regression passed there; the existing transport-positive assertion failed.
+  The fixture now uses an explicitly native absolute path and retains both
+  default refusal and explicit-local acceptance, plus a file-URL control.
+  No production protocol rule or required check was loosened. The first matrix
+  completed **21 success / one failure** (that Windows assertion). Initial macOS,
+  Linux workspace/authenticated Git and fixed-container acceptance passed;
+  the corrected follow-up still requires its own complete CI, not inherited
+  green checks. Full local verification, strict lint, fresh parity 70/70 and
+  authenticated loopback 13/13 passed again after this test-only correction.
 
 Sanitized results, baseline binary/log hashes and reproduction instructions are
 retained in [local evidence](security-evidence/2026-10-22/broker-git-deadlines-local.json).

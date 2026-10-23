@@ -33,6 +33,21 @@
     "expected_baseline": "One assertion fails after independently observing the applied approved ref",
     "expected_patch": "Pass; receipt is indeterminate, exit 3, spent grant retained, exactly one POST and no automatic retry"
   },
+  "initial_native_ci_failure": {
+    "pr": 181,
+    "head": "d89b5f7b32250798aa1ba269528a777924ad7258",
+    "run": 39879854995,
+    "job": 120174339701,
+    "completed_matrix": "21 success, 1 failure (this Windows assertion)",
+    "platform": "Windows",
+    "failed_test": "git::validate::tests::transport_policy_is_closed_by_default",
+    "sanitized_failure": "assertion failed: validate_remote_url(\"/tmp/repo.git\", true).is_ok()",
+    "new_process_tests": "passed before the existing absolute-path assertion failed",
+    "correction": "Use a platform-native absolute path; keep default refusal, explicit-local acceptance and a file-URL positive control",
+    "production_protocol_rules_weakened": false,
+    "raw_log_sha256": "4718105ad1ae67ed1335e0add81119cb364b67922dc170d0285d5d4f691059e4",
+    "corrected_head_ci": "Must be checked independently in PR; initial-head successes are not final-head acceptance"
+  },
   "final_tree_results": {
     "verify_full": {
       "exit_code": 0,
@@ -49,12 +64,12 @@
       "script_tests_passed": 52,
       "markdown_files_checked": 90,
       "version_and_action_pin_checks": "passed",
-      "raw_log_sha256": "10c8d3b4f46bfd2968bbdc67014098d5f59226771f972e210920b98f50816d1b"
+      "raw_log_sha256": "e7ab86e457341af63bc3f2b9bf916a4277b986e1ed05f2b5bbcef791028eef17"
     },
     "strict_all_target_clippy": {
       "exit_code": 0,
       "command": "cargo clippy --workspace --exclude agent-guard-python --all-features --all-targets -- -D warnings",
-      "raw_log_sha256": "8575baf6fd298230d51953c1f6cdd0b5758d20b8c5886dcfba48355ce376df54"
+      "raw_log_sha256": "77d6053eb2d87026a1adf28af8ab44d8af90109e8fb32614a11c96634b02249e"
     },
     "fresh_cross_language_parity": {
       "exit_code": 0,
@@ -65,11 +80,11 @@
     "authenticated_local_git": {
       "exit_code": 0,
       "passed": 13,
-      "duration_seconds": 11.990,
+      "duration_seconds": 10.708,
       "includes_same_released_binary_control": true,
       "includes_preview_and_execution_timeout": true,
       "includes_delayed_and_disconnected_response_after_real_ref_update": true,
-      "raw_log_sha256": "a55734ee1ec3b6ef9f45833d92b4bc3da9b2d3091351ec577bd38b26c684e512"
+      "raw_log_sha256": "2c88a3217c75653eab4686182f0e55acddd7a62a7b0a6834d62962b4315a5e9e"
     },
     "cargo_deny": {
       "exit_code": 0,
