@@ -1,0 +1,106 @@
+{
+  "main_sha": "2da78b1d0b4ad3e62ebc02c09a6d0dd27f836181",
+  "run": 40071399729,
+  "artifact": 12551855043,
+  "success": true,
+  "components": [
+    {
+      "file": "agent-guard-broker.cdx.json",
+      "root": "agent-guard-broker",
+      "version": "0.2.10",
+      "tokio": [],
+      "process_wrap": [
+        "10.0.1"
+      ],
+      "sha256": "68a8a6e8cdf54c9deedb500b366d3e36f13c1e83326a5c556e3523ecd21ebb0a"
+    },
+    {
+      "file": "agent-guard-cli.cdx.json",
+      "root": "agent-guard-cli",
+      "version": "0.2.10",
+      "tokio": [
+        "1.51.6"
+      ],
+      "process_wrap": [
+        "10.0.1"
+      ],
+      "sha256": "8b23488fbd072f81aa84f0112880dbbd08894622e11bc76915bbf4121689c97c"
+    },
+    {
+      "file": "agent-guard-core.cdx.json",
+      "root": "agent-guard-core",
+      "version": "0.2.10",
+      "tokio": [],
+      "process_wrap": [],
+      "sha256": "c3c66c70210ccf8ab451a423d499710592cde138d7c8d0c395a79ac9fea6b4a3"
+    },
+    {
+      "file": "agent-guard-node.cdx.json",
+      "root": "agent-guard-node",
+      "version": "0.2.10",
+      "tokio": [
+        "1.51.6"
+      ],
+      "process_wrap": [],
+      "sha256": "b694a97dd9ae60a56c6ec8063ee159a96d841ca1a795de65dd3b35be119f7bf5"
+    },
+    {
+      "file": "agent-guard-python.cdx.json",
+      "root": "agent-guard-python",
+      "version": "0.2.10",
+      "tokio": [
+        "1.51.6"
+      ],
+      "process_wrap": [],
+      "sha256": "13031434dd2f623f4c47c5c4cb3bebe18a5c06abc985577c8dcaf2492b4fe6a2"
+    },
+    {
+      "file": "agent-guard-sandbox.cdx.json",
+      "root": "agent-guard-sandbox",
+      "version": "0.2.10",
+      "tokio": [],
+      "process_wrap": [],
+      "sha256": "f6d055c2f97b3ec99a45b71b3be86e95c1506e17218e60fb64a8b26e4932179c"
+    },
+    {
+      "file": "agent-guard-sdk.cdx.json",
+      "root": "agent-guard-sdk",
+      "version": "0.2.10",
+      "tokio": [
+        "1.51.6"
+      ],
+      "process_wrap": [],
+      "sha256": "cdca19c0d8f4083dd6c1df5d52f5256d0cac7c818faee31e5bce73f6a504dcfd"
+    },
+    {
+      "file": "agent-guard-validators.cdx.json",
+      "root": "agent-guard-validators",
+      "version": "0.2.10",
+      "tokio": [],
+      "process_wrap": [],
+      "sha256": "93e6d7f497b32dfd19a6ae414cf93e9cd4301bac2df96bbecdfc17e3825506f8"
+    },
+    {
+      "file": "guard-hook.cdx.json",
+      "root": "guard-hook",
+      "version": "0.2.10",
+      "tokio": [
+        "1.51.6"
+      ],
+      "process_wrap": [
+        "10.0.1"
+      ],
+      "sha256": "d209ecd332aeccf740bcc90e5e56a21b5019ee8c48caa476cd715e7699e31737"
+    },
+    {
+      "file": "guard-verify.cdx.json",
+      "root": "guard-verify",
+      "version": "0.2.10",
+      "tokio": [
+        "1.51.6"
+      ],
+      "process_wrap": [],
+      "sha256": "72624e4904a005c6779d2ea494c288245f63c71a3cdb2653e86d63cb734b249a"
+    }
+  ]
+}

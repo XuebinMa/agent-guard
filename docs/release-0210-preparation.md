@@ -1,5 +1,10 @@
 # 0.2.10 source preparation
 
+**Completed delivery:** 0.2.10 was published and independently accepted on
+2026-10-24 UTC. See the [verified delivery record](release-0210-delivery.md).
+The checkpoint, authority limits, open checkboxes and advisory counts below
+describe the earlier preparation stage, not the current publication state.
+
 Checkpoint: 2026-10-23 (America/Los_Angeles), **not published**.
 Source candidate: **0.2.10**. Latest verified published version: **0.2.9**.
 

@@ -1,0 +1,8 @@
+Collecting agent-guard-python==0.2.10 (from -r /private/tmp/agent-guard-0210-delivery.bSQYKt/wheel-requirements.txt (line 1))
+  Downloading agent_guard_python-0.2.10-cp310-abi3-macosx_11_0_arm64.whl (4.8 MB)
+     ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 4.8/4.8 MB 30.6 MB/s  0:00:00
+Installing collected packages: agent-guard-python
+Successfully installed agent-guard-python-0.2.10
+
+[notice] A new release of pip is available: 25.3 -> 26.2.2
+[notice] To update, run: /private/tmp/agent-guard-0210-delivery.bSQYKt/wheel-venv/bin/python -m pip install --upgrade pip

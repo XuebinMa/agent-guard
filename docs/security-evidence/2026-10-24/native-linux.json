@@ -1,0 +1,205 @@
+{
+  "accepted": true,
+  "agent": {
+    "agent_fake_record_is_only_workspace_data": true,
+    "authority_directories_unavailable": true,
+    "direct_push_status": 128,
+    "docker_socket_unavailable": true,
+    "host_cli_unavailable": true,
+    "host_tty_unavailable": true,
+    "https_status": 401,
+    "local_oid": "3d35de25e464629a2ac9c65b6923cdb516172f57",
+    "protected_files_inaccessible": {
+      "/tmp/agent-guard-native-ucgd15b5/deployment/control/broker.gitconfig": true,
+      "/tmp/agent-guard-native-ucgd15b5/deployment/control/grants/native-grant-canary.json": true,
+      "/tmp/agent-guard-native-ucgd15b5/deployment/control/home/host-only-canary": true,
+      "/tmp/agent-guard-native-ucgd15b5/deployment/control/policy.yaml": true,
+      "/tmp/agent-guard-native-ucgd15b5/deployment/control/records/native-record-canary.json": true
+    },
+    "schema": 1,
+    "uid": 65532,
+    "workspace_build": "fixture-ok"
+  },
+  "broker_sha256": "6bb137bd855835e9923867426c3f07496f23f0d91e547086466f7c145ea4086d",
+  "broker_version": "agent-guard 0.2.10",
+  "checkout_sha": "2da78b1d0b4ad3e62ebc02c09a6d0dd27f836181",
+  "checks": [
+    "I5",
+    "I6",
+    "I8",
+    "I7-success"
+  ],
+  "cleanup_complete": true,
+  "configuration": {
+    "agent_command": [
+      "/usr/bin/python3",
+      "/opt/agent/fixture.py",
+      "--destination",
+      "https://172.17.0.1:46319/repo.git",
+      "--host-root",
+      "/tmp/agent-guard-native-ucgd15b5/deployment",
+      "--host-broker",
+      "/tmp/agent-guard-native-ucgd15b5/bin/agent-guard"
+    ],
+    "branch": "main",
+    "broker_binary": "/tmp/agent-guard-native-ucgd15b5/bin/agent-guard",
+    "destination": "https://172.17.0.1:46319/repo.git",
+    "docker_binary": "/usr/bin/docker",
+    "host_root": "/tmp/agent-guard-native-ucgd15b5/deployment",
+    "image": "sha256:a19e4eec120742d1ad931f3a4307a53d30679db7a831039b43cc2cfb7771d283",
+    "remote": "origin",
+    "schema": 1
+  },
+  "container_host_config": {
+    "AutoRemove": false,
+    "Binds": null,
+    "BlkioDeviceReadBps": [],
+    "BlkioDeviceReadIOps": [],
+    "BlkioDeviceWriteBps": [],
+    "BlkioDeviceWriteIOps": [],
+    "BlkioWeight": 0,
+    "BlkioWeightDevice": [],
+    "CapAdd": null,
+    "CapDrop": [
+      "ALL"
+    ],
+    "Cgroup": "",
+    "CgroupParent": "",
+    "CgroupnsMode": "private",
+    "ConsoleSize": [
+      0,
+      0
+    ],
+    "ContainerIDFile": "",
+    "CpuCount": 0,
+    "CpuPercent": 0,
+    "CpuPeriod": 0,
+    "CpuQuota": 0,
+    "CpuRealtimePeriod": 0,
+    "CpuRealtimeRuntime": 0,
+    "CpuShares": 0,
+    "CpusetCpus": "",
+    "CpusetMems": "",
+    "DeviceCgroupRules": null,
+    "DeviceRequests": null,
+    "Devices": [],
+    "Dns": [],
+    "DnsOptions": [],
+    "DnsSearch": [],
+    "ExtraHosts": null,
+    "GroupAdd": null,
+    "IOMaximumBandwidth": 0,
+    "IOMaximumIOps": 0,
+    "Init": true,
+    "IpcMode": "private",
+    "Isolation": "",
+    "Links": null,
+    "LogConfig": {
+      "Config": {
+        "max-file": "3",
+        "max-size": "10m"
+      },
+      "Type": "local"
+    },
+    "MaskedPaths": [
+      "/proc/asound",
+      "/proc/acpi",
+      "/proc/interrupts",
+      "/proc/kcore",
+      "/proc/keys",
+      "/proc/latency_stats",
+      "/proc/timer_list",
+      "/proc/timer_stats",
+      "/proc/sched_debug",
+      "/proc/scsi",
+      "/sys/firmware",
+      "/sys/devices/virtual/powercap"
+    ],
+    "Memory": 2147483648,
+    "MemoryReservation": 0,
+    "MemorySwap": 2147483648,
+    "MemorySwappiness": null,
+    "Mounts": [
+      {
+        "BindOptions": {
+          "Propagation": "rprivate"
+        },
+        "Source": "/tmp/agent-guard-native-ucgd15b5/deployment/development/workspace",
+        "Target": "/workspace",
+        "Type": "bind"
+      }
+    ],
+    "NanoCpus": 2000000000,
+    "NetworkMode": "bridge",
+    "OomKillDisable": null,
+    "OomScoreAdj": 0,
+    "PidMode": "",
+    "PidsLimit": 256,
+    "PortBindings": {},
+    "Privileged": false,
+    "PublishAllPorts": false,
+    "ReadonlyPaths": [
+      "/proc/bus",
+      "/proc/fs",
+      "/proc/irq",
+      "/proc/sys",
+      "/proc/sysrq-trigger"
+    ],
+    "ReadonlyRootfs": true,
+    "RestartPolicy": {
+      "MaximumRetryCount": 0,
+      "Name": "no"
+    },
+    "Runtime": "runc",
+    "SecurityOpt": [
+      "no-new-privileges=true"
+    ],
+    "ShmSize": 67108864,
+    "Tmpfs": {
+      "/home/agent": "rw,nosuid,nodev,noexec,size=67108864,uid=65532,gid=65532,mode=0700",
+      "/tmp": "rw,nosuid,nodev,noexec,size=268435456,mode=1777"
+    },
+    "UTSMode": "",
+    "Ulimits": [
+      {
+        "Hard": 1024,
+        "Name": "nofile",
+        "Soft": 1024
+      }
+    ],
+    "UsernsMode": "",
+    "VolumeDriver": "",
+    "VolumesFrom": null
+  },
+  "container_id": "533950fe1e31b0ce754b615d158b491f3bc885693fa23c35546e33e3d1b04659",
+  "container_mounts": [
+    {
+      "Destination": "/workspace",
+      "Mode": "",
+      "Propagation": "rprivate",
+      "RW": true,
+      "Source": "/tmp/agent-guard-native-ucgd15b5/deployment/development/workspace",
+      "Type": "bind"
+    }
+  ],
+  "docker_security_options": [
+    "name=apparmor",
+    "name=seccomp,profile=builtin",
+    "name=cgroupns"
+  ],
+  "docker_server_version": "28.0.4",
+  "image": "sha256:a19e4eec120742d1ad931f3a4307a53d30679db7a831039b43cc2cfb7771d283",
+  "kernel": "6.17.0-1022-azure",
+  "limits": [
+    "PTY approval is synthetic, not human workflow acceptance",
+    "I1-I4/I7-negative require the separate mandatory broker suites",
+    "R1 Windows handles and R2 shared hard links remain open"
+  ],
+  "operator_uid": 1001,
+  "profile": "broker-first-v1",
+  "receipt_grant_id": "ca909efb-8b17-4746-83fb-0c305c96b106",
+  "remote_oid": "3d35de25e464629a2ac9c65b6923cdb516172f57",
+  "remote_url": "https://172.17.0.1:46319/repo.git",
+  "runtime": "native-linux-docker",
+  "schema": 1
+}

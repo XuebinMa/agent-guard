@@ -1,0 +1,103 @@
+{
+  "release_run": 40112534342,
+  "source_commit": "2da78b1d0b4ad3e62ebc02c09a6d0dd27f836181",
+  "success": true,
+  "scope": "Five exact-run archive/log checks before PyPI approval, not five-platform installed execution.",
+  "wheels": [
+    {
+      "wheel": "agent_guard_python-0.2.10-cp310-abi3-macosx_10_12_x86_64.whl",
+      "platform": "macosx_10_12_x86_64",
+      "sha256": "aa658ffd3288ad3b416385defed439c892314a5772434b9874b5631f926bba44",
+      "bytes": 5015582,
+      "record_verified": true,
+      "dependency_sbom": {
+        "sha256": "446a48f8e3c7a375f6d29f0f5b711bdf32ab3cffc9f09d618cd6f68a629781ab",
+        "format": "CycloneDX",
+        "tokio": [
+          "1.51.6"
+        ]
+      },
+      "build_job": 120929132060,
+      "build_log_sha256": "20e52fc2b56590143746c3ebaf98e5af302e474c322645474bbe9f697312a7ec",
+      "compiled_tokio": [
+        "1.51.6"
+      ]
+    },
+    {
+      "wheel": "agent_guard_python-0.2.10-cp310-abi3-macosx_11_0_arm64.whl",
+      "platform": "macosx_11_0_arm64",
+      "sha256": "027922360a806293c99ee70e48c823155c894d402116e555c281b3da5b793178",
+      "bytes": 4804192,
+      "record_verified": true,
+      "dependency_sbom": {
+        "sha256": "13d0bcde24e5f0a39cedf4113650a954cfc844dee331487c59c1391f5d041f52",
+        "format": "CycloneDX",
+        "tokio": [
+          "1.51.6"
+        ]
+      },
+      "build_job": 120929132039,
+      "build_log_sha256": "2d275831ba1149ad4742f39dec00276ad27e1a39d0587b12fcdd570110aa5274",
+      "compiled_tokio": [
+        "1.51.6"
+      ]
+    },
+    {
+      "wheel": "agent_guard_python-0.2.10-cp310-abi3-manylinux_2_17_aarch64.manylinux2014_aarch64.whl",
+      "platform": "manylinux_2_17_aarch64.manylinux2014_aarch64",
+      "sha256": "f08a102a88ee643c6701c5f7a7c7644bda2f7473536ddfd65139447885691f6d",
+      "bytes": 5276216,
+      "record_verified": true,
+      "dependency_sbom": {
+        "sha256": "82cb12fba50afa52f4911020154255b020d8eb3acc15648f27fef035ca8da9ee",
+        "format": "CycloneDX",
+        "tokio": [
+          "1.51.6"
+        ]
+      },
+      "build_job": 120929132024,
+      "build_log_sha256": "4a201e7477c1fe728c7164be1faf7f41986da03cb264b2e99b69e3b123919445",
+      "compiled_tokio": [
+        "1.51.6"
+      ]
+    },
+    {
+      "wheel": "agent_guard_python-0.2.10-cp310-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl",
+      "platform": "manylinux_2_17_x86_64.manylinux2014_x86_64",
+      "sha256": "e98488f1b95621b190e2a33ba11a30530e71cfa5db321b48c9a326d7139813f7",
+      "bytes": 5317700,
+      "record_verified": true,
+      "dependency_sbom": {
+        "sha256": "db44e1a806b0d4fc90e2751e84e6f26e408f6659ea850a510e684adc31102649",
+        "format": "CycloneDX",
+        "tokio": [
+          "1.51.6"
+        ]
+      },
+      "build_job": 120929131990,
+      "build_log_sha256": "1617232a441645072415418573ae43cb00caed3d5091890b3642ebb036d1f939",
+      "compiled_tokio": [
+        "1.51.6"
+      ]
+    },
+    {
+      "wheel": "agent_guard_python-0.2.10-cp310-abi3-win_amd64.whl",
+      "platform": "win_amd64",
+      "sha256": "71fb6e6068e36b4933313d319bac8cd9a15bc467a07ece8b9504067305ebc8e8",
+      "bytes": 4430527,
+      "record_verified": true,
+      "dependency_sbom": {
+        "sha256": "52fbfc2611b4867d232531af34ed1f266ea2ff842e78367bc98449944bd35a59",
+        "format": "CycloneDX",
+        "tokio": [
+          "1.51.6"
+        ]
+      },
+      "build_job": 120929131975,
+      "build_log_sha256": "43155e15fb96141498e75d349be02891494919daecfe1ff35b1ece73744c4bcc",
+      "compiled_tokio": [
+        "1.51.6"
+      ]
+    }
+  ]
+}

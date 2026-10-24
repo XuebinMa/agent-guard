@@ -80,10 +80,10 @@ Current boundary note:
 
 ## 🔧 Installation
 
-The latest published package is `0.2.9`:
+The latest published package is `0.2.10`:
 
 ```bash
-python -m pip install agent-guard-python==0.2.9
+python -m pip install agent-guard-python==0.2.10
 ```
 
 To test the current `0.2.10` source, install it from a repository checkout

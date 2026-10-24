@@ -9,8 +9,8 @@
 ## 📣 Release Status
 
 - **Source version** → `v0.2.10`
-- **Latest published release** → [`v0.2.9`](https://github.com/XuebinMa/agent-guard/releases/tag/v0.2.9) — crates.io, PyPI, npm
-- **0.2.10 preparation** → [Candidate, upgrade notes and remaining delivery gates](release-0210-preparation.md) — not published
+- **Latest published release** → [`v0.2.10`](https://github.com/XuebinMa/agent-guard/releases/tag/v0.2.10) — crates.io, PyPI, npm
+- **0.2.10 delivery** → [Verified packages, installations and upgrade notes](release-0210-delivery.md); [preparation history](release-0210-preparation.md)
 - **0.2.9 delivery** → [Verified packages and installations](release-029-delivery.md); [preparation history](release-029-preparation.md)
 - **Community Thread** → [GitHub Discussions #1](https://github.com/XuebinMa/agent-guard/discussions/1)
 
