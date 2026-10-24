@@ -2,7 +2,8 @@
 
 Status: **partial**. The user chose self-use first on 2026-10-06 (Pacific time)
 and completed a human-operated macOS CLI-only synthetic rehearsal and an actual
-project documentation-task exercise on 2026-10-09. Task usefulness has not been
+project documentation-task exercise on 2026-10-09, followed by a human-operated
+0.2.10 macOS CLI upgrade rehearsal on 2026-10-24. Task usefulness has not been
 separately confirmed; the native Linux maintainer trial and representative
 operating-capacity measurements remain pending. This record is not CI acceptance,
 external customer evidence or publication authorization beyond the separate
@@ -67,6 +68,57 @@ the original trial, not the integrated documentation-record branch; preserving
 the evidence does not repeat that push. This demonstrates a bounded macOS CLI workflow,
 not native Linux isolation, task usefulness, recurring usability or capacity.
 P5 therefore remains partial.
+
+## Completed 0.2.10 human CLI upgrade rehearsal — 2026-10-24
+
+The maintainer personally ran the reviewed helper in a Mac terminal, declined
+the first preview with `n`, then approved a separately displayed preview with
+`y`. The CLI inherited that terminal directly; no automation supplied either
+answer. The temporary helper provided Chinese guidance around the CLI's fixed
+English built-in preview, confirmation and result text. This is not an English
+user study or automatic locale switching.
+
+The trial used the actual registry-installed 0.2.10 binary and a normal local
+copy of the real [#184 documentation commit](https://github.com/XuebinMa/agent-guard/pull/184).
+An offline fixture using exact registry Broker 0.2.9 created one synthetic
+legacy spent archive, then exited before the 0.2.10 consumer ran. This tests
+retaining that historical entry during a new CLI workflow, not migrating a
+real credential store or installing over the maintainer's global binaries.
+
+| Observation | Maintainer result |
+| --- | --- |
+| Trial time | 2026-10-24, 12:12–12:13 PDT (`America/Los_Angeles`); original UTC timestamps retained in the summary |
+| CLI | Published `agent-guard 0.2.10`, from the independently verified exact crates.io `--locked` installation |
+| Binary SHA-256 | `cb6b289528d081605fa0787166854aa58c2e75835a67f606dff92dcd3d1e5e65` |
+| Intended destination | `https://127.0.0.1:59991/repo.git`, temporary branch `main`, not GitHub |
+| Previous OID | `2da78b1d0b4ad3e62ebc02c09a6d0dd27f836181` |
+| Approved candidate OID | `226b6535715626e0bb480abd9f611533c239e327` |
+| Effect | Ordinary fast-forward adding one actual project documentation commit |
+| Declined preview | Independent remote ref unchanged; no new grant, execution receipt or receive-pack POST; historical bytes unchanged |
+| Approved preview | Exactly one receive-pack POST; independent ref, exact URL/ref/old-new OIDs, unsigned receipt, fresh grant archive and permanent consumption marker agreed |
+| Historical state | The synthetic 0.2.9 spent archive was not overwritten; new approval used a different ID |
+| Cleanup | Helper reported owned runtime files and listening service cleaned; subsequent filesystem inspection confirmed the trial directory absent |
+| Preview clarity and approval burden | Maintainer feedback: “清楚，但是如果是英文用户，是否是英文显示？操作不繁琐。” |
+
+The [verbatim run summary](../security-evidence/2026-10-24/mac-cli-0210-summary.json)
+has SHA-256 `26f60960d32780cbc640564bc975cc2a4731d1d9fe2e5aaf386802359063f221`.
+It retains `human_feedback: not collected` as its run-time snapshot; the
+[separate subsequent feedback](../security-evidence/2026-10-24/mac-cli-0210-feedback.md)
+records the actual later user response instead of rewriting that evidence.
+The summary also binds the helper, project bundle and fixture hashes. The
+temporary helper is not a new product entry point or CI gate.
+
+Cleanup here means removal of owned fixture files and closure of its listener,
+not a general proof that arbitrary descendants can be stopped after external
+interruption. Both observed CLI calls returned normally; the fixture recorded
+no forced-stop cleanup uncertainty. No real credentials, global installation,
+real grant store or GitHub destination was changed. The unsigned receipt is
+not third-party cryptographic proof.
+
+This is positive feedback for this one maintainer's macOS CLI experience with
+Chinese demonstration guidance. Recurring task usefulness, other users'
+experience, native Linux maintainer use and representative operating capacity
+remain unverified. P5 remains partial.
 
 ## Keep the first trial small
 
@@ -147,8 +199,9 @@ conditions. Logical retained bytes and `st_blocks` sampling are not full unique
 physical peaks, especially on shared-extent filesystems. If a trustworthy full
 peak or cold-cache observation is unavailable, record **unmeasured**, not zero
 or passed. Do not flush a live host's caches or impose a disk-exhaustion trial.
-Published 0.2.9 Git calls do not promise finite deadlines; see the separate
-[unreleased bounded-path work](2026-10-22-broker-git-deadlines.md). Windows inherited
+Published 0.2.9 Git calls do not promise finite deadlines; 0.2.10 delivers the
+[bounded path and recovery contract](../guides/operations/broker-first-operations.md#bounded-git-operations--0210-and-later).
+See the [verified delivery record](../release-0210-delivery.md). Windows inherited
 handles and general shared hard links remain open.
 
 P5 is complete only after actual task/feedback and representative operating
