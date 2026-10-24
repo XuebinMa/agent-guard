@@ -1,0 +1,13 @@
+    Updating crates.io index
+ Downloading crates ...
+  Downloaded agent-guard-cli v0.2.10
+  Installing agent-guard-cli v0.2.10
+    Updating crates.io index
+    Updating crates.io index
+   Compiling agent-guard-validators v0.2.10
+   Compiling agent-guard-sdk v0.2.10
+   Compiling agent-guard-cli v0.2.10
+    Finished `release` profile [optimized] target(s) in 4.23s
+  Installing /private/tmp/agent-guard-0210-delivery.bSQYKt/registry-install/bin/agent-guard
+   Installed package `agent-guard-cli v0.2.10` (executable `agent-guard`)
+warning: be sure to add `/private/tmp/agent-guard-0210-delivery.bSQYKt/registry-install/bin` to your PATH to be able to run the installed binaries

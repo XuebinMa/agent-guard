@@ -1,6 +1,10 @@
 # Broker Git deadline implementation checkpoint
 
-Unreleased, in progress. Initial user authorization: implement item 1 (Broker
+**Delivered in 0.2.10:** the [verified delivery record](release-0210-delivery.md)
+retains final-main CI, registry artifact and installed-CLI acceptance. The
+checkpoints below preserve the implementation and earlier authorization history.
+
+Initially unreleased and in progress. Initial user authorization: implement item 1 (Broker
 deadlines and failure recovery), then "請繼續". Main merging was not authorized
 at that stage; the subsequent explicit merge/repair decisions are recorded
 below. No release, advisory change or automation. Base main

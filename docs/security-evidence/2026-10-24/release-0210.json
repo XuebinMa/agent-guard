@@ -1,0 +1,183 @@
+{
+  "schema_version": 1,
+  "observed_on_utc": "2026-10-24",
+  "version": "0.2.10",
+  "source_commit": "2da78b1d0b4ad3e62ebc02c09a6d0dd27f836181",
+  "source_tree": "bc62ef73936bf016342387be96a1d2f1df3be98f",
+  "authorization": "授权创建 v0.2.10 标签，并发布到 crates.io、PyPI 和 npm。",
+  "tag": {
+    "name": "v0.2.10",
+    "object": "1c1700a0829bb1a2a3e2d147d410d0738ee258b9",
+    "annotated": true,
+    "immutable": true
+  },
+  "old_tag_objects_unchanged": {
+    "v0.2.7": "ff2715f1c94daf7065f54eb4d6fc5e333ad9428a",
+    "v0.2.8": "3124c050869e0de95a75b2edabab5ace2a1a7bab",
+    "v0.2.9": "f454ebdaa03a6ba75dd6470bdedb29d94348be20"
+  },
+  "preparation": {
+    "pr": 183,
+    "head": "9873b8c6b0ebd4f3d166d19a9449056c867a2cb1",
+    "ci_run": 40001015686,
+    "ci_attempt": 1,
+    "completed_success_jobs": 22,
+    "merge_commit": "2da78b1d0b4ad3e62ebc02c09a6d0dd27f836181",
+    "merged_at_utc": "2026-10-24T06:44:33Z"
+  },
+  "main_ci": {
+    "run": 40071399729,
+    "attempt": 1,
+    "event": "push",
+    "head": "2da78b1d0b4ad3e62ebc02c09a6d0dd27f836181",
+    "completed_success_jobs": 22,
+    "actual_job_results": "main-jobs.json",
+    "native_artifact": {
+      "id": 12551153619,
+      "name": "broker-first-native-2da78b1d0b4ad3e62ebc02c09a6d0dd27f836181",
+      "independent_zip_sha256": "c63d73d22feba74418b8a86bc1a542aa89aff43d2e083a86e489f2cdf8490b26",
+      "api_digest_matched": true,
+      "report": "native-linux.json",
+      "report_sha256": "a622089efba323d225e7d0eca4143454ab7eef58c5ea0cb2ceeb2142fa82b98c",
+      "accepted": true,
+      "cleanup_complete": true,
+      "direct_checks": ["I5", "I6", "I8", "I7-success"],
+      "complementary_broker_passed": 96,
+      "complementary_broker_opt_in_ignored": 1,
+      "broker_log": "native-broker-tests.log",
+      "original_broker_log_sha256": "d9e5e2b9cbdb5eda1e2e329dd4cc95d3ae6e8550bb53d09d5a4901e8e74e3871",
+      "stored_broker_log_sha256": "af3a65701e1e75e122ff500c019cc256db553320667af2445b6aaf6cb7191169",
+      "complementary_cli_passed": 24,
+      "complementary_cli_ignored": 0,
+      "cli_log": "native-cli-tests.log",
+      "original_cli_log_sha256": "dca22fca1fb45494cbb38a21537b6af6ce9d02fed7b5688821adb5ba73fe2016",
+      "stored_cli_log_sha256": "58b7aed1c0977ff98d249ad54f4c0bf4e90f91e5d1ea5f54961a6b81e5e65232",
+      "stored_log_normalization": "Only the final empty line was removed to satisfy the repository whitespace gate; no output line changed",
+      "scope": "Fixed synthetic native Linux Docker profile, not arbitrary-host containment or new human self-use evidence"
+    },
+    "sbom_artifact": {
+      "id": 12551855043,
+      "api_declared_zip_sha256": "7797f45bf587acb289831fade2bf4f1ebe8132f5256aab42d3b5ecaa58d6345c",
+      "zip_digest_independently_checked": false,
+      "extracted_components_independently_checked": 10,
+      "result": "main-sbom-verification.json",
+      "result_sha256": "abaf61ac22a47265b1d1e3bd23e97796ac39502c65375414e0a61652677f555a"
+    }
+  },
+  "release": {
+    "run": 40112534342,
+    "attempt": 1,
+    "head": "2da78b1d0b4ad3e62ebc02c09a6d0dd27f836181",
+    "completed_success_jobs": 10,
+    "actual_job_results": "release-jobs.json",
+    "normal_environment_approval_ids": {
+      "crates-io": 23367831653,
+      "pypi": 21100521747,
+      "npm": 21130782310
+    },
+    "protection_rules_changed": false,
+    "preflight_log_sha256": "8399cc7d99f6c535d874ea5331f936e313a9c7e8c8090d427453c886d06a07ed",
+    "product_npm_audit_vulnerabilities": 0,
+    "node_development_advisory_entries": {"moderate": 3, "high": 4, "critical": 1},
+    "github_release_id": 422851159,
+    "url": "https://github.com/XuebinMa/agent-guard/releases/tag/v0.2.10",
+    "published_at_utc": "2026-10-24T16:58:49Z",
+    "draft": false,
+    "prerelease": false,
+    "public_api_result": "public-release.json"
+  },
+  "registry_artifacts": {
+    "result": "registry-verified.json",
+    "result_sha256": "97d08d27abb80fa345198ecfd147120a845c70eb5b58c5d28a833d373fb386b8",
+    "rust_crates": 8,
+    "python_wheels": 5,
+    "npm_packages": 1,
+    "critical_crate_and_plugin_files_compared_to_release_tree": true,
+    "workflow_wheel_result": "workflow-wheel-verification.json",
+    "workflow_wheel_result_sha256": "bd28b84b17c6b9619302453c69f64e6764a038afab952a6574f5b3ec9350d8bf",
+    "workflow_and_registry_wheel_hashes_match": true,
+    "five_wheel_logs_compile_tokio": "1.51.6",
+    "scope": "Archive, metadata, lock, source, SBOM and build-log checks; not five-platform installed execution"
+  },
+  "registry_installations": {
+    "environment": {
+      "os": "Darwin 25.6 arm64",
+      "rust": "1.94.1",
+      "python": "3.14.2",
+      "node": "25.6.0",
+      "npm": "11.8.0",
+      "isolated_root": "/private/tmp/agent-guard-0210-delivery.bSQYKt",
+      "CARGO_HOME": "/private/tmp/agent-guard-0210-delivery.bSQYKt/cargo-home",
+      "CARGO_TARGET_DIR": "/private/tmp/agent-guard-0210-delivery.bSQYKt/registry-target",
+      "install_prefix": "/private/tmp/agent-guard-0210-delivery.bSQYKt/registry-install",
+      "source_path_installs": false
+    },
+    "command_template": "CARGO_HOME=<isolated-root>/cargo-home CARGO_TARGET_DIR=<isolated-root>/registry-target cargo install <crate> --version '=0.2.10' --locked --registry crates-io --root <isolated-root>/registry-install",
+    "commands": [
+      {"crate": "guard-hook", "exit": 0, "log": "install-guard-hook.log", "log_sha256": "74888aea58731ac2fd92735b0e59eba9868e690509652296869205db0bea574c"},
+      {"crate": "agent-guard-cli", "exit": 0, "log": "install-agent-guard-cli.log", "log_sha256": "c9f1e0724bf0e0043477b43d84a854bb924c9441d1ff8f62a0f0957d8b27a4e0"},
+      {"crate": "guard-verify", "exit": 0, "log": "install-guard-verify.log", "log_sha256": "27749893ac6946815288b53e1d773379af8e0d2398c27d6a2fa8cbe1f63aabeb"}
+    ],
+    "smoke_result": "installed-smoke.json",
+    "smoke_result_sha256": "3cded5f4d016698ccfa88f18647e88b442e04f2ee16c38033872520e254af5a0",
+    "hook_decision_checks": 5,
+    "bundle_conformance": "29/29",
+    "envelope_conformance": "19/19",
+    "authenticated_loopback": {
+      "command": "AGENT_GUARD_TEST_CLI=<isolated-root>/registry-install/bin/agent-guard PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests/broker-first -p test_authenticated_git.py -v",
+      "passed": 13,
+      "failed": 0,
+      "exit": 0,
+      "log": "registry-cli-auth.log",
+      "log_sha256": "1693e9eb807c919ba94feee1ccbafa9489418c4ec7dbbc837f3d3221244d4ee1",
+      "remote": "Temporary owned loopback HTTPS fixture with synthetic authentication, no third-party push"
+    },
+    "pypi": {
+      "distribution": "agent-guard-python==0.2.10",
+      "wheel": "agent_guard_python-0.2.10-cp310-abi3-macosx_11_0_arm64.whl",
+      "sha256": "027922360a806293c99ee70e48c823155c894d402116e555c281b3da5b793178",
+      "install_flags": ["--isolated", "--no-cache-dir", "--only-binary=:all:", "--no-deps", "--require-hashes", "--index-url", "https://pypi.org/simple"],
+      "fresh_venv": true,
+      "isolated_mode_actual_site_packages_import": true,
+      "decision_checks": 5,
+      "invalid_policy_checks": 2,
+      "other_four_platforms_installed": false,
+      "log": "wheel-install.log",
+      "log_sha256": "15a1742cd591523644cbcc9d0b410c99303142ce845e5bdbc98856272e5e6eb6"
+    },
+    "npm": {
+      "package": "agent-guard-plugin@0.2.10",
+      "runtime_dependencies": 0,
+      "install_scripts_executed": false,
+      "fresh_prefix_empty_user_global_configs": true,
+      "audit_signatures_exit": 0,
+      "verified_registry_signatures": 1,
+      "verified_attestations": 1,
+      "statement_repository_workflow_tag_commit_run_matched": true,
+      "log": "npm-signatures.log",
+      "original_log_sha256": "17f2d7d774935ac35ce5f8c606c92dd18c98c5b25b8726956ffae4cb8ad7c6a0",
+      "stored_log_sha256": "82930a0d4958164747d3d9ca0e299ec52d7c7ef3b812132f80af0337eb41a273",
+      "stored_log_normalization": "Only the final empty line was removed to satisfy the repository whitespace gate; no output line changed"
+    }
+  },
+  "acceptance_helpers": {
+    "verifier": "verify_registry.py",
+    "offline_tests": "registry_verifier_tests.py",
+    "offline_tests_passed": 15,
+    "installed_smoke": "installed_smoke.py",
+    "workflow_wheels": "verify_workflow_wheels.py",
+    "preupload_metadata_comparison": "verify_pypi_metadata.py"
+  },
+  "retained_limits": [
+    "Stop all old consumers before upgrading a grant store; permanent consumed markers are never stale locks",
+    "Indeterminate receipt outcome and CLI exit 3 require read-only reconciliation, not automatic push retry",
+    "Existing downstream application locks require their own dependency update",
+    "No five-platform installed-wheel execution or new human self-use acceptance",
+    "Windows ambient handles and general shared hard links remain open",
+    "No forced cancellation of uninterruptible OS/filesystem/spawn work or physical snapshot I/O",
+    "No new credential-isolation, receipt-durability or universal sandbox guarantee",
+    "No GHSA/CVE change, old-tag movement or automation restart",
+    "Record-only PR requires its own exact-head CI and a separate merge decision"
+  ],
+  "acceptance_complete": true
+}

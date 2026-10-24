@@ -1,0 +1,467 @@
+{
+  "observed_at_utc": "2026-10-24T16:57:13.513392+00:00",
+  "version": "0.2.10",
+  "source_commit": "2da78b1d0b4ad3e62ebc02c09a6d0dd27f836181",
+  "release_run": 40112534342,
+  "mode": "registry-artifact-verification",
+  "limits": [
+    "No downloaded artifact was executed or installed by this script",
+    "Archive content/hash checks are not five-platform execution acceptance",
+    "Provenance statement fields are checked but not cryptographically authenticated here",
+    "Run npm audit signatures independently and record its actual result",
+    "Registry --locked installation and binary/wheel decision smoke remain independent checks"
+  ],
+  "rust_crates": [
+    {
+      "crate": "agent-guard-core",
+      "version": "0.2.10",
+      "yanked": false,
+      "checksum": "178c4ada07ab7223d91ca17d235d19938248ab5a4ba24221e1b2eed4210a9aa3",
+      "download_bytes": 64488,
+      "vcs_commit": "2da78b1d0b4ad3e62ebc02c09a6d0dd27f836181",
+      "manifest_internal_pins": [],
+      "packaged_lock": {
+        "sha256": "fbee6b537d50627a4783ebdff894886799285fb516074f0b71b419fd69732eea",
+        "security_versions": {
+          "serde-saphyr": [
+            "2.0.0"
+          ]
+        }
+      },
+      "fixture_digests": {},
+      "repair_source_hashes": {}
+    },
+    {
+      "crate": "agent-guard-validators",
+      "version": "0.2.10",
+      "yanked": false,
+      "checksum": "bcbbe6f13a19f666591eff6eae400632551a18aaf9b946eb030ea648191dee32",
+      "download_bytes": 109645,
+      "vcs_commit": "2da78b1d0b4ad3e62ebc02c09a6d0dd27f836181",
+      "manifest_internal_pins": [
+        {
+          "crate": "agent-guard-core",
+          "version": "=0.2.10",
+          "table": "dependencies"
+        }
+      ],
+      "packaged_lock": {
+        "sha256": "38ba21ec5b9903424c191118cab76b4962ef66da104f2a84fc787323728ec380",
+        "security_versions": {
+          "serde-saphyr": [
+            "2.0.0"
+          ]
+        }
+      },
+      "fixture_digests": {},
+      "repair_source_hashes": {}
+    },
+    {
+      "crate": "agent-guard-sandbox",
+      "version": "0.2.10",
+      "yanked": false,
+      "checksum": "14507ec7febb16ce9af0ed445a063e0930eda3133346dc070146f3bf2048131e",
+      "download_bytes": 52363,
+      "vcs_commit": "2da78b1d0b4ad3e62ebc02c09a6d0dd27f836181",
+      "manifest_internal_pins": [
+        {
+          "crate": "agent-guard-core",
+          "version": "=0.2.10",
+          "table": "dependencies"
+        }
+      ],
+      "packaged_lock": {
+        "sha256": "3599cadcad9fd626a686f92224d97ee3af154a590f21cc632aad09a5c6bb8a61",
+        "security_versions": {
+          "serde-saphyr": [
+            "2.0.0"
+          ]
+        }
+      },
+      "fixture_digests": {},
+      "repair_source_hashes": {}
+    },
+    {
+      "crate": "agent-guard-sdk",
+      "version": "0.2.10",
+      "yanked": false,
+      "checksum": "994cd117954174c640b7622e72747752882c8cc5b876fe1d766f66df81f47b95",
+      "download_bytes": 175872,
+      "vcs_commit": "2da78b1d0b4ad3e62ebc02c09a6d0dd27f836181",
+      "manifest_internal_pins": [
+        {
+          "crate": "agent-guard-core",
+          "version": "=0.2.10",
+          "table": "dependencies"
+        },
+        {
+          "crate": "agent-guard-sandbox",
+          "version": "=0.2.10",
+          "table": "dependencies"
+        },
+        {
+          "crate": "agent-guard-validators",
+          "version": "=0.2.10",
+          "table": "dependencies"
+        }
+      ],
+      "packaged_lock": {
+        "sha256": "717f80971b654fcc54819ca37b7c103c38edb9d83bbc8f1f5c154896771fba41",
+        "security_versions": {
+          "serde-saphyr": [
+            "2.0.0"
+          ],
+          "quinn-proto": [
+            "0.11.18"
+          ],
+          "rustls": [
+            "0.23.46"
+          ],
+          "rustls-webpki": [
+            "0.103.16"
+          ],
+          "webpki-root-certs": [
+            "1.0.10"
+          ],
+          "tokio": [
+            "1.51.6"
+          ]
+        }
+      },
+      "fixture_digests": {},
+      "repair_source_hashes": {
+        "src/approval.rs": "48e48c51b52adc636f88daff53819699f4834ef86a6bce7e3d63e50e7768c3bb",
+        "src/jsonl_file.rs": "543d6eeb37724dec76dd682799e1ebe94102b96b5558b1cd660bcde78dbe9b0b"
+      }
+    },
+    {
+      "crate": "agent-guard-broker",
+      "version": "0.2.10",
+      "yanked": false,
+      "checksum": "4baef570ec79d2db05ce9486a8fcbf430dfff65b57c1d793bd1343002752568e",
+      "download_bytes": 62097,
+      "vcs_commit": "2da78b1d0b4ad3e62ebc02c09a6d0dd27f836181",
+      "manifest_internal_pins": [
+        {
+          "crate": "agent-guard-core",
+          "version": "=0.2.10",
+          "table": "dependencies"
+        }
+      ],
+      "packaged_lock": {
+        "sha256": "8b43e08c2299194bb15074195b7d159628e5d25688672c19ae99e8b5779d06fe",
+        "security_versions": {
+          "serde-saphyr": [
+            "2.0.0"
+          ],
+          "process-wrap": [
+            "10.0.1"
+          ]
+        }
+      },
+      "fixture_digests": {},
+      "repair_source_hashes": {
+        "src/grant.rs": "48c77ecc4a960524038d592672ce5232da1cf50be7eb47d7b85860bf22734352",
+        "src/git.rs": "5d5f39e1eccf7b86987b4869338b1c6e64b4498729c7b4582515236f4835805f",
+        "src/git/process.rs": "695983e276889be433028d4968a63dc107b2ce2b20e6ab759b2846e076f3718a",
+        "src/execute.rs": "c5ae0cb004512b979c5c4d8b2df98eadc66da9e358d5499e2a5f800d429fdbee",
+        "src/receipt.rs": "020c7019e29492a1531e37816d1a2b33438c876da321ab03e7f49b4446e1bcd7"
+      }
+    },
+    {
+      "crate": "agent-guard-cli",
+      "version": "0.2.10",
+      "yanked": false,
+      "checksum": "8570303a41835e84c25519ae832ef87f1cc8b2af1e19bad46890ca542e273ff2",
+      "download_bytes": 32848,
+      "vcs_commit": "2da78b1d0b4ad3e62ebc02c09a6d0dd27f836181",
+      "manifest_internal_pins": [
+        {
+          "crate": "agent-guard-broker",
+          "version": "=0.2.10",
+          "table": "dependencies"
+        },
+        {
+          "crate": "agent-guard-sdk",
+          "version": "=0.2.10",
+          "table": "dependencies"
+        }
+      ],
+      "packaged_lock": {
+        "sha256": "2aff0fda54837eea16ec02a0b05d62b2d5327868d201750e328cb7a7212b212e",
+        "security_versions": {
+          "serde-saphyr": [
+            "2.0.0"
+          ],
+          "quinn-proto": [
+            "0.11.18"
+          ],
+          "rustls": [
+            "0.23.46"
+          ],
+          "rustls-webpki": [
+            "0.103.16"
+          ],
+          "webpki-root-certs": [
+            "1.0.10"
+          ],
+          "tokio": [
+            "1.51.6"
+          ],
+          "process-wrap": [
+            "10.0.1"
+          ]
+        }
+      },
+      "fixture_digests": {},
+      "repair_source_hashes": {
+        "src/main.rs": "9f5bad0105f62e1acaa5522f2c2b64b9430c1d280a6c2daeeed6d3d3d0715c46"
+      }
+    },
+    {
+      "crate": "guard-hook",
+      "version": "0.2.10",
+      "yanked": false,
+      "checksum": "dced8e121a319cad30ac0c2872a69b8a0b42be8e73c838c5d55c455f006e49ca",
+      "download_bytes": 33156,
+      "vcs_commit": "2da78b1d0b4ad3e62ebc02c09a6d0dd27f836181",
+      "manifest_internal_pins": [
+        {
+          "crate": "agent-guard-broker",
+          "version": "=0.2.10",
+          "table": "dependencies"
+        },
+        {
+          "crate": "agent-guard-core",
+          "version": "=0.2.10",
+          "table": "dependencies"
+        },
+        {
+          "crate": "agent-guard-sdk",
+          "version": "=0.2.10",
+          "table": "dependencies"
+        },
+        {
+          "crate": "agent-guard-validators",
+          "version": "=0.2.10",
+          "table": "dependencies"
+        }
+      ],
+      "packaged_lock": {
+        "sha256": "a96050f610f9ec8b3404d08255eea7e8b8433335cf1c78307c9732c7fdda383a",
+        "security_versions": {
+          "serde-saphyr": [
+            "2.0.0"
+          ],
+          "quinn-proto": [
+            "0.11.18"
+          ],
+          "rustls": [
+            "0.23.46"
+          ],
+          "rustls-webpki": [
+            "0.103.16"
+          ],
+          "webpki-root-certs": [
+            "1.0.10"
+          ],
+          "tokio": [
+            "1.51.6"
+          ],
+          "process-wrap": [
+            "10.0.1"
+          ]
+        }
+      },
+      "fixture_digests": {},
+      "repair_source_hashes": {}
+    },
+    {
+      "crate": "guard-verify",
+      "version": "0.2.10",
+      "yanked": false,
+      "checksum": "4970e68476fac35f6c778459dafb52e27aafd46f4e68a02b3233e86340b6cb62",
+      "download_bytes": 104569,
+      "vcs_commit": "2da78b1d0b4ad3e62ebc02c09a6d0dd27f836181",
+      "manifest_internal_pins": [
+        {
+          "crate": "agent-guard-core",
+          "version": "=0.2.10",
+          "table": "dependencies"
+        },
+        {
+          "crate": "agent-guard-sdk",
+          "version": "=0.2.10",
+          "table": "dependencies"
+        }
+      ],
+      "packaged_lock": {
+        "sha256": "ce9d6225d80ef3f73979026c018e5a53cf62e5c8db4f882d86bfe1af48c140a3",
+        "security_versions": {
+          "serde-saphyr": [
+            "2.0.0"
+          ],
+          "quinn-proto": [
+            "0.11.18"
+          ],
+          "rustls": [
+            "0.23.46"
+          ],
+          "rustls-webpki": [
+            "0.103.16"
+          ],
+          "webpki-root-certs": [
+            "1.0.10"
+          ],
+          "tokio": [
+            "1.51.6"
+          ]
+        }
+      },
+      "fixture_digests": {
+        "bundle_vectors_v1.json": "1663000a67f38fcd54ff4856b39583b17ffec342f13f8d0921e2de0bc2bc25c5",
+        "envelope_vectors_v1.json": "a8be5ff764a86122ca09e94340416b7169531bf5d0cc76a0b1fc87f8272eb16e"
+      },
+      "repair_source_hashes": {}
+    }
+  ],
+  "python_wheels": [
+    {
+      "wheel": "agent_guard_python-0.2.10-cp310-abi3-macosx_10_12_x86_64.whl",
+      "platform": "macOS x86_64",
+      "sha256": "aa658ffd3288ad3b416385defed439c892314a5772434b9874b5631f926bba44",
+      "download_bytes": 5015582,
+      "native": "agent_guard/_agent_guard.abi3.so",
+      "tags": [
+        "cp310-abi3-macosx_10_12_x86_64"
+      ],
+      "record_verified": true,
+      "requires_python": ">=3.10",
+      "dependency_sbom": {
+        "sha256": "446a48f8e3c7a375f6d29f0f5b711bdf32ab3cffc9f09d618cd6f68a629781ab",
+        "format": "CycloneDX",
+        "tokio": [
+          "1.51.6"
+        ]
+      }
+    },
+    {
+      "wheel": "agent_guard_python-0.2.10-cp310-abi3-macosx_11_0_arm64.whl",
+      "platform": "macOS arm64",
+      "sha256": "027922360a806293c99ee70e48c823155c894d402116e555c281b3da5b793178",
+      "download_bytes": 4804192,
+      "native": "agent_guard/_agent_guard.abi3.so",
+      "tags": [
+        "cp310-abi3-macosx_11_0_arm64"
+      ],
+      "record_verified": true,
+      "requires_python": ">=3.10",
+      "dependency_sbom": {
+        "sha256": "13d0bcde24e5f0a39cedf4113650a954cfc844dee331487c59c1391f5d041f52",
+        "format": "CycloneDX",
+        "tokio": [
+          "1.51.6"
+        ]
+      }
+    },
+    {
+      "wheel": "agent_guard_python-0.2.10-cp310-abi3-manylinux_2_17_aarch64.manylinux2014_aarch64.whl",
+      "platform": "Linux aarch64",
+      "sha256": "f08a102a88ee643c6701c5f7a7c7644bda2f7473536ddfd65139447885691f6d",
+      "download_bytes": 5276216,
+      "native": "agent_guard/_agent_guard.abi3.so",
+      "tags": [
+        "cp310-abi3-manylinux2014_aarch64",
+        "cp310-abi3-manylinux_2_17_aarch64"
+      ],
+      "record_verified": true,
+      "requires_python": ">=3.10",
+      "dependency_sbom": {
+        "sha256": "82cb12fba50afa52f4911020154255b020d8eb3acc15648f27fef035ca8da9ee",
+        "format": "CycloneDX",
+        "tokio": [
+          "1.51.6"
+        ]
+      }
+    },
+    {
+      "wheel": "agent_guard_python-0.2.10-cp310-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl",
+      "platform": "Linux x86_64",
+      "sha256": "e98488f1b95621b190e2a33ba11a30530e71cfa5db321b48c9a326d7139813f7",
+      "download_bytes": 5317700,
+      "native": "agent_guard/_agent_guard.abi3.so",
+      "tags": [
+        "cp310-abi3-manylinux2014_x86_64",
+        "cp310-abi3-manylinux_2_17_x86_64"
+      ],
+      "record_verified": true,
+      "requires_python": ">=3.10",
+      "dependency_sbom": {
+        "sha256": "db44e1a806b0d4fc90e2751e84e6f26e408f6659ea850a510e684adc31102649",
+        "format": "CycloneDX",
+        "tokio": [
+          "1.51.6"
+        ]
+      }
+    },
+    {
+      "wheel": "agent_guard_python-0.2.10-cp310-abi3-win_amd64.whl",
+      "platform": "Windows amd64",
+      "sha256": "71fb6e6068e36b4933313d319bac8cd9a15bc467a07ece8b9504067305ebc8e8",
+      "download_bytes": 4430527,
+      "native": "agent_guard/_agent_guard.pyd",
+      "tags": [
+        "cp310-abi3-win_amd64"
+      ],
+      "record_verified": true,
+      "requires_python": ">=3.10",
+      "dependency_sbom": {
+        "sha256": "52fbfc2611b4867d232531af34ed1f266ea2ff842e78367bc98449944bd35a59",
+        "format": "CycloneDX",
+        "tokio": [
+          "1.51.6"
+        ]
+      }
+    }
+  ],
+  "npm": {
+    "package": "agent-guard-plugin",
+    "version": "0.2.10",
+    "integrity": "sha512-BI8H5mZSVpxxBMStTem+O4/tH0vp/i+XYl4Uh009Hex7z7ZL+d7UFev6AJjjQxhhZo94loqhVhykXVWqGV/iIw==",
+    "download_bytes": 11243,
+    "digests": {
+      "sha512": "048f07e66652569c7104c4ad4de9be3b8fed1f4be9fe2f97625e14874d3d1dec7bcfb64bf9ded415ebfa0098e3431861668f78968aa1561ca45d55aa195fe223",
+      "sha256": "3b4a5defa81890fd9b67096e3a6c291dac2278806b059583be9e514c1c3d9f57"
+    },
+    "dependencies": {},
+    "package_members": [
+      "README.md",
+      "assets/coding-agent-outbound.yaml",
+      "bin/cli.js",
+      "lib/init.js",
+      "package.json"
+    ],
+    "installer_locked_and_version_checked": true,
+    "provenance_statement": {
+      "predicate_type": "https://slsa.dev/provenance/v1",
+      "statement_commit": "2da78b1d0b4ad3e62ebc02c09a6d0dd27f836181",
+      "statement_ref": "refs/tags/v0.2.10",
+      "statement_workflow": ".github/workflows/release.yml",
+      "statement_repository": "https://github.com/XuebinMa/agent-guard",
+      "statement_invocation": "https://github.com/XuebinMa/agent-guard/actions/runs/40112534342/attempts/1",
+      "subject_integrity_matched": true,
+      "cryptographic_signature_verification": "not performed; independently run npm audit signatures",
+      "attestations_url": "https://registry.npmjs.org/-/npm/v1/attestations/agent-guard-plugin@0.2.10",
+      "attestation_response_sha256": "5deec1f6ff666f165367048dd33b5b8b9fef639435b2c088ac89aaea4d849453",
+      "statement_sha256": "5c6f5a0f43c117087093e75d942b4d645797d1d41e4ae2390e0267d7259af9ab"
+    },
+    "release_source_hashes": {
+      "bin/cli.js": "d9778ce586a596ffad67292992efa5976b68f3df11270149811eb4e8423ee51c",
+      "lib/init.js": "aca7ced7d28d1bdfcc1cc615ddc5db7baa55ed731c2d98002069911baac06cff",
+      "assets/coding-agent-outbound.yaml": "52fe5b5b94ccd0ac6f31d3f91c1090ad11a67071e3836ae996365821e2694f2f"
+    }
+  },
+  "success": true,
+  "downloaded_bytes": 25531644,
+  "completed_at_utc": "2026-10-24T16:57:20.358201+00:00"
+}

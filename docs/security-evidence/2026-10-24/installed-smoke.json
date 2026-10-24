@@ -1,0 +1,61 @@
+{
+  "version": "0.2.10",
+  "shell_inputs_executed": false,
+  "binaries": {
+    "guard-hook": "guard-hook 0.2.10",
+    "agent-guard": "agent-guard 0.2.10",
+    "guard-verify": "guard-verify 0.2.10"
+  },
+  "hook_decisions": [
+    {
+      "input": "echo smoke",
+      "decision": "allow"
+    },
+    {
+      "input": "git push origin local-test",
+      "decision": "ask"
+    },
+    {
+      "input": "sudo echo denied",
+      "decision": "deny"
+    },
+    {
+      "input": "=printf visible",
+      "decision": "deny"
+    },
+    {
+      "input": "ls \r#;printf visible",
+      "decision": "deny"
+    }
+  ],
+  "corpora": {
+    "attenu-vectors": "29/29 conformant",
+    "attenu-envelope-vectors": "19/19 conformant"
+  },
+  "broker_help_contract": true,
+  "wheel_decisions": [
+    {
+      "input": "echo smoke",
+      "decision": "allow"
+    },
+    {
+      "input": "git push origin local-test",
+      "decision": "ask_user"
+    },
+    {
+      "input": "sudo echo denied",
+      "decision": "deny"
+    },
+    {
+      "input": "=printf visible",
+      "decision": "deny"
+    },
+    {
+      "input": "ls \r#;printf visible",
+      "decision": "deny"
+    }
+  ],
+  "wheel_module_path": "/private/tmp/agent-guard-0210-delivery.bSQYKt/wheel-venv/lib/python3.14/site-packages/agent_guard/__init__.py",
+  "wheel_policy_negative_checks": 2,
+  "success": true
+}

@@ -1,0 +1,18 @@
+test_a_transport_disconnect_after_update_is_indeterminate_too (test_authenticated_git.AuthenticatedGitTests.test_a_transport_disconnect_after_update_is_indeterminate_too) ... ok
+test_approved_host_push_matches_independent_ref_and_receipt (test_authenticated_git.AuthenticatedGitTests.test_approved_host_push_matches_independent_ref_and_receipt) ... ok
+test_cancel_and_eof_do_not_mutate_or_create_execution_receipt (test_authenticated_git.AuthenticatedGitTests.test_cancel_and_eof_do_not_mutate_or_create_execution_receipt) ... ok
+test_execution_query_timeout_consumes_grant_but_does_not_launch_push (test_authenticated_git.AuthenticatedGitTests.test_execution_query_timeout_consumes_grant_but_does_not_launch_push) ... ok
+test_incomplete_tls_handshake_cannot_hold_fixture_shutdown (test_authenticated_git.AuthenticatedGitTests.test_incomplete_tls_handshake_cannot_hold_fixture_shutdown) ... ok
+test_lost_push_response_does_not_claim_the_updated_remote_was_unchanged (test_authenticated_git.AuthenticatedGitTests.test_lost_push_response_does_not_claim_the_updated_remote_was_unchanged) ... ok
+test_observer_failure_is_not_recorded_as_an_absent_ref (test_authenticated_git.AuthenticatedGitTests.test_observer_failure_is_not_recorded_as_an_absent_ref) ... ok
+test_out_of_scope_destination_is_refused_before_connection (test_authenticated_git.AuthenticatedGitTests.test_out_of_scope_destination_is_refused_before_connection) ... ok
+test_preview_timeout_never_issues_a_grant_or_execution_receipt (test_authenticated_git.AuthenticatedGitTests.test_preview_timeout_never_issues_a_grant_or_execution_receipt) ... ok
+test_reachable_tls_service_refuses_unauthenticated_mutation (test_authenticated_git.AuthenticatedGitTests.test_reachable_tls_service_refuses_unauthenticated_mutation) ... ok
+test_bridge_extension_accepts_only_the_observed_private_docker0_address (test_authenticated_git.FixtureBindTests.test_bridge_extension_accepts_only_the_observed_private_docker0_address) ... ok
+test_bridge_extension_refuses_public_wildcard_linklocal_and_noncanonical_addresses (test_authenticated_git.FixtureBindTests.test_bridge_extension_refuses_public_wildcard_linklocal_and_noncanonical_addresses) ... ok
+test_bridge_extension_requires_native_linux_and_the_named_local_interface (test_authenticated_git.FixtureBindTests.test_bridge_extension_requires_native_linux_and_the_named_local_interface) ... ok
+
+----------------------------------------------------------------------
+Ran 13 tests in 10.744s
+
+OK

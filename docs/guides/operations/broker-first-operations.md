@@ -85,11 +85,11 @@ record without the operator choosing that setup.
 | Process interrupted or remote query stalls | The terminal state may be unknown; absence of a receipt is not proof of no mutation | Keep the agent stopped, preserve diagnostics, check the exact remote ref through trusted operator tooling, and authorize a fresh attempt only after reconciliation. |
 
 Published 0.2.9 and earlier do not promise a finite production Git deadline.
-The unreleased source implements the bounded path below; the historical
+Version 0.2.10 implements the bounded path below; the historical
 benchmark's **external test-process** deadline is not the product fix.
 Killing a process is not a transaction rollback or proof of unchanged refs.
 
-### Bounded Git operations — unreleased source
+### Bounded Git operations — 0.2.10 and later
 
 Every Broker Git subprocess, including local config and batch checks, uses the
 same monotonic budget within one preview or execution. The default is 300 s;
@@ -141,9 +141,9 @@ operator-owned generated paths before recovery; do not reuse a replaced volume
 or bulk-delete user data. Shared-hard-link and Windows inherited-handle findings
 remain open; this Linux workflow does not repair them.
 
-### One-use grant store upgrade — unreleased source
+### One-use grant store upgrade — 0.2.10 and later
 
-The claim repair is not in published 0.2.9 packages. Patched source creates
+The claim repair ships in 0.2.10, not in 0.2.9 packages. Patched Brokers create
 `spent/claim-<id>.consumed` exclusively before reading or archiving an issued
 grant. Only its creator proceeds; the marker stays after success, refusal,
 missing-source archival failure or process interruption. An empty or partial

@@ -9,11 +9,14 @@ The `[Unreleased]` heading is rolled forward manually before each release; do no
 
 ## [Unreleased]
 
-## [0.2.10] - 2026-10-23
+## [0.2.10] - 2026-10-24
 
-**Source preparation only; not yet published.** The latest verified published
-release remains 0.2.9. These repairs are not available by installing 0.2.9.
-See the [preparation and upgrade checklist](docs/release-0210-preparation.md).
+Published and independently verified on 2026-10-24 UTC: eight Rust crates,
+five Python wheel platforms and the npm plugin. Three exact registry-installed
+Rust CLIs passed isolated `--locked` installation and installed-binary checks;
+the actual macOS arm64 PyPI wheel passed decision/policy checks. The installed
+Broker CLI also passed all 13 authenticated loopback Git tests. See the
+[delivery and upgrade record](docs/release-0210-delivery.md) for evidence and limits.
 
 ### Security
 
@@ -21,8 +24,7 @@ See the [preparation and upgrade checklist](docs/release-0210-preparation.md).
   1.51.6 for [RUSTSEC-2026-0386](https://rustsec.org/advisories/RUSTSEC-2026-0386.html).
   The SDK manifest's compatible version range and project MSRV are unchanged;
   no other locked package or advisory policy is changed by that repair. Existing
-  downstream lockfiles still require their own update. This is not yet a
-  published package fix.
+  downstream lockfiles still require their own update.
 - One-use Broker grants now require exclusive creation of a permanent
   consumption marker before any grant read or archive rename. A native Windows
   regression observed 16 successful concurrent claims for one grant when
@@ -30,15 +32,15 @@ See the [preparation and upgrade checklist](docs/release-0210-preparation.md).
   Failures and process interruption never remove the marker, legacy spent
   entries cannot be overwritten, and marker-only consumption is retained in
   refused receipts. The claim repair itself does not change grant/receipt JSON;
-  the deadline outcome extension is listed separately below. This is unreleased
-  source for 0.2.10, not an available 0.2.9 package fix.
+  the deadline outcome extension is listed separately below. The repair ships
+  in 0.2.10 and is not present in 0.2.9 packages.
 
 ### Changed
 
 - `agent-guard push --git-timeout-seconds` accepts 1–3600 seconds, default 300,
   separately for preview and execution; confirmation time is excluded. Rust
   callers can use `PushBroker::with_git_timeout` without changing existing
-  `BrokerGitOptions` literals. This is 0.2.10 candidate source, not in 0.2.9 packages.
+  `BrokerGitOptions` literals. This ships in 0.2.10, not in 0.2.9 packages.
 - Broker v1 receipts add `attempt.outcome: indeterminate`; old pushed/refused
   encodings and signing preimages remain byte-stable. Consumers must handle or
   reject the new variant, never turn an unknown outcome into success/refusal.
