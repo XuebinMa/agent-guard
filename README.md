@@ -4,7 +4,7 @@
 > Your agent writes code and runs tests freely; agent-guard makes the outbound
 > intent visible and gives the host a decision before code leaves the machine.
 
-[![Version](https://img.shields.io/badge/Version-0.2.9-blue.svg)]()
+[![Version](https://img.shields.io/badge/Version-0.2.10-blue.svg)]()
 [![Focus](https://img.shields.io/badge/Focus-Outbound%20Control-green.svg)]()
 [![License](https://img.shields.io/badge/License-MIT-yellow.svg)]()
 [![MSRV](https://img.shields.io/badge/MSRV-1.89-orange.svg)]()
@@ -139,7 +139,7 @@ checkout with `npm ci --prefix crates/agent-guard-node && npm run build
 
 ## Release Status
 
-- **Source version**: `v0.2.9`
+- **Source version**: `v0.2.10`
 - **Latest published release**: [`v0.2.9`](https://github.com/XuebinMa/agent-guard/releases/tag/v0.2.9) — crates.io, PyPI, npm
 - **Verified delivery**: [0.2.9 package and installation evidence](docs/release-029-delivery.md)
 - **Announcement**: [GitHub Discussions #1](https://github.com/XuebinMa/agent-guard/discussions/1)

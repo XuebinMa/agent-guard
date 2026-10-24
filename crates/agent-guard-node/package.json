@@ -1,6 +1,6 @@
 {
   "name": "@agent-guard/node",
-  "version": "0.2.9",
+  "version": "0.2.10",
   "main": "runtime.js",
   "types": "runtime.d.ts",
   "napi": {
