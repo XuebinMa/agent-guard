@@ -1,0 +1,42 @@
+{
+  "schema": 1,
+  "started_at_utc": "2026-10-24T19:12:18.311768+00:00",
+  "mode": "human-terminal-macos-cli-only",
+  "version": "0.2.10",
+  "platform": "macOS-26.6.2-arm64-arm-64bit-Mach-O",
+  "from_oid": "2da78b1d0b4ad3e62ebc02c09a6d0dd27f836181",
+  "to_oid": "226b6535715626e0bb480abd9f611533c239e327",
+  "binary_sha256": "cb6b289528d081605fa0787166854aa58c2e75835a67f606dff92dcd3d1e5e65",
+  "inputs_sha256": {
+    "agent-guard": "cb6b289528d081605fa0787166854aa58c2e75835a67f606dff92dcd3d1e5e65",
+    "upgrade-grant-029": "aa63759973518c5e41dbaaf32a9d46d8fe476afd0341baa96adc2dae6335335f",
+    "local_git_service.py": "cc4b0615b6a5a016acd2826031f3887e5c55fde1b3e759eee4b85efa374cfed2",
+    "project.bundle": "1f11909f8d38515c7de9e87c53f841b0ad47c1693d26c3ceac66297df68007b9"
+  },
+  "driver_sha256": "31d035682c9a5b1a117844252077dfa609487cef09b14e4a800887f5ae068f73",
+  "success": true,
+  "global_installation_changed": false,
+  "real_credentials_or_real_store_used": false,
+  "human_feedback": "not collected; ask maintainer separately",
+  "linux_isolation_or_representative_capacity_acceptance": false,
+  "remote_outcome": "approved_oid_observed",
+  "cleanup_complete": true,
+  "cleanup_scope": "owned runtime files and listening service, not a general descendant-process guarantee",
+  "process_cleanup_unverified": false,
+  "remote_observation_scope": "point-in-time before service closure; not a no-later-effects proof after interruption",
+  "legacy_fixture": {
+    "version": "0.2.9",
+    "grant_id": "d707da77-ad2e-4146-83bc-288c5d5c64ed",
+    "all_owned_old_consumers_exited": true
+  },
+  "destination": "https://127.0.0.1:59991/repo.git",
+  "branch": "main",
+  "decline_verified": true,
+  "approve_verified": true,
+  "fresh_grant_id": "f08b8b37-e3a4-4f36-8405-f8dc8d3ab9a2",
+  "legacy_history_unchanged": true,
+  "unsigned_receipt": true,
+  "receive_pack_posts": 1,
+  "independently_observed_remote_oid": "226b6535715626e0bb480abd9f611533c239e327",
+  "finished_at_utc": "2026-10-24T19:13:27.865025+00:00"
+}
